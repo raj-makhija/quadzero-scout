@@ -1,0 +1,123 @@
+Resources:
+  # TalentProfiles Table
+  TalentProfilesTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: ${self:custom.talentProfilesTable}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: candidate_id
+          AttributeType: S
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: seniority
+          AttributeType: S
+        - AttributeName: experience_bucket
+          AttributeType: S
+        - AttributeName: last_updated
+          AttributeType: S
+      KeySchema:
+        - AttributeName: candidate_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: UserIdIndex
+          KeySchema:
+            - AttributeName: user_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: SeniorityIndex
+          KeySchema:
+            - AttributeName: seniority
+              KeyType: HASH
+            - AttributeName: last_updated
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: ExperienceIndex
+          KeySchema:
+            - AttributeName: experience_bucket
+              KeyType: HASH
+            - AttributeName: last_updated
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Project
+          Value: quadzero-scout
+
+  # Users Table
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: ${self:custom.usersTable}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: email
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: EmailIndex
+          KeySchema:
+            - AttributeName: email
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Project
+          Value: quadzero-scout
+
+  # SavedSearches Table (Phase 2)
+  SavedSearchesTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: ${self:custom.savedSearchesTable}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: recruiter_id
+          AttributeType: S
+        - AttributeName: search_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: recruiter_id
+          KeyType: HASH
+        - AttributeName: search_id
+          KeyType: RANGE
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Project
+          Value: quadzero-scout
+
+Outputs:
+  TalentProfilesTableArn:
+    Description: TalentProfiles table ARN
+    Value: !GetAtt TalentProfilesTable.Arn
+    Export:
+      Name: ${self:provider.stage}-TalentProfilesTableArn
+
+  UsersTableArn:
+    Description: Users table ARN
+    Value: !GetAtt UsersTable.Arn
+    Export:
+      Name: ${self:provider.stage}-UsersTableArn
+
+  SavedSearchesTableArn:
+    Description: SavedSearches table ARN
+    Value: !GetAtt SavedSearchesTable.Arn
+    Export:
+      Name: ${self:provider.stage}-SavedSearchesTableArn

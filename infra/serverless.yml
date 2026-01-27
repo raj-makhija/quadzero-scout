@@ -1,0 +1,181 @@
+service: quadzero-scout
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: ${opt:region, 'ap-south-1'}
+  stage: ${opt:stage, 'dev'}
+  memorySize: 512
+  timeout: 30
+  architecture: arm64
+
+  stackTags:
+    Project: quadzero-scout
+    Environment: ${self:provider.stage}
+    ManagedBy: serverless-framework
+
+  environment:
+    STAGE: ${self:provider.stage}
+    AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
+    DYNAMODB_TABLE_TALENT_PROFILES: ${self:custom.talentProfilesTable}
+    DYNAMODB_TABLE_USERS: ${self:custom.usersTable}
+    DYNAMODB_TABLE_SAVED_SEARCHES: ${self:custom.savedSearchesTable}
+    S3_BUCKET_RESUMES: ${self:custom.resumesBucket}
+    LLM_PROVIDER: ${ssm:/quadzero-scout/${self:provider.stage}/LLM_PROVIDER, env:LLM_PROVIDER, 'claude'}
+    ANTHROPIC_API_KEY: ${ssm:/quadzero-scout/${self:provider.stage}/ANTHROPIC_API_KEY, env:ANTHROPIC_API_KEY, ''}
+    OPENAI_API_KEY: ${ssm:/quadzero-scout/${self:provider.stage}/OPENAI_API_KEY, env:OPENAI_API_KEY, ''}
+    OPENROUTER_API_KEY: ${ssm:/quadzero-scout/${self:provider.stage}/OPENROUTER_API_KEY, env:OPENROUTER_API_KEY, ''}
+    OPENROUTER_MODEL: ${ssm:/quadzero-scout/${self:provider.stage}/OPENROUTER_MODEL, env:OPENROUTER_MODEL, 'anthropic/claude-3.5-sonnet'}
+    OPENROUTER_REFERER: ${ssm:/quadzero-scout/${self:provider.stage}/OPENROUTER_REFERER, env:OPENROUTER_REFERER, 'https://quadzero-scout.com'}
+    GEMINI_API_KEY: ${ssm:/quadzero-scout/${self:provider.stage}/GEMINI_API_KEY, env:GEMINI_API_KEY, ''}
+    GEMINI_MODEL: ${ssm:/quadzero-scout/${self:provider.stage}/GEMINI_MODEL, env:GEMINI_MODEL, 'gemini-2.0-flash'}
+
+  httpApi:
+    cors:
+      allowedOrigins: ${self:custom.corsOrigins.${self:provider.stage}}
+      allowedHeaders:
+        - Content-Type
+        - Authorization
+      allowedMethods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - OPTIONS
+      allowCredentials: true
+
+  iam:
+    role:
+      statements:
+        - ${file(resources/iam.yml):dynamoDbPolicy}
+        - ${file(resources/iam.yml):s3Policy}
+        - ${file(resources/iam.yml):textractPolicy}
+        - ${file(resources/iam.yml):ssmPolicy}
+
+custom:
+  corsOrigins:
+    dev:
+      - http://localhost:3000
+      - http://localhost:3001
+      - http://localhost:3002
+      - https://dev.scout.quadzero.com
+    qa:
+      - https://qa.scout.quadzero.com
+    prod:
+      - https://scout.quadzero.com
+      - https://app.quadzero.com
+
+  talentProfilesTable: TalentProfiles-${self:provider.stage}
+  usersTable: Users-${self:provider.stage}
+  savedSearchesTable: SavedSearches-${self:provider.stage}
+  resumesBucket: quadzero-scout-resumes-${self:provider.stage}
+
+  esbuild:
+    bundle: true
+    minify: false
+    sourcemap: true
+    exclude:
+      - '@aws-sdk/*'
+    target: node20
+    platform: node
+    concurrency: 10
+
+plugins:
+  - serverless-dotenv-plugin
+  - serverless-esbuild
+  - serverless-offline
+
+package:
+  individually: true
+
+functions:
+  # Candidate Endpoints
+  candidateUploadUrl:
+    handler: src/handlers/candidate/uploadUrl.handler
+    events:
+      - httpApi:
+          path: /candidate/upload-url
+          method: POST
+
+  candidateAnalyze:
+    handler: src/handlers/candidate/analyze.handler
+    timeout: 60
+    memorySize: 1024
+    events:
+      - httpApi:
+          path: /candidate/analyze
+          method: POST
+
+  candidateUploadAndAnalyze:
+    handler: src/handlers/candidate/uploadAndAnalyze.handler
+    timeout: 120
+    memorySize: 1024
+    events:
+      - httpApi:
+          path: /candidate/upload-and-analyze
+          method: POST
+
+  candidateSaveProfile:
+    handler: src/handlers/candidate/saveProfile.handler
+    events:
+      - httpApi:
+          path: /candidate/save-profile
+          method: POST
+
+  candidateGetProfile:
+    handler: src/handlers/candidate/getProfile.handler
+    events:
+      - httpApi:
+          path: /candidate/profile/{candidateId}
+          method: GET
+
+  # Recruiter Endpoints
+  recruiterParseJd:
+    handler: src/handlers/recruiter/parseJd.handler
+    timeout: 45
+    events:
+      - httpApi:
+          path: /recruiter/parse-jd
+          method: POST
+
+  recruiterSearch:
+    handler: src/handlers/recruiter/search.handler
+    events:
+      - httpApi:
+          path: /recruiter/search
+          method: POST
+
+  recruiterResumeUrl:
+    handler: src/handlers/recruiter/resumeUrl.handler
+    events:
+      - httpApi:
+          path: /recruiter/resume-url/{candidateId}
+          method: GET
+
+  # Phase 2: Saved Searches
+  recruiterSaveSearch:
+    handler: src/handlers/recruiter/saveSearch.handler
+    events:
+      - httpApi:
+          path: /recruiter/search/save
+          method: POST
+
+  recruiterGetSearches:
+    handler: src/handlers/recruiter/getSearches.handler
+    events:
+      - httpApi:
+          path: /recruiter/searches
+          method: GET
+
+  recruiterDeleteSearch:
+    handler: src/handlers/recruiter/deleteSearch.handler
+    events:
+      - httpApi:
+          path: /recruiter/search/{searchId}
+          method: DELETE
+
+resources:
+  - ${file(resources/dynamodb.yml)}
+  - ${file(resources/s3.yml)}

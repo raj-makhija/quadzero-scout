@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.local.example
+
+# Serverless artifacts
+.serverless/
+.esbuild/
+
+# Next.js
+.next/
+out/
+
+# Windows junction (infra/src -> backend/src)
+infra/src
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+qwen-prompt.txt

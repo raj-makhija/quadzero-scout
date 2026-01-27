@@ -1,0 +1,49 @@
+# DynamoDB Policy
+dynamoDbPolicy:
+  Effect: Allow
+  Action:
+    - dynamodb:Query
+    - dynamodb:Scan
+    - dynamodb:GetItem
+    - dynamodb:PutItem
+    - dynamodb:UpdateItem
+    - dynamodb:DeleteItem
+    - dynamodb:BatchGetItem
+    - dynamodb:BatchWriteItem
+  Resource:
+    - !GetAtt TalentProfilesTable.Arn
+    - !Sub '${TalentProfilesTable.Arn}/index/*'
+    - !GetAtt UsersTable.Arn
+    - !Sub '${UsersTable.Arn}/index/*'
+    - !GetAtt SavedSearchesTable.Arn
+    - !Sub '${SavedSearchesTable.Arn}/index/*'
+
+# S3 Policy
+s3Policy:
+  Effect: Allow
+  Action:
+    - s3:GetObject
+    - s3:PutObject
+    - s3:DeleteObject
+    - s3:GetObjectAttributes
+  Resource:
+    - !Sub '${ResumesBucket.Arn}/*'
+
+# Textract Policy
+textractPolicy:
+  Effect: Allow
+  Action:
+    - textract:DetectDocumentText
+    - textract:AnalyzeDocument
+    - textract:StartDocumentTextDetection
+    - textract:GetDocumentTextDetection
+  Resource: '*'
+
+# SSM Parameter Store Policy
+ssmPolicy:
+  Effect: Allow
+  Action:
+    - ssm:GetParameter
+    - ssm:GetParameters
+  Resource:
+    - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/quadzero-scout/${self:provider.stage}/*'

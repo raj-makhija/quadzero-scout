@@ -1,0 +1,283 @@
+{
+  "mappings": {
+    "js": "javascript",
+    "javascript": "javascript",
+    "ecmascript": "javascript",
+    "es6": "javascript",
+    "es2015": "javascript",
+    "vanilla js": "javascript",
+
+    "ts": "typescript",
+    "typescript": "typescript",
+
+    "node": "nodejs",
+    "nodejs": "nodejs",
+    "node.js": "nodejs",
+    "express": "expressjs",
+    "expressjs": "expressjs",
+    "express.js": "expressjs",
+
+    "react": "react",
+    "reactjs": "react",
+    "react.js": "react",
+    "react native": "react_native",
+    "reactnative": "react_native",
+
+    "next": "nextjs",
+    "nextjs": "nextjs",
+    "next.js": "nextjs",
+
+    "vue": "vue",
+    "vuejs": "vue",
+    "vue.js": "vue",
+    "nuxt": "nuxtjs",
+    "nuxtjs": "nuxtjs",
+    "nuxt.js": "nuxtjs",
+
+    "angular": "angular",
+    "angularjs": "angular",
+    "angular.js": "angular",
+
+    "svelte": "svelte",
+    "sveltejs": "svelte",
+    "sveltekit": "sveltekit",
+
+    "py": "python",
+    "python": "python",
+    "python3": "python",
+    "python2": "python",
+
+    "django": "django",
+    "flask": "flask",
+    "fastapi": "fastapi",
+
+    "java": "java",
+    "j2ee": "java_ee",
+    "java ee": "java_ee",
+    "jakarta ee": "java_ee",
+
+    "spring": "spring",
+    "springboot": "spring_boot",
+    "spring boot": "spring_boot",
+    "spring-boot": "spring_boot",
+
+    "kotlin": "kotlin",
+    "kt": "kotlin",
+
+    "go": "golang",
+    "golang": "golang",
+
+    "rust": "rust",
+    "rs": "rust",
+
+    "c#": "csharp",
+    "csharp": "csharp",
+    "c sharp": "csharp",
+    ".net": "dotnet",
+    "dotnet": "dotnet",
+    "asp.net": "aspnet",
+    "aspnet": "aspnet",
+
+    "ruby": "ruby",
+    "rb": "ruby",
+    "rails": "rails",
+    "ruby on rails": "rails",
+    "ror": "rails",
+
+    "php": "php",
+    "laravel": "laravel",
+    "symfony": "symfony",
+
+    "scala": "scala",
+
+    "elixir": "elixir",
+    "phoenix": "phoenix",
+
+    "k8s": "kubernetes",
+    "kubernetes": "kubernetes",
+    "kube": "kubernetes",
+
+    "docker": "docker",
+    "containers": "docker",
+    "containerization": "docker",
+
+    "terraform": "terraform",
+    "tf": "terraform",
+
+    "ansible": "ansible",
+    "puppet": "puppet",
+    "chef": "chef",
+
+    "jenkins": "jenkins",
+    "gitlab ci": "gitlab_ci",
+    "gitlab-ci": "gitlab_ci",
+    "github actions": "github_actions",
+    "circle ci": "circleci",
+    "circleci": "circleci",
+    "ci/cd": "cicd",
+    "cicd": "cicd",
+
+    "aws": "aws",
+    "amazon web services": "aws",
+    "ec2": "aws_ec2",
+    "s3": "aws_s3",
+    "lambda": "aws_lambda",
+    "dynamodb": "aws_dynamodb",
+    "rds": "aws_rds",
+    "ecs": "aws_ecs",
+    "eks": "aws_eks",
+    "cloudformation": "aws_cloudformation",
+    "cdk": "aws_cdk",
+
+    "gcp": "google_cloud",
+    "google cloud": "google_cloud",
+    "google cloud platform": "google_cloud",
+    "bigquery": "gcp_bigquery",
+    "cloud functions": "gcp_cloud_functions",
+
+    "azure": "azure",
+    "microsoft azure": "azure",
+    "azure devops": "azure_devops",
+
+    "postgres": "postgresql",
+    "postgresql": "postgresql",
+    "psql": "postgresql",
+    "pg": "postgresql",
+
+    "mysql": "mysql",
+    "mariadb": "mariadb",
+
+    "mongo": "mongodb",
+    "mongodb": "mongodb",
+
+    "redis": "redis",
+    "memcached": "memcached",
+
+    "elasticsearch": "elasticsearch",
+    "es": "elasticsearch",
+    "elastic": "elasticsearch",
+    "opensearch": "opensearch",
+
+    "cassandra": "cassandra",
+    "dynamodb": "dynamodb",
+
+    "graphql": "graphql",
+    "gql": "graphql",
+    "apollo": "apollo_graphql",
+
+    "rest": "rest_api",
+    "rest api": "rest_api",
+    "restful": "rest_api",
+
+    "grpc": "grpc",
+
+    "kafka": "kafka",
+    "rabbitmq": "rabbitmq",
+    "sqs": "aws_sqs",
+    "sns": "aws_sns",
+
+    "html": "html",
+    "html5": "html",
+    "css": "css",
+    "css3": "css",
+    "sass": "sass",
+    "scss": "sass",
+    "less": "less",
+    "tailwind": "tailwindcss",
+    "tailwindcss": "tailwindcss",
+    "bootstrap": "bootstrap",
+    "material ui": "material_ui",
+    "mui": "material_ui",
+
+    "webpack": "webpack",
+    "vite": "vite",
+    "rollup": "rollup",
+    "esbuild": "esbuild",
+    "parcel": "parcel",
+
+    "jest": "jest",
+    "mocha": "mocha",
+    "cypress": "cypress",
+    "playwright": "playwright",
+    "selenium": "selenium",
+    "pytest": "pytest",
+    "junit": "junit",
+
+    "git": "git",
+    "github": "github",
+    "gitlab": "gitlab",
+    "bitbucket": "bitbucket",
+
+    "linux": "linux",
+    "ubuntu": "linux",
+    "centos": "linux",
+    "debian": "linux",
+    "shell": "shell_scripting",
+    "bash": "shell_scripting",
+    "shell scripting": "shell_scripting",
+
+    "agile": "agile",
+    "scrum": "scrum",
+    "kanban": "kanban",
+    "jira": "jira",
+
+    "ml": "machine_learning",
+    "machine learning": "machine_learning",
+    "deep learning": "deep_learning",
+    "dl": "deep_learning",
+    "ai": "artificial_intelligence",
+    "artificial intelligence": "artificial_intelligence",
+    "tensorflow": "tensorflow",
+    "pytorch": "pytorch",
+    "keras": "keras",
+    "scikit-learn": "scikit_learn",
+    "sklearn": "scikit_learn",
+
+    "data science": "data_science",
+    "data engineering": "data_engineering",
+    "etl": "etl",
+    "data pipeline": "data_pipeline",
+    "spark": "apache_spark",
+    "apache spark": "apache_spark",
+    "hadoop": "hadoop",
+    "airflow": "apache_airflow",
+    "apache airflow": "apache_airflow"
+  },
+  "categories": {
+    "frontend": [
+      "javascript", "typescript", "react", "vue", "angular", "svelte",
+      "nextjs", "nuxtjs", "html", "css", "sass", "tailwindcss", "bootstrap"
+    ],
+    "backend": [
+      "nodejs", "python", "java", "golang", "rust", "csharp", "ruby", "php",
+      "expressjs", "django", "flask", "fastapi", "spring_boot", "rails", "laravel"
+    ],
+    "database": [
+      "postgresql", "mysql", "mongodb", "redis", "elasticsearch", "cassandra",
+      "dynamodb", "mariadb"
+    ],
+    "cloud": [
+      "aws", "azure", "google_cloud", "aws_lambda", "aws_ec2", "aws_s3",
+      "aws_dynamodb", "aws_ecs", "aws_eks"
+    ],
+    "devops": [
+      "docker", "kubernetes", "terraform", "ansible", "jenkins", "gitlab_ci",
+      "github_actions", "cicd"
+    ],
+    "data": [
+      "machine_learning", "deep_learning", "data_science", "data_engineering",
+      "tensorflow", "pytorch", "apache_spark", "hadoop"
+    ],
+    "mobile": [
+      "react_native", "flutter", "swift", "kotlin", "ios", "android"
+    ]
+  },
+  "synonymGroups": {
+    "frontend_frameworks": ["react", "vue", "angular", "svelte"],
+    "backend_frameworks": ["expressjs", "django", "flask", "spring_boot", "rails"],
+    "sql_databases": ["postgresql", "mysql", "mariadb"],
+    "nosql_databases": ["mongodb", "dynamodb", "cassandra"],
+    "cloud_providers": ["aws", "azure", "google_cloud"],
+    "container_orchestration": ["kubernetes", "docker_swarm", "aws_ecs"]
+  }
+}
