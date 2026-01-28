@@ -4,8 +4,7 @@ export interface EnvironmentConfig {
   stage: Stage;
   label: string;
   showBanner: boolean;
-  bannerBgColor: string;
-  bannerTextColor: string;
+  bannerColor: string; // Hex color for background
 }
 
 const ENV_CONFIG: Record<Stage, EnvironmentConfig> = {
@@ -13,22 +12,19 @@ const ENV_CONFIG: Record<Stage, EnvironmentConfig> = {
     stage: 'dev',
     label: 'Development',
     showBanner: true,
-    bannerBgColor: 'bg-amber-500',
-    bannerTextColor: 'text-white',
+    bannerColor: '#f59e0b', // amber-500
   },
   qa: {
     stage: 'qa',
     label: 'QA / Staging',
     showBanner: true,
-    bannerBgColor: 'bg-purple-600',
-    bannerTextColor: 'text-white',
+    bannerColor: '#9333ea', // purple-600
   },
   prod: {
     stage: 'prod',
     label: 'Production',
     showBanner: false,
-    bannerBgColor: '',
-    bannerTextColor: '',
+    bannerColor: '',
   },
 };
 
