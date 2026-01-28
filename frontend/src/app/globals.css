@@ -84,6 +84,14 @@
   .badge-warning {
     @apply badge bg-yellow-100 text-yellow-800;
   }
+
+  .badge-env-dev {
+    @apply badge bg-amber-100 text-amber-800 border border-amber-300;
+  }
+
+  .badge-env-qa {
+    @apply badge bg-purple-100 text-purple-800 border border-purple-300;
+  }
 }
 
 /* Custom scrollbar */
