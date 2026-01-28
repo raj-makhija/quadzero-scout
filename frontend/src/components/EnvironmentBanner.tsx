@@ -1,13 +1,28 @@
 'use client';
 
-import { getEnvironmentConfig, shouldShowBanner } from '@/lib/environment';
+import { useEffect, useState } from 'react';
+import {
+  getEnvironmentConfig,
+  getStageFromHostname,
+  shouldShowBanner,
+  type Stage,
+} from '@/lib/environment';
 
 export function EnvironmentBanner() {
-  if (!shouldShowBanner()) {
+  const [stage, setStage] = useState<Stage | null>(null);
+
+  useEffect(() => {
+    // Detect stage from hostname on client side
+    const detectedStage = getStageFromHostname(window.location.hostname);
+    setStage(detectedStage);
+  }, []);
+
+  // Don't render until we've detected the stage on client
+  if (stage === null || !shouldShowBanner(stage)) {
     return null;
   }
 
-  const config = getEnvironmentConfig();
+  const config = getEnvironmentConfig(stage);
 
   return (
     <div
