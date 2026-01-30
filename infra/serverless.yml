@@ -44,7 +44,6 @@ provider:
         - PUT
         - DELETE
         - OPTIONS
-      allowCredentials: false
 
   iam:
     role:
