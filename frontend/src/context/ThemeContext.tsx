@@ -20,7 +20,7 @@ interface ThemeProviderProps {
 
 export function ThemeProvider({
   children,
-  defaultTheme = 'system',
+  defaultTheme = 'light',
   storageKey = 'quadzero-theme',
 }: ThemeProviderProps) {
   const [theme, setThemeState] = useState<Theme>(defaultTheme);
@@ -65,11 +65,6 @@ export function ThemeProvider({
     setThemeState(newTheme);
     localStorage.setItem(storageKey, newTheme);
   };
-
-  // Prevent flash by not rendering until mounted
-  if (!mounted) {
-    return null;
-  }
 
   return (
     <ThemeContext.Provider value={{ theme, resolvedTheme, setTheme }}>

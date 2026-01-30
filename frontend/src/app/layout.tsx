@@ -17,11 +17,14 @@ export function generateMetadata(): Metadata {
 }
 
 // Script to prevent theme flash on page load
+// Only applies dark mode if the user explicitly chose it (not system preference)
 const themeScript = `
   (function() {
     try {
       var theme = localStorage.getItem('quadzero-theme');
-      if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      if (theme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else if (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
         document.documentElement.classList.add('dark');
       }
     } catch (e) {}
