@@ -34,8 +34,7 @@ provider:
 
   httpApi:
     cors:
-      allowedOrigins:
-        - '*'
+      allowedOrigins: ${self:custom.corsOrigins.${self:provider.stage}}
       allowedHeaders:
         - Content-Type
         - Authorization
@@ -45,6 +44,7 @@ provider:
         - PUT
         - DELETE
         - OPTIONS
+      allowCredentials: false
 
   iam:
     role:
