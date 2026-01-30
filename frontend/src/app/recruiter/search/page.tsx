@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
+import { Header } from '@/components/Header';
 import { api, ParsedCriteria, SearchCriteria, CandidateSearchResult } from '@/lib/api';
 import { formatSeniority, formatAvailability, getMatchScoreColor, getMatchScoreBgColor, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS } from '@/lib/utils';
 
@@ -99,53 +99,48 @@ export default function RecruiterSearchPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Header */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-          <Link href="/" className="text-xl font-bold text-primary-600">
-            Quadzero Scout
-          </Link>
-          <nav className="flex items-center space-x-4">
-            <button
-              onClick={() => setViewMode('input')}
-              className={`text-sm ${viewMode === 'input' ? 'text-primary-600 font-medium' : 'text-gray-500'}`}
-            >
-              Job Description
-            </button>
-            <span className="text-gray-300">/</span>
-            <button
-              onClick={() => parsedCriteria && setViewMode('criteria')}
-              disabled={!parsedCriteria}
-              className={`text-sm ${viewMode === 'criteria' ? 'text-primary-600 font-medium' : 'text-gray-500'} disabled:opacity-50`}
-            >
-              Criteria
-            </button>
-            <span className="text-gray-300">/</span>
-            <button
-              onClick={() => results.length > 0 && setViewMode('results')}
-              disabled={results.length === 0}
-              className={`text-sm ${viewMode === 'results' ? 'text-primary-600 font-medium' : 'text-gray-500'} disabled:opacity-50`}
-            >
-              Results ({totalMatches})
-            </button>
-          </nav>
-        </div>
-      </header>
+      <Header>
+        <nav className="flex items-center space-x-4">
+          <button
+            onClick={() => setViewMode('input')}
+            className={`text-sm ${viewMode === 'input' ? 'text-primary-600 dark:text-primary-400 font-medium' : 'text-gray-500 dark:text-gray-400'}`}
+          >
+            Job Description
+          </button>
+          <span className="text-gray-300 dark:text-gray-600">/</span>
+          <button
+            onClick={() => parsedCriteria && setViewMode('criteria')}
+            disabled={!parsedCriteria}
+            className={`text-sm ${viewMode === 'criteria' ? 'text-primary-600 dark:text-primary-400 font-medium' : 'text-gray-500 dark:text-gray-400'} disabled:opacity-50`}
+          >
+            Criteria
+          </button>
+          <span className="text-gray-300 dark:text-gray-600">/</span>
+          <button
+            onClick={() => results.length > 0 && setViewMode('results')}
+            disabled={results.length === 0}
+            className={`text-sm ${viewMode === 'results' ? 'text-primary-600 dark:text-primary-400 font-medium' : 'text-gray-500 dark:text-gray-400'} disabled:opacity-50`}
+          >
+            Results ({totalMatches})
+          </button>
+        </nav>
+      </Header>
 
       <main className="max-w-6xl mx-auto px-4 py-8">
         {/* Error Banner */}
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-sm text-red-600">{error}</p>
+          <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+            <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
           </div>
         )}
 
         {/* Job Description Input */}
         {viewMode === 'input' && (
           <div className="card p-6">
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Find Candidates</h1>
-            <p className="text-gray-600 mb-6">
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Find Candidates</h1>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
               Paste your job description and let AI extract the search criteria automatically.
             </p>
 
@@ -190,11 +185,11 @@ export default function RecruiterSearchPage() {
           <div className="space-y-6">
             {/* Suggestions */}
             {suggestions.length > 0 && (
-              <div className="card p-4 bg-yellow-50 border-yellow-200">
-                <h3 className="text-sm font-medium text-yellow-800 mb-2">AI Suggestions</h3>
+              <div className="card p-4 bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800">
+                <h3 className="text-sm font-medium text-yellow-800 dark:text-yellow-200 mb-2">AI Suggestions</h3>
                 <ul className="space-y-1">
                   {suggestions.map((suggestion, i) => (
-                    <li key={i} className="text-sm text-yellow-700 flex items-start">
+                    <li key={i} className="text-sm text-yellow-700 dark:text-yellow-300 flex items-start">
                       <svg className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
@@ -206,7 +201,7 @@ export default function RecruiterSearchPage() {
             )}
 
             <div className="card p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-6">Search Criteria</h2>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-6">Search Criteria</h2>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Must-Have Skills */}
@@ -255,7 +250,7 @@ export default function RecruiterSearchPage() {
                       placeholder="Min"
                       className="input w-24"
                     />
-                    <span className="text-gray-500">to</span>
+                    <span className="text-gray-500 dark:text-gray-400">to</span>
                     <input
                       type="number"
                       min="0"
@@ -284,8 +279,8 @@ export default function RecruiterSearchPage() {
                         }}
                         className={`badge cursor-pointer ${
                           (searchCriteria.seniority || []).includes(opt.value)
-                            ? 'bg-primary-100 text-primary-800 border border-primary-300'
-                            : 'bg-gray-100 text-gray-600 border border-gray-200'
+                            ? 'bg-primary-100 text-primary-800 border border-primary-300 dark:bg-primary-900/30 dark:text-primary-300 dark:border-primary-600'
+                            : 'bg-gray-100 text-gray-600 border border-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600'
                         }`}
                       >
                         {opt.label}
@@ -323,8 +318,8 @@ export default function RecruiterSearchPage() {
                         }}
                         className={`badge cursor-pointer ${
                           (searchCriteria.availability || []).includes(opt.value)
-                            ? 'bg-primary-100 text-primary-800 border border-primary-300'
-                            : 'bg-gray-100 text-gray-600 border border-gray-200'
+                            ? 'bg-primary-100 text-primary-800 border border-primary-300 dark:bg-primary-900/30 dark:text-primary-300 dark:border-primary-600'
+                            : 'bg-gray-100 text-gray-600 border border-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600'
                         }`}
                       >
                         {opt.label}
@@ -351,8 +346,8 @@ export default function RecruiterSearchPage() {
           <div>
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h2 className="text-xl font-bold text-gray-900">Search Results</h2>
-                <p className="text-gray-600">{totalMatches} candidates found</p>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Search Results</h2>
+                <p className="text-gray-600 dark:text-gray-400">{totalMatches} candidates found</p>
               </div>
               <button onClick={() => setViewMode('criteria')} className="btn-secondary">
                 Modify Search
@@ -369,13 +364,13 @@ export default function RecruiterSearchPage() {
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center space-x-3">
-                        <h3 className="text-lg font-semibold text-gray-900">{candidate.fullName}</h3>
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{candidate.fullName}</h3>
                         <span className={`badge ${getMatchScoreBgColor(candidate.matchScore)} ${getMatchScoreColor(candidate.matchScore)}`}>
                           {candidate.matchScore}% Match
                         </span>
                       </div>
 
-                      <div className="mt-2 flex items-center space-x-4 text-sm text-gray-500">
+                      <div className="mt-2 flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400">
                         <span>{candidate.totalExperience} years exp</span>
                         <span>{formatSeniority(candidate.seniority)}</span>
                         {candidate.location && <span>{candidate.location}</span>}
@@ -388,22 +383,22 @@ export default function RecruiterSearchPage() {
                             key={skill}
                             className={`badge ${
                               candidate.matchDetails.mustHaveMatched.includes(skill)
-                                ? 'bg-green-100 text-green-800'
-                                : 'bg-gray-100 text-gray-600'
+                                ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                                : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
                             }`}
                           >
                             {skill}
                           </span>
                         ))}
                         {candidate.primarySkills.length > 6 && (
-                          <span className="badge bg-gray-100 text-gray-600">
+                          <span className="badge bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
                             +{candidate.primarySkills.length - 6} more
                           </span>
                         )}
                       </div>
 
                       {candidate.matchDetails.mustHaveMissing.length > 0 && (
-                        <div className="mt-2 text-sm text-red-600">
+                        <div className="mt-2 text-sm text-red-600 dark:text-red-400">
                           Missing: {candidate.matchDetails.mustHaveMissing.join(', ')}
                         </div>
                       )}
@@ -424,11 +419,11 @@ export default function RecruiterSearchPage() {
 
               {results.length === 0 && (
                 <div className="card p-12 text-center">
-                  <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <h3 className="mt-4 text-lg font-medium text-gray-900">No candidates found</h3>
-                  <p className="mt-2 text-gray-500">Try adjusting your search criteria</p>
+                  <h3 className="mt-4 text-lg font-medium text-gray-900 dark:text-gray-100">No candidates found</h3>
+                  <p className="mt-2 text-gray-500 dark:text-gray-400">Try adjusting your search criteria</p>
                 </div>
               )}
             </div>
@@ -440,11 +435,11 @@ export default function RecruiterSearchPage() {
       {drawerOpen && selectedCandidate && (
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black bg-opacity-50" onClick={() => setDrawerOpen(false)} />
-          <div className="absolute right-0 top-0 h-full w-full max-w-xl bg-white shadow-xl overflow-y-auto">
+          <div className="absolute right-0 top-0 h-full w-full max-w-xl bg-white dark:bg-gray-800 shadow-xl overflow-y-auto">
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-gray-900">{selectedCandidate.fullName}</h2>
-                <button onClick={() => setDrawerOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">{selectedCandidate.fullName}</h2>
+                <button onClick={() => setDrawerOpen(false)} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">
                   <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
@@ -465,36 +460,36 @@ export default function RecruiterSearchPage() {
                 {/* Details */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-sm text-gray-500">Experience</label>
+                    <label className="text-sm text-gray-500 dark:text-gray-400">Experience</label>
                     <p className="font-medium">{selectedCandidate.totalExperience} years</p>
                   </div>
                   <div>
-                    <label className="text-sm text-gray-500">Seniority</label>
+                    <label className="text-sm text-gray-500 dark:text-gray-400">Seniority</label>
                     <p className="font-medium">{formatSeniority(selectedCandidate.seniority)}</p>
                   </div>
                   <div>
-                    <label className="text-sm text-gray-500">Location</label>
+                    <label className="text-sm text-gray-500 dark:text-gray-400">Location</label>
                     <p className="font-medium">{selectedCandidate.location || 'Not specified'}</p>
                   </div>
                   <div>
-                    <label className="text-sm text-gray-500">Availability</label>
+                    <label className="text-sm text-gray-500 dark:text-gray-400">Availability</label>
                     <p className="font-medium">{formatAvailability(selectedCandidate.availability)}</p>
                   </div>
                 </div>
 
                 {/* Skills */}
                 <div>
-                  <label className="text-sm text-gray-500 mb-2 block">Skills</label>
+                  <label className="text-sm text-gray-500 dark:text-gray-400 mb-2 block">Skills</label>
                   <div className="flex flex-wrap gap-2">
                     {selectedCandidate.primarySkills.map((skill) => (
                       <span
                         key={skill}
                         className={`badge ${
                           selectedCandidate.matchDetails.mustHaveMatched.includes(skill)
-                            ? 'bg-green-100 text-green-800'
+                            ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
                             : selectedCandidate.matchDetails.goodToHaveMatched.includes(skill)
-                            ? 'bg-blue-100 text-blue-800'
-                            : 'bg-gray-100 text-gray-600'
+                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
+                            : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
                         }`}
                       >
                         {skill}
@@ -504,24 +499,24 @@ export default function RecruiterSearchPage() {
                 </div>
 
                 {/* Match Details */}
-                <div className="border-t pt-4">
+                <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
                   <h3 className="font-medium mb-3">Match Analysis</h3>
                   <div className="space-y-2 text-sm">
-                    <div className="flex items-center text-green-600">
+                    <div className="flex items-center text-green-600 dark:text-green-400">
                       <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                       </svg>
                       Must-have matched: {selectedCandidate.matchDetails.mustHaveMatched.join(', ') || 'None'}
                     </div>
                     {selectedCandidate.matchDetails.mustHaveMissing.length > 0 && (
-                      <div className="flex items-center text-red-600">
+                      <div className="flex items-center text-red-600 dark:text-red-400">
                         <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
                         Missing: {selectedCandidate.matchDetails.mustHaveMissing.join(', ')}
                       </div>
                     )}
-                    <div className="flex items-center text-blue-600">
+                    <div className="flex items-center text-blue-600 dark:text-blue-400">
                       <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                       </svg>
@@ -531,7 +526,7 @@ export default function RecruiterSearchPage() {
                 </div>
 
                 {/* Actions */}
-                <div className="border-t pt-4 flex space-x-3">
+                <div className="border-t border-gray-200 dark:border-gray-700 pt-4 flex space-x-3">
                   <button
                     onClick={() => handleDownloadResume(selectedCandidate.candidateId)}
                     className="btn-primary flex-1"
