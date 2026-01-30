@@ -1,6 +1,12 @@
 import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import type { ApiResponse } from '../types/index.js';
 
+const CORS_HEADERS: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+};
+
 export function success<T>(data: T, statusCode = 200): APIGatewayProxyResultV2 {
   const response: ApiResponse<T> = {
     success: true,
@@ -10,6 +16,7 @@ export function success<T>(data: T, statusCode = 200): APIGatewayProxyResultV2 {
     statusCode,
     headers: {
       'Content-Type': 'application/json',
+      ...CORS_HEADERS,
     },
     body: JSON.stringify(response),
   };
@@ -36,6 +43,7 @@ export function error(
     statusCode,
     headers: {
       'Content-Type': 'application/json',
+      ...CORS_HEADERS,
     },
     body: JSON.stringify(response),
   };

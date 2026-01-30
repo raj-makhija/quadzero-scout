@@ -34,7 +34,8 @@ provider:
 
   httpApi:
     cors:
-      allowedOrigins: ${self:custom.corsOrigins.${self:provider.stage}}
+      allowedOrigins:
+        - '*'
       allowedHeaders:
         - Content-Type
         - Authorization
@@ -44,7 +45,6 @@ provider:
         - PUT
         - DELETE
         - OPTIONS
-      allowCredentials: true
 
   iam:
     role:
@@ -71,6 +71,17 @@ custom:
   usersTable: Users-${self:provider.stage}
   savedSearchesTable: SavedSearches-${self:provider.stage}
   resumesBucket: quadzero-scout-resumes-${self:provider.stage}
+
+  dotenv:
+    include:
+      - LLM_PROVIDER
+      - ANTHROPIC_API_KEY
+      - OPENAI_API_KEY
+      - OPENROUTER_API_KEY
+      - OPENROUTER_MODEL
+      - OPENROUTER_REFERER
+      - GEMINI_API_KEY
+      - GEMINI_MODEL
 
   esbuild:
     bundle: true
