@@ -74,7 +74,7 @@ export async function handler(
     };
 
     // Save to DynamoDB (skip in local dev when DynamoDB is not available)
-    const isLocal = process.env.STAGE === 'dev' || process.env.IS_OFFLINE === 'true';
+    const isLocal = process.env.IS_OFFLINE === 'true';
     if (isLocal) {
       console.log('Local dev mode: skipping DynamoDB save. Candidate profile:', JSON.stringify(candidateItem, null, 2));
     } else {
