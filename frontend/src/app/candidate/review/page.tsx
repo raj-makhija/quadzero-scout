@@ -234,9 +234,9 @@ export default function ReviewPage() {
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Primary Skills</h2>
             <div className="space-y-4">
               {profile.primarySkills.map((skill) => (
-                <div key={skill} className="flex items-center space-x-4">
+                <div key={skill} className="flex flex-wrap items-center gap-2 sm:gap-4">
                   <span className="badge-primary min-w-[100px] justify-center">{skill}</span>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center gap-2">
                     <label className="text-sm text-gray-500 dark:text-gray-400">Years:</label>
                     <input
                       type="number"
@@ -257,7 +257,7 @@ export default function ReviewPage() {
                   </button>
                 </div>
               ))}
-              <div className="flex items-center space-x-2">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                 <input
                   type="text"
                   value={newSkill}
@@ -266,7 +266,7 @@ export default function ReviewPage() {
                   className="input flex-1"
                   onKeyPress={(e) => e.key === 'Enter' && addSkill('primary')}
                 />
-                <button onClick={() => addSkill('primary')} className="btn-secondary">
+                <button onClick={() => addSkill('primary')} className="btn-secondary whitespace-nowrap">
                   Add Primary
                 </button>
               </div>
@@ -291,7 +291,7 @@ export default function ReviewPage() {
                 </span>
               ))}
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
               <input
                 type="text"
                 value={newSkill}
@@ -300,7 +300,7 @@ export default function ReviewPage() {
                 className="input flex-1"
                 onKeyPress={(e) => e.key === 'Enter' && addSkill('secondary')}
               />
-              <button onClick={() => addSkill('secondary')} className="btn-secondary">
+              <button onClick={() => addSkill('secondary')} className="btn-secondary whitespace-nowrap">
                 Add Secondary
               </button>
             </div>

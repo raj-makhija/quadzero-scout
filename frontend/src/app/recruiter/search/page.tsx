@@ -344,12 +344,12 @@ export default function RecruiterSearchPage() {
         {/* Search Results */}
         {viewMode === 'results' && (
           <div>
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
               <div>
                 <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Search Results</h2>
                 <p className="text-gray-600 dark:text-gray-400">{totalMatches} candidates found</p>
               </div>
-              <button onClick={() => setViewMode('criteria')} className="btn-secondary">
+              <button onClick={() => setViewMode('criteria')} className="btn-secondary self-start sm:self-auto">
                 Modify Search
               </button>
             </div>
@@ -361,16 +361,16 @@ export default function RecruiterSearchPage() {
                   className="card p-6 hover:shadow-md transition-shadow cursor-pointer"
                   onClick={() => openCandidateDrawer(candidate)}
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-3">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{candidate.fullName}</h3>
                         <span className={`badge ${getMatchScoreBgColor(candidate.matchScore)} ${getMatchScoreColor(candidate.matchScore)}`}>
                           {candidate.matchScore}% Match
                         </span>
                       </div>
 
-                      <div className="mt-2 flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400">
+                      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-gray-400">
                         <span>{candidate.totalExperience} years exp</span>
                         <span>{formatSeniority(candidate.seniority)}</span>
                         {candidate.location && <span>{candidate.location}</span>}
@@ -409,7 +409,7 @@ export default function RecruiterSearchPage() {
                         e.stopPropagation();
                         handleDownloadResume(candidate.candidateId);
                       }}
-                      className="btn-outline text-sm"
+                      className="btn-outline text-sm self-start whitespace-nowrap"
                     >
                       Download Resume
                     </button>

@@ -11,21 +11,21 @@ export default function Home() {
 
       {/* Hero Section */}
       <div className="bg-gradient-to-br from-primary-50 to-white dark:from-gray-900 dark:to-gray-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-24">
           <div className="text-center">
             <h1 className="text-4xl font-extrabold text-gray-900 dark:text-gray-100 sm:text-5xl md:text-6xl">
               <span className="block">AI-Powered</span>
               <span className="block text-primary-600">Talent Matching</span>
             </h1>
-            <p className="mt-6 max-w-2xl mx-auto text-xl text-gray-500 dark:text-gray-400">
+            <p className="mt-6 max-w-2xl mx-auto text-lg sm:text-xl text-gray-500 dark:text-gray-400">
               Connect IT professionals with recruiters through intelligent resume parsing
               and smart candidate matching. Find the perfect fit faster.
             </p>
-            <div className="mt-10 flex justify-center space-x-4">
-              <Link href="/candidate/upload" className="btn-primary text-lg px-8 py-3">
+            <div className="mt-10 flex flex-col sm:flex-row justify-center items-center gap-3 sm:gap-4">
+              <Link href="/candidate/upload" className="btn-primary text-lg px-8 py-3 w-full sm:w-auto">
                 I'm a Candidate
               </Link>
-              <Link href="/recruiter/search" className="btn-outline text-lg px-8 py-3">
+              <Link href="/recruiter/search" className="btn-outline text-lg px-8 py-3 w-full sm:w-auto">
                 I'm a Recruiter
               </Link>
             </div>

@@ -34,7 +34,7 @@ export function ProfileCardSkeleton() {
 
           <div className="p-6 space-y-6">
             {/* Quick Stats */}
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="text-center p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
                   <Skeleton className="h-8 w-12 mx-auto" />
@@ -70,7 +70,7 @@ export function ProfileCardSkeleton() {
             </div>
 
             {/* Industries & Roles */}
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div>
                 <Skeleton className="h-6 w-24 mb-3" />
                 <div className="space-y-2">
