@@ -38,6 +38,8 @@ export const SaveProfileRequestSchema = z.object({
     })).optional(),
     certifications: z.array(z.string()).max(20).optional(),
     summary: z.string().max(2000).optional(),
+    currentCtc: z.number().min(0).max(500),
+    expectedCtc: z.number().min(0).max(500),
   }),
   resumeS3Key: z.string().min(1).max(500),
 });
@@ -60,6 +62,7 @@ export const SearchRequestSchema = z.object({
     location: z.string().optional(),
     remote: z.boolean().optional(),
     industries: z.array(z.string()).optional(),
+    maxBudgetLpa: z.number().min(0).optional(),
   }),
   pagination: z.object({
     limit: z.number().min(1).max(100).optional().default(20),
@@ -81,6 +84,7 @@ export const SaveSearchRequestSchema = z.object({
     location: z.string().optional(),
     remote: z.boolean().optional(),
     industries: z.array(z.string()).optional(),
+    maxBudgetLpa: z.number().min(0).optional(),
   }),
 });
 

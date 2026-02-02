@@ -195,6 +195,8 @@ export interface ExtractedProfile {
   }>;
   certifications?: string[];
   summary?: string | null;
+  currentCtc?: number | null;
+  expectedCtc?: number | null;
 }
 
 export interface CandidateProfile extends ExtractedProfile {
@@ -215,6 +217,9 @@ export interface ParsedCriteria {
   remote?: boolean;
   industries?: string[];
   roles?: string[];
+  rateLpa?: number | null;
+  rateRaw?: number | null;
+  rateUnit?: string | null;
 }
 
 export interface SearchCriteria {
@@ -227,6 +232,7 @@ export interface SearchCriteria {
   location?: string;
   remote?: boolean;
   industries?: string[];
+  maxBudgetLpa?: number;
 }
 
 export interface PaginationOptions {
@@ -242,6 +248,8 @@ export interface CandidateSearchResult {
   totalExperience: number;
   seniority: string;
   availability: string;
+  currentCtc?: number;
+  expectedCtc?: number;
   matchScore: number;
   matchDetails: {
     mustHaveMatched: string[];
@@ -249,6 +257,7 @@ export interface CandidateSearchResult {
     goodToHaveMatched: string[];
     experienceMatch: boolean;
     seniorityMatch: boolean;
+    ctcMatch: boolean;
   };
   lastUpdated: string;
 }

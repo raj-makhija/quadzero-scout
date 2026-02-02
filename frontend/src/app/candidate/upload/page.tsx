@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
+import { Header } from '@/components/Header';
 import { api } from '@/lib/api';
 import { SUPPORTED_FILE_TYPES } from '@/lib/utils';
 
@@ -55,7 +55,7 @@ export default function UploadPage() {
   const handleUpload = async () => {
     if (!file) return;
 
-    const isDev = process.env.NEXT_PUBLIC_STAGE === 'dev';
+    const isLocal = process.env.NEXT_PUBLIC_STAGE === 'local';
 
     try {
       setUploadState('uploading');
@@ -65,7 +65,7 @@ export default function UploadPage() {
       let confidence: number;
       let s3Key: string;
 
-      if (isDev) {
+      if (isLocal) {
         // Local dev: send file directly to backend (bypasses S3 + Textract)
         setProgress(30);
         setUploadState('analyzing');
@@ -116,21 +116,16 @@ export default function UploadPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Header */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-          <Link href="/" className="text-xl font-bold text-primary-600">
-            Quadzero Scout
-          </Link>
-          <span className="text-sm text-gray-500">Step 1 of 3: Upload Resume</span>
-        </div>
-      </header>
+      <Header>
+        <span className="text-sm text-gray-500 dark:text-gray-400">Step 1 of 3: Upload Resume</span>
+      </Header>
 
       <main className="max-w-4xl mx-auto px-4 py-12">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Upload Your Resume</h1>
-          <p className="mt-2 text-gray-600">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Upload Your Resume</h1>
+          <p className="mt-2 text-gray-600 dark:text-gray-400">
             Our AI will extract your skills and experience automatically
           </p>
         </div>
@@ -140,10 +135,10 @@ export default function UploadPage() {
           <div
             className={`relative border-2 border-dashed rounded-lg p-12 text-center transition-colors ${
               dragActive
-                ? 'border-primary-500 bg-primary-50'
+                ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
                 : file
-                ? 'border-green-500 bg-green-50'
-                : 'border-gray-300 hover:border-gray-400'
+                ? 'border-green-500 bg-green-50 dark:border-green-400 dark:bg-green-900/20'
+                : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
             }`}
             onDragEnter={handleDrag}
             onDragLeave={handleDrag}
@@ -153,7 +148,7 @@ export default function UploadPage() {
             {file ? (
               <div>
                 <svg
-                  className="mx-auto h-12 w-12 text-green-500"
+                  className="mx-auto h-12 w-12 text-green-500 dark:text-green-400"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -165,8 +160,8 @@ export default function UploadPage() {
                     d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
                   />
                 </svg>
-                <p className="mt-4 text-lg font-medium text-gray-900">{file.name}</p>
-                <p className="text-sm text-gray-500">
+                <p className="mt-4 text-lg font-medium text-gray-900 dark:text-gray-100">{file.name}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
                   {(file.size / 1024 / 1024).toFixed(2)} MB
                 </p>
                 <button
@@ -179,7 +174,7 @@ export default function UploadPage() {
             ) : (
               <div>
                 <svg
-                  className="mx-auto h-12 w-12 text-gray-400"
+                  className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -191,10 +186,10 @@ export default function UploadPage() {
                     d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
                   />
                 </svg>
-                <p className="mt-4 text-lg font-medium text-gray-900">
+                <p className="mt-4 text-lg font-medium text-gray-900 dark:text-gray-100">
                   Drop your resume here
                 </p>
-                <p className="text-sm text-gray-500">or click to browse</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">or click to browse</p>
                 <input
                   type="file"
                   accept=".pdf,.doc,.docx"
@@ -205,14 +200,14 @@ export default function UploadPage() {
             )}
           </div>
 
-          <p className="mt-4 text-sm text-gray-500 text-center">
+          <p className="mt-4 text-sm text-gray-500 dark:text-gray-400 text-center">
             Supported formats: PDF, DOC, DOCX (max 10MB)
           </p>
 
           {/* Error Message */}
           {error && (
-            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-sm text-red-600">{error}</p>
+            <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+              <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
             </div>
           )}
 
@@ -220,12 +215,12 @@ export default function UploadPage() {
           {(uploadState === 'uploading' || uploadState === 'analyzing') && (
             <div className="mt-6">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-gray-700">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                   {uploadState === 'uploading' ? 'Uploading...' : 'Analyzing with AI...'}
                 </span>
-                <span className="text-sm text-gray-500">{progress}%</span>
+                <span className="text-sm text-gray-500 dark:text-gray-400">{progress}%</span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
+              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                 <div
                   className="bg-primary-600 h-2 rounded-full transition-all duration-300"
                   style={{ width: `${progress}%` }}
@@ -254,42 +249,42 @@ export default function UploadPage() {
         <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="card p-4">
             <div className="flex items-center">
-              <div className="flex-shrink-0 w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="flex-shrink-0 w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
+                <svg className="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                 </svg>
               </div>
               <div className="ml-3">
-                <p className="text-sm font-medium text-gray-900">Secure Upload</p>
-                <p className="text-xs text-gray-500">Encrypted & private</p>
+                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Secure Upload</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Encrypted & private</p>
               </div>
             </div>
           </div>
 
           <div className="card p-4">
             <div className="flex items-center">
-              <div className="flex-shrink-0 w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="flex-shrink-0 w-10 h-10 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
+                <svg className="w-5 h-5 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                 </svg>
               </div>
               <div className="ml-3">
-                <p className="text-sm font-medium text-gray-900">AI Extraction</p>
-                <p className="text-xs text-gray-500">Powered by Claude AI</p>
+                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">AI Extraction</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Powered by Claude AI</p>
               </div>
             </div>
           </div>
 
           <div className="card p-4">
             <div className="flex items-center">
-              <div className="flex-shrink-0 w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-                <svg className="w-5 h-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="flex-shrink-0 w-10 h-10 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center">
+                <svg className="w-5 h-5 text-purple-600 dark:text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                 </svg>
               </div>
               <div className="ml-3">
-                <p className="text-sm font-medium text-gray-900">Review & Edit</p>
-                <p className="text-xs text-gray-500">Full control over data</p>
+                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Review & Edit</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Full control over data</p>
               </div>
             </div>
           </div>
