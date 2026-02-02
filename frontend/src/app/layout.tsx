@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import { Providers } from '@/components/Providers';
 import { EnvironmentBanner } from '@/components/EnvironmentBanner';
+import { Toaster } from '@/components/ui/toaster';
 import { getPageTitlePrefix } from '@/lib/environment';
 import './globals.css';
 
@@ -15,19 +16,38 @@ export function generateMetadata(): Metadata {
   };
 }
 
+// Script to prevent theme flash on page load
+// Only applies dark mode if the user explicitly chose it (not system preference)
+const themeScript = `
+  (function() {
+    try {
+      var theme = localStorage.getItem('quadzero-theme');
+      if (theme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else if (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.documentElement.classList.add('dark');
+      }
+    } catch (e) {}
+  })();
+`;
+
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body className={inter.className}>
         <Providers>
           <EnvironmentBanner />
-          <div className="min-h-screen bg-gray-50">
+          <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
             {children}
           </div>
+          <Toaster />
         </Providers>
       </body>
     </html>

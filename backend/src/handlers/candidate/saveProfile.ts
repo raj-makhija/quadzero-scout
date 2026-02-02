@@ -68,13 +68,15 @@ export async function handler(
       education: profile.education || [],
       certifications: profile.certifications || [],
       summary: profile.summary,
+      current_ctc: profile.currentCtc,
+      expected_ctc: profile.expectedCtc,
       resume_s3_key: resumeS3Key,
       created_at: now,
       last_updated: now,
     };
 
     // Save to DynamoDB (skip in local dev when DynamoDB is not available)
-    const isLocal = process.env.STAGE === 'dev' || process.env.IS_OFFLINE === 'true';
+    const isLocal = process.env.IS_OFFLINE === 'true';
     if (isLocal) {
       console.log('Local dev mode: skipping DynamoDB save. Candidate profile:', JSON.stringify(candidateItem, null, 2));
     } else {

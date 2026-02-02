@@ -55,7 +55,9 @@ export const CandidateProfileSchema = z.object({
   roles: z.array(z.string()).max(10).optional().default([]),
   education: z.array(EducationSchema).optional().default([]),
   certifications: z.array(z.string()).max(20).optional().default([]),
-  summary: z.string().max(2000).optional()
+  summary: z.string().max(2000).optional(),
+  currentCtc: z.number().min(0).max(500),
+  expectedCtc: z.number().min(0).max(500)
 });
 export type CandidateProfile = z.infer<typeof CandidateProfileSchema>;
 
@@ -78,6 +80,8 @@ export interface CandidateItem {
   education?: Education[];
   certifications?: string[];
   summary?: string;
+  current_ctc: number;
+  expected_ctc: number;
   experience_bucket: string;
   resume_s3_key: string;
   created_at: string;
@@ -94,7 +98,8 @@ export const SearchCriteriaSchema = z.object({
   availability: z.array(AvailabilityEnum).optional(),
   location: z.string().optional(),
   remote: z.boolean().optional(),
-  industries: z.array(z.string()).optional()
+  industries: z.array(z.string()).optional(),
+  maxBudgetLpa: z.number().min(0).optional()
 });
 export type SearchCriteria = z.infer<typeof SearchCriteriaSchema>;
 
@@ -114,7 +119,9 @@ export const LLMResumeOutputSchema = z.object({
   roles: z.array(z.string()).nullable().optional().transform(v => v ?? []),
   education: z.array(EducationSchema).nullable().optional().transform(v => v ?? []),
   certifications: z.array(z.string()).nullable().optional().transform(v => v ?? []),
-  summary: z.string().optional().nullable()
+  summary: z.string().optional().nullable(),
+  currentCtc: z.number().nullable().optional().transform(v => v ?? null),
+  expectedCtc: z.number().nullable().optional().transform(v => v ?? null)
 });
 export type LLMResumeOutput = z.infer<typeof LLMResumeOutputSchema>;
 
@@ -129,7 +136,10 @@ export const LLMJDOutputSchema = z.object({
   location: z.string().nullable(),
   remote: z.boolean().optional().default(false),
   industries: z.array(z.string()).optional().default([]),
-  roles: z.array(z.string()).optional().default([])
+  roles: z.array(z.string()).optional().default([]),
+  rateRaw: z.number().nullable().optional().default(null),
+  rateUnit: z.enum(['lpa', 'lpm', 'rupees_per_hour', 'usd_per_hour']).nullable().optional().default(null),
+  rateLpa: z.number().nullable().optional().default(null)
 });
 export type LLMJDOutput = z.infer<typeof LLMJDOutputSchema>;
 
@@ -194,6 +204,8 @@ export interface CandidateSearchResult {
   totalExperience: number;
   seniority: string;
   availability: string;
+  currentCtc?: number;
+  expectedCtc?: number;
   matchScore: number;
   matchDetails: {
     mustHaveMatched: string[];
@@ -201,6 +213,7 @@ export interface CandidateSearchResult {
     goodToHaveMatched: string[];
     experienceMatch: boolean;
     seniorityMatch: boolean;
+    ctcMatch: boolean;
   };
   lastUpdated: string;
 }

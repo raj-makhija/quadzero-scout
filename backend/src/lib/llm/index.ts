@@ -6,6 +6,7 @@ import { OpenRouterProvider } from './openrouter.js';
 import { GeminiProvider } from './gemini.js';
 import { LLMResumeOutputSchema, LLMJDOutputSchema } from '../../types/index.js';
 import type { LLMResumeOutput, LLMJDOutput } from '../../types/index.js';
+import { convertToLpa, type RateUnit } from '../ctcConversion.js';
 
 // Singleton instances
 let llmProvider: BaseLLMProvider | null = null;
@@ -51,7 +52,9 @@ You MUST respond with valid JSON matching this exact schema:
   "roles": ["array of job titles held"],
   "education": [{"degree": "string", "institution": "string", "year": number_or_null}],
   "certifications": ["array of certifications"],
-  "summary": "string - brief professional summary"
+  "summary": "string - brief professional summary",
+  "currentCtc": number or null - current CTC (Cost to Company) in LPA (Lakhs Per Annum). Look for phrases like "current CTC", "current salary", "present compensation". If given monthly, multiply by 12 and divide by 100000 for LPA. If not found, use null,
+  "expectedCtc": number or null - expected CTC in LPA. Look for phrases like "expected CTC", "expected salary", "desired compensation". If not found, use null
 }
 
 Rules:
@@ -59,7 +62,8 @@ Rules:
 2. Estimate years of experience per skill based on work history
 3. Determine seniority based on total experience and roles held
 4. If information is not available, use null or empty arrays
-5. ONLY output valid JSON, no additional text`;
+5. ONLY output valid JSON, no additional text
+6. For CTC values, always convert to LPA (Lakhs Per Annum). If given as monthly, multiply by 12. If given in absolute rupees, divide by 100000. Round to 2 decimal places`;
 
 // JD parsing prompt
 const JD_PARSER_SYSTEM_PROMPT = `You are an expert job description parser. Your task is to extract search criteria from job descriptions.
@@ -75,7 +79,9 @@ You MUST respond with valid JSON matching this exact schema:
   "location": "string or null - location requirement",
   "remote": boolean - whether remote work is allowed,
   "industries": ["array of preferred industries"],
-  "roles": ["array of relevant job titles"]
+  "roles": ["array of relevant job titles"],
+  "rateRaw": number or null - the raw numeric rate/budget/cost mentioned in the JD (just the number, without currency symbol),
+  "rateUnit": "lpa" | "lpm" | "rupees_per_hour" | "usd_per_hour" | null - the unit of the rate. Use "lpa" for lakhs per annum, "lpm" for lakhs per month, "rupees_per_hour" for INR/hour or Rs/hour, "usd_per_hour" for $/hour or USD/hour
 }
 
 Rules:
@@ -83,7 +89,8 @@ Rules:
 2. Distinguish between mandatory requirements and nice-to-haves
 3. If experience is mentioned as "X+ years", set minExperience to X
 4. If no specific requirement, use null or empty array
-5. ONLY output valid JSON, no additional text`;
+5. ONLY output valid JSON, no additional text
+6. For rate/budget/cost: extract the numeric value and its unit separately. Look for phrases like "budget", "rate", "CTC", "compensation", "salary range". Common patterns: "$X/hr", "Rs.X/hour", "X LPM", "X LPA", "X lakhs per month"`;
 
 export async function parseResume(resumeText: string): Promise<{
   output: LLMResumeOutput;
@@ -163,6 +170,12 @@ export async function parseJobDescription(jdText: string, jobTitle?: string): Pr
 
   const output = validated.data;
 
+  // Compute rateLpa from raw extraction
+  let rateLpa: number | null = null;
+  if (output.rateRaw != null && output.rateUnit != null) {
+    rateLpa = convertToLpa(output.rateRaw, output.rateUnit as RateUnit);
+  }
+
   // Calculate confidence based on specificity
   let specificityScore = 0;
   if (output.mustHaveSkills.length > 0) specificityScore += 0.3;
@@ -183,9 +196,12 @@ export async function parseJobDescription(jdText: string, jobTitle?: string): Pr
   if (output.seniority.length === 0) {
     suggestions.push('Specifying seniority level helps target appropriate candidates');
   }
+  if (rateLpa === null) {
+    suggestions.push('Adding a budget/rate helps filter candidates by cost expectations');
+  }
 
   return {
-    output,
+    output: { ...output, rateLpa },
     confidence: specificityScore,
     suggestions,
   };

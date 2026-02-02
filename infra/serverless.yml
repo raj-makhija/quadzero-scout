@@ -31,6 +31,7 @@ provider:
     OPENROUTER_REFERER: ${ssm:/quadzero-scout/${self:provider.stage}/OPENROUTER_REFERER, env:OPENROUTER_REFERER, 'https://quadzero-scout.com'}
     GEMINI_API_KEY: ${ssm:/quadzero-scout/${self:provider.stage}/GEMINI_API_KEY, env:GEMINI_API_KEY, ''}
     GEMINI_MODEL: ${ssm:/quadzero-scout/${self:provider.stage}/GEMINI_MODEL, env:GEMINI_MODEL, 'gemini-2.0-flash'}
+    USD_TO_INR_RATE: ${ssm:/quadzero-scout/${self:provider.stage}/USD_TO_INR_RATE, env:USD_TO_INR_RATE, '85'}
 
   httpApi:
     cors:
@@ -44,7 +45,6 @@ provider:
         - PUT
         - DELETE
         - OPTIONS
-      allowCredentials: true
 
   iam:
     role:
@@ -61,16 +61,31 @@ custom:
       - http://localhost:3001
       - http://localhost:3002
       - https://dev.scout.quadzero.com
+      - https://develop.d29qw5nnt7ayr2.amplifyapp.com
     qa:
       - https://qa.scout.quadzero.com
+      - https://qa.d29qw5nnt7ayr2.amplifyapp.com
     prod:
       - https://scout.quadzero.com
       - https://app.quadzero.com
+      - https://main.d29qw5nnt7ayr2.amplifyapp.com
 
   talentProfilesTable: TalentProfiles-${self:provider.stage}
   usersTable: Users-${self:provider.stage}
   savedSearchesTable: SavedSearches-${self:provider.stage}
   resumesBucket: quadzero-scout-resumes-${self:provider.stage}
+
+  dotenv:
+    include:
+      - LLM_PROVIDER
+      - ANTHROPIC_API_KEY
+      - OPENAI_API_KEY
+      - OPENROUTER_API_KEY
+      - OPENROUTER_MODEL
+      - OPENROUTER_REFERER
+      - GEMINI_API_KEY
+      - GEMINI_MODEL
+      - USD_TO_INR_RATE
 
   esbuild:
     bundle: true

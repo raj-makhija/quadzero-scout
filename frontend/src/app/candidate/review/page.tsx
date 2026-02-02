@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Header } from '@/components/Header';
 import { api, ExtractedProfile } from '@/lib/api';
 import { formatSeniority, formatAvailability, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS } from '@/lib/utils';
 
@@ -86,10 +87,18 @@ export default function ReviewPage() {
       setSaving(true);
       setError(null);
 
+      if (!profile.currentCtc || profile.currentCtc <= 0 || !profile.expectedCtc || profile.expectedCtc <= 0) {
+        setError('Both Current CTC and Expected CTC are required and must be greater than 0.');
+        setSaving(false);
+        return;
+      }
+
       const profileToSave = {
         ...profile,
         availability: profile.availability || 'negotiable',
         seniority: profile.seniority || 'mid',
+        currentCtc: profile.currentCtc,
+        expectedCtc: profile.expectedCtc,
       };
       const { candidateId } = await api.saveProfile({ profile: profileToSave, resumeS3Key: s3Key });
 
@@ -111,36 +120,31 @@ export default function ReviewPage() {
 
   if (!profile) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Header */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-          <Link href="/" className="text-xl font-bold text-primary-600">
-            Quadzero Scout
-          </Link>
-          <span className="text-sm text-gray-500">Step 2 of 3: Review Profile</span>
-        </div>
-      </header>
+      <Header>
+        <span className="text-sm text-gray-500 dark:text-gray-400">Step 2 of 3: Review Profile</span>
+      </Header>
 
       <main className="max-w-4xl mx-auto px-4 py-8">
         {/* Confidence Banner */}
-        <div className={`mb-6 p-4 rounded-lg ${confidence >= 0.8 ? 'bg-green-50 border border-green-200' : confidence >= 0.6 ? 'bg-yellow-50 border border-yellow-200' : 'bg-red-50 border border-red-200'}`}>
+        <div className={`mb-6 p-4 rounded-lg ${confidence >= 0.8 ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800' : confidence >= 0.6 ? 'bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800' : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'}`}>
           <div className="flex items-center">
-            <svg className={`w-5 h-5 mr-2 ${confidence >= 0.8 ? 'text-green-600' : confidence >= 0.6 ? 'text-yellow-600' : 'text-red-600'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className={`w-5 h-5 mr-2 ${confidence >= 0.8 ? 'text-green-600 dark:text-green-400' : confidence >= 0.6 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span className={`text-sm font-medium ${confidence >= 0.8 ? 'text-green-800' : confidence >= 0.6 ? 'text-yellow-800' : 'text-red-800'}`}>
+            <span className={`text-sm font-medium ${confidence >= 0.8 ? 'text-green-800 dark:text-green-200' : confidence >= 0.6 ? 'text-yellow-800 dark:text-yellow-200' : 'text-red-800 dark:text-red-200'}`}>
               AI Extraction Confidence: {Math.round(confidence * 100)}%
             </span>
           </div>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
             Please review the extracted information and make any necessary corrections.
           </p>
         </div>
@@ -149,7 +153,7 @@ export default function ReviewPage() {
         <div className="space-y-6">
           {/* Basic Info */}
           <div className="card p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Basic Information</h2>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Basic Information</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="label">Full Name</label>
@@ -193,7 +197,7 @@ export default function ReviewPage() {
 
           {/* Experience */}
           <div className="card p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Experience</h2>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Experience</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="label">Total Experience (Years)</label>
@@ -231,17 +235,54 @@ export default function ReviewPage() {
                 </select>
               </div>
             </div>
+
+            {/* Compensation */}
+            <h3 className="text-md font-semibold text-gray-900 dark:text-gray-100 mt-6 mb-3">Compensation</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="label">
+                  Current CTC (LPA) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={500}
+                  step={0.01}
+                  value={profile.currentCtc ?? ''}
+                  onChange={(e) => updateProfile({ currentCtc: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
+                  className="input mt-1"
+                  placeholder="e.g., 12.5"
+                  required
+                />
+              </div>
+              <div>
+                <label className="label">
+                  Expected CTC (LPA) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={500}
+                  step={0.01}
+                  value={profile.expectedCtc ?? ''}
+                  onChange={(e) => updateProfile({ expectedCtc: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
+                  className="input mt-1"
+                  placeholder="e.g., 15.0"
+                  required
+                />
+              </div>
+            </div>
           </div>
 
           {/* Primary Skills */}
           <div className="card p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Primary Skills</h2>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Primary Skills</h2>
             <div className="space-y-4">
               {profile.primarySkills.map((skill) => (
-                <div key={skill} className="flex items-center space-x-4">
+                <div key={skill} className="flex flex-wrap items-center gap-2 sm:gap-4">
                   <span className="badge-primary min-w-[100px] justify-center">{skill}</span>
-                  <div className="flex items-center space-x-2">
-                    <label className="text-sm text-gray-500">Years:</label>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm text-gray-500 dark:text-gray-400">Years:</label>
                     <input
                       type="number"
                       min="0"
@@ -253,7 +294,7 @@ export default function ReviewPage() {
                   </div>
                   <button
                     onClick={() => removeSkill(skill, 'primary')}
-                    className="text-red-600 hover:text-red-700"
+                    className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
                   >
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -261,7 +302,7 @@ export default function ReviewPage() {
                   </button>
                 </div>
               ))}
-              <div className="flex items-center space-x-2">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                 <input
                   type="text"
                   value={newSkill}
@@ -270,7 +311,7 @@ export default function ReviewPage() {
                   className="input flex-1"
                   onKeyPress={(e) => e.key === 'Enter' && addSkill('primary')}
                 />
-                <button onClick={() => addSkill('primary')} className="btn-secondary">
+                <button onClick={() => addSkill('primary')} className="btn-secondary whitespace-nowrap">
                   Add Primary
                 </button>
               </div>
@@ -279,14 +320,14 @@ export default function ReviewPage() {
 
           {/* Secondary Skills */}
           <div className="card p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Secondary Skills</h2>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Secondary Skills</h2>
             <div className="flex flex-wrap gap-2 mb-4">
               {(profile.secondarySkills || []).map((skill) => (
                 <span key={skill} className="badge-secondary flex items-center">
                   {skill}
                   <button
                     onClick={() => removeSkill(skill, 'secondary')}
-                    className="ml-1 text-gray-500 hover:text-gray-700"
+                    className="ml-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                   >
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -295,7 +336,7 @@ export default function ReviewPage() {
                 </span>
               ))}
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
               <input
                 type="text"
                 value={newSkill}
@@ -304,7 +345,7 @@ export default function ReviewPage() {
                 className="input flex-1"
                 onKeyPress={(e) => e.key === 'Enter' && addSkill('secondary')}
               />
-              <button onClick={() => addSkill('secondary')} className="btn-secondary">
+              <button onClick={() => addSkill('secondary')} className="btn-secondary whitespace-nowrap">
                 Add Secondary
               </button>
             </div>
@@ -312,7 +353,7 @@ export default function ReviewPage() {
 
           {/* Summary */}
           <div className="card p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Professional Summary</h2>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Professional Summary</h2>
             <textarea
               value={profile.summary || ''}
               onChange={(e) => updateProfile({ summary: e.target.value })}
@@ -324,8 +365,8 @@ export default function ReviewPage() {
 
           {/* Error Message */}
           {error && (
-            <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-sm text-red-600">{error}</p>
+            <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+              <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
             </div>
           )}
 

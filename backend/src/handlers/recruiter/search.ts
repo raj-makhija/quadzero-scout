@@ -3,6 +3,7 @@ import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, SearchRequestSchema } from '../../lib/validation.js';
 import { searchCandidates } from '../../lib/dynamodb.js';
 import { normalizeSkills, calculateSkillMatch } from '../../lib/skillNormalizer.js';
+import { isCandidateWithinBudget } from '../../lib/ctcConversion.js';
 import type { CandidateItem, CandidateSearchResult, SearchResponse, SearchCriteria } from '../../types/index.js';
 
 function calculateMatchScore(
@@ -11,7 +12,8 @@ function calculateMatchScore(
   goodToHaveSkills: string[],
   minExp?: number,
   maxExp?: number,
-  seniority?: string[]
+  seniority?: string[],
+  maxBudgetLpa?: number
 ): { score: number; details: CandidateSearchResult['matchDetails'] } {
   let score = 0;
 
@@ -57,6 +59,9 @@ function calculateMatchScore(
     score += 15;
   }
 
+  // CTC budget check
+  const ctcMatch = isCandidateWithinBudget(candidate.expected_ctc, maxBudgetLpa);
+
   return {
     score: Math.round(score),
     details: {
@@ -65,6 +70,7 @@ function calculateMatchScore(
       goodToHaveMatched: goodToHaveMatch.matched,
       experienceMatch,
       seniorityMatch,
+      ctcMatch,
     },
   };
 }
@@ -125,6 +131,7 @@ export async function handler(
       location: criteria.location,
       remote: criteria.remote,
       industries: criteria.industries,
+      maxBudgetLpa: criteria.maxBudgetLpa,
     };
 
     // Search candidates
@@ -139,7 +146,8 @@ export async function handler(
           normalizedGoodToHave,
           criteria.minExperience,
           criteria.maxExperience,
-          criteria.seniority
+          criteria.seniority,
+          criteria.maxBudgetLpa
         );
 
         return {
@@ -150,6 +158,8 @@ export async function handler(
           totalExperience: candidate.total_experience,
           seniority: candidate.seniority,
           availability: candidate.availability,
+          currentCtc: candidate.current_ctc,
+          expectedCtc: candidate.expected_ctc,
           matchScore: score,
           matchDetails: details,
           lastUpdated: candidate.last_updated,
@@ -157,8 +167,13 @@ export async function handler(
       })
       // Filter out candidates with 0% match on must-have skills
       .filter((c) => {
-        if (normalizedMustHave.length === 0) return true;
-        return c.matchDetails.mustHaveMatched.length > 0;
+        if (normalizedMustHave.length > 0 && c.matchDetails.mustHaveMatched.length === 0) {
+          return false;
+        }
+        if (criteria.maxBudgetLpa != null && !c.matchDetails.ctcMatch) {
+          return false;
+        }
+        return true;
       });
 
     // Sort by selected criteria

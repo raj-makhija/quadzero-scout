@@ -39,6 +39,8 @@ export async function handler(
       education: candidate.education,
       certifications: candidate.certifications,
       summary: candidate.summary,
+      currentCtc: candidate.current_ctc,
+      expectedCtc: candidate.expected_ctc,
       resumeS3Key: candidate.resume_s3_key,
       createdAt: candidate.created_at,
       lastUpdated: candidate.last_updated,
