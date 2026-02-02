@@ -59,8 +59,3 @@ export function getEnvironmentConfig(stage?: Stage): EnvironmentConfig {
 export function shouldShowBanner(stage?: Stage): boolean {
   return getEnvironmentConfig(stage).showBanner;
 }
-
-export function getPageTitlePrefix(): string {
-  const stage = getStage();
-  return stage !== 'prod' ? `[${stage.toUpperCase()}] ` : '';
-}

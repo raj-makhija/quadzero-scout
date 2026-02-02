@@ -1,13 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useSession, signIn } from 'next-auth/react';
 import { Header } from '@/components/Header';
 import { api, ParsedCriteria, SearchCriteria, CandidateSearchResult } from '@/lib/api';
 import { formatSeniority, formatAvailability, getMatchScoreColor, getMatchScoreBgColor, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS } from '@/lib/utils';
 
 type ViewMode = 'input' | 'criteria' | 'results';
 
+const STORAGE_KEY = 'scout_recruiter_search';
+
 export default function RecruiterSearchPage() {
+  const { status } = useSession();
+  const isAuthenticated = status === 'authenticated';
+
   const [viewMode, setViewMode] = useState<ViewMode>('input');
   const [jobDescription, setJobDescription] = useState('');
   const [jobTitle, setJobTitle] = useState('');
@@ -20,6 +26,58 @@ export default function RecruiterSearchPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedCandidate, setSelectedCandidate] = useState<CandidateSearchResult | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // Search helper — reusable for both button click and state restore
+  const runSearch = useCallback(async (criteria: SearchCriteria) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await api.searchCandidates(criteria);
+      setResults(response.candidates);
+      setTotalMatches(response.totalMatches);
+      setViewMode('results');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Search failed');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Restore search state from sessionStorage after login redirect
+  useEffect(() => {
+    const saved = sessionStorage.getItem(STORAGE_KEY);
+    if (!saved) return;
+
+    try {
+      const state = JSON.parse(saved);
+      setJobDescription(state.jobDescription || '');
+      setJobTitle(state.jobTitle || '');
+      setSearchCriteria(state.searchCriteria || {});
+      setParsedCriteria(state.parsedCriteria || null);
+      setSuggestions(state.suggestions || []);
+
+      if (state.viewMode === 'results' && state.searchCriteria) {
+        runSearch(state.searchCriteria);
+      } else if (state.viewMode) {
+        setViewMode(state.viewMode);
+      }
+    } catch { /* ignore corrupt data */ }
+
+    sessionStorage.removeItem(STORAGE_KEY);
+  }, [runSearch]);
+
+  // Persist state and redirect to sign-in
+  const handleLoginRequired = () => {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
+      jobDescription,
+      jobTitle,
+      searchCriteria,
+      parsedCriteria,
+      suggestions,
+      viewMode,
+    }));
+    signIn(undefined, { callbackUrl: '/recruiter/search' });
+  };
 
   const handleParseJD = async () => {
     if (!jobDescription.trim()) {
@@ -57,20 +115,7 @@ export default function RecruiterSearchPage() {
   };
 
   const handleSearch = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const response = await api.searchCandidates(searchCriteria);
-
-      setResults(response.candidates);
-      setTotalMatches(response.totalMatches);
-      setViewMode('results');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Search failed');
-    } finally {
-      setLoading(false);
-    }
+    await runSearch(searchCriteria);
   };
 
   const openCandidateDrawer = (candidate: CandidateSearchResult) => {
@@ -79,6 +124,10 @@ export default function RecruiterSearchPage() {
   };
 
   const handleDownloadResume = async (candidateId: string) => {
+    if (!isAuthenticated) {
+      handleLoginRequired();
+      return;
+    }
     try {
       const { downloadUrl } = await api.getResumeUrl(candidateId);
       window.open(downloadUrl, '_blank');
@@ -372,17 +421,32 @@ export default function RecruiterSearchPage() {
               </button>
             </div>
 
+            {/* Sign-in banner for non-authenticated users */}
+            {!isAuthenticated && results.length > 0 && (
+              <div className="mb-6 p-4 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <p className="font-medium text-primary-800 dark:text-primary-200">Sign in to view full candidate details</p>
+                  <p className="text-sm text-primary-600 dark:text-primary-400">Names, skills, CTC, and resume downloads are available after sign-in.</p>
+                </div>
+                <button onClick={handleLoginRequired} className="btn-primary whitespace-nowrap self-start sm:self-auto">
+                  Sign In
+                </button>
+              </div>
+            )}
+
             <div className="space-y-4">
-              {results.map((candidate) => (
+              {results.map((candidate, index) => (
                 <div
                   key={candidate.candidateId}
                   className="card p-6 hover:shadow-md transition-shadow cursor-pointer"
-                  onClick={() => openCandidateDrawer(candidate)}
+                  onClick={() => isAuthenticated ? openCandidateDrawer(candidate) : handleLoginRequired()}
                 >
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{candidate.fullName}</h3>
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                          {isAuthenticated ? candidate.fullName : `Candidate #${index + 1}`}
+                        </h3>
                         <span className={`badge ${getMatchScoreBgColor(candidate.matchScore)} ${getMatchScoreColor(candidate.matchScore)}`}>
                           {candidate.matchScore}% Match
                         </span>
@@ -391,49 +455,64 @@ export default function RecruiterSearchPage() {
                       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-gray-400">
                         <span>{candidate.totalExperience} years exp</span>
                         <span>{formatSeniority(candidate.seniority)}</span>
-                        {candidate.location && <span>{candidate.location}</span>}
+                        {isAuthenticated && candidate.location && <span>{candidate.location}</span>}
                         <span>{formatAvailability(candidate.availability)}</span>
-                        {candidate.expectedCtc && (
+                        {isAuthenticated && candidate.expectedCtc && (
                           <span>{candidate.expectedCtc} LPA expected</span>
                         )}
                       </div>
 
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {candidate.primarySkills.slice(0, 6).map((skill) => (
-                          <span
-                            key={skill}
-                            className={`badge ${
-                              candidate.matchDetails.mustHaveMatched.includes(skill)
-                                ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
-                                : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
-                            }`}
-                          >
-                            {skill}
-                          </span>
-                        ))}
-                        {candidate.primarySkills.length > 6 && (
-                          <span className="badge bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
-                            +{candidate.primarySkills.length - 6} more
-                          </span>
-                        )}
-                      </div>
+                      {isAuthenticated ? (
+                        <>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {candidate.primarySkills.slice(0, 6).map((skill) => (
+                              <span
+                                key={skill}
+                                className={`badge ${
+                                  candidate.matchDetails.mustHaveMatched.includes(skill)
+                                    ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                                    : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                                }`}
+                              >
+                                {skill}
+                              </span>
+                            ))}
+                            {candidate.primarySkills.length > 6 && (
+                              <span className="badge bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                                +{candidate.primarySkills.length - 6} more
+                              </span>
+                            )}
+                          </div>
 
-                      {candidate.matchDetails.mustHaveMissing.length > 0 && (
-                        <div className="mt-2 text-sm text-red-600 dark:text-red-400">
-                          Missing: {candidate.matchDetails.mustHaveMissing.join(', ')}
+                          {candidate.matchDetails.mustHaveMissing.length > 0 && (
+                            <div className="mt-2 text-sm text-red-600 dark:text-red-400">
+                              Missing: {candidate.matchDetails.mustHaveMissing.join(', ')}
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="mt-3">
+                          <span className="badge bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                            {candidate.primarySkills.length} skills
+                          </span>
+                          <span className="ml-2 text-sm text-primary-600 dark:text-primary-400">
+                            Sign in to view details
+                          </span>
                         </div>
                       )}
                     </div>
 
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDownloadResume(candidate.candidateId);
-                      }}
-                      className="btn-outline text-sm self-start whitespace-nowrap"
-                    >
-                      Download Resume
-                    </button>
+                    {isAuthenticated && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDownloadResume(candidate.candidateId);
+                        }}
+                        className="btn-outline text-sm self-start whitespace-nowrap"
+                      >
+                        Download Resume
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -452,7 +531,7 @@ export default function RecruiterSearchPage() {
         )}
       </main>
 
-      {/* Candidate Detail Drawer */}
+      {/* Candidate Detail Drawer — only accessible when authenticated */}
       {drawerOpen && selectedCandidate && (
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black bg-opacity-50" onClick={() => setDrawerOpen(false)} />
