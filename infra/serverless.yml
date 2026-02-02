@@ -60,11 +60,14 @@ custom:
       - http://localhost:3001
       - http://localhost:3002
       - https://dev.scout.quadzero.com
+      - https://develop.d29qw5nnt7ayr2.amplifyapp.com
     qa:
       - https://qa.scout.quadzero.com
+      - https://qa.d29qw5nnt7ayr2.amplifyapp.com
     prod:
       - https://scout.quadzero.com
       - https://app.quadzero.com
+      - https://main.d29qw5nnt7ayr2.amplifyapp.com
 
   talentProfilesTable: TalentProfiles-${self:provider.stage}
   usersTable: Users-${self:provider.stage}
