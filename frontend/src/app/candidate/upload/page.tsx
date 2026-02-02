@@ -55,7 +55,7 @@ export default function UploadPage() {
   const handleUpload = async () => {
     if (!file) return;
 
-    const isDev = process.env.NEXT_PUBLIC_STAGE === 'dev';
+    const isLocal = process.env.NEXT_PUBLIC_STAGE === 'local';
 
     try {
       setUploadState('uploading');
@@ -65,7 +65,7 @@ export default function UploadPage() {
       let confidence: number;
       let s3Key: string;
 
-      if (isDev) {
+      if (isLocal) {
         // Local dev: send file directly to backend (bypasses S3 + Textract)
         setProgress(30);
         setUploadState('analyzing');
