@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useSession, signIn } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { Header } from '@/components/Header';
 import { api, ParsedCriteria, SearchCriteria, CandidateSearchResult } from '@/lib/api';
 import { formatSeniority, formatAvailability, getMatchScoreColor, getMatchScoreBgColor, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS } from '@/lib/utils';
@@ -11,6 +12,7 @@ type ViewMode = 'input' | 'criteria' | 'results';
 const STORAGE_KEY = 'scout_recruiter_search';
 
 export default function RecruiterSearchPage() {
+  const router = useRouter();
   const { status } = useSession();
   const isAuthenticated = status === 'authenticated';
 
@@ -76,7 +78,7 @@ export default function RecruiterSearchPage() {
       suggestions,
       viewMode,
     }));
-    signIn(undefined, { callbackUrl: '/recruiter/search' });
+    router.push('/auth/signin?callbackUrl=' + encodeURIComponent('/recruiter/search'));
   };
 
   const handleParseJD = async () => {
