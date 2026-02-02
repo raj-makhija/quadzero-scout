@@ -4,7 +4,6 @@ import {
   getStage,
   getEnvironmentConfig,
   shouldShowBanner,
-  getPageTitlePrefix,
 } from '../environment';
 
 // ---------------------------------------------------------------------------
@@ -106,32 +105,5 @@ describe('shouldShowBanner()', () => {
 
   it('returns false for prod', () => {
     expect(shouldShowBanner('prod')).toBe(false);
-  });
-});
-
-describe('getPageTitlePrefix()', () => {
-  const originalEnv = process.env.NEXT_PUBLIC_STAGE;
-
-  afterEach(() => {
-    if (originalEnv !== undefined) {
-      process.env.NEXT_PUBLIC_STAGE = originalEnv;
-    } else {
-      delete process.env.NEXT_PUBLIC_STAGE;
-    }
-  });
-
-  it('returns "[DEV] " for dev stage', () => {
-    process.env.NEXT_PUBLIC_STAGE = 'dev';
-    expect(getPageTitlePrefix()).toBe('[DEV] ');
-  });
-
-  it('returns "[QA] " for qa stage', () => {
-    process.env.NEXT_PUBLIC_STAGE = 'qa';
-    expect(getPageTitlePrefix()).toBe('[QA] ');
-  });
-
-  it('returns empty string for prod stage', () => {
-    process.env.NEXT_PUBLIC_STAGE = 'prod';
-    expect(getPageTitlePrefix()).toBe('');
   });
 });
