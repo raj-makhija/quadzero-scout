@@ -68,6 +68,8 @@ export async function handler(
       education: profile.education || [],
       certifications: profile.certifications || [],
       summary: profile.summary,
+      current_ctc: profile.currentCtc,
+      expected_ctc: profile.expectedCtc,
       resume_s3_key: resumeS3Key,
       created_at: now,
       last_updated: now,

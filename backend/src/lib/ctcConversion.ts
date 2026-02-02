@@ -1,0 +1,64 @@
+/**
+ * CTC/Rate conversion utilities.
+ * All conversions normalize to LPA (Lakhs Per Annum), rounded to nearest 0.01 (thousands of rupees).
+ */
+
+const WORKING_HOURS_PER_YEAR = 2080; // 52 weeks × 40 hours
+const LAKHS = 100_000;
+
+export type RateUnit = 'lpa' | 'lpm' | 'rupees_per_hour' | 'usd_per_hour';
+
+/**
+ * Returns the USD-to-INR exchange rate from environment or default.
+ */
+export function getUsdToInrRate(): number {
+  const envRate = process.env.USD_TO_INR_RATE;
+  if (envRate) {
+    const parsed = parseFloat(envRate);
+    if (!isNaN(parsed) && parsed > 0) return parsed;
+  }
+  return 85;
+}
+
+/**
+ * Convert a rate value + unit to LPA, rounded to nearest 0.01.
+ * Returns null if input is invalid.
+ */
+export function convertToLpa(rateValue: number, unit: RateUnit): number | null {
+  if (rateValue < 0 || isNaN(rateValue)) return null;
+
+  let lpa: number;
+
+  switch (unit) {
+    case 'lpa':
+      lpa = rateValue;
+      break;
+    case 'lpm':
+      lpa = rateValue * 12;
+      break;
+    case 'rupees_per_hour':
+      lpa = (rateValue * WORKING_HOURS_PER_YEAR) / LAKHS;
+      break;
+    case 'usd_per_hour': {
+      const usdToInr = getUsdToInrRate();
+      lpa = (rateValue * usdToInr * WORKING_HOURS_PER_YEAR) / LAKHS;
+      break;
+    }
+    default:
+      return null;
+  }
+
+  return Math.round(lpa * 100) / 100;
+}
+
+/**
+ * Check if a candidate's expected CTC is within the recruiter's budget.
+ * Rule: expectedCtc <= maxBudgetLpa × 0.85 (15% margin for recruiter).
+ */
+export function isCandidateWithinBudget(
+  expectedCtc: number | undefined | null,
+  maxBudgetLpa: number | undefined | null
+): boolean {
+  if (expectedCtc == null || maxBudgetLpa == null) return true;
+  return expectedCtc <= maxBudgetLpa * 0.85;
+}

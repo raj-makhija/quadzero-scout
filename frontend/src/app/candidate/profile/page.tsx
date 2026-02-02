@@ -120,7 +120,7 @@ export default function ProfilePage() {
 
           <div className="p-6 space-y-6">
             {/* Quick Stats */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               <div className="text-center p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
                 <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{profile.totalExperience}</p>
                 <p className="text-sm text-gray-500 dark:text-gray-400">Years Experience</p>
@@ -133,6 +133,18 @@ export default function ProfilePage() {
                 <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{formatAvailability(profile.availability || 'negotiable')}</p>
                 <p className="text-sm text-gray-500 dark:text-gray-400">Availability</p>
               </div>
+              {profile.currentCtc != null && (
+                <div className="text-center p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{profile.currentCtc} LPA</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Current CTC</p>
+                </div>
+              )}
+              {profile.expectedCtc != null && (
+                <div className="text-center p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{profile.expectedCtc} LPA</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Expected CTC</p>
+                </div>
+              )}
             </div>
 
             {/* Primary Skills */}

@@ -45,6 +45,7 @@ export default function RecruiterSearchPage() {
         seniority: response.parsedCriteria.seniority,
         availability: response.parsedCriteria.availability,
         location: response.parsedCriteria.location || undefined,
+        maxBudgetLpa: response.parsedCriteria.rateLpa || undefined,
       });
 
       setViewMode('criteria');
@@ -262,6 +263,23 @@ export default function RecruiterSearchPage() {
                   </div>
                 </div>
 
+                {/* Max Budget */}
+                <div>
+                  <label className="label">Max Budget (LPA)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    value={searchCriteria.maxBudgetLpa ?? ''}
+                    onChange={(e) => updateCriteria('maxBudgetLpa', e.target.value ? parseFloat(e.target.value) : undefined)}
+                    placeholder="e.g., 25.0"
+                    className="input mt-2"
+                  />
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Candidates with expected CTC within 85% of budget will match
+                  </p>
+                </div>
+
                 {/* Seniority */}
                 <div>
                   <label className="label">Seniority Level</label>
@@ -375,6 +393,9 @@ export default function RecruiterSearchPage() {
                         <span>{formatSeniority(candidate.seniority)}</span>
                         {candidate.location && <span>{candidate.location}</span>}
                         <span>{formatAvailability(candidate.availability)}</span>
+                        {candidate.expectedCtc && (
+                          <span>{candidate.expectedCtc} LPA expected</span>
+                        )}
                       </div>
 
                       <div className="mt-3 flex flex-wrap gap-2">
@@ -475,6 +496,14 @@ export default function RecruiterSearchPage() {
                     <label className="text-sm text-gray-500 dark:text-gray-400">Availability</label>
                     <p className="font-medium">{formatAvailability(selectedCandidate.availability)}</p>
                   </div>
+                  <div>
+                    <label className="text-sm text-gray-500 dark:text-gray-400">Current CTC</label>
+                    <p className="font-medium">{selectedCandidate.currentCtc ? `${selectedCandidate.currentCtc} LPA` : 'Not specified'}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-500 dark:text-gray-400">Expected CTC</label>
+                    <p className="font-medium">{selectedCandidate.expectedCtc ? `${selectedCandidate.expectedCtc} LPA` : 'Not specified'}</p>
+                  </div>
                 </div>
 
                 {/* Skills */}
@@ -522,6 +551,20 @@ export default function RecruiterSearchPage() {
                       </svg>
                       Nice-to-have matched: {selectedCandidate.matchDetails.goodToHaveMatched.join(', ') || 'None'}
                     </div>
+                    {searchCriteria.maxBudgetLpa && (
+                      <div className={`flex items-center ${selectedCandidate.matchDetails.ctcMatch ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                        {selectedCandidate.matchDetails.ctcMatch ? (
+                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        )}
+                        {selectedCandidate.matchDetails.ctcMatch ? 'Within budget' : 'Over budget'}
+                      </div>
+                    )}
                   </div>
                 </div>
 

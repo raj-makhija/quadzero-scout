@@ -87,10 +87,18 @@ export default function ReviewPage() {
       setSaving(true);
       setError(null);
 
+      if (!profile.currentCtc || profile.currentCtc <= 0 || !profile.expectedCtc || profile.expectedCtc <= 0) {
+        setError('Both Current CTC and Expected CTC are required and must be greater than 0.');
+        setSaving(false);
+        return;
+      }
+
       const profileToSave = {
         ...profile,
         availability: profile.availability || 'negotiable',
         seniority: profile.seniority || 'mid',
+        currentCtc: profile.currentCtc,
+        expectedCtc: profile.expectedCtc,
       };
       const { candidateId } = await api.saveProfile({ profile: profileToSave, resumeS3Key: s3Key });
 
@@ -225,6 +233,43 @@ export default function ReviewPage() {
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
                 </select>
+              </div>
+            </div>
+
+            {/* Compensation */}
+            <h3 className="text-md font-semibold text-gray-900 dark:text-gray-100 mt-6 mb-3">Compensation</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="label">
+                  Current CTC (LPA) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={500}
+                  step={0.01}
+                  value={profile.currentCtc ?? ''}
+                  onChange={(e) => updateProfile({ currentCtc: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
+                  className="input mt-1"
+                  placeholder="e.g., 12.5"
+                  required
+                />
+              </div>
+              <div>
+                <label className="label">
+                  Expected CTC (LPA) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={500}
+                  step={0.01}
+                  value={profile.expectedCtc ?? ''}
+                  onChange={(e) => updateProfile({ expectedCtc: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
+                  className="input mt-1"
+                  placeholder="e.g., 15.0"
+                  required
+                />
               </div>
             </div>
           </div>
