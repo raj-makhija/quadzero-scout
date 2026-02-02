@@ -3,18 +3,14 @@ import { Inter } from 'next/font/google';
 import { Providers } from '@/components/Providers';
 import { EnvironmentBanner } from '@/components/EnvironmentBanner';
 import { Toaster } from '@/components/ui/toaster';
-import { getPageTitlePrefix } from '@/lib/environment';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'] });
 
-export function generateMetadata(): Metadata {
-  const prefix = getPageTitlePrefix();
-  return {
-    title: `${prefix}Quadzero Scout - AI-Powered Talent Matching`,
-    description: 'Find the perfect candidates with AI-powered resume parsing and intelligent matching',
-  };
-}
+export const metadata: Metadata = {
+  title: 'Quadzero Scout - AI-Powered Talent Matching',
+  description: 'Find the perfect candidates with AI-powered resume parsing and intelligent matching',
+};
 
 // Script to prevent theme flash on page load
 // Only applies dark mode if the user explicitly chose it (not system preference)
@@ -31,6 +27,24 @@ const themeScript = `
   })();
 `;
 
+// Script to add environment prefix to page title based on hostname
+const titlePrefixScript = `
+  (function() {
+    try {
+      var h = window.location.hostname;
+      var prefix = '';
+      if (h.includes('localhost') || h.startsWith('dev.')) {
+        prefix = '[DEV] ';
+      } else if (h.startsWith('qa.')) {
+        prefix = '[QA] ';
+      }
+      if (prefix) {
+        document.title = prefix + document.title;
+      }
+    } catch (e) {}
+  })();
+`;
+
 export default function RootLayout({
   children,
 }: {
@@ -40,6 +54,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <script dangerouslySetInnerHTML={{ __html: titlePrefixScript }} />
       </head>
       <body className={inter.className}>
         <Providers>
