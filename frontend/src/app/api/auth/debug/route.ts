@@ -1,6 +1,7 @@
-import { encode, decode } from 'next-auth/jwt';
+import { encode, decode, getToken } from 'next-auth/jwt';
+import { NextRequest } from 'next/server';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const results: Record<string, unknown> = {};
 
   // 1. Environment variable check
@@ -55,6 +56,23 @@ export async function GET() {
   } else {
     results.jwtEncode = { ok: false, error: 'No NEXTAUTH_SECRET available' };
     results.jwtDecode = { ok: false, error: 'No NEXTAUTH_SECRET available' };
+  }
+
+  // 4. Session cookie & getToken test
+  const cookieNames = req.cookies.getAll().map(c => c.name);
+  const sessionCookies = cookieNames.filter(n => n.includes('next-auth'));
+  results.cookies = {
+    allCookieNames: cookieNames,
+    sessionCookies,
+  };
+
+  if (secret) {
+    try {
+      const rawToken = await getToken({ req, secret, raw: true });
+      results.getTokenRaw = rawToken ? { ok: true, length: rawToken.length } : { ok: false, reason: 'getToken returned null' };
+    } catch (err) {
+      results.getTokenRaw = { ok: false, error: String(err) };
+    }
   }
 
   return Response.json(results, {
