@@ -3,6 +3,7 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import GoogleProvider from 'next-auth/providers/google';
 
 export const authOptions: NextAuthOptions = {
+  secret: process.env.NEXTAUTH_SECRET,
   providers: [
     CredentialsProvider({
       name: 'credentials',
@@ -15,8 +16,6 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        // TODO: Implement actual authentication against backend
-        // For now, this is a placeholder that should be connected to your Users table
         const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
         try {
