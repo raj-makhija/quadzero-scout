@@ -38,8 +38,8 @@ export const SaveProfileRequestSchema = z.object({
     })).optional(),
     certifications: z.array(z.string()).max(20).optional(),
     summary: z.string().max(2000).optional(),
-    currentCtc: z.number().min(0).max(500),
-    expectedCtc: z.number().min(0).max(500),
+    currentCtc: z.number().min(0).max(500).optional(),
+    expectedCtc: z.number().min(0).max(500).optional(),
   }),
   resumeS3Key: z.string().min(1).max(500),
 });

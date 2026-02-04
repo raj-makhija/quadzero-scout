@@ -56,8 +56,8 @@ export const CandidateProfileSchema = z.object({
   education: z.array(EducationSchema).optional().default([]),
   certifications: z.array(z.string()).max(20).optional().default([]),
   summary: z.string().max(2000).optional(),
-  currentCtc: z.number().min(0).max(500),
-  expectedCtc: z.number().min(0).max(500)
+  currentCtc: z.number().min(0).max(500).optional(),
+  expectedCtc: z.number().min(0).max(500).optional()
 });
 export type CandidateProfile = z.infer<typeof CandidateProfileSchema>;
 
@@ -80,8 +80,8 @@ export interface CandidateItem {
   education?: Education[];
   certifications?: string[];
   summary?: string;
-  current_ctc: number;
-  expected_ctc: number;
+  current_ctc?: number;
+  expected_ctc?: number;
   experience_bucket: string;
   resume_s3_key: string;
   created_at: string;

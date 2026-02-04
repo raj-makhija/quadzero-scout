@@ -87,18 +87,12 @@ export default function ReviewPage() {
       setSaving(true);
       setError(null);
 
-      if (!profile.currentCtc || profile.currentCtc <= 0 || !profile.expectedCtc || profile.expectedCtc <= 0) {
-        setError('Both Current CTC and Expected CTC are required and must be greater than 0.');
-        setSaving(false);
-        return;
-      }
-
       const profileToSave = {
         ...profile,
         availability: profile.availability || 'negotiable',
         seniority: profile.seniority || 'mid',
-        currentCtc: profile.currentCtc,
-        expectedCtc: profile.expectedCtc,
+        currentCtc: profile.currentCtc || undefined,
+        expectedCtc: profile.expectedCtc || undefined,
       };
       const { candidateId } = await api.saveProfile({ profile: profileToSave, resumeS3Key: s3Key });
 
@@ -241,7 +235,7 @@ export default function ReviewPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="label">
-                  Current CTC (LPA) <span className="text-red-500">*</span>
+                  Current CTC (LPA)
                 </label>
                 <input
                   type="number"
@@ -252,12 +246,11 @@ export default function ReviewPage() {
                   onChange={(e) => updateProfile({ currentCtc: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
                   className="input mt-1"
                   placeholder="e.g., 12.5"
-                  required
                 />
               </div>
               <div>
                 <label className="label">
-                  Expected CTC (LPA) <span className="text-red-500">*</span>
+                  Expected CTC (LPA)
                 </label>
                 <input
                   type="number"
@@ -268,7 +261,6 @@ export default function ReviewPage() {
                   onChange={(e) => updateProfile({ expectedCtc: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
                   className="input mt-1"
                   placeholder="e.g., 15.0"
-                  required
                 />
               </div>
             </div>
