@@ -1,13 +1,14 @@
-import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
+import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, SaveProfileRequestSchema } from '../../lib/validation.js';
 import { saveCandidateProfile, getExperienceBucket } from '../../lib/dynamodb.js';
 import { normalizeSkills, normalizeSkillYears } from '../../lib/skillNormalizer.js';
+import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import type { CandidateItem, SaveProfileResponse } from '../../types/index.js';
 
-export async function handler(
-  event: APIGatewayProxyEventV2
+async function handleRequest(
+  event: AuthenticatedEvent
 ): Promise<APIGatewayProxyResultV2> {
   try {
     // Parse request body
@@ -34,10 +35,7 @@ export async function handler(
 
     const { candidateId, profile, resumeS3Key } = validation.data;
 
-    // Extract user ID from JWT (in production, this would come from auth context)
-    // For now, we'll generate one if not available
-    const userId = (event.requestContext as { authorizer?: { jwt?: { claims?: { sub?: string } } } })
-      ?.authorizer?.jwt?.claims?.sub || `user_${uuidv4()}`;
+    const userId = event.auth.userId;
 
     // Generate candidate ID if not provided
     const finalCandidateId = candidateId || `cand_${uuidv4()}`;
@@ -99,3 +97,5 @@ export async function handler(
     );
   }
 }
+
+export const handler = withAuth(['candidate'], handleRequest);

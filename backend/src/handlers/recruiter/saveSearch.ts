@@ -1,12 +1,13 @@
-import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
+import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, SaveSearchRequestSchema } from '../../lib/validation.js';
 import { saveSavedSearch } from '../../lib/dynamodb.js';
+import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import type { SavedSearch, SearchCriteria } from '../../types/index.js';
 
-export async function handler(
-  event: APIGatewayProxyEventV2
+async function handleRequest(
+  event: AuthenticatedEvent
 ): Promise<APIGatewayProxyResultV2> {
   try {
     // Parse request body
@@ -33,9 +34,7 @@ export async function handler(
 
     const { name, criteria } = validation.data;
 
-    // Extract recruiter ID from JWT (in production)
-    const recruiterId = (event.requestContext as { authorizer?: { jwt?: { claims?: { sub?: string } } } })
-      ?.authorizer?.jwt?.claims?.sub || `recruiter_${uuidv4()}`;
+    const recruiterId = event.auth.userId;
 
     const searchId = `search_${uuidv4()}`;
     const now = new Date().toISOString();
@@ -78,3 +77,5 @@ export async function handler(
     );
   }
 }
+
+export const handler = withAuth(['recruiter'], handleRequest);

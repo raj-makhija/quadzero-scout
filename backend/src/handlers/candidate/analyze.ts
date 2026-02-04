@@ -1,12 +1,13 @@
-import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
+import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, AnalyzeRequestSchema } from '../../lib/validation.js';
 import { extractTextFromResume } from '../../lib/textract.js';
 import { parseResume } from '../../lib/llm/index.js';
+import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import type { AnalyzeResponse } from '../../types/index.js';
 
-export async function handler(
-  event: APIGatewayProxyEventV2
+async function handleRequest(
+  event: AuthenticatedEvent
 ): Promise<APIGatewayProxyResultV2> {
   try {
     // Parse request body
@@ -90,3 +91,5 @@ export async function handler(
     );
   }
 }
+
+export const handler = withAuth(['candidate'], handleRequest);
