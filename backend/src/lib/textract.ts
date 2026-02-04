@@ -4,6 +4,7 @@ import {
   AnalyzeDocumentCommand,
   Block,
 } from '@aws-sdk/client-textract';
+import mammoth from 'mammoth';
 import { config } from './config.js';
 import { getObject } from './s3.js';
 
@@ -15,11 +16,16 @@ export interface ExtractedText {
   pageCount: number;
 }
 
-export async function extractTextFromResume(s3Key: string): Promise<ExtractedText> {
-  // Get the document from S3
-  const documentBytes = await getObject(s3Key);
+async function extractTextFromDocx(documentBytes: Buffer): Promise<ExtractedText> {
+  const result = await mammoth.extractRawText({ buffer: documentBytes });
+  return {
+    text: result.value,
+    confidence: 0.95,
+    pageCount: 1,
+  };
+}
 
-  // Use DetectDocumentText for simple text extraction
+async function extractTextWithTextract(documentBytes: Buffer): Promise<ExtractedText> {
   const command = new DetectDocumentTextCommand({
     Document: {
       Bytes: documentBytes,
@@ -60,6 +66,17 @@ export async function extractTextFromResume(s3Key: string): Promise<ExtractedTex
     confidence: avgConfidence,
     pageCount: pageBlocks.length || 1,
   };
+}
+
+export async function extractTextFromResume(s3Key: string): Promise<ExtractedText> {
+  const documentBytes = await getObject(s3Key);
+  const extension = s3Key.toLowerCase().split('.').pop();
+
+  if (extension === 'docx') {
+    return extractTextFromDocx(documentBytes);
+  }
+
+  return extractTextWithTextract(documentBytes);
 }
 
 export async function extractTextWithLayout(s3Key: string): Promise<ExtractedText> {

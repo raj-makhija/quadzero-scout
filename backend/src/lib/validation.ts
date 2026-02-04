@@ -5,7 +5,6 @@ export const UploadUrlRequestSchema = z.object({
   fileName: z.string().min(1).max(255),
   contentType: z.enum([
     'application/pdf',
-    'application/msword',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   ]),
 });
