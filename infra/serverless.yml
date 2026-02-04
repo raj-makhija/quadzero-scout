@@ -108,6 +108,21 @@ package:
   individually: true
 
 functions:
+  # Auth Endpoints
+  authRegister:
+    handler: src/handlers/auth/register.handler
+    events:
+      - httpApi:
+          path: /auth/register
+          method: POST
+
+  authLogin:
+    handler: src/handlers/auth/login.handler
+    events:
+      - httpApi:
+          path: /auth/login
+          method: POST
+
   # Candidate Endpoints
   candidateUploadUrl:
     handler: src/handlers/candidate/uploadUrl.handler
