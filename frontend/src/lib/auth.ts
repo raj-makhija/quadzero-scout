@@ -2,6 +2,17 @@ import type { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import GoogleProvider from 'next-auth/providers/google';
 
+// Debug: log env var availability at module load time
+console.log('[NextAuth] Module loaded. Environment check:', {
+  hasSecret: !!process.env.NEXTAUTH_SECRET,
+  secretLength: process.env.NEXTAUTH_SECRET?.length ?? 0,
+  hasNextAuthUrl: !!process.env.NEXTAUTH_URL,
+  nextAuthUrl: process.env.NEXTAUTH_URL ?? '(not set)',
+  hasApiUrl: !!process.env.NEXT_PUBLIC_API_URL,
+  apiUrl: process.env.NEXT_PUBLIC_API_URL ?? '(not set)',
+  nodeEnv: process.env.NODE_ENV,
+});
+
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
   providers: [
@@ -12,11 +23,15 @@ export const authOptions: NextAuthOptions = {
         password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
+        console.log('[NextAuth] authorize() called');
+
         if (!credentials?.email || !credentials?.password) {
+          console.log('[NextAuth] authorize() - missing credentials');
           return null;
         }
 
         const API_URL = process.env.NEXT_PUBLIC_API_URL;
+        console.log('[NextAuth] authorize() - calling backend:', `${API_URL}/auth/login`);
 
         try {
           const response = await fetch(`${API_URL}/auth/login`, {
@@ -28,13 +43,19 @@ export const authOptions: NextAuthOptions = {
             }),
           });
 
+          console.log('[NextAuth] authorize() - backend response status:', response.status);
+
           if (!response.ok) {
+            const errorBody = await response.text();
+            console.log('[NextAuth] authorize() - backend error body:', errorBody);
             return null;
           }
 
           const user = await response.json();
+          console.log('[NextAuth] authorize() - backend returned user:', JSON.stringify(user.data));
           return user.data;
-        } catch {
+        } catch (err) {
+          console.error('[NextAuth] authorize() - fetch error:', err);
           // If backend is not available, return mock user for development
           if (process.env.NODE_ENV === 'development') {
             return {
@@ -67,13 +88,16 @@ export const authOptions: NextAuthOptions = {
   },
   callbacks: {
     async jwt({ token, user }) {
+      console.log('[NextAuth] jwt() callback - has user:', !!user);
       if (user) {
         token.id = user.id;
         token.role = (user as { role?: string }).role;
+        console.log('[NextAuth] jwt() - set token.id:', user.id, 'token.role:', (user as { role?: string }).role);
       }
       return token;
     },
     async session({ session, token }) {
+      console.log('[NextAuth] session() callback - token.id:', token.id);
       if (session.user) {
         (session.user as { id?: string }).id = token.id as string;
         (session.user as { role?: string }).role = token.role as string;
@@ -81,5 +105,16 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
   },
-  debug: process.env.NODE_ENV === 'development',
+  logger: {
+    error(code, metadata) {
+      console.error('[NextAuth] ERROR:', code, JSON.stringify(metadata, null, 2));
+    },
+    warn(code) {
+      console.warn('[NextAuth] WARN:', code);
+    },
+    debug(code, metadata) {
+      console.log('[NextAuth] DEBUG:', code, JSON.stringify(metadata));
+    },
+  },
+  debug: true,
 };
