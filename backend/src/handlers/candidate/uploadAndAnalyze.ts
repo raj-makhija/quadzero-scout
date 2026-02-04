@@ -1,7 +1,6 @@
-import type { APIGatewayProxyResultV2 } from 'aws-lambda';
+import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { parseResume } from '../../lib/llm/index.js';
-import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import type { AnalyzeResponse } from '../../types/index.js';
 // Import pdf-parse internals directly to avoid the test code in index.js
 // that tries to readFileSync a test PDF (fails when bundled by esbuild)
@@ -13,8 +12,8 @@ const pdfParse = require('pdf-parse/lib/pdf-parse.js');
  * extracts text using pdf-parse (instead of AWS Textract),
  * and parses with LLM. Bypasses S3 and Textract for local dev.
  */
-async function handleRequest(
-  event: AuthenticatedEvent
+export async function handler(
+  event: APIGatewayProxyEventV2
 ): Promise<APIGatewayProxyResultV2> {
   try {
     if (!event.body) {
@@ -94,4 +93,3 @@ async function handleRequest(
   }
 }
 
-export const handler = withAuth(['candidate'], handleRequest);

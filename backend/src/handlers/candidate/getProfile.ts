@@ -1,10 +1,9 @@
-import type { APIGatewayProxyResultV2 } from 'aws-lambda';
+import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { getCandidateById } from '../../lib/dynamodb.js';
-import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 
-async function handleRequest(
-  event: AuthenticatedEvent
+export async function handler(
+  event: APIGatewayProxyEventV2
 ): Promise<APIGatewayProxyResultV2> {
   try {
     // Get candidate ID from path parameters
@@ -59,4 +58,3 @@ async function handleRequest(
   }
 }
 
-export const handler = withAuth(['candidate'], handleRequest);

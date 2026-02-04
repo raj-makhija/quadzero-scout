@@ -1,12 +1,11 @@
-import type { APIGatewayProxyResultV2 } from 'aws-lambda';
+import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, UploadUrlRequestSchema } from '../../lib/validation.js';
 import { generateUploadUrl } from '../../lib/s3.js';
-import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import type { UploadUrlResponse } from '../../types/index.js';
 
-async function handleRequest(
-  event: AuthenticatedEvent
+export async function handler(
+  event: APIGatewayProxyEventV2
 ): Promise<APIGatewayProxyResultV2> {
   try {
     // Parse request body
@@ -54,4 +53,3 @@ async function handleRequest(
   }
 }
 
-export const handler = withAuth(['candidate'], handleRequest);

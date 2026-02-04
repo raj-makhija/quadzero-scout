@@ -1,14 +1,13 @@
-import type { APIGatewayProxyResultV2 } from 'aws-lambda';
+import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, SaveProfileRequestSchema } from '../../lib/validation.js';
 import { saveCandidateProfile, getExperienceBucket } from '../../lib/dynamodb.js';
 import { normalizeSkills, normalizeSkillYears } from '../../lib/skillNormalizer.js';
-import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import type { CandidateItem, SaveProfileResponse } from '../../types/index.js';
 
-async function handleRequest(
-  event: AuthenticatedEvent
+export async function handler(
+  event: APIGatewayProxyEventV2
 ): Promise<APIGatewayProxyResultV2> {
   try {
     // Parse request body
@@ -35,7 +34,11 @@ async function handleRequest(
 
     const { candidateId, profile, resumeS3Key } = validation.data;
 
-    const userId = event.auth.userId;
+    // Use authenticated userId if available, otherwise generate anonymous ID
+    const authHeader = event.headers?.authorization || event.headers?.Authorization;
+    const userId = (event as { auth?: { userId: string } }).auth?.userId
+      || (authHeader ? undefined : `anon_${uuidv4()}`)
+      || `anon_${uuidv4()}`;
 
     // Generate candidate ID if not provided
     const finalCandidateId = candidateId || `cand_${uuidv4()}`;
@@ -98,4 +101,3 @@ async function handleRequest(
   }
 }
 
-export const handler = withAuth(['candidate'], handleRequest);
