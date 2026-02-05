@@ -25,10 +25,13 @@ async function extractTextFromDocx(documentBytes: Buffer): Promise<ExtractedText
   };
 }
 
-async function extractTextWithTextract(documentBytes: Buffer): Promise<ExtractedText> {
+async function extractTextWithTextract(s3Key: string): Promise<ExtractedText> {
   const command = new DetectDocumentTextCommand({
     Document: {
-      Bytes: documentBytes,
+      S3Object: {
+        Bucket: config.s3.resumesBucket,
+        Name: s3Key,
+      },
     },
   });
 
@@ -69,24 +72,24 @@ async function extractTextWithTextract(documentBytes: Buffer): Promise<Extracted
 }
 
 export async function extractTextFromResume(s3Key: string): Promise<ExtractedText> {
-  const documentBytes = await getObject(s3Key);
   const extension = s3Key.toLowerCase().split('.').pop();
 
   if (extension === 'docx') {
+    const documentBytes = await getObject(s3Key);
     return extractTextFromDocx(documentBytes);
   }
 
-  return extractTextWithTextract(documentBytes);
+  return extractTextWithTextract(s3Key);
 }
 
 export async function extractTextWithLayout(s3Key: string): Promise<ExtractedText> {
-  // Get the document from S3
-  const documentBytes = await getObject(s3Key);
-
   // Use AnalyzeDocument for more detailed extraction
   const command = new AnalyzeDocumentCommand({
     Document: {
-      Bytes: documentBytes,
+      S3Object: {
+        Bucket: config.s3.resumesBucket,
+        Name: s3Key,
+      },
     },
     FeatureTypes: ['TABLES', 'FORMS'],
   });
