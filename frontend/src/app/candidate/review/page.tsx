@@ -349,7 +349,7 @@ export default function ReviewPage() {
             <textarea
               value={profile.summary || ''}
               onChange={(e) => updateProfile({ summary: e.target.value })}
-              rows={4}
+              rows={6}
               className="input"
               placeholder="Brief professional summary..."
             />
