@@ -34,10 +34,11 @@ export async function handler(
 
     const { candidateId, profile, resumeS3Key } = validation.data;
 
-    // Extract user ID from JWT (in production, this would come from auth context)
-    // For now, we'll generate one if not available
-    const userId = (event.requestContext as { authorizer?: { jwt?: { claims?: { sub?: string } } } })
-      ?.authorizer?.jwt?.claims?.sub || `user_${uuidv4()}`;
+    // Use authenticated userId if available, otherwise generate anonymous ID
+    const authHeader = event.headers?.authorization || event.headers?.Authorization;
+    const userId = (event as { auth?: { userId: string } }).auth?.userId
+      || (authHeader ? undefined : `anon_${uuidv4()}`)
+      || `anon_${uuidv4()}`;
 
     // Generate candidate ID if not provided
     const finalCandidateId = candidateId || `cand_${uuidv4()}`;
@@ -99,3 +100,4 @@ export async function handler(
     );
   }
 }
+

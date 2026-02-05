@@ -5,7 +5,6 @@ export const UploadUrlRequestSchema = z.object({
   fileName: z.string().min(1).max(255),
   contentType: z.enum([
     'application/pdf',
-    'application/msword',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   ]),
 });
@@ -25,7 +24,7 @@ export const SaveProfileRequestSchema = z.object({
     location: z.string().max(200).optional(),
     primarySkills: z.array(z.string().min(1)).min(1).max(20),
     primarySkillYears: z.record(z.string(), z.number().min(0).max(50)),
-    secondarySkills: z.array(z.string()).max(30).optional(),
+    secondarySkills: z.array(z.string()).max(50).optional(),
     totalExperience: z.number().min(0).max(50),
     seniority: z.enum(['intern', 'junior', 'mid', 'senior', 'lead', 'principal', 'executive']),
     availability: z.enum(['immediate', '1_week', '2_weeks', '1_month', '2_months', '3_months', 'negotiable']),
@@ -38,8 +37,8 @@ export const SaveProfileRequestSchema = z.object({
     })).optional(),
     certifications: z.array(z.string()).max(20).optional(),
     summary: z.string().max(2000).optional(),
-    currentCtc: z.number().min(0).max(500),
-    expectedCtc: z.number().min(0).max(500),
+    currentCtc: z.number().min(0).max(500).optional(),
+    expectedCtc: z.number().min(0).max(500).optional(),
   }),
   resumeS3Key: z.string().min(1).max(500),
 });

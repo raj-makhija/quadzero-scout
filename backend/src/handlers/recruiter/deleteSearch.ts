@@ -1,10 +1,10 @@
-import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
-import { v4 as uuidv4 } from 'uuid';
+import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { deleteSavedSearch } from '../../lib/dynamodb.js';
+import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 
-export async function handler(
-  event: APIGatewayProxyEventV2
+async function handleRequest(
+  event: AuthenticatedEvent
 ): Promise<APIGatewayProxyResultV2> {
   try {
     // Get search ID from path parameters
@@ -14,9 +14,7 @@ export async function handler(
       return error(ErrorCodes.VALIDATION_ERROR, 'Search ID is required', 400);
     }
 
-    // Extract recruiter ID from JWT (in production)
-    const recruiterId = (event.requestContext as { authorizer?: { jwt?: { claims?: { sub?: string } } } })
-      ?.authorizer?.jwt?.claims?.sub || `recruiter_${uuidv4()}`;
+    const recruiterId = event.auth.userId;
 
     await deleteSavedSearch(recruiterId, searchId);
 
@@ -31,3 +29,5 @@ export async function handler(
     );
   }
 }
+
+export const handler = withAuth(['recruiter'], handleRequest);

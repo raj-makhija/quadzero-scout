@@ -12,6 +12,9 @@ interface Config {
     resumesBucket: string;
     presignedUrlExpiry: number;
   };
+  auth: {
+    nextAuthSecret: string;
+  };
   llm: {
     provider: LLMProvider;
     openaiApiKey: string;
@@ -44,6 +47,9 @@ export const config: Config = {
   s3: {
     resumesBucket: getEnvVar('S3_BUCKET_RESUMES', 'quadzero-scout-resumes-dev'),
     presignedUrlExpiry: 300, // 5 minutes
+  },
+  auth: {
+    nextAuthSecret: getEnvVar('NEXTAUTH_SECRET', ''),
   },
   llm: {
     provider: (getEnvVar('LLM_PROVIDER', 'claude') as LLMProvider),
