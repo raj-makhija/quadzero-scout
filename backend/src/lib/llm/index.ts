@@ -7,6 +7,7 @@ import { GeminiProvider } from './gemini.js';
 import { LLMResumeOutputSchema, LLMJDOutputSchema } from '../../types/index.js';
 import type { LLMResumeOutput, LLMJDOutput } from '../../types/index.js';
 import { convertToLpa, type RateUnit } from '../ctcConversion.js';
+import { getActivePrompt } from '../dynamodb.js';
 
 // Singleton instances
 let llmProvider: BaseLLMProvider | null = null;
@@ -33,8 +34,8 @@ export function getLLMProvider(): BaseLLMProvider {
   return llmProvider;
 }
 
-// Resume parsing prompt
-const RESUME_PARSER_SYSTEM_PROMPT = `You are an expert resume parser. Your task is to extract structured information from resume text.
+// Fallback prompts (used if database is unavailable)
+const FALLBACK_RESUME_PARSER_PROMPT = `You are an expert resume parser. Your task is to extract structured information from resume text.
 
 You MUST respond with valid JSON matching this exact schema:
 {
@@ -65,8 +66,7 @@ Rules:
 5. ONLY output valid JSON, no additional text
 6. For CTC values, always convert to LPA (Lakhs Per Annum). If given as monthly, multiply by 12. If given in absolute rupees, divide by 100000. Round to 2 decimal places`;
 
-// JD parsing prompt
-const JD_PARSER_SYSTEM_PROMPT = `You are an expert job description parser. Your task is to extract search criteria from job descriptions.
+const FALLBACK_JD_PARSER_PROMPT = `You are an expert job description parser. Your task is to extract search criteria from job descriptions.
 
 You MUST respond with valid JSON matching this exact schema:
 {
@@ -92,14 +92,46 @@ Rules:
 5. ONLY output valid JSON, no additional text
 6. For rate/budget/cost: extract the numeric value and its unit separately. Look for phrases like "budget", "rate", "CTC", "compensation", "salary range". Common patterns: "$X/hr", "Rs.X/hour", "X LPM", "X LPA", "X lakhs per month"`;
 
+// Prompt cache with TTL
+const promptCache = new Map<string, { content: string; fetchedAt: number }>();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+const FALLBACK_PROMPTS: Record<string, string> = {
+  resume_parser: FALLBACK_RESUME_PARSER_PROMPT,
+  jd_parser: FALLBACK_JD_PARSER_PROMPT,
+};
+
+async function getPromptContent(promptKey: string): Promise<string> {
+  // Check cache first
+  const cached = promptCache.get(promptKey);
+  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
+    return cached.content;
+  }
+
+  // Fetch from database
+  try {
+    const prompt = await getActivePrompt(promptKey);
+    if (prompt) {
+      promptCache.set(promptKey, { content: prompt.content, fetchedAt: Date.now() });
+      return prompt.content;
+    }
+  } catch (err) {
+    console.warn(`Failed to fetch prompt ${promptKey} from DB, using fallback:`, err);
+  }
+
+  // Return fallback
+  return FALLBACK_PROMPTS[promptKey] || '';
+}
+
 export async function parseResume(resumeText: string): Promise<{
   output: LLMResumeOutput;
   confidence: number;
 }> {
   const provider = getLLMProvider();
+  const systemPrompt = await getPromptContent('resume_parser');
 
   const messages: LLMMessage[] = [
-    { role: 'system', content: RESUME_PARSER_SYSTEM_PROMPT },
+    { role: 'system', content: systemPrompt },
     { role: 'user', content: `Parse this resume:\n\n${resumeText}` },
   ];
 
@@ -144,13 +176,14 @@ export async function parseJobDescription(jdText: string, jobTitle?: string): Pr
   suggestions: string[];
 }> {
   const provider = getLLMProvider();
+  const systemPrompt = await getPromptContent('jd_parser');
 
   const userPrompt = jobTitle
     ? `Job Title: ${jobTitle}\n\nJob Description:\n${jdText}`
     : `Job Description:\n${jdText}`;
 
   const messages: LLMMessage[] = [
-    { role: 'system', content: JD_PARSER_SYSTEM_PROMPT },
+    { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt },
   ];
 

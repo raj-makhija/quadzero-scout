@@ -7,6 +7,7 @@ interface Config {
     talentProfilesTable: string;
     usersTable: string;
     savedSearchesTable: string;
+    promptsTable: string;
   };
   s3: {
     resumesBucket: string;
@@ -43,6 +44,7 @@ export const config: Config = {
     talentProfilesTable: getEnvVar('DYNAMODB_TABLE_TALENT_PROFILES', 'TalentProfiles-dev'),
     usersTable: getEnvVar('DYNAMODB_TABLE_USERS', 'Users-dev'),
     savedSearchesTable: getEnvVar('DYNAMODB_TABLE_SAVED_SEARCHES', 'SavedSearches-dev'),
+    promptsTable: getEnvVar('DYNAMODB_TABLE_PROMPTS', 'Prompts-dev'),
   },
   s3: {
     resumesBucket: getEnvVar('S3_BUCKET_RESUMES', 'quadzero-scout-resumes-dev'),

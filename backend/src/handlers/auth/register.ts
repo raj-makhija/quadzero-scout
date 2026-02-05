@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcryptjs';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { getUserByEmail, saveUser } from '../../lib/dynamodb.js';
-import type { User, UserRole } from '../../types/index.js';
+import type { User, UserRole, UserStatus } from '../../types/index.js';
 
 const VALID_ROLES: UserRole[] = ['candidate', 'recruiter'];
 const SALT_ROUNDS = 10;
@@ -57,12 +57,16 @@ export async function handler(
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
     const now = new Date().toISOString();
 
+    // Recruiters require admin approval, candidates are approved immediately
+    const status: UserStatus = role === 'recruiter' ? 'pending' : 'approved';
+
     const user: User = {
       id: `user_${uuidv4()}`,
       email: email.toLowerCase(),
       name: name.trim(),
       passwordHash,
       role: role as UserRole,
+      status,
       provider: 'credentials',
       emailVerified: false,
       createdAt: now,
@@ -76,6 +80,7 @@ export async function handler(
       email: user.email,
       name: user.name,
       role: user.role,
+      status: user.status,
     }, 201);
   } catch (err) {
     console.error('Error registering user:', err);

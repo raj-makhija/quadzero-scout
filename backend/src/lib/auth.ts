@@ -35,13 +35,15 @@ function getJwtSecret(): string {
 }
 
 // Derive encryption key using HKDF, matching NextAuth's internal key derivation
-let cachedEncryptionKey: CryptoKey | null = null;
+// Use globalThis.crypto.subtle.CryptoKey type - stored as unknown for TS compatibility
+let cachedEncryptionKey: unknown = null;
 let cachedSecretValue: string | null = null;
 
 async function getDerivedEncryptionKey(secret: string): Promise<Uint8Array> {
   // Cache the derived key to avoid repeated HKDF on every request
   if (cachedEncryptionKey && cachedSecretValue === secret) {
-    const exported = await crypto.subtle.exportKey('raw', cachedEncryptionKey);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const exported = await crypto.subtle.exportKey('raw', cachedEncryptionKey as any);
     return new Uint8Array(exported);
   }
 
@@ -164,6 +166,25 @@ export function withAuth(
         `Access denied. Required role: ${allowedRoles.join(' or ')}`,
         403
       );
+    }
+
+    // Check recruiter approval status
+    if (userRole === 'recruiter') {
+      try {
+        const user = await getUserById(tokenPayload.id);
+        if (!user) {
+          return error(ErrorCodes.UNAUTHORIZED, 'User not found', 401);
+        }
+        if (user.status !== 'approved') {
+          const message = user.status === 'pending'
+            ? 'Your account is pending approval. Please wait for admin approval.'
+            : 'Your account has been rejected. Please contact support.';
+          return error(ErrorCodes.FORBIDDEN, message, 403);
+        }
+      } catch (err) {
+        console.error('Recruiter status check failed:', err);
+        return error(ErrorCodes.INTERNAL_ERROR, 'Failed to verify account status', 500);
+      }
     }
 
     // Attach auth context and call handler
