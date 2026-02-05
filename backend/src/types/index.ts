@@ -47,7 +47,7 @@ export const CandidateProfileSchema = z.object({
   location: z.string().max(200).optional(),
   primarySkills: z.array(z.string()).min(1).max(20),
   primarySkillYears: z.record(z.string(), z.number().min(0).max(50)),
-  secondarySkills: z.array(z.string()).max(30).optional().default([]),
+  secondarySkills: z.array(z.string()).max(50).optional().default([]),
   totalExperience: z.number().min(0).max(50),
   seniority: SeniorityEnum,
   availability: AvailabilityEnum,
