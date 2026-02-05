@@ -239,6 +239,20 @@ export function withOptionalAuth(
           }
         }
 
+        // For recruiters, check approval status - treat unapproved recruiters as unauthenticated
+        if (userRole === 'recruiter') {
+          try {
+            const user = await getUserById(tokenPayload.id);
+            if (!user || user.status !== 'approved') {
+              // Unapproved recruiter - proceed without auth (like unauthenticated user)
+              return handler(optionalEvent);
+            }
+          } catch (err) {
+            console.error('Recruiter status check failed in optional auth:', err);
+            return handler(optionalEvent);
+          }
+        }
+
         optionalEvent.auth = {
           userId: tokenPayload.id,
           email: tokenPayload.email,
