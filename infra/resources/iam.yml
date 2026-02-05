@@ -17,6 +17,8 @@ dynamoDbPolicy:
     - !Sub '${UsersTable.Arn}/index/*'
     - !GetAtt SavedSearchesTable.Arn
     - !Sub '${SavedSearchesTable.Arn}/index/*'
+    - !GetAtt PromptsTable.Arn
+    - !Sub '${PromptsTable.Arn}/index/*'
 
 # S3 Policy
 s3Policy:
