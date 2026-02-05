@@ -99,7 +99,7 @@ export function FormTextarea({ hasError, isValid, className, ...props }: FormTex
   return (
     <textarea
       className={cn(
-        'input min-h-[80px] pr-10',
+        'input min-h-[120px] pr-10',
         hasError && 'border-red-500 focus:ring-red-500 dark:border-red-400',
         isValid && 'border-green-500 focus:ring-green-500 dark:border-green-400',
         className

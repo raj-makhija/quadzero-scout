@@ -7,6 +7,9 @@ node_modules/
 !.env.example
 !.env.local.example
 
+# Build outputs
+backend/dist/
+
 # Serverless artifacts
 .serverless/
 .esbuild/
