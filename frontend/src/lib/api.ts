@@ -13,6 +13,7 @@ interface ApiResponse<T> {
 class ApiClient {
   private baseUrl: string;
   private token: string | null = null;
+  private tokenFetchPromise: Promise<void> | null = null;
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl;
@@ -22,10 +23,41 @@ class ApiClient {
     this.token = token;
   }
 
+  private async ensureToken(): Promise<void> {
+    if (this.token) return;
+    if (typeof window === 'undefined') return;
+
+    // Deduplicate concurrent token fetches
+    if (this.tokenFetchPromise) {
+      await this.tokenFetchPromise;
+      return;
+    }
+
+    this.tokenFetchPromise = (async () => {
+      try {
+        const res = await fetch('/api/auth/token');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.token) {
+            this.token = data.token;
+          }
+        }
+      } catch {
+        // Token fetch failed; requests will proceed without auth
+      } finally {
+        this.tokenFetchPromise = null;
+      }
+    })();
+
+    await this.tokenFetchPromise;
+  }
+
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
+    await this.ensureToken();
+
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
       ...options.headers,

@@ -1,11 +1,12 @@
-import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
+import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, ParseJdRequestSchema } from '../../lib/validation.js';
 import { parseJobDescription } from '../../lib/llm/index.js';
+import { withOptionalAuth, type OptionalAuthEvent } from '../../lib/auth.js';
 import type { ParseJdResponse } from '../../types/index.js';
 
-export async function handler(
-  event: APIGatewayProxyEventV2
+async function handleRequest(
+  event: OptionalAuthEvent
 ): Promise<APIGatewayProxyResultV2> {
   try {
     // Parse request body
@@ -65,3 +66,5 @@ export async function handler(
     );
   }
 }
+
+export const handler = withOptionalAuth(handleRequest);

@@ -10,3 +10,5 @@ process.env.LLM_PROVIDER = 'claude';
 process.env.ANTHROPIC_API_KEY = 'test-key';
 process.env.OPENAI_API_KEY = 'test-key';
 process.env.IS_OFFLINE = 'true';
+process.env.SKIP_AUTH = 'true';
+process.env.NEXTAUTH_SECRET = 'test-secret-key-for-unit-tests';

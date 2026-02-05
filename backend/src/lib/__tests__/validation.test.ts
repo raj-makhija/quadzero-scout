@@ -38,12 +38,12 @@ describe('UploadUrlRequestSchema', () => {
   });
 
   // TC-UPLOAD-003
-  it('accepts valid DOC upload request', () => {
+  it('rejects DOC upload request (unsupported format)', () => {
     const result = validate(UploadUrlRequestSchema, {
       fileName: 'resume.doc',
       contentType: 'application/msword',
     });
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
   });
 
   // TC-UPLOAD-004

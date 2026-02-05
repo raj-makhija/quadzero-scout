@@ -192,7 +192,7 @@ export default function UploadPage() {
                 <p className="text-sm text-gray-500 dark:text-gray-400">or click to browse</p>
                 <input
                   type="file"
-                  accept=".pdf,.doc,.docx"
+                  accept=".pdf,.docx"
                   onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />
@@ -201,7 +201,7 @@ export default function UploadPage() {
           </div>
 
           <p className="mt-4 text-sm text-gray-500 dark:text-gray-400 text-center">
-            Supported formats: PDF, DOC, DOCX (max 10MB)
+            Supported formats: PDF, DOCX (max 10MB)
           </p>
 
           {/* Error Message */}
