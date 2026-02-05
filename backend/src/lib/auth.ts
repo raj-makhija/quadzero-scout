@@ -142,21 +142,17 @@ export function withAuth(
       return error(ErrorCodes.UNAUTHORIZED, 'Invalid or expired token', 401);
     }
 
-    // Determine user role from token or DB fallback
+    // Always fetch current role from database to ensure role changes take effect immediately
     let userRole: UserRole;
-    if (tokenPayload.role && ['candidate', 'recruiter', 'admin'].includes(tokenPayload.role)) {
-      userRole = tokenPayload.role as UserRole;
-    } else {
-      try {
-        const user = await getUserById(tokenPayload.id);
-        if (!user) {
-          return error(ErrorCodes.UNAUTHORIZED, 'User not found', 401);
-        }
-        userRole = user.role;
-      } catch (err) {
-        console.error('User lookup failed:', err);
-        return error(ErrorCodes.INTERNAL_ERROR, 'Failed to verify user', 500);
+    try {
+      const user = await getUserById(tokenPayload.id);
+      if (!user) {
+        return error(ErrorCodes.UNAUTHORIZED, 'User not found', 401);
       }
+      userRole = user.role;
+    } catch (err) {
+      console.error('User lookup failed:', err);
+      return error(ErrorCodes.INTERNAL_ERROR, 'Failed to verify user', 500);
     }
 
     // Admin bypasses all role checks
