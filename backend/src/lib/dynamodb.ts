@@ -9,7 +9,7 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { config } from './config.js';
-import type { CandidateItem, SavedSearch, User, SearchCriteria } from '../types/index.js';
+import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem } from '../types/index.js';
 
 const client = new DynamoDBClient({ region: config.region });
 const docClient = DynamoDBDocumentClient.from(client, {
@@ -225,6 +225,129 @@ export async function updateSavedSearchStats(
         ':lastRun': new Date().toISOString(),
         ':count': resultCount,
       },
+    })
+  );
+}
+
+// Admin: Get users by status (optionally filtered by role)
+export async function getUsersByStatus(
+  status: UserStatus,
+  role?: UserRole
+): Promise<User[]> {
+  // DynamoDB scan with filter (no GSI for status yet)
+  const filterExpressions: string[] = ['#status = :status'];
+  const expressionAttributeNames: Record<string, string> = { '#status': 'status' };
+  const expressionAttributeValues: Record<string, unknown> = { ':status': status };
+
+  if (role) {
+    filterExpressions.push('#role = :role');
+    expressionAttributeNames['#role'] = 'role';
+    expressionAttributeValues[':role'] = role;
+  }
+
+  const result = await docClient.send(
+    new ScanCommand({
+      TableName: config.dynamodb.usersTable,
+      FilterExpression: filterExpressions.join(' AND '),
+      ExpressionAttributeNames: expressionAttributeNames,
+      ExpressionAttributeValues: expressionAttributeValues,
+    })
+  );
+
+  return (result.Items || []) as User[];
+}
+
+// Admin: Update user status
+export async function updateUserStatus(
+  userId: string,
+  status: UserStatus,
+  adminId: string
+): Promise<void> {
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.usersTable,
+      Key: { id: userId },
+      UpdateExpression: 'SET #status = :status, statusUpdatedAt = :updatedAt, statusUpdatedBy = :updatedBy',
+      ExpressionAttributeNames: { '#status': 'status' },
+      ExpressionAttributeValues: {
+        ':status': status,
+        ':updatedAt': new Date().toISOString(),
+        ':updatedBy': adminId,
+      },
+    })
+  );
+}
+
+// Prompts Operations
+export async function getActivePrompt(promptKey: string): Promise<PromptItem | null> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: config.dynamodb.promptsTable,
+      KeyConditionExpression: 'prompt_key = :key',
+      FilterExpression: 'is_active = :active',
+      ExpressionAttributeValues: {
+        ':key': promptKey,
+        ':active': true,
+      },
+      ScanIndexForward: false, // Latest version first
+      Limit: 1,
+    })
+  );
+  return (result.Items?.[0] as PromptItem) || null;
+}
+
+export async function getPromptVersions(promptKey: string): Promise<PromptItem[]> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: config.dynamodb.promptsTable,
+      KeyConditionExpression: 'prompt_key = :key',
+      ExpressionAttributeValues: { ':key': promptKey },
+      ScanIndexForward: false, // Latest version first
+    })
+  );
+  return (result.Items || []) as PromptItem[];
+}
+
+export async function getAllPromptKeys(): Promise<string[]> {
+  const result = await docClient.send(
+    new ScanCommand({
+      TableName: config.dynamodb.promptsTable,
+      ProjectionExpression: 'prompt_key',
+    })
+  );
+  // Deduplicate prompt keys
+  const keys = new Set<string>();
+  (result.Items || []).forEach(item => keys.add(item.prompt_key as string));
+  return Array.from(keys);
+}
+
+export async function getNextPromptVersion(promptKey: string): Promise<number> {
+  const versions = await getPromptVersions(promptKey);
+  if (versions.length === 0) return 1;
+  return Math.max(...versions.map(v => v.version)) + 1;
+}
+
+export async function savePromptVersion(prompt: PromptItem): Promise<void> {
+  // Deactivate all existing versions for this prompt key
+  const existingVersions = await getPromptVersions(prompt.prompt_key);
+  for (const existing of existingVersions) {
+    if (existing.is_active) {
+      await docClient.send(
+        new UpdateCommand({
+          TableName: config.dynamodb.promptsTable,
+          Key: { prompt_key: existing.prompt_key, version: existing.version },
+          UpdateExpression: 'SET is_active = :inactive',
+          ExpressionAttributeValues: { ':inactive': false },
+        })
+      );
+    }
+  }
+
+  // Save new version as active
+  await docClient.send(
+    new PutCommand({
+      TableName: config.dynamodb.promptsTable,
+      Item: prompt,
     })
   );
 }

@@ -202,6 +202,48 @@ class ApiClient {
       method: 'DELETE',
     });
   }
+
+  // Admin endpoints
+  async listPendingRecruiters() {
+    return this.request<{
+      recruiters: PendingRecruiter[];
+      count: number;
+    }>('/admin/recruiters/pending');
+  }
+
+  async approveRejectUser(userId: string, action: 'approve' | 'reject') {
+    return this.request<{
+      userId: string;
+      status: UserStatus;
+      statusUpdatedAt: string;
+    }>('/admin/users/status', {
+      method: 'POST',
+      body: JSON.stringify({ userId, action }),
+    });
+  }
+
+  async listPrompts() {
+    return this.request<{
+      prompts: PromptSummary[];
+    }>('/admin/prompts');
+  }
+
+  async getPromptVersions(promptKey: string) {
+    return this.request<{
+      promptKey: string;
+      versions: PromptVersion[];
+    }>(`/admin/prompts/${promptKey}/versions`);
+  }
+
+  async updatePrompt(promptKey: string, content: string, description?: string) {
+    return this.request<{
+      promptKey: string;
+      version: number;
+    }>('/admin/prompts', {
+      method: 'PUT',
+      body: JSON.stringify({ promptKey, content, description }),
+    });
+  }
 }
 
 export const api = new ApiClient(API_URL);
@@ -311,4 +353,32 @@ export interface SavedSearch {
   lastRun?: string;
   resultCount?: number;
   createdAt: string;
+}
+
+// Admin types
+export type UserStatus = 'pending' | 'approved' | 'rejected';
+
+export interface PendingRecruiter {
+  id: string;
+  email: string;
+  role: string;
+  status: UserStatus;
+  createdAt: string;
+}
+
+export interface PromptSummary {
+  promptKey: string;
+  activeVersion: number;
+  lastUpdated: string;
+  description?: string;
+}
+
+export interface PromptVersion {
+  promptKey: string;
+  version: number;
+  content: string;
+  isActive: boolean;
+  createdAt: string;
+  createdBy: string;
+  description?: string;
 }
