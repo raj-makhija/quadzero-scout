@@ -201,8 +201,37 @@ async function handleRequest(
       encodedLastKey = Buffer.from(JSON.stringify(searchResult.lastKey)).toString('base64');
     }
 
+    // Check if user is authenticated - if not, redact sensitive data
+    const isAuthenticated = !!event.auth;
+
+    const responseCandidates = isAuthenticated
+      ? paginatedCandidates
+      : paginatedCandidates.map((candidate, index) => ({
+          // Redact PII and sensitive details for unauthenticated users
+          candidateId: candidate.candidateId,
+          fullName: `Candidate #${index + 1}`, // Hide real name
+          location: undefined, // Hide location
+          primarySkills: [], // Hide skills
+          totalExperience: candidate.totalExperience,
+          seniority: candidate.seniority,
+          availability: candidate.availability,
+          currentCtc: undefined, // Hide CTC
+          expectedCtc: undefined, // Hide CTC
+          matchScore: candidate.matchScore,
+          matchDetails: {
+            // Hide specific skill matches
+            mustHaveMatched: [],
+            mustHaveMissing: [],
+            goodToHaveMatched: [],
+            experienceMatch: candidate.matchDetails.experienceMatch,
+            seniorityMatch: candidate.matchDetails.seniorityMatch,
+            ctcMatch: candidate.matchDetails.ctcMatch,
+          },
+          lastUpdated: candidate.lastUpdated,
+        }));
+
     const response: SearchResponse = {
-      candidates: paginatedCandidates,
+      candidates: responseCandidates,
       pagination: {
         count: paginatedCandidates.length,
         hasMore: !!searchResult.lastKey || scoredCandidates.length > limit,

@@ -79,6 +79,30 @@ Resources:
         - Key: Project
           Value: quadzero-scout
 
+  # Prompts Table (Admin Interface)
+  PromptsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: ${self:custom.promptsTable}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: prompt_key
+          AttributeType: S
+        - AttributeName: version
+          AttributeType: N
+      KeySchema:
+        - AttributeName: prompt_key
+          KeyType: HASH
+        - AttributeName: version
+          KeyType: RANGE
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Project
+          Value: quadzero-scout
+
   # SavedSearches Table (Phase 2)
   SavedSearchesTable:
     Type: AWS::DynamoDB::Table
@@ -121,3 +145,9 @@ Outputs:
     Value: !GetAtt SavedSearchesTable.Arn
     Export:
       Name: ${self:provider.stage}-SavedSearchesTableArn
+
+  PromptsTableArn:
+    Description: Prompts table ARN
+    Value: !GetAtt PromptsTable.Arn
+    Export:
+      Name: ${self:provider.stage}-PromptsTableArn

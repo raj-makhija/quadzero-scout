@@ -22,6 +22,7 @@ provider:
     DYNAMODB_TABLE_TALENT_PROFILES: ${self:custom.talentProfilesTable}
     DYNAMODB_TABLE_USERS: ${self:custom.usersTable}
     DYNAMODB_TABLE_SAVED_SEARCHES: ${self:custom.savedSearchesTable}
+    DYNAMODB_TABLE_PROMPTS: ${self:custom.promptsTable}
     S3_BUCKET_RESUMES: ${self:custom.resumesBucket}
     LLM_PROVIDER: ${ssm:/quadzero-scout/${self:provider.stage}/LLM_PROVIDER, env:LLM_PROVIDER, 'claude'}
     ANTHROPIC_API_KEY: ${ssm:/quadzero-scout/${self:provider.stage}/ANTHROPIC_API_KEY, env:ANTHROPIC_API_KEY, ''}
@@ -74,6 +75,7 @@ custom:
   talentProfilesTable: TalentProfiles-${self:provider.stage}
   usersTable: Users-${self:provider.stage}
   savedSearchesTable: SavedSearches-${self:provider.stage}
+  promptsTable: Prompts-${self:provider.stage}
   resumesBucket: quadzero-scout-resumes-${self:provider.stage}
 
   dotenv:
@@ -207,6 +209,42 @@ functions:
       - httpApi:
           path: /recruiter/search/{searchId}
           method: DELETE
+
+  # Admin Endpoints
+  adminListPendingRecruiters:
+    handler: src/handlers/admin/listPendingRecruiters.handler
+    events:
+      - httpApi:
+          path: /admin/recruiters/pending
+          method: GET
+
+  adminApproveRejectUser:
+    handler: src/handlers/admin/approveRejectUser.handler
+    events:
+      - httpApi:
+          path: /admin/users/status
+          method: POST
+
+  adminListPrompts:
+    handler: src/handlers/admin/listPrompts.handler
+    events:
+      - httpApi:
+          path: /admin/prompts
+          method: GET
+
+  adminGetPromptVersions:
+    handler: src/handlers/admin/getPromptVersions.handler
+    events:
+      - httpApi:
+          path: /admin/prompts/{promptKey}/versions
+          method: GET
+
+  adminUpdatePrompt:
+    handler: src/handlers/admin/updatePrompt.handler
+    events:
+      - httpApi:
+          path: /admin/prompts
+          method: PUT
 
 resources:
   - ${file(resources/dynamodb.yml)}

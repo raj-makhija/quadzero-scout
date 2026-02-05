@@ -26,6 +26,9 @@ export type Availability = z.infer<typeof AvailabilityEnum>;
 export const UserRoleEnum = z.enum(['candidate', 'recruiter', 'admin']);
 export type UserRole = z.infer<typeof UserRoleEnum>;
 
+export const UserStatusEnum = z.enum(['pending', 'approved', 'rejected']);
+export type UserStatus = z.infer<typeof UserStatusEnum>;
+
 export const LLMProviderEnum = z.enum(['claude', 'openai', 'openrouter', 'gemini']);
 export type LLMProvider = z.infer<typeof LLMProviderEnum>;
 
@@ -257,10 +260,24 @@ export interface User {
   name?: string;
   passwordHash?: string;
   role: UserRole;
+  status: UserStatus;
   provider: 'credentials' | 'google';
   providerAccountId?: string;
   emailVerified?: boolean;
   image?: string;
   createdAt: string;
   lastLogin?: string;
+  statusUpdatedAt?: string;
+  statusUpdatedBy?: string;
+}
+
+// Prompt Item (stored in DynamoDB Prompts table)
+export interface PromptItem {
+  prompt_key: string;
+  version: number;
+  content: string;
+  is_active: boolean;
+  created_at: string;
+  created_by: string;
+  description?: string;
 }
