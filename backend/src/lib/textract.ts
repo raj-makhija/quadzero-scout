@@ -2,6 +2,8 @@ import {
   TextractClient,
   DetectDocumentTextCommand,
   AnalyzeDocumentCommand,
+  StartDocumentTextDetectionCommand,
+  GetDocumentTextDetectionCommand,
   Block,
 } from '@aws-sdk/client-textract';
 import mammoth from 'mammoth';
@@ -9,6 +11,9 @@ import { config } from './config.js';
 import { getObject } from './s3.js';
 
 const textractClient = new TextractClient({ region: config.region });
+
+const ASYNC_POLL_INTERVAL_MS = 1000;
+const ASYNC_MAX_WAIT_MS = 50000;
 
 export interface ExtractedText {
   text: string;
@@ -25,24 +30,8 @@ async function extractTextFromDocx(documentBytes: Buffer): Promise<ExtractedText
   };
 }
 
-async function extractTextWithTextract(s3Key: string): Promise<ExtractedText> {
-  const command = new DetectDocumentTextCommand({
-    Document: {
-      S3Object: {
-        Bucket: config.s3.resumesBucket,
-        Name: s3Key,
-      },
-    },
-  });
-
-  const response = await textractClient.send(command);
-
-  if (!response.Blocks) {
-    throw new Error('No text blocks returned from Textract');
-  }
-
-  // Extract text from LINE blocks
-  const textBlocks = response.Blocks.filter(
+function parseTextractBlocks(blocks: Block[]): ExtractedText {
+  const textBlocks = blocks.filter(
     (block: Block) => block.BlockType === 'LINE' && block.Text
   );
 
@@ -50,7 +39,6 @@ async function extractTextWithTextract(s3Key: string): Promise<ExtractedText> {
     .map((block: Block) => block.Text)
     .join('\n');
 
-  // Calculate average confidence
   const confidences = textBlocks
     .filter((block: Block) => block.Confidence !== undefined)
     .map((block: Block) => block.Confidence as number);
@@ -59,8 +47,7 @@ async function extractTextWithTextract(s3Key: string): Promise<ExtractedText> {
     ? confidences.reduce((a, b) => a + b, 0) / confidences.length / 100
     : 0;
 
-  // Count pages
-  const pageBlocks = response.Blocks.filter(
+  const pageBlocks = blocks.filter(
     (block: Block) => block.BlockType === 'PAGE'
   );
 
@@ -69,6 +56,72 @@ async function extractTextWithTextract(s3Key: string): Promise<ExtractedText> {
     confidence: avgConfidence,
     pageCount: pageBlocks.length || 1,
   };
+}
+
+async function extractTextAsync(s3Key: string): Promise<ExtractedText> {
+  const startCommand = new StartDocumentTextDetectionCommand({
+    DocumentLocation: {
+      S3Object: {
+        Bucket: config.s3.resumesBucket,
+        Name: s3Key,
+      },
+    },
+  });
+
+  const startResponse = await textractClient.send(startCommand);
+  const jobId = startResponse.JobId;
+
+  if (!jobId) {
+    throw new Error('Textract did not return a JobId');
+  }
+
+  const startTime = Date.now();
+  while (Date.now() - startTime < ASYNC_MAX_WAIT_MS) {
+    await new Promise((resolve) => setTimeout(resolve, ASYNC_POLL_INTERVAL_MS));
+
+    const getCommand = new GetDocumentTextDetectionCommand({ JobId: jobId });
+    const getResponse = await textractClient.send(getCommand);
+
+    if (getResponse.JobStatus === 'SUCCEEDED') {
+      if (!getResponse.Blocks) {
+        throw new Error('No text blocks returned from Textract');
+      }
+      return parseTextractBlocks(getResponse.Blocks);
+    }
+
+    if (getResponse.JobStatus === 'FAILED') {
+      throw new Error(`Textract job failed: ${getResponse.StatusMessage}`);
+    }
+  }
+
+  throw new Error('Textract async job timed out');
+}
+
+async function extractTextWithTextract(s3Key: string): Promise<ExtractedText> {
+  try {
+    const command = new DetectDocumentTextCommand({
+      Document: {
+        S3Object: {
+          Bucket: config.s3.resumesBucket,
+          Name: s3Key,
+        },
+      },
+    });
+
+    const response = await textractClient.send(command);
+
+    if (!response.Blocks) {
+      throw new Error('No text blocks returned from Textract');
+    }
+
+    return parseTextractBlocks(response.Blocks);
+  } catch (err) {
+    if ((err as { __type?: string }).__type === 'UnsupportedDocumentException') {
+      console.log('Synchronous Textract unsupported, falling back to async:', s3Key);
+      return extractTextAsync(s3Key);
+    }
+    throw err;
+  }
 }
 
 export async function extractTextFromResume(s3Key: string): Promise<ExtractedText> {
