@@ -18,6 +18,14 @@ export type AuthenticatedHandler = (
   event: AuthenticatedEvent
 ) => Promise<APIGatewayProxyResultV2>;
 
+export type OptionalAuthEvent = APIGatewayProxyEventV2 & {
+  auth?: AuthContext;
+};
+
+export type OptionalAuthHandler = (
+  event: OptionalAuthEvent
+) => Promise<APIGatewayProxyResultV2>;
+
 function getJwtSecret(): string {
   const secret = process.env.NEXTAUTH_SECRET;
   if (!secret) {
@@ -167,5 +175,59 @@ export function withAuth(
     };
 
     return handler(authenticatedEvent);
+  };
+}
+
+export function withOptionalAuth(
+  handler: OptionalAuthHandler
+): (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2> {
+  return async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> => {
+    const optionalEvent = event as OptionalAuthEvent;
+
+    // Skip auth in local offline dev when explicitly opted out
+    if (process.env.IS_OFFLINE === 'true' && process.env.SKIP_AUTH === 'true') {
+      optionalEvent.auth = {
+        userId: 'dev-user-1',
+        email: 'dev@localhost',
+        role: (event.headers?.['x-dev-role'] as UserRole) || 'candidate',
+      };
+      return handler(optionalEvent);
+    }
+
+    // Try to extract and validate token; proceed without auth on any failure
+    const token = extractToken(event);
+    if (token) {
+      try {
+        const secret = getJwtSecret();
+        const tokenPayload = await decryptNextAuthToken(token, secret);
+
+        let userRole: UserRole;
+        if (tokenPayload.role && ['candidate', 'recruiter', 'admin'].includes(tokenPayload.role)) {
+          userRole = tokenPayload.role as UserRole;
+        } else {
+          try {
+            const user = await getUserById(tokenPayload.id);
+            if (user) {
+              userRole = user.role;
+            } else {
+              return handler(optionalEvent);
+            }
+          } catch (err) {
+            console.error('User lookup failed in optional auth:', err);
+            return handler(optionalEvent);
+          }
+        }
+
+        optionalEvent.auth = {
+          userId: tokenPayload.id,
+          email: tokenPayload.email,
+          role: userRole,
+        };
+      } catch (err) {
+        console.warn('Optional auth token validation failed:', (err as Error).message);
+      }
+    }
+
+    return handler(optionalEvent);
   };
 }

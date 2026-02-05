@@ -4,7 +4,7 @@ import { validate, formatZodErrors, SearchRequestSchema } from '../../lib/valida
 import { searchCandidates } from '../../lib/dynamodb.js';
 import { normalizeSkills, calculateSkillMatch } from '../../lib/skillNormalizer.js';
 import { isCandidateWithinBudget } from '../../lib/ctcConversion.js';
-import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import { withOptionalAuth, type OptionalAuthEvent } from '../../lib/auth.js';
 import type { CandidateItem, CandidateSearchResult, SearchResponse, SearchCriteria } from '../../types/index.js';
 
 function calculateMatchScore(
@@ -77,7 +77,7 @@ function calculateMatchScore(
 }
 
 async function handleRequest(
-  event: AuthenticatedEvent
+  event: OptionalAuthEvent
 ): Promise<APIGatewayProxyResultV2> {
   try {
     // Parse request body
@@ -223,4 +223,4 @@ async function handleRequest(
   }
 }
 
-export const handler = withAuth(['recruiter'], handleRequest);
+export const handler = withOptionalAuth(handleRequest);

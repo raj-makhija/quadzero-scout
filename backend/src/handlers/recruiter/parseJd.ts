@@ -2,11 +2,11 @@ import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, ParseJdRequestSchema } from '../../lib/validation.js';
 import { parseJobDescription } from '../../lib/llm/index.js';
-import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import { withOptionalAuth, type OptionalAuthEvent } from '../../lib/auth.js';
 import type { ParseJdResponse } from '../../types/index.js';
 
 async function handleRequest(
-  event: AuthenticatedEvent
+  event: OptionalAuthEvent
 ): Promise<APIGatewayProxyResultV2> {
   try {
     // Parse request body
@@ -67,4 +67,4 @@ async function handleRequest(
   }
 }
 
-export const handler = withAuth(['recruiter'], handleRequest);
+export const handler = withOptionalAuth(handleRequest);

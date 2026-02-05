@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { EncryptJWT } from 'jose';
-import { withAuth, type AuthenticatedEvent } from '../auth.js';
+import { withAuth, withOptionalAuth, type AuthenticatedEvent, type OptionalAuthEvent } from '../auth.js';
 
 // ---------------------------------------------------------------------------
 // Mock dynamodb for user lookup fallback
@@ -354,5 +354,179 @@ describe('withAuth middleware', () => {
 
     expect(result.statusCode).toBe(200);
     expect(body.role).toBe('recruiter');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// withOptionalAuth tests
+// ---------------------------------------------------------------------------
+
+const optionalDummyHandler = async (event: OptionalAuthEvent): Promise<APIGatewayProxyResultV2> => ({
+  statusCode: 200,
+  body: JSON.stringify({
+    hasAuth: !!event.auth,
+    userId: event.auth?.userId ?? null,
+    email: event.auth?.email ?? null,
+    role: event.auth?.role ?? null,
+  }),
+});
+
+describe('withOptionalAuth middleware', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.NEXTAUTH_SECRET = TEST_SECRET;
+    process.env.SKIP_AUTH = undefined;
+    process.env.IS_OFFLINE = undefined;
+  });
+
+  afterEach(() => {
+    process.env.SKIP_AUTH = originalSkipAuth;
+    process.env.IS_OFFLINE = originalIsOffline;
+  });
+
+  it('proceeds without auth when no Authorization header is present', async () => {
+    const handler = withOptionalAuth(optionalDummyHandler);
+    const event = makeEvent();
+    const result = await handler(event);
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.hasAuth).toBe(false);
+    expect(body.userId).toBeNull();
+  });
+
+  it('proceeds without auth for malformed Authorization header', async () => {
+    const handler = withOptionalAuth(optionalDummyHandler);
+    const event = makeEvent({
+      headers: { authorization: 'Token some-value' },
+    });
+    const result = await handler(event);
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.hasAuth).toBe(false);
+  });
+
+  it('proceeds without auth for invalid/corrupted token', async () => {
+    const handler = withOptionalAuth(optionalDummyHandler);
+    const event = makeEvent({
+      headers: { authorization: 'Bearer invalid.token.here' },
+    });
+    const result = await handler(event);
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.hasAuth).toBe(false);
+  });
+
+  it('proceeds without auth when token encrypted with wrong secret', async () => {
+    const token = await createTestToken(
+      { id: 'user_1', email: 'test@example.com', role: 'candidate' },
+      'wrong-secret-key-that-does-not-match'
+    );
+    const handler = withOptionalAuth(optionalDummyHandler);
+    const event = makeEvent({
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const result = await handler(event);
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.hasAuth).toBe(false);
+  });
+
+  it('attaches auth context when valid token is provided', async () => {
+    const token = await createTestToken({
+      id: 'user_1',
+      email: 'recruiter@example.com',
+      role: 'recruiter',
+    });
+    const handler = withOptionalAuth(optionalDummyHandler);
+    const event = makeEvent({
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const result = await handler(event);
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.hasAuth).toBe(true);
+    expect(body.userId).toBe('user_1');
+    expect(body.email).toBe('recruiter@example.com');
+    expect(body.role).toBe('recruiter');
+  });
+
+  it('does not enforce role restrictions (any role passes)', async () => {
+    const token = await createTestToken({
+      id: 'user_1',
+      email: 'candidate@example.com',
+      role: 'candidate',
+    });
+    const handler = withOptionalAuth(optionalDummyHandler);
+    const event = makeEvent({
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const result = await handler(event);
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.hasAuth).toBe(true);
+    expect(body.role).toBe('candidate');
+  });
+
+  it('falls back to DB lookup when token has no role', async () => {
+    const token = await createTestToken({
+      id: 'user_3',
+      email: 'norole@example.com',
+    });
+    vi.mocked(getUserById).mockResolvedValueOnce({
+      id: 'user_3',
+      email: 'norole@example.com',
+      role: 'recruiter',
+      provider: 'credentials',
+      createdAt: '2024-01-01T00:00:00Z',
+    });
+
+    const handler = withOptionalAuth(optionalDummyHandler);
+    const event = makeEvent({
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const result = await handler(event);
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.hasAuth).toBe(true);
+    expect(body.role).toBe('recruiter');
+  });
+
+  it('proceeds without auth when token has no role and user not in DB', async () => {
+    const token = await createTestToken({
+      id: 'user_missing',
+      email: 'gone@example.com',
+    });
+    vi.mocked(getUserById).mockResolvedValueOnce(null);
+
+    const handler = withOptionalAuth(optionalDummyHandler);
+    const event = makeEvent({
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const result = await handler(event);
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.hasAuth).toBe(false);
+  });
+
+  it('uses dev bypass when IS_OFFLINE and SKIP_AUTH are set', async () => {
+    process.env.IS_OFFLINE = 'true';
+    process.env.SKIP_AUTH = 'true';
+
+    const handler = withOptionalAuth(optionalDummyHandler);
+    const event = makeEvent();
+    const result = await handler(event);
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.hasAuth).toBe(true);
+    expect(body.userId).toBe('dev-user-1');
   });
 });
