@@ -183,6 +183,8 @@ functions:
 
   recruiterResumeUrl:
     handler: src/handlers/recruiter/resumeUrl.handler
+    timeout: 60
+    memorySize: 1024
     events:
       - httpApi:
           path: /recruiter/resume-url/{candidateId}

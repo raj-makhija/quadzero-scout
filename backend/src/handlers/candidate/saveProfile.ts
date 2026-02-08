@@ -2,7 +2,8 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda
 import { v4 as uuidv4 } from 'uuid';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, SaveProfileRequestSchema } from '../../lib/validation.js';
-import { saveCandidateProfile, getExperienceBucket } from '../../lib/dynamodb.js';
+import { saveCandidateProfile, getExperienceBucket, getCandidateById } from '../../lib/dynamodb.js';
+import { deleteObject } from '../../lib/s3.js';
 import { normalizeSkills, normalizeSkillYears } from '../../lib/skillNormalizer.js';
 import type { CandidateItem, SaveProfileResponse } from '../../types/index.js';
 
@@ -33,6 +34,34 @@ export async function handler(
     }
 
     const { candidateId, profile, resumeS3Key } = validation.data;
+
+    // Cache invalidation: If updating existing candidate with new resume, delete old formatted resume
+    // Also preserve formatted resume fields if resume hasn't changed
+    let preserveFormattedResume: { formatted_resume_s3_key: string; formatted_at: string } | null = null;
+
+    if (candidateId) {
+      const existingCandidate = await getCandidateById(candidateId);
+
+      if (existingCandidate) {
+        if (existingCandidate.resume_s3_key !== resumeS3Key) {
+          // Resume changed - invalidate cache
+          if (existingCandidate.formatted_resume_s3_key) {
+            console.log('Resume changed, invalidating formatted resume cache for candidate:', candidateId);
+            try {
+              await deleteObject(existingCandidate.formatted_resume_s3_key);
+            } catch (err) {
+              console.warn('Failed to delete old formatted resume:', err);
+            }
+          }
+        } else if (existingCandidate.formatted_resume_s3_key && existingCandidate.formatted_at) {
+          // Resume unchanged - preserve formatted resume fields
+          preserveFormattedResume = {
+            formatted_resume_s3_key: existingCandidate.formatted_resume_s3_key,
+            formatted_at: existingCandidate.formatted_at,
+          };
+        }
+      }
+    }
 
     // Use authenticated userId if available, otherwise generate anonymous ID
     const authHeader = event.headers?.authorization || event.headers?.Authorization;
@@ -72,6 +101,7 @@ export async function handler(
       current_ctc: profile.currentCtc,
       expected_ctc: profile.expectedCtc,
       resume_s3_key: resumeS3Key,
+      ...(preserveFormattedResume ? preserveFormattedResume : {}),
       created_at: now,
       last_updated: now,
     };

@@ -351,3 +351,37 @@ export async function savePromptVersion(prompt: PromptItem): Promise<void> {
     })
   );
 }
+
+// Update candidate's formatted resume S3 key
+export async function updateCandidateFormattedResume(
+  candidateId: string,
+  formattedS3Key: string | null
+): Promise<void> {
+  const now = new Date().toISOString();
+
+  if (formattedS3Key) {
+    await docClient.send(
+      new UpdateCommand({
+        TableName: config.dynamodb.talentProfilesTable,
+        Key: { candidate_id: candidateId },
+        UpdateExpression: 'SET formatted_resume_s3_key = :key, formatted_at = :at, last_updated = :now',
+        ExpressionAttributeValues: {
+          ':key': formattedS3Key,
+          ':at': now,
+          ':now': now,
+        },
+      })
+    );
+  } else {
+    await docClient.send(
+      new UpdateCommand({
+        TableName: config.dynamodb.talentProfilesTable,
+        Key: { candidate_id: candidateId },
+        UpdateExpression: 'REMOVE formatted_resume_s3_key, formatted_at SET last_updated = :now',
+        ExpressionAttributeValues: {
+          ':now': now,
+        },
+      })
+    );
+  }
+}

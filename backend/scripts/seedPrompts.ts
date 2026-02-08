@@ -73,9 +73,14 @@ Rules:
 5. ONLY output valid JSON, no additional text
 6. For rate/budget/cost: extract the numeric value and its unit separately. Look for phrases like "budget", "rate", "CTC", "compensation", "salary range". Common patterns: "$X/hr", "Rs.X/hour", "X LPM", "X LPA", "X lakhs per month"`;
 
+const RESUME_FORMATTER_PROMPT = `Format the provided resume into a clean, professional Markdown document.
+
+[Placeholder - configure actual prompt via Admin > Prompts Management]`;
+
 const PROMPTS = [
   { key: 'resume_parser', content: RESUME_PARSER_PROMPT },
   { key: 'jd_parser', content: JD_PARSER_PROMPT },
+  { key: 'resume_formatter', content: RESUME_FORMATTER_PROMPT },
 ];
 
 async function promptExists(promptKey: string): Promise<boolean> {
