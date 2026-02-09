@@ -38,6 +38,19 @@ export async function getCandidateById(candidateId: string): Promise<CandidateIt
   return (result.Item as CandidateItem) || null;
 }
 
+export async function getCandidateByEmail(email: string): Promise<CandidateItem | null> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: config.dynamodb.talentProfilesTable,
+      IndexName: 'EmailIndex',
+      KeyConditionExpression: 'email = :email',
+      ExpressionAttributeValues: { ':email': email },
+      Limit: 1,
+    })
+  );
+  return (result.Items?.[0] as CandidateItem) || null;
+}
+
 export async function getCandidateByUserId(userId: string): Promise<CandidateItem | null> {
   const result = await docClient.send(
     new QueryCommand({
