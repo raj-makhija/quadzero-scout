@@ -4,6 +4,8 @@ import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, SaveProfileRequestSchema } from '../../lib/validation.js';
 import { saveCandidateProfile, getExperienceBucket, getCandidateById } from '../../lib/dynamodb.js';
 import { deleteObject } from '../../lib/s3.js';
+import { invokeLambdaAsync } from '../../lib/lambdaInvoke.js';
+import { config } from '../../lib/config.js';
 import { normalizeSkills, normalizeSkillYears } from '../../lib/skillNormalizer.js';
 import type { CandidateItem, SaveProfileResponse } from '../../types/index.js';
 
@@ -112,6 +114,18 @@ export async function handler(
       console.log('Local dev mode: skipping DynamoDB save. Candidate profile:', JSON.stringify(candidateItem, null, 2));
     } else {
       await saveCandidateProfile(candidateItem);
+    }
+
+    // Trigger async resume formatting if new candidate or resume changed
+    if (!preserveFormattedResume && config.lambda.formatResumeWorkerName) {
+      try {
+        await invokeLambdaAsync(config.lambda.formatResumeWorkerName, {
+          candidateId: finalCandidateId,
+        });
+        console.log('Triggered async resume formatting for candidate:', finalCandidateId);
+      } catch (err) {
+        console.warn('Failed to trigger async resume formatting:', err);
+      }
     }
 
     const response: SaveProfileResponse = {

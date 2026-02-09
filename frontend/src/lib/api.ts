@@ -173,9 +173,10 @@ class ApiClient {
 
   async getResumeUrl(candidateId: string) {
     return this.request<{
-      downloadUrl: string;
-      fileName: string;
-      expiresIn: number;
+      status: 'ready' | 'processing';
+      downloadUrl?: string;
+      fileName?: string;
+      expiresIn?: number;
     }>(`/recruiter/resume-url/${candidateId}`);
   }
 

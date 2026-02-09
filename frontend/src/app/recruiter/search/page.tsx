@@ -28,6 +28,7 @@ export default function RecruiterSearchPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedCandidate, setSelectedCandidate] = useState<CandidateSearchResult | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [formattingCandidateId, setFormattingCandidateId] = useState<string | null>(null);
 
   // Search helper — reusable for both button click and state restore
   const runSearch = useCallback(async (criteria: SearchCriteria) => {
@@ -131,10 +132,30 @@ export default function RecruiterSearchPage() {
       return;
     }
     try {
-      const { downloadUrl } = await api.getResumeUrl(candidateId);
-      window.open(downloadUrl, '_blank');
+      setFormattingCandidateId(candidateId);
+      setError(null);
+
+      const maxRetries = 20;
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        const response = await api.getResumeUrl(candidateId);
+
+        if (response.status === 'ready' && response.downloadUrl) {
+          window.open(response.downloadUrl, '_blank');
+          setFormattingCandidateId(null);
+          return;
+        }
+
+        // status === 'processing' — wait and retry
+        if (attempt < maxRetries - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+        }
+      }
+
+      setError('Resume formatting is taking longer than expected. Please try again in a moment.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to get resume');
+    } finally {
+      setFormattingCandidateId(null);
     }
   };
 
@@ -510,9 +531,10 @@ export default function RecruiterSearchPage() {
                           e.stopPropagation();
                           handleDownloadResume(candidate.candidateId);
                         }}
+                        disabled={formattingCandidateId === candidate.candidateId}
                         className="btn-outline text-sm self-start whitespace-nowrap"
                       >
-                        Download Resume
+                        {formattingCandidateId === candidate.candidateId ? 'Formatting...' : 'Download Resume'}
                       </button>
                     )}
                   </div>
@@ -653,9 +675,10 @@ export default function RecruiterSearchPage() {
                 <div className="border-t border-gray-200 dark:border-gray-700 pt-4 flex space-x-3">
                   <button
                     onClick={() => handleDownloadResume(selectedCandidate.candidateId)}
+                    disabled={formattingCandidateId === selectedCandidate.candidateId}
                     className="btn-primary flex-1"
                   >
-                    Download Resume
+                    {formattingCandidateId === selectedCandidate.candidateId ? 'Formatting resume...' : 'Download Resume'}
                   </button>
                 </div>
               </div>
