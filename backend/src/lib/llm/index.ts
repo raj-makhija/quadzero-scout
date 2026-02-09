@@ -1,5 +1,5 @@
 import mammoth from 'mammoth';
-import pdfParse from 'pdf-parse';
+import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import { config } from '../config.js';
 import { BaseLLMProvider, LLMMessage, LLMOptions } from './base.js';
 import { ClaudeProvider } from './claude.js';
