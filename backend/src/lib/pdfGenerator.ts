@@ -18,7 +18,6 @@ function generateResumeHtml(bodyContent: string): string {
       padding: 15mm;
     }
     .page-container {
-      border: 3px solid #1E90FF;
       padding: 20pt;
       min-height: 100%;
     }
