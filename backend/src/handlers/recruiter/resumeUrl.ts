@@ -1,21 +1,33 @@
 import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { getCandidateById } from '../../lib/dynamodb.js';
-import { generateDownloadUrl, extractFileNameFromKey } from '../../lib/s3.js';
+import { generateDownloadUrl } from '../../lib/s3.js';
+import { invokeLambdaAsync } from '../../lib/lambdaInvoke.js';
+import { config } from '../../lib/config.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+
+interface ResumeUrlReadyResponse {
+  status: 'ready';
+  downloadUrl: string;
+  fileName: string;
+  expiresIn: number;
+  isFormatted: boolean;
+}
+
+interface ResumeUrlProcessingResponse {
+  status: 'processing';
+}
 
 async function handleRequest(
   event: AuthenticatedEvent
 ): Promise<APIGatewayProxyResultV2> {
   try {
-    // Get candidate ID from path parameters
     const candidateId = event.pathParameters?.candidateId;
 
     if (!candidateId) {
       return error(ErrorCodes.VALIDATION_ERROR, 'Candidate ID is required', 400);
     }
 
-    // Fetch candidate to get resume S3 key
     const candidate = await getCandidateById(candidateId);
 
     if (!candidate) {
@@ -26,15 +38,61 @@ async function handleRequest(
       return error(ErrorCodes.NOT_FOUND, 'No resume found for this candidate', 404);
     }
 
-    // Generate pre-signed download URL
-    const result = await generateDownloadUrl(candidate.resume_s3_key);
+    // Check for cached formatted resume
+    if (candidate.formatted_resume_s3_key) {
+      try {
+        const result = await generateDownloadUrl(candidate.formatted_resume_s3_key);
+        const ext = candidate.formatted_resume_s3_key.endsWith('.pdf') ? 'pdf' : 'md';
+        const response: ResumeUrlReadyResponse = {
+          status: 'ready',
+          downloadUrl: result.url,
+          fileName: `${candidate.full_name.replace(/\s+/g, '_')}_resume.${ext}`,
+          expiresIn: result.expiresIn,
+          isFormatted: true,
+        };
+        return success(response);
+      } catch (err) {
+        console.warn('Cached formatted resume not found, triggering regeneration:', err);
+      }
+    }
 
-    const response = {
-      downloadUrl: result.url,
-      fileName: extractFileNameFromKey(candidate.resume_s3_key),
-      expiresIn: result.expiresIn,
+    // No cached version — invoke worker Lambda asynchronously
+    console.log('Triggering async formatting for candidate:', candidateId);
+    await invokeLambdaAsync(config.lambda.formatResumeWorkerName, { candidateId });
+
+    // Poll for completion (max 20 seconds, check every 2 seconds)
+    const maxWaitTime = 20000; // 20 seconds
+    const pollInterval = 2000; // 2 seconds
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < maxWaitTime) {
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+
+      const updatedCandidate = await getCandidateById(candidateId);
+      if (updatedCandidate?.formatted_resume_s3_key) {
+        try {
+          const result = await generateDownloadUrl(updatedCandidate.formatted_resume_s3_key);
+          const ext = updatedCandidate.formatted_resume_s3_key.endsWith('.pdf') ? 'pdf' : 'md';
+          const response: ResumeUrlReadyResponse = {
+            status: 'ready',
+            downloadUrl: result.url,
+            fileName: `${updatedCandidate.full_name.replace(/\s+/g, '_')}_resume.${ext}`,
+            expiresIn: result.expiresIn,
+            isFormatted: true,
+          };
+          console.log('PDF generation completed within wait time');
+          return success(response);
+        } catch (err) {
+          console.warn('Error generating download URL for newly created resume:', err);
+          break;
+        }
+      }
+    }
+
+    // If we get here, PDF generation is still in progress
+    const response: ResumeUrlProcessingResponse = {
+      status: 'processing',
     };
-
     return success(response);
   } catch (err) {
     console.error('Error generating resume URL:', err);

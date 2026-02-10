@@ -2,7 +2,10 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda
 import { v4 as uuidv4 } from 'uuid';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, SaveProfileRequestSchema } from '../../lib/validation.js';
-import { saveCandidateProfile, getExperienceBucket } from '../../lib/dynamodb.js';
+import { saveCandidateProfile, getExperienceBucket, getCandidateById, getCandidateByEmail } from '../../lib/dynamodb.js';
+import { deleteObject } from '../../lib/s3.js';
+import { invokeLambdaAsync } from '../../lib/lambdaInvoke.js';
+import { config } from '../../lib/config.js';
 import { normalizeSkills, normalizeSkillYears } from '../../lib/skillNormalizer.js';
 import type { CandidateItem, SaveProfileResponse } from '../../types/index.js';
 
@@ -34,14 +37,46 @@ export async function handler(
 
     const { candidateId, profile, resumeS3Key } = validation.data;
 
+    // Dedup: resolve existing candidate by ID or email
+    let existingCandidate = candidateId
+      ? await getCandidateById(candidateId)
+      : await getCandidateByEmail(profile.email);
+
+    if (existingCandidate && !candidateId) {
+      console.log('Dedup: found existing candidate by email:', profile.email, '→', existingCandidate.candidate_id);
+    }
+
+    // Cache invalidation / preservation for formatted resume
+    let preserveFormattedResume: { formatted_resume_s3_key: string; formatted_at: string } | null = null;
+
+    if (existingCandidate) {
+      if (existingCandidate.resume_s3_key !== resumeS3Key) {
+        // Resume changed - invalidate cache
+        if (existingCandidate.formatted_resume_s3_key) {
+          console.log('Resume changed, invalidating formatted resume cache for candidate:', existingCandidate.candidate_id);
+          try {
+            await deleteObject(existingCandidate.formatted_resume_s3_key);
+          } catch (err) {
+            console.warn('Failed to delete old formatted resume:', err);
+          }
+        }
+      } else if (existingCandidate.formatted_resume_s3_key && existingCandidate.formatted_at) {
+        // Resume unchanged - preserve formatted resume fields
+        preserveFormattedResume = {
+          formatted_resume_s3_key: existingCandidate.formatted_resume_s3_key,
+          formatted_at: existingCandidate.formatted_at,
+        };
+      }
+    }
+
     // Use authenticated userId if available, otherwise generate anonymous ID
     const authHeader = event.headers?.authorization || event.headers?.Authorization;
     const userId = (event as { auth?: { userId: string } }).auth?.userId
       || (authHeader ? undefined : `anon_${uuidv4()}`)
       || `anon_${uuidv4()}`;
 
-    // Generate candidate ID if not provided
-    const finalCandidateId = candidateId || `cand_${uuidv4()}`;
+    // Reuse existing candidate ID or generate a new one
+    const finalCandidateId = existingCandidate?.candidate_id || candidateId || `cand_${uuidv4()}`;
     const now = new Date().toISOString();
 
     // Normalize skills using ontology
@@ -72,7 +107,8 @@ export async function handler(
       current_ctc: profile.currentCtc,
       expected_ctc: profile.expectedCtc,
       resume_s3_key: resumeS3Key,
-      created_at: now,
+      ...(preserveFormattedResume ? preserveFormattedResume : {}),
+      created_at: existingCandidate?.created_at || now,
       last_updated: now,
     };
 
@@ -82,6 +118,18 @@ export async function handler(
       console.log('Local dev mode: skipping DynamoDB save. Candidate profile:', JSON.stringify(candidateItem, null, 2));
     } else {
       await saveCandidateProfile(candidateItem);
+    }
+
+    // Trigger async resume formatting if new candidate or resume changed
+    if (!preserveFormattedResume && config.lambda.formatResumeWorkerName) {
+      try {
+        await invokeLambdaAsync(config.lambda.formatResumeWorkerName, {
+          candidateId: finalCandidateId,
+        });
+        console.log('Triggered async resume formatting for candidate:', finalCandidateId);
+      } catch (err) {
+        console.warn('Failed to trigger async resume formatting:', err);
+      }
     }
 
     const response: SaveProfileResponse = {

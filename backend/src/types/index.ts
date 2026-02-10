@@ -87,6 +87,8 @@ export interface CandidateItem {
   expected_ctc?: number;
   experience_bucket: string;
   resume_s3_key: string;
+  formatted_resume_s3_key?: string;
+  formatted_at?: string;
   created_at: string;
   last_updated: string;
 }

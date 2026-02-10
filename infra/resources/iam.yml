@@ -33,15 +33,13 @@ s3Policy:
     - !Sub '${ResumesBucket.Arn}/*'
     - !GetAtt ResumesBucket.Arn
 
-# Textract Policy
-textractPolicy:
+# Lambda Invoke Policy (for async worker invocation)
+lambdaInvokePolicy:
   Effect: Allow
   Action:
-    - textract:DetectDocumentText
-    - textract:AnalyzeDocument
-    - textract:StartDocumentTextDetection
-    - textract:GetDocumentTextDetection
-  Resource: '*'
+    - lambda:InvokeFunction
+  Resource:
+    - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-formatResumeWorker'
 
 # SSM Parameter Store Policy
 ssmPolicy:

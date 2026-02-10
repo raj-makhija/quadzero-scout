@@ -1,4 +1,4 @@
-import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, GetObjectCommand, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { config } from './config.js';
 
@@ -47,6 +47,8 @@ export async function generateDownloadUrl(s3Key: string): Promise<PresignedUrlRe
   const command = new GetObjectCommand({
     Bucket: config.s3.resumesBucket,
     Key: s3Key,
+    ResponseContentType: 'application/pdf',
+    ResponseContentDisposition: 'inline',
   });
 
   const url = await getSignedUrl(s3Client, command, {
@@ -91,4 +93,26 @@ export function extractFileNameFromKey(s3Key: string): string {
   // Remove UUID prefix (format: uuid-filename)
   const match = fullName.match(/^[a-f0-9-]+-(.+)$/);
   return match ? match[1] : fullName;
+}
+
+export async function deleteObject(s3Key: string): Promise<void> {
+  const command = new DeleteObjectCommand({
+    Bucket: config.s3.resumesBucket,
+    Key: s3Key,
+  });
+  await s3Client.send(command);
+}
+
+export async function putObject(
+  s3Key: string,
+  content: string | Buffer,
+  contentType: string
+): Promise<void> {
+  const command = new PutObjectCommand({
+    Bucket: config.s3.resumesBucket,
+    Key: s3Key,
+    Body: content,
+    ContentType: contentType,
+  });
+  await s3Client.send(command);
 }

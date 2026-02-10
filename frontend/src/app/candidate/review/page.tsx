@@ -150,7 +150,7 @@ export default function ReviewPage() {
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Basic Information</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="label">Full Name</label>
+                <label className="label">Full Name <span className="text-red-500">*</span></label>
                 <input
                   type="text"
                   value={profile.fullName}
@@ -159,7 +159,7 @@ export default function ReviewPage() {
                 />
               </div>
               <div>
-                <label className="label">Email</label>
+                <label className="label">Email <span className="text-red-500">*</span></label>
                 <input
                   type="email"
                   value={profile.email || ''}
@@ -194,7 +194,7 @@ export default function ReviewPage() {
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Experience</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="label">Total Experience (Years)</label>
+                <label className="label">Total Experience (Years) <span className="text-red-500">*</span></label>
                 <input
                   type="number"
                   min="0"
@@ -205,7 +205,7 @@ export default function ReviewPage() {
                 />
               </div>
               <div>
-                <label className="label">Seniority Level</label>
+                <label className="label">Seniority Level <span className="text-red-500">*</span></label>
                 <select
                   value={profile.seniority}
                   onChange={(e) => updateProfile({ seniority: e.target.value })}
@@ -217,7 +217,7 @@ export default function ReviewPage() {
                 </select>
               </div>
               <div>
-                <label className="label">Availability</label>
+                <label className="label">Availability <span className="text-red-500">*</span></label>
                 <select
                   value={profile.availability || 'negotiable'}
                   onChange={(e) => updateProfile({ availability: e.target.value })}
@@ -268,7 +268,7 @@ export default function ReviewPage() {
 
           {/* Primary Skills */}
           <div className="card p-6">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Primary Skills</h2>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Primary Skills <span className="text-red-500">*</span></h2>
             <div className="space-y-4">
               {profile.primarySkills.map((skill) => (
                 <div key={skill} className="flex flex-wrap items-center gap-2 sm:gap-4">
