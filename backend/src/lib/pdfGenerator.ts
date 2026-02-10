@@ -9,59 +9,94 @@ function generateResumeHtml(bodyContent: string): string {
   <meta charset="UTF-8">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    @page { margin: 0; }
     body {
       font-family: Arial, Helvetica, sans-serif;
       font-size: 11pt;
-      line-height: 1.5;
+      line-height: 1.6;
       color: #333;
-      padding: 0;
+      padding: 15mm;
+    }
+    .page-container {
+      border: 3px solid #1E90FF;
+      padding: 20pt;
+      min-height: 100%;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 20pt;
+      padding-bottom: 10pt;
+      border-bottom: 2px solid #1E90FF;
+    }
+    .header .logo {
+      font-size: 24pt;
+      font-weight: 300;
+      color: #666;
+      margin-bottom: 5pt;
+    }
+    .header .logo .highlight {
+      color: #1E90FF;
+      font-weight: 500;
+    }
+    .header .contact {
+      font-size: 10pt;
+      color: #666;
+    }
+    .header .contact a {
+      color: #1E90FF;
+      text-decoration: none;
     }
     h1 {
-      font-size: 22pt;
-      margin-bottom: 6pt;
+      font-size: 24pt;
+      font-weight: bold;
+      margin: 15pt 0 20pt 0;
       color: #1a1a1a;
-      border-bottom: 2px solid #2563eb;
-      padding-bottom: 4pt;
+      text-align: left;
     }
     h2 {
-      font-size: 13pt;
-      margin-top: 14pt;
-      margin-bottom: 6pt;
-      color: #2563eb;
+      font-size: 11pt;
+      margin-top: 18pt;
+      margin-bottom: 8pt;
+      color: #1E90FF;
       text-transform: uppercase;
       letter-spacing: 0.5pt;
+      font-weight: bold;
+      text-decoration: underline;
     }
     h3 {
-      font-size: 11.5pt;
-      margin-top: 8pt;
-      margin-bottom: 3pt;
+      font-size: 11pt;
+      margin-top: 10pt;
+      margin-bottom: 5pt;
       color: #1a1a1a;
+      font-weight: bold;
     }
     p {
-      margin-bottom: 6pt;
+      margin-bottom: 8pt;
+      text-align: justify;
     }
     ul, ol {
-      margin-left: 18pt;
-      margin-bottom: 6pt;
+      margin-left: 25pt;
+      margin-bottom: 8pt;
     }
     li {
-      margin-bottom: 3pt;
+      margin-bottom: 4pt;
     }
     strong {
       color: #1a1a1a;
+      font-weight: bold;
     }
     a {
-      color: #2563eb;
+      color: #1E90FF;
       text-decoration: none;
     }
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-bottom: 8pt;
+      margin-bottom: 10pt;
     }
     th, td {
       border: 1px solid #ddd;
-      padding: 4pt 8pt;
+      padding: 5pt 10pt;
       text-align: left;
       font-size: 10pt;
     }
@@ -72,7 +107,7 @@ function generateResumeHtml(bodyContent: string): string {
     hr {
       border: none;
       border-top: 1px solid #ddd;
-      margin: 10pt 0;
+      margin: 12pt 0;
     }
     h2 { page-break-after: avoid; }
     h3 { page-break-after: avoid; }
@@ -82,7 +117,13 @@ function generateResumeHtml(bodyContent: string): string {
   </style>
 </head>
 <body>
+  <div class="page-container">
+    <div class="header">
+      <div class="logo">Quad<span class="highlight">zero</span></div>
+      <div class="contact">www.quadzero.com | 9820317850 | <a href="mailto:info@quadzero.com">info@quadzero.com</a></div>
+    </div>
 ${bodyContent}
+  </div>
 </body>
 </html>`;
 }
