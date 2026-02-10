@@ -60,6 +60,36 @@ async function handleRequest(
     console.log('Triggering async formatting for candidate:', candidateId);
     await invokeLambdaAsync(config.lambda.formatResumeWorkerName, { candidateId });
 
+    // Poll for completion (max 20 seconds, check every 2 seconds)
+    const maxWaitTime = 20000; // 20 seconds
+    const pollInterval = 2000; // 2 seconds
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < maxWaitTime) {
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+
+      const updatedCandidate = await getCandidateById(candidateId);
+      if (updatedCandidate?.formatted_resume_s3_key) {
+        try {
+          const result = await generateDownloadUrl(updatedCandidate.formatted_resume_s3_key);
+          const ext = updatedCandidate.formatted_resume_s3_key.endsWith('.pdf') ? 'pdf' : 'md';
+          const response: ResumeUrlReadyResponse = {
+            status: 'ready',
+            downloadUrl: result.url,
+            fileName: `${updatedCandidate.full_name.replace(/\s+/g, '_')}_resume.${ext}`,
+            expiresIn: result.expiresIn,
+            isFormatted: true,
+          };
+          console.log('PDF generation completed within wait time');
+          return success(response);
+        } catch (err) {
+          console.warn('Error generating download URL for newly created resume:', err);
+          break;
+        }
+      }
+    }
+
+    // If we get here, PDF generation is still in progress
     const response: ResumeUrlProcessingResponse = {
       status: 'processing',
     };

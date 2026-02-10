@@ -47,6 +47,8 @@ export async function generateDownloadUrl(s3Key: string): Promise<PresignedUrlRe
   const command = new GetObjectCommand({
     Bucket: config.s3.resumesBucket,
     Key: s3Key,
+    ResponseContentType: 'application/pdf',
+    ResponseContentDisposition: 'inline',
   });
 
   const url = await getSignedUrl(s3Client, command, {
