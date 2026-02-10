@@ -159,6 +159,20 @@ export default function RecruiterSearchPage() {
     }
   };
 
+  const handleDownloadOriginalResume = async (candidateId: string) => {
+    if (!isAuthenticated) {
+      handleLoginRequired();
+      return;
+    }
+    try {
+      setError(null);
+      const response = await api.getOriginalResumeUrl(candidateId);
+      window.open(response.downloadUrl, '_blank');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to get original resume');
+    }
+  };
+
   const updateCriteria = (key: keyof SearchCriteria, value: unknown) => {
     setSearchCriteria({ ...searchCriteria, [key]: value });
   };
@@ -526,16 +540,27 @@ export default function RecruiterSearchPage() {
                     </div>
 
                     {isAuthenticated && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDownloadResume(candidate.candidateId);
-                        }}
-                        disabled={formattingCandidateId === candidate.candidateId}
-                        className="btn-outline text-sm self-start whitespace-nowrap"
-                      >
-                        {formattingCandidateId === candidate.candidateId ? 'Formatting...' : 'Download Resume'}
-                      </button>
+                      <div className="flex flex-col items-end gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDownloadResume(candidate.candidateId);
+                          }}
+                          disabled={formattingCandidateId === candidate.candidateId}
+                          className="btn-outline text-sm self-start whitespace-nowrap"
+                        >
+                          {formattingCandidateId === candidate.candidateId ? 'Formatting...' : 'Download Resume'}
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDownloadOriginalResume(candidate.candidateId);
+                          }}
+                          className="text-xs text-primary-600 dark:text-primary-400 hover:underline"
+                        >
+                          Download Original
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -672,14 +697,22 @@ export default function RecruiterSearchPage() {
                 </div>
 
                 {/* Actions */}
-                <div className="border-t border-gray-200 dark:border-gray-700 pt-4 flex space-x-3">
+                <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
                   <button
                     onClick={() => handleDownloadResume(selectedCandidate.candidateId)}
                     disabled={formattingCandidateId === selectedCandidate.candidateId}
-                    className="btn-primary flex-1"
+                    className="btn-primary w-full"
                   >
                     {formattingCandidateId === selectedCandidate.candidateId ? 'Formatting resume...' : 'Download Resume'}
                   </button>
+                  <div className="mt-2 text-center">
+                    <button
+                      onClick={() => handleDownloadOriginalResume(selectedCandidate.candidateId)}
+                      className="text-sm text-primary-600 dark:text-primary-400 hover:underline"
+                    >
+                      Download Original Resume
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

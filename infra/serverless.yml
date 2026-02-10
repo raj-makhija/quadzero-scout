@@ -202,6 +202,13 @@ functions:
           path: /recruiter/resume-url/{candidateId}
           method: GET
 
+  recruiterOriginalResumeUrl:
+    handler: src/handlers/recruiter/originalResumeUrl.handler
+    events:
+      - httpApi:
+          path: /recruiter/original-resume-url/{candidateId}
+          method: GET
+
   # Worker Lambdas (no HTTP events)
   formatResumeWorker:
     handler: src/handlers/worker/formatResume.handler

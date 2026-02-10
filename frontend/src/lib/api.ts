@@ -180,6 +180,14 @@ class ApiClient {
     }>(`/recruiter/resume-url/${candidateId}`);
   }
 
+  async getOriginalResumeUrl(candidateId: string) {
+    return this.request<{
+      downloadUrl: string;
+      fileName: string;
+      expiresIn: number;
+    }>(`/recruiter/original-resume-url/${candidateId}`);
+  }
+
   // Saved searches
   async saveSearch(name: string, criteria: SearchCriteria) {
     return this.request<{
