@@ -98,6 +98,7 @@ custom:
     sourcemap: true
     exclude:
       - '@aws-sdk/*'
+      - '@sparticuz/chromium'
     target: node20
     platform: node
     concurrency: 10
@@ -109,6 +110,16 @@ plugins:
 
 package:
   individually: true
+
+layers:
+  chromium:
+    path: layers/chromium
+    name: ${self:service}-${self:provider.stage}-chromium
+    description: Chromium binary for PDF generation
+    compatibleRuntimes:
+      - nodejs20.x
+    compatibleArchitectures:
+      - arm64
 
 functions:
   # Auth Endpoints
@@ -194,8 +205,10 @@ functions:
   # Worker Lambdas (no HTTP events)
   formatResumeWorker:
     handler: src/handlers/worker/formatResume.handler
-    timeout: 120
-    memorySize: 1024
+    timeout: 150
+    memorySize: 1536
+    layers:
+      - !Ref ChromiumLambdaLayer
 
   # Phase 2: Saved Searches
   recruiterSaveSearch:

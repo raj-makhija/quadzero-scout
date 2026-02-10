@@ -42,10 +42,11 @@ async function handleRequest(
     if (candidate.formatted_resume_s3_key) {
       try {
         const result = await generateDownloadUrl(candidate.formatted_resume_s3_key);
+        const ext = candidate.formatted_resume_s3_key.endsWith('.pdf') ? 'pdf' : 'md';
         const response: ResumeUrlReadyResponse = {
           status: 'ready',
           downloadUrl: result.url,
-          fileName: `${candidate.full_name.replace(/\s+/g, '_')}_resume.md`,
+          fileName: `${candidate.full_name.replace(/\s+/g, '_')}_resume.${ext}`,
           expiresIn: result.expiresIn,
           isFormatted: true,
         };

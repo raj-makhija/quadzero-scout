@@ -69,8 +69,9 @@ Rules:
 6. For CTC values, always convert to LPA (Lakhs Per Annum). If given as monthly, multiply by 12. If given in absolute rupees, divide by 100000. Round to 2 decimal places`;
 
 const FALLBACK_RESUME_FORMATTER_PROMPT = `Format the provided resume into a clean, professional Markdown document.
-
-[Placeholder - configure actual prompt via Admin > Prompts Management]`;
+Use # for the candidate name, ## for major sections (Summary, Experience, Education, Skills, Certifications), ### for job titles.
+Use bullet points (-) for responsibilities and achievements. Use **bold** for dates and emphasis.
+DO NOT use LaTeX markup, HTML tags, or code blocks. Output only valid Markdown, no additional commentary.`;
 
 const FALLBACK_JD_PARSER_PROMPT = `You are an expert job description parser. Your task is to extract search criteria from job descriptions.
 

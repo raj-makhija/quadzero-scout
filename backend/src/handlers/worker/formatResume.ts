@@ -1,6 +1,7 @@
 import { getCandidateById, updateCandidateFormattedResume } from '../../lib/dynamodb.js';
 import { getObject, putObject } from '../../lib/s3.js';
 import { formatResume } from '../../lib/llm/index.js';
+import { markdownToPdf } from '../../lib/pdfGenerator.js';
 
 interface FormatResumeEvent {
   candidateId: string;
@@ -36,12 +37,6 @@ export async function handler(event: FormatResumeEvent): Promise<void> {
       return;
     }
 
-    // Skip if already formatted
-    if (candidate.formatted_resume_s3_key) {
-      console.log('Formatted resume already exists for candidate:', candidateId);
-      return;
-    }
-
     const documentBuffer = await getObject(candidate.resume_s3_key);
     const contentType = getContentType(candidate.resume_s3_key);
 
@@ -52,11 +47,12 @@ export async function handler(event: FormatResumeEvent): Promise<void> {
       return;
     }
 
-    const formattedS3Key = `formatted-resumes/${candidateId}.md`;
-    await putObject(formattedS3Key, formattedContent, 'text/markdown');
+    const pdfBuffer = await markdownToPdf(formattedContent);
+    const formattedS3Key = `formatted-resumes/${candidateId}.pdf`;
+    await putObject(formattedS3Key, pdfBuffer, 'application/pdf');
     await updateCandidateFormattedResume(candidateId, formattedS3Key);
 
-    console.log('Formatted resume saved for candidate:', candidateId);
+    console.log('Formatted resume PDF saved for candidate:', candidateId);
   } catch (err) {
     console.error('Format resume worker failed for candidate:', candidateId, err);
   }
