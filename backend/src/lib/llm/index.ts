@@ -1,3 +1,5 @@
+import mammoth from 'mammoth';
+import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import { config } from '../config.js';
 import { BaseLLMProvider, LLMMessage, LLMOptions } from './base.js';
 import { ClaudeProvider } from './claude.js';
@@ -66,6 +68,11 @@ Rules:
 5. ONLY output valid JSON, no additional text
 6. For CTC values, always convert to LPA (Lakhs Per Annum). If given as monthly, multiply by 12. If given in absolute rupees, divide by 100000. Round to 2 decimal places`;
 
+const FALLBACK_RESUME_FORMATTER_PROMPT = `Format the provided resume into a clean, professional Markdown document.
+Use # for the candidate name, ## for major sections (Summary, Experience, Education, Skills, Certifications), ### for job titles.
+Use bullet points (-) for responsibilities and achievements. Use **bold** for dates and emphasis.
+DO NOT use LaTeX markup, HTML tags, or code blocks. Output only valid Markdown, no additional commentary.`;
+
 const FALLBACK_JD_PARSER_PROMPT = `You are an expert job description parser. Your task is to extract search criteria from job descriptions.
 
 You MUST respond with valid JSON matching this exact schema:
@@ -99,6 +106,7 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const FALLBACK_PROMPTS: Record<string, string> = {
   resume_parser: FALLBACK_RESUME_PARSER_PROMPT,
   jd_parser: FALLBACK_JD_PARSER_PROMPT,
+  resume_formatter: FALLBACK_RESUME_FORMATTER_PROMPT,
 };
 
 async function getPromptContent(promptKey: string): Promise<string> {
@@ -238,6 +246,58 @@ export async function parseJobDescription(jdText: string, jobTitle?: string): Pr
     confidence: specificityScore,
     suggestions,
   };
+}
+
+export async function formatResume(
+  documentBuffer: Buffer,
+  contentType: string
+): Promise<{ formattedContent: string; success: boolean }> {
+  const systemPrompt = await getPromptContent('resume_formatter');
+
+  try {
+    let resumeText: string;
+
+    // Extract text based on content type
+    if (contentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        contentType === 'application/msword') {
+      // For DOCX files, use mammoth
+      const result = await mammoth.extractRawText({ buffer: documentBuffer });
+      resumeText = result.value;
+    } else if (contentType === 'application/pdf') {
+      // For PDF files, use pdf-parse
+      const pdfData = await pdfParse(documentBuffer);
+      resumeText = pdfData.text;
+    } else {
+      throw new Error(`Unsupported content type: ${contentType}`);
+    }
+
+    if (!resumeText || resumeText.trim().length === 0) {
+      throw new Error('No text content extracted from document');
+    }
+
+    // Send extracted text to LLM for formatting
+    const provider = getLLMProvider();
+    const messages: LLMMessage[] = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: resumeText },
+    ];
+
+    const response = await provider.completeWithRetry(messages, {
+      temperature: 0.3,
+      maxTokens: 8192,
+    }, config.llm.maxRetries);
+
+    return {
+      formattedContent: response.content.trim(),
+      success: true,
+    };
+  } catch (err) {
+    console.error('Resume formatting failed:', err);
+    return {
+      formattedContent: '',
+      success: false,
+    };
+  }
 }
 
 export { BaseLLMProvider };

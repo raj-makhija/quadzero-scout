@@ -16,6 +16,9 @@ interface Config {
   auth: {
     nextAuthSecret: string;
   };
+  lambda: {
+    formatResumeWorkerName: string;
+  };
   llm: {
     provider: LLMProvider;
     openaiApiKey: string;
@@ -52,6 +55,9 @@ export const config: Config = {
   },
   auth: {
     nextAuthSecret: getEnvVar('NEXTAUTH_SECRET', ''),
+  },
+  lambda: {
+    formatResumeWorkerName: getEnvVar('FORMAT_RESUME_WORKER_NAME', ''),
   },
   llm: {
     provider: (getEnvVar('LLM_PROVIDER', 'claude') as LLMProvider),

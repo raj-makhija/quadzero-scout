@@ -38,6 +38,19 @@ export async function getCandidateById(candidateId: string): Promise<CandidateIt
   return (result.Item as CandidateItem) || null;
 }
 
+export async function getCandidateByEmail(email: string): Promise<CandidateItem | null> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: config.dynamodb.talentProfilesTable,
+      IndexName: 'EmailIndex',
+      KeyConditionExpression: 'email = :email',
+      ExpressionAttributeValues: { ':email': email },
+      Limit: 1,
+    })
+  );
+  return (result.Items?.[0] as CandidateItem) || null;
+}
+
 export async function getCandidateByUserId(userId: string): Promise<CandidateItem | null> {
   const result = await docClient.send(
     new QueryCommand({
@@ -350,4 +363,38 @@ export async function savePromptVersion(prompt: PromptItem): Promise<void> {
       Item: prompt,
     })
   );
+}
+
+// Update candidate's formatted resume S3 key
+export async function updateCandidateFormattedResume(
+  candidateId: string,
+  formattedS3Key: string | null
+): Promise<void> {
+  const now = new Date().toISOString();
+
+  if (formattedS3Key) {
+    await docClient.send(
+      new UpdateCommand({
+        TableName: config.dynamodb.talentProfilesTable,
+        Key: { candidate_id: candidateId },
+        UpdateExpression: 'SET formatted_resume_s3_key = :key, formatted_at = :at, last_updated = :now',
+        ExpressionAttributeValues: {
+          ':key': formattedS3Key,
+          ':at': now,
+          ':now': now,
+        },
+      })
+    );
+  } else {
+    await docClient.send(
+      new UpdateCommand({
+        TableName: config.dynamodb.talentProfilesTable,
+        Key: { candidate_id: candidateId },
+        UpdateExpression: 'REMOVE formatted_resume_s3_key, formatted_at SET last_updated = :now',
+        ExpressionAttributeValues: {
+          ':now': now,
+        },
+      })
+    );
+  }
 }

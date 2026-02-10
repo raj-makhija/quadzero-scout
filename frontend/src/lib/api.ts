@@ -173,10 +173,19 @@ class ApiClient {
 
   async getResumeUrl(candidateId: string) {
     return this.request<{
+      status: 'ready' | 'processing';
+      downloadUrl?: string;
+      fileName?: string;
+      expiresIn?: number;
+    }>(`/recruiter/resume-url/${candidateId}`);
+  }
+
+  async getOriginalResumeUrl(candidateId: string) {
+    return this.request<{
       downloadUrl: string;
       fileName: string;
       expiresIn: number;
-    }>(`/recruiter/resume-url/${candidateId}`);
+    }>(`/recruiter/original-resume-url/${candidateId}`);
   }
 
   // Saved searches
