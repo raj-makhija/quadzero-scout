@@ -135,6 +135,29 @@ Resources:
         - Key: Project
           Value: quadzero-scout
 
+  # BulkImportBatches Table
+  BulkImportBatchesTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: ${self:custom.bulkImportBatchesTable}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: batch_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: batch_id
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Project
+          Value: quadzero-scout
+
 Outputs:
   TalentProfilesTableArn:
     Description: TalentProfiles table ARN
@@ -159,3 +182,9 @@ Outputs:
     Value: !GetAtt PromptsTable.Arn
     Export:
       Name: ${self:provider.stage}-PromptsTableArn
+
+  BulkImportBatchesTableArn:
+    Description: BulkImportBatches table ARN
+    Value: !GetAtt BulkImportBatchesTable.Arn
+    Export:
+      Name: ${self:provider.stage}-BulkImportBatchesTableArn

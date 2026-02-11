@@ -9,7 +9,7 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { config } from './config.js';
-import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem } from '../types/index.js';
+import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem } from '../types/index.js';
 
 const client = new DynamoDBClient({ region: config.region });
 const docClient = DynamoDBDocumentClient.from(client, {
@@ -361,6 +361,106 @@ export async function savePromptVersion(prompt: PromptItem): Promise<void> {
     new PutCommand({
       TableName: config.dynamodb.promptsTable,
       Item: prompt,
+    })
+  );
+}
+
+// Bulk Import Batch Operations
+export async function createBulkImportBatch(batch: BulkImportBatchItem): Promise<void> {
+  await docClient.send(
+    new PutCommand({
+      TableName: config.dynamodb.bulkImportBatchesTable,
+      Item: batch,
+    })
+  );
+}
+
+export async function getBulkImportBatch(batchId: string): Promise<BulkImportBatchItem | null> {
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: config.dynamodb.bulkImportBatchesTable,
+      Key: { batch_id: batchId },
+    })
+  );
+  return (result.Item as BulkImportBatchItem) || null;
+}
+
+export async function updateBulkImportFileStatus(
+  batchId: string,
+  fileIndex: number,
+  status: string,
+  result?: { candidateId?: string; candidateName?: string; confidence?: number; isUpdate?: boolean; error?: string }
+): Promise<void> {
+  const now = new Date().toISOString();
+
+  let updateExpression = `SET files[${fileIndex}].#status = :status, updated_at = :now`;
+  const expressionAttributeNames: Record<string, string> = { '#status': 'status' };
+  const expressionAttributeValues: Record<string, unknown> = {
+    ':status': status,
+    ':now': now,
+  };
+
+  if (status === 'completed' || status === 'failed') {
+    updateExpression += `, files[${fileIndex}].processed_at = :processedAt`;
+    expressionAttributeValues[':processedAt'] = now;
+  }
+
+  if (result?.candidateId) {
+    updateExpression += `, files[${fileIndex}].candidate_id = :candidateId`;
+    expressionAttributeValues[':candidateId'] = result.candidateId;
+  }
+
+  if (result?.candidateName) {
+    updateExpression += `, files[${fileIndex}].candidate_name = :candidateName`;
+    expressionAttributeValues[':candidateName'] = result.candidateName;
+  }
+
+  if (result?.confidence !== undefined) {
+    updateExpression += `, files[${fileIndex}].confidence = :confidence`;
+    expressionAttributeValues[':confidence'] = result.confidence;
+  }
+
+  if (result?.isUpdate !== undefined) {
+    updateExpression += `, files[${fileIndex}].is_update = :isUpdate`;
+    expressionAttributeValues[':isUpdate'] = result.isUpdate;
+  }
+
+  if (result?.error) {
+    updateExpression += `, files[${fileIndex}].#error = :error`;
+    expressionAttributeNames['#error'] = 'error';
+    expressionAttributeValues[':error'] = result.error.substring(0, 500);
+  }
+
+  if (status === 'completed') {
+    updateExpression += ' ADD completed_count :one';
+    expressionAttributeValues[':one'] = 1;
+  } else if (status === 'failed') {
+    updateExpression += ' ADD failed_count :one';
+    expressionAttributeValues[':one'] = 1;
+  }
+
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.bulkImportBatchesTable,
+      Key: { batch_id: batchId },
+      UpdateExpression: updateExpression,
+      ExpressionAttributeNames: expressionAttributeNames,
+      ExpressionAttributeValues: expressionAttributeValues,
+    })
+  );
+}
+
+export async function finalizeBulkImportBatch(batchId: string): Promise<void> {
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.bulkImportBatchesTable,
+      Key: { batch_id: batchId },
+      UpdateExpression: 'SET #status = :status, updated_at = :now',
+      ExpressionAttributeNames: { '#status': 'status' },
+      ExpressionAttributeValues: {
+        ':status': 'completed',
+        ':now': new Date().toISOString(),
+      },
     })
   );
 }

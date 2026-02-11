@@ -87,6 +87,19 @@ export const SaveSearchRequestSchema = z.object({
   }),
 });
 
+// Bulk Import Start Request Validation
+export const BulkImportStartRequestSchema = z.object({
+  files: z.array(z.object({
+    s3Key: z.string().min(1).max(500),
+    fileName: z.string().min(1).max(255),
+  })).min(1),
+});
+
+// Bulk Import Resume Request Validation
+export const BulkImportResumeRequestSchema = z.object({
+  batchId: z.string().min(1).max(100),
+});
+
 // Validate function with proper error handling
 export function validate<T>(schema: z.ZodSchema<T>, data: unknown): { success: true; data: T } | { success: false; errors: z.ZodError } {
   const result = schema.safeParse(data);

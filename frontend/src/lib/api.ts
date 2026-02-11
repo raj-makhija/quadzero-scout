@@ -253,6 +253,31 @@ class ApiClient {
       body: JSON.stringify({ promptKey, content, description }),
     });
   }
+
+  // Bulk Import endpoints
+  async startBulkImport(files: Array<{ s3Key: string; fileName: string }>) {
+    return this.request<{
+      batchId: string;
+    }>('/admin/bulk-import/start', {
+      method: 'POST',
+      body: JSON.stringify({ files }),
+    });
+  }
+
+  async getBulkImportStatus(batchId: string) {
+    return this.request<BulkImportStatus>(`/admin/bulk-import/status/${batchId}`);
+  }
+
+  async resumeBulkImport(batchId: string) {
+    return this.request<{
+      batchId: string;
+      resumed: boolean;
+      message?: string;
+    }>('/admin/bulk-import/resume', {
+      method: 'POST',
+      body: JSON.stringify({ batchId }),
+    });
+  }
 }
 
 export const api = new ApiClient(API_URL);
@@ -390,4 +415,27 @@ export interface PromptVersion {
   createdAt: string;
   createdBy: string;
   description?: string;
+}
+
+// Bulk Import types
+export interface BulkImportFileStatus {
+  fileName: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  candidateId?: string;
+  candidateName?: string;
+  confidence?: number;
+  isUpdate?: boolean;
+  error?: string;
+  processedAt?: string;
+}
+
+export interface BulkImportStatus {
+  batchId: string;
+  status: 'processing' | 'completed';
+  totalFiles: number;
+  completedCount: number;
+  failedCount: number;
+  createdAt: string;
+  updatedAt: string;
+  files: BulkImportFileStatus[];
 }

@@ -273,6 +273,35 @@ export interface User {
   statusUpdatedBy?: string;
 }
 
+// Bulk Import types
+export type BulkImportBatchStatus = 'processing' | 'completed';
+export type BulkImportFileStatus = 'pending' | 'processing' | 'completed' | 'failed';
+
+export interface BulkImportFileEntry {
+  s3_key: string;
+  file_name: string;
+  status: BulkImportFileStatus;
+  candidate_id?: string;
+  candidate_name?: string;
+  confidence?: number;
+  is_update?: boolean;
+  error?: string;
+  processed_at?: string;
+}
+
+export interface BulkImportBatchItem {
+  batch_id: string;
+  status: BulkImportBatchStatus;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  total_files: number;
+  completed_count: number;
+  failed_count: number;
+  files: BulkImportFileEntry[];
+  ttl?: number;
+}
+
 // Prompt Item (stored in DynamoDB Prompts table)
 export interface PromptItem {
   prompt_key: string;

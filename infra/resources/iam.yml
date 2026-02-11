@@ -19,6 +19,7 @@ dynamoDbPolicy:
     - !Sub '${SavedSearchesTable.Arn}/index/*'
     - !GetAtt PromptsTable.Arn
     - !Sub '${PromptsTable.Arn}/index/*'
+    - !GetAtt BulkImportBatchesTable.Arn
 
 # S3 Policy
 s3Policy:
@@ -40,6 +41,7 @@ lambdaInvokePolicy:
     - lambda:InvokeFunction
   Resource:
     - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-formatResumeWorker'
+    - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-bulkImportWorker'
 
 # SSM Parameter Store Policy
 ssmPolicy:
