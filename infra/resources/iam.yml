@@ -20,6 +20,8 @@ dynamoDbPolicy:
     - !GetAtt PromptsTable.Arn
     - !Sub '${PromptsTable.Arn}/index/*'
     - !GetAtt BulkImportBatchesTable.Arn
+    - !GetAtt RequirementsTable.Arn
+    - !Sub '${RequirementsTable.Arn}/index/*'
 
 # S3 Policy
 s3Policy:

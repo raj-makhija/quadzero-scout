@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Upload, Search, User } from 'lucide-react';
+import { Home, Upload, Search, User, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface NavItemProps {
@@ -49,6 +49,11 @@ export function BottomNav() {
           href="/candidate/upload"
           icon={<Upload className="h-5 w-5" />}
           label="Upload"
+        />
+        <NavItem
+          href="/recruiter/requirements"
+          icon={<FileText className="h-5 w-5" />}
+          label="Requirements"
         />
         <NavItem
           href="/recruiter/search"

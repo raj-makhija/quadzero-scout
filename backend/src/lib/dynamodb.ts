@@ -9,7 +9,7 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { config } from './config.js';
-import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem } from '../types/index.js';
+import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem } from '../types/index.js';
 
 const client = new DynamoDBClient({ region: config.region });
 const docClient = DynamoDBDocumentClient.from(client, {
@@ -497,4 +497,156 @@ export async function updateCandidateFormattedResume(
       })
     );
   }
+}
+
+// Requirement Operations
+export async function saveRequirement(item: RequirementItem): Promise<void> {
+  await docClient.send(
+    new PutCommand({
+      TableName: config.dynamodb.requirementsTable,
+      Item: item,
+    })
+  );
+}
+
+export async function getRequirementById(requirementId: string): Promise<RequirementItem | null> {
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: config.dynamodb.requirementsTable,
+      Key: { requirement_id: requirementId },
+    })
+  );
+  return (result.Item as RequirementItem) || null;
+}
+
+export async function getRequirementsByClient(
+  clientNameLower: string,
+  dateFrom?: string,
+  dateTo?: string,
+  limit: number = 20,
+  lastEvaluatedKey?: Record<string, unknown>
+): Promise<{ items: RequirementItem[]; lastKey?: Record<string, unknown> }> {
+  let keyCondition = 'client_name_lower = :client';
+  const expressionValues: Record<string, unknown> = { ':client': clientNameLower };
+
+  if (dateFrom && dateTo) {
+    keyCondition += ' AND created_at BETWEEN :from AND :to';
+    expressionValues[':from'] = dateFrom;
+    expressionValues[':to'] = dateTo;
+  } else if (dateFrom) {
+    keyCondition += ' AND created_at >= :from';
+    expressionValues[':from'] = dateFrom;
+  } else if (dateTo) {
+    keyCondition += ' AND created_at <= :to';
+    expressionValues[':to'] = dateTo;
+  }
+
+  const params: {
+    TableName: string;
+    IndexName: string;
+    KeyConditionExpression: string;
+    ExpressionAttributeValues: Record<string, unknown>;
+    Limit: number;
+    ScanIndexForward: boolean;
+    ExclusiveStartKey?: Record<string, unknown>;
+  } = {
+    TableName: config.dynamodb.requirementsTable,
+    IndexName: 'ClientNameIndex',
+    KeyConditionExpression: keyCondition,
+    ExpressionAttributeValues: expressionValues,
+    Limit: limit,
+    ScanIndexForward: false,
+  };
+
+  if (lastEvaluatedKey) {
+    params.ExclusiveStartKey = lastEvaluatedKey;
+  }
+
+  const result = await docClient.send(new QueryCommand(params));
+  return {
+    items: (result.Items || []) as RequirementItem[],
+    lastKey: result.LastEvaluatedKey as Record<string, unknown> | undefined,
+  };
+}
+
+export async function getRequirementsByRecruiter(
+  recruiterId: string,
+  limit: number = 20,
+  lastEvaluatedKey?: Record<string, unknown>
+): Promise<{ items: RequirementItem[]; lastKey?: Record<string, unknown> }> {
+  const params: {
+    TableName: string;
+    IndexName: string;
+    KeyConditionExpression: string;
+    ExpressionAttributeValues: Record<string, unknown>;
+    Limit: number;
+    ScanIndexForward: boolean;
+    ExclusiveStartKey?: Record<string, unknown>;
+  } = {
+    TableName: config.dynamodb.requirementsTable,
+    IndexName: 'RecruiterIndex',
+    KeyConditionExpression: 'recruiter_id = :rid',
+    ExpressionAttributeValues: { ':rid': recruiterId },
+    Limit: limit,
+    ScanIndexForward: false,
+  };
+
+  if (lastEvaluatedKey) {
+    params.ExclusiveStartKey = lastEvaluatedKey;
+  }
+
+  const result = await docClient.send(new QueryCommand(params));
+  return {
+    items: (result.Items || []) as RequirementItem[],
+    lastKey: result.LastEvaluatedKey as Record<string, unknown> | undefined,
+  };
+}
+
+export async function getActiveRequirementsByClient(
+  clientNameLower: string
+): Promise<RequirementItem[]> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: config.dynamodb.requirementsTable,
+      IndexName: 'ClientNameIndex',
+      KeyConditionExpression: 'client_name_lower = :client',
+      FilterExpression: '#status = :active',
+      ExpressionAttributeNames: { '#status': 'status' },
+      ExpressionAttributeValues: {
+        ':client': clientNameLower,
+        ':active': 'active',
+      },
+      ScanIndexForward: false,
+      Limit: 10,
+    })
+  );
+  return (result.Items || []) as RequirementItem[];
+}
+
+export async function updateRequirementStatus(
+  requirementId: string,
+  status: string,
+  duplicateOf?: string
+): Promise<void> {
+  let updateExpression = 'SET #status = :status, last_updated = :now';
+  const expressionAttributeNames: Record<string, string> = { '#status': 'status' };
+  const expressionAttributeValues: Record<string, unknown> = {
+    ':status': status,
+    ':now': new Date().toISOString(),
+  };
+
+  if (duplicateOf) {
+    updateExpression += ', duplicate_of = :dupOf';
+    expressionAttributeValues[':dupOf'] = duplicateOf;
+  }
+
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.requirementsTable,
+      Key: { requirement_id: requirementId },
+      UpdateExpression: updateExpression,
+      ExpressionAttributeNames: expressionAttributeNames,
+      ExpressionAttributeValues: expressionAttributeValues,
+    })
+  );
 }

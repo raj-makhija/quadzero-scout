@@ -158,6 +158,49 @@ Resources:
         - Key: Project
           Value: quadzero-scout
 
+  # Requirements Table
+  RequirementsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: ${self:custom.requirementsTable}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: requirement_id
+          AttributeType: S
+        - AttributeName: client_name_lower
+          AttributeType: S
+        - AttributeName: created_at
+          AttributeType: S
+        - AttributeName: recruiter_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: requirement_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: ClientNameIndex
+          KeySchema:
+            - AttributeName: client_name_lower
+              KeyType: HASH
+            - AttributeName: created_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: RecruiterIndex
+          KeySchema:
+            - AttributeName: recruiter_id
+              KeyType: HASH
+            - AttributeName: created_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Project
+          Value: quadzero-scout
+
 Outputs:
   TalentProfilesTableArn:
     Description: TalentProfiles table ARN
@@ -188,3 +231,9 @@ Outputs:
     Value: !GetAtt BulkImportBatchesTable.Arn
     Export:
       Name: ${self:provider.stage}-BulkImportBatchesTableArn
+
+  RequirementsTableArn:
+    Description: Requirements table ARN
+    Value: !GetAtt RequirementsTable.Arn
+    Export:
+      Name: ${self:provider.stage}-RequirementsTableArn

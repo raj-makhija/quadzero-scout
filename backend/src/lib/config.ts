@@ -9,6 +9,7 @@ interface Config {
     savedSearchesTable: string;
     promptsTable: string;
     bulkImportBatchesTable: string;
+    requirementsTable: string;
   };
   s3: {
     resumesBucket: string;
@@ -51,6 +52,7 @@ export const config: Config = {
     savedSearchesTable: getEnvVar('DYNAMODB_TABLE_SAVED_SEARCHES', 'SavedSearches-dev'),
     promptsTable: getEnvVar('DYNAMODB_TABLE_PROMPTS', 'Prompts-dev'),
     bulkImportBatchesTable: getEnvVar('DYNAMODB_TABLE_BULK_IMPORT_BATCHES', 'BulkImportBatches-dev'),
+    requirementsTable: getEnvVar('DYNAMODB_TABLE_REQUIREMENTS', 'Requirements-dev'),
   },
   s3: {
     resumesBucket: getEnvVar('S3_BUCKET_RESUMES', 'quadzero-scout-resumes-dev'),

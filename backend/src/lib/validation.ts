@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { LLMJDOutputSchema } from '../types/index.js';
 
 // Upload URL Request Validation
 export const UploadUrlRequestSchema = z.object({
@@ -98,6 +99,35 @@ export const BulkImportStartRequestSchema = z.object({
 // Bulk Import Resume Request Validation
 export const BulkImportResumeRequestSchema = z.object({
   batchId: z.string().min(1).max(100),
+});
+
+// Save Requirement Request Validation
+export const SaveRequirementRequestSchema = z.object({
+  clientName: z.string().min(1).max(200),
+  endClient: z.string().max(200).optional(),
+  engagementModel: z.enum(['full_time_regular', 'full_time_contract', 'part_time_contract']),
+  payroll: z.enum(['quadzero', 'client']),
+  budgetMinLpa: z.number().min(0).max(500).optional(),
+  budgetMaxLpa: z.number().min(0).max(500).optional(),
+  jobTitle: z.string().max(200).optional(),
+  jdText: z.string().min(50).max(10000),
+  parsedCriteria: LLMJDOutputSchema,
+  status: z.enum(['active', 'duplicate']).optional().default('active'),
+  duplicateOf: z.string().uuid().optional(),
+});
+
+// Check Duplicate Request Validation
+export const CheckDuplicateRequestSchema = z.object({
+  clientName: z.string().min(1).max(200),
+  parsedCriteria: z.object({
+    mustHaveSkills: z.array(z.string()),
+    goodToHaveSkills: z.array(z.string()).optional(),
+    minExperience: z.number().nullable().optional(),
+    maxExperience: z.number().nullable().optional(),
+    seniority: z.array(z.string()).optional(),
+    location: z.string().nullable().optional(),
+  }),
+  jobTitle: z.string().max(200).optional(),
 });
 
 // Validate function with proper error handling

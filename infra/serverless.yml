@@ -16,6 +16,10 @@ provider:
     Environment: ${self:provider.stage}
     ManagedBy: serverless-framework
 
+  tags:
+    Project: quadzero-scout
+    Environment: ${self:provider.stage}
+
   environment:
     STAGE: ${self:provider.stage}
     AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
@@ -37,6 +41,7 @@ provider:
     FORMAT_RESUME_WORKER_NAME: ${self:service}-${self:provider.stage}-formatResumeWorker
     DYNAMODB_TABLE_BULK_IMPORT_BATCHES: ${self:custom.bulkImportBatchesTable}
     BULK_IMPORT_WORKER_NAME: ${self:service}-${self:provider.stage}-bulkImportWorker
+    DYNAMODB_TABLE_REQUIREMENTS: ${self:custom.requirementsTable}
 
   httpApi:
     cors:
@@ -81,6 +86,7 @@ custom:
   promptsTable: Prompts-${self:provider.stage}
   resumesBucket: quadzero-scout-resumes-${self:provider.stage}
   bulkImportBatchesTable: BulkImportBatches-${self:provider.stage}
+  requirementsTable: Requirements-${self:provider.stage}
 
   dotenv:
     include:
@@ -242,6 +248,36 @@ functions:
       - httpApi:
           path: /recruiter/search/{searchId}
           method: DELETE
+
+  # Recruiter Requirements Endpoints
+  recruiterSaveRequirement:
+    handler: src/handlers/recruiter/saveRequirement.handler
+    events:
+      - httpApi:
+          path: /recruiter/requirements
+          method: POST
+
+  recruiterListRequirements:
+    handler: src/handlers/recruiter/listRequirements.handler
+    events:
+      - httpApi:
+          path: /recruiter/requirements
+          method: GET
+
+  recruiterGetRequirement:
+    handler: src/handlers/recruiter/getRequirement.handler
+    events:
+      - httpApi:
+          path: /recruiter/requirements/{requirementId}
+          method: GET
+
+  recruiterCheckDuplicate:
+    handler: src/handlers/recruiter/checkDuplicate.handler
+    timeout: 45
+    events:
+      - httpApi:
+          path: /recruiter/requirements/check-duplicate
+          method: POST
 
   # Admin Endpoints
   adminListPendingRecruiters:
