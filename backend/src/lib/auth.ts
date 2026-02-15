@@ -8,6 +8,11 @@ export interface AuthContext {
   userId: string;
   email: string;
   role: UserRole;
+  isInternal: boolean;
+}
+
+export function isInternalUser(email: string): boolean {
+  return email.toLowerCase().endsWith('@quadzero.com');
 }
 
 export type AuthenticatedEvent = APIGatewayProxyEventV2 & {
@@ -118,10 +123,12 @@ export function withAuth(
     // Skip auth in local offline dev when explicitly opted out
     if (process.env.IS_OFFLINE === 'true' && process.env.SKIP_AUTH === 'true') {
       const authenticatedEvent = event as AuthenticatedEvent;
+      const devEmail = 'dev@localhost';
       authenticatedEvent.auth = {
         userId: 'dev-user-1',
-        email: 'dev@localhost',
+        email: devEmail,
         role: (event.headers?.['x-dev-role'] as UserRole) || 'candidate',
+        isInternal: isInternalUser(devEmail),
       };
       return handler(authenticatedEvent);
     }
@@ -189,6 +196,7 @@ export function withAuth(
       userId: tokenPayload.id,
       email: tokenPayload.email,
       role: userRole,
+      isInternal: isInternalUser(tokenPayload.email),
     };
 
     return handler(authenticatedEvent);
@@ -203,10 +211,12 @@ export function withOptionalAuth(
 
     // Skip auth in local offline dev when explicitly opted out
     if (process.env.IS_OFFLINE === 'true' && process.env.SKIP_AUTH === 'true') {
+      const devEmail = 'dev@localhost';
       optionalEvent.auth = {
         userId: 'dev-user-1',
-        email: 'dev@localhost',
+        email: devEmail,
         role: (event.headers?.['x-dev-role'] as UserRole) || 'candidate',
+        isInternal: isInternalUser(devEmail),
       };
       return handler(optionalEvent);
     }
@@ -253,6 +263,7 @@ export function withOptionalAuth(
           userId: tokenPayload.id,
           email: tokenPayload.email,
           role: userRole,
+          isInternal: isInternalUser(tokenPayload.email),
         };
       } catch (err) {
         console.warn('Optional auth token validation failed:', (err as Error).message);
