@@ -212,6 +212,41 @@ class ApiClient {
     });
   }
 
+  // Requirement endpoints
+  async saveRequirement(data: SaveRequirementPayload) {
+    return this.request<{
+      requirementId: string;
+      createdAt: string;
+    }>('/recruiter/requirements', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listRequirements(filters?: RequirementFilters) {
+    const params = new URLSearchParams();
+    if (filters?.clientName) params.set('clientName', filters.clientName);
+    if (filters?.dateFrom) params.set('dateFrom', filters.dateFrom);
+    if (filters?.dateTo) params.set('dateTo', filters.dateTo);
+    if (filters?.limit) params.set('limit', filters.limit.toString());
+    if (filters?.lastEvaluatedKey) params.set('lastEvaluatedKey', filters.lastEvaluatedKey);
+    const qs = params.toString();
+    return this.request<ListRequirementsResponse>(`/recruiter/requirements${qs ? `?${qs}` : ''}`);
+  }
+
+  async getRequirement(requirementId: string) {
+    return this.request<RequirementDetail>(`/recruiter/requirements/${requirementId}`);
+  }
+
+  async checkDuplicate(clientName: string, parsedCriteria: ParsedCriteria, jobTitle?: string) {
+    return this.request<{
+      duplicates: DuplicateMatch[];
+    }>('/recruiter/requirements/check-duplicate', {
+      method: 'POST',
+      body: JSON.stringify({ clientName, parsedCriteria, jobTitle }),
+    });
+  }
+
   // Admin endpoints
   async listPendingRecruiters() {
     return this.request<{
@@ -251,6 +286,31 @@ class ApiClient {
     }>('/admin/prompts', {
       method: 'PUT',
       body: JSON.stringify({ promptKey, content, description }),
+    });
+  }
+
+  // Bulk Import endpoints
+  async startBulkImport(files: Array<{ s3Key: string; fileName: string }>) {
+    return this.request<{
+      batchId: string;
+    }>('/admin/bulk-import/start', {
+      method: 'POST',
+      body: JSON.stringify({ files }),
+    });
+  }
+
+  async getBulkImportStatus(batchId: string) {
+    return this.request<BulkImportStatus>(`/admin/bulk-import/status/${batchId}`);
+  }
+
+  async resumeBulkImport(batchId: string) {
+    return this.request<{
+      batchId: string;
+      resumed: boolean;
+      message?: string;
+    }>('/admin/bulk-import/resume', {
+      method: 'POST',
+      body: JSON.stringify({ batchId }),
     });
   }
 }
@@ -303,6 +363,12 @@ export interface ParsedCriteria {
   rateLpa?: number | null;
   rateRaw?: number | null;
   rateUnit?: string | null;
+  clientName?: string | null;
+  endClient?: string | null;
+  engagementModel?: string | null;
+  payroll?: string | null;
+  budgetMinLpa?: number | null;
+  budgetMaxLpa?: number | null;
 }
 
 export interface SearchCriteria {
@@ -390,4 +456,93 @@ export interface PromptVersion {
   createdAt: string;
   createdBy: string;
   description?: string;
+}
+
+// Bulk Import types
+export interface BulkImportFileStatus {
+  fileName: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  candidateId?: string;
+  candidateName?: string;
+  confidence?: number;
+  isUpdate?: boolean;
+  error?: string;
+  processedAt?: string;
+}
+
+export interface BulkImportStatus {
+  batchId: string;
+  status: 'processing' | 'completed';
+  totalFiles: number;
+  completedCount: number;
+  failedCount: number;
+  createdAt: string;
+  updatedAt: string;
+  files: BulkImportFileStatus[];
+}
+
+// Requirement types
+export type EngagementModel = 'full_time_regular' | 'full_time_contract' | 'part_time_contract';
+export type Payroll = 'quadzero' | 'client';
+
+export interface SaveRequirementPayload {
+  clientName: string;
+  endClient?: string;
+  engagementModel: EngagementModel;
+  payroll: Payroll;
+  budgetMinLpa?: number;
+  budgetMaxLpa?: number;
+  jobTitle?: string;
+  jdText: string;
+  parsedCriteria: ParsedCriteria;
+  status?: 'active' | 'duplicate';
+  duplicateOf?: string;
+}
+
+export interface RequirementSummary {
+  requirementId: string;
+  clientName: string;
+  endClient?: string;
+  engagementModel: string;
+  payroll: string;
+  budgetMinLpa?: number;
+  budgetMaxLpa?: number;
+  jobTitle?: string;
+  mustHaveSkills: string[];
+  status: string;
+  createdAt: string;
+}
+
+export interface RequirementDetail extends RequirementSummary {
+  recruiterId: string;
+  jdText: string;
+  parsedCriteria: ParsedCriteria;
+  duplicateOf?: string;
+  lastUpdated: string;
+}
+
+export interface RequirementFilters {
+  clientName?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  limit?: number;
+  lastEvaluatedKey?: string;
+}
+
+export interface ListRequirementsResponse {
+  requirements: RequirementSummary[];
+  pagination: {
+    count: number;
+    hasMore: boolean;
+    lastEvaluatedKey?: string;
+  };
+}
+
+export interface DuplicateMatch {
+  requirementId: string;
+  jobTitle?: string;
+  mustHaveSkills: string[];
+  similarityScore: number;
+  reason: string;
+  createdAt: string;
 }

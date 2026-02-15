@@ -32,6 +32,15 @@ export type UserStatus = z.infer<typeof UserStatusEnum>;
 export const LLMProviderEnum = z.enum(['claude', 'openai', 'openrouter', 'gemini']);
 export type LLMProvider = z.infer<typeof LLMProviderEnum>;
 
+export const EngagementModelEnum = z.enum(['full_time_regular', 'full_time_contract', 'part_time_contract']);
+export type EngagementModel = z.infer<typeof EngagementModelEnum>;
+
+export const PayrollEnum = z.enum(['quadzero', 'client']);
+export type Payroll = z.infer<typeof PayrollEnum>;
+
+export const RequirementStatusEnum = z.enum(['active', 'duplicate']);
+export type RequirementStatus = z.infer<typeof RequirementStatusEnum>;
+
 // Education Schema - LLMs may return null for fields, so we accept nullable and default to empty string
 export const EducationSchema = z.object({
   degree: z.string().nullable().optional().transform(v => v ?? ''),
@@ -144,7 +153,13 @@ export const LLMJDOutputSchema = z.object({
   roles: z.array(z.string()).optional().default([]),
   rateRaw: z.number().nullable().optional().default(null),
   rateUnit: z.enum(['lpa', 'lpm', 'rupees_per_hour', 'usd_per_hour']).nullable().optional().default(null),
-  rateLpa: z.number().nullable().optional().default(null)
+  rateLpa: z.number().nullable().optional().default(null),
+  clientName: z.string().nullable().optional().default(null),
+  endClient: z.string().nullable().optional().default(null),
+  engagementModel: z.string().nullable().optional().default(null),
+  payroll: z.string().nullable().optional().default(null),
+  budgetMinLpa: z.number().nullable().optional().default(null),
+  budgetMaxLpa: z.number().nullable().optional().default(null),
 });
 export type LLMJDOutput = z.infer<typeof LLMJDOutputSchema>;
 
@@ -273,6 +288,35 @@ export interface User {
   statusUpdatedBy?: string;
 }
 
+// Bulk Import types
+export type BulkImportBatchStatus = 'processing' | 'completed';
+export type BulkImportFileStatus = 'pending' | 'processing' | 'completed' | 'failed';
+
+export interface BulkImportFileEntry {
+  s3_key: string;
+  file_name: string;
+  status: BulkImportFileStatus;
+  candidate_id?: string;
+  candidate_name?: string;
+  confidence?: number;
+  is_update?: boolean;
+  error?: string;
+  processed_at?: string;
+}
+
+export interface BulkImportBatchItem {
+  batch_id: string;
+  status: BulkImportBatchStatus;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  total_files: number;
+  completed_count: number;
+  failed_count: number;
+  files: BulkImportFileEntry[];
+  ttl?: number;
+}
+
 // Prompt Item (stored in DynamoDB Prompts table)
 export interface PromptItem {
   prompt_key: string;
@@ -282,4 +326,93 @@ export interface PromptItem {
   created_at: string;
   created_by: string;
   description?: string;
+}
+
+// Requirement Item (DynamoDB Requirements table, snake_case)
+export interface RequirementItem {
+  requirement_id: string;
+  recruiter_id: string;
+  client_name: string;
+  client_name_lower: string;
+  end_client?: string;
+  engagement_model: string;
+  payroll: string;
+  budget_min_lpa?: number;
+  budget_max_lpa?: number;
+  job_title?: string;
+  jd_text: string;
+  parsed_criteria: LLMJDOutput;
+  status: string;
+  duplicate_of?: string;
+  created_at: string;
+  last_updated: string;
+}
+
+// Requirement API types
+export interface SaveRequirementRequest {
+  clientName: string;
+  endClient?: string;
+  engagementModel: string;
+  payroll: string;
+  budgetMinLpa?: number;
+  budgetMaxLpa?: number;
+  jobTitle?: string;
+  jdText: string;
+  parsedCriteria: LLMJDOutput;
+  status?: string;
+  duplicateOf?: string;
+}
+
+export interface SaveRequirementResponse {
+  requirementId: string;
+  createdAt: string;
+}
+
+export interface CheckDuplicateRequest {
+  clientName: string;
+  parsedCriteria: {
+    mustHaveSkills: string[];
+    goodToHaveSkills?: string[];
+    minExperience?: number | null;
+    maxExperience?: number | null;
+    seniority?: string[];
+    location?: string | null;
+  };
+  jobTitle?: string;
+}
+
+export interface DuplicateMatch {
+  requirementId: string;
+  jobTitle?: string;
+  mustHaveSkills: string[];
+  similarityScore: number;
+  reason: string;
+  createdAt: string;
+}
+
+export interface CheckDuplicateResponse {
+  duplicates: DuplicateMatch[];
+}
+
+export interface RequirementSummary {
+  requirementId: string;
+  clientName: string;
+  endClient?: string;
+  engagementModel: string;
+  payroll: string;
+  budgetMinLpa?: number;
+  budgetMaxLpa?: number;
+  jobTitle?: string;
+  mustHaveSkills: string[];
+  status: string;
+  createdAt: string;
+}
+
+export interface ListRequirementsResponse {
+  requirements: RequirementSummary[];
+  pagination: {
+    count: number;
+    hasMore: boolean;
+    lastEvaluatedKey?: string;
+  };
 }

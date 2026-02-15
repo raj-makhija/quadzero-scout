@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { Header } from '@/components/Header';
-import { Users, FileText, LayoutDashboard } from 'lucide-react';
+import { Users, FileText, LayoutDashboard, Upload } from 'lucide-react';
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -71,6 +71,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               >
                 <FileText className="w-5 h-5 mr-3" />
                 Prompts
+              </Link>
+              <Link
+                href="/admin/bulk-import"
+                className="flex items-center px-4 py-2 text-sm font-medium rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"
+              >
+                <Upload className="w-5 h-5 mr-3" />
+                Bulk Import
               </Link>
             </nav>
           </aside>
