@@ -19,7 +19,13 @@ You MUST respond with valid JSON matching this exact schema. Do NOT include any 
   "location": "string or null - location requirement",
   "remote": boolean - whether remote work is explicitly allowed,
   "industries": ["array of preferred/required industries"],
-  "roles": ["array of relevant job titles for this position"]
+  "roles": ["array of relevant job titles for this position"],
+  "clientName": "string or null - the client or company name that posted/shared this requirement",
+  "endClient": "string or null - the end client who will leverage the resource, if different from the posting client",
+  "engagementModel": "full_time_regular | full_time_contract | part_time_contract | null - the type of engagement",
+  "payroll": "quadzero | client | null - who handles payroll, if mentioned",
+  "budgetMinLpa": number or null - minimum budget/salary in LPA (lakhs per annum),
+  "budgetMaxLpa": number or null - maximum budget/salary in LPA (lakhs per annum)
 }
 ```
 
@@ -68,6 +74,25 @@ Based on title and experience requirements:
 - "Urgent hiring" → ["immediate", "1_week"]
 - If no urgency mentioned → include all options
 
+### Client & Engagement Details
+- Look for company names, "client:", "hiring for:", "on behalf of" to identify clientName
+- Look for "end client", "client site", "deployed at" to identify endClient
+- "Full-time", "permanent", "regular" → engagementModel: "full_time_regular"
+- "Contract", "C2H", "contract to hire" with full-time → engagementModel: "full_time_contract"
+- "Part-time", "fractional" → engagementModel: "part_time_contract"
+- If not mentioned → engagementModel: null
+- "Payroll by [company]", "on our payroll" → payroll: "quadzero" or "client" based on context
+- If not mentioned → payroll: null
+
+### Budget / Salary Range
+- Look for "budget", "salary range", "CTC range", "compensation"
+- "X-Y LPA" → budgetMinLpa: X, budgetMaxLpa: Y
+- "up to X LPA" → budgetMinLpa: null, budgetMaxLpa: X
+- "X+ LPA" or "minimum X LPA" → budgetMinLpa: X, budgetMaxLpa: null
+- If given in monthly (LPM), multiply by 12 to convert to LPA
+- If given in USD/hour, multiply by 2080 (annual hours) and divide by rate to get LPA equivalent
+- If not mentioned → null for both
+
 ## Example User Message
 
 Job Title: Senior Full Stack Developer
@@ -88,7 +113,13 @@ Job Description:
   "location": "Bangalore, India",
   "remote": true,
   "industries": ["fintech", "saas"],
-  "roles": ["Full Stack Developer", "Senior Software Engineer", "Backend Developer"]
+  "roles": ["Full Stack Developer", "Senior Software Engineer", "Backend Developer"],
+  "clientName": null,
+  "endClient": null,
+  "engagementModel": null,
+  "payroll": null,
+  "budgetMinLpa": null,
+  "budgetMaxLpa": null
 }
 ```
 

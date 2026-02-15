@@ -98,3 +98,31 @@ export const AVAILABILITY_OPTIONS = [
   { value: '3_months', label: '3 Months' },
   { value: 'negotiable', label: 'Negotiable' },
 ];
+
+export function formatEngagementModel(value: string): string {
+  const map: Record<string, string> = {
+    full_time_regular: 'Full-time (Regular)',
+    full_time_contract: 'Full-time (Contract)',
+    part_time_contract: 'Part-time (Contract)',
+  };
+  return map[value] || value;
+}
+
+export function formatPayroll(value: string): string {
+  const map: Record<string, string> = {
+    quadzero: 'Quadzero',
+    client: 'Client',
+  };
+  return map[value] || capitalizeFirst(value);
+}
+
+export const ENGAGEMENT_MODEL_OPTIONS = [
+  { value: 'full_time_regular', label: 'Full-time (Regular)' },
+  { value: 'full_time_contract', label: 'Full-time (Contract)' },
+  { value: 'part_time_contract', label: 'Part-time (Contract)' },
+];
+
+export const PAYROLL_OPTIONS = [
+  { value: 'quadzero', label: 'Quadzero' },
+  { value: 'client', label: 'Client' },
+];

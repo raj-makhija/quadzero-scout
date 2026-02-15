@@ -8,6 +8,8 @@ interface Config {
     usersTable: string;
     savedSearchesTable: string;
     promptsTable: string;
+    bulkImportBatchesTable: string;
+    requirementsTable: string;
   };
   s3: {
     resumesBucket: string;
@@ -18,6 +20,7 @@ interface Config {
   };
   lambda: {
     formatResumeWorkerName: string;
+    bulkImportWorkerName: string;
   };
   llm: {
     provider: LLMProvider;
@@ -48,6 +51,8 @@ export const config: Config = {
     usersTable: getEnvVar('DYNAMODB_TABLE_USERS', 'Users-dev'),
     savedSearchesTable: getEnvVar('DYNAMODB_TABLE_SAVED_SEARCHES', 'SavedSearches-dev'),
     promptsTable: getEnvVar('DYNAMODB_TABLE_PROMPTS', 'Prompts-dev'),
+    bulkImportBatchesTable: getEnvVar('DYNAMODB_TABLE_BULK_IMPORT_BATCHES', 'BulkImportBatches-dev'),
+    requirementsTable: getEnvVar('DYNAMODB_TABLE_REQUIREMENTS', 'Requirements-dev'),
   },
   s3: {
     resumesBucket: getEnvVar('S3_BUCKET_RESUMES', 'quadzero-scout-resumes-dev'),
@@ -58,6 +63,7 @@ export const config: Config = {
   },
   lambda: {
     formatResumeWorkerName: getEnvVar('FORMAT_RESUME_WORKER_NAME', ''),
+    bulkImportWorkerName: getEnvVar('BULK_IMPORT_WORKER_NAME', ''),
   },
   llm: {
     provider: (getEnvVar('LLM_PROVIDER', 'claude') as LLMProvider),

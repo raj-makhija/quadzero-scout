@@ -16,6 +16,10 @@ provider:
     Environment: ${self:provider.stage}
     ManagedBy: serverless-framework
 
+  tags:
+    Project: quadzero-scout
+    Environment: ${self:provider.stage}
+
   environment:
     STAGE: ${self:provider.stage}
     AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
@@ -35,6 +39,9 @@ provider:
     USD_TO_INR_RATE: ${ssm:/quadzero-scout/${self:provider.stage}/USD_TO_INR_RATE, env:USD_TO_INR_RATE, '85'}
     NEXTAUTH_SECRET: ${ssm:/quadzero-scout/${self:provider.stage}/NEXTAUTH_SECRET, env:NEXTAUTH_SECRET, ''}
     FORMAT_RESUME_WORKER_NAME: ${self:service}-${self:provider.stage}-formatResumeWorker
+    DYNAMODB_TABLE_BULK_IMPORT_BATCHES: ${self:custom.bulkImportBatchesTable}
+    BULK_IMPORT_WORKER_NAME: ${self:service}-${self:provider.stage}-bulkImportWorker
+    DYNAMODB_TABLE_REQUIREMENTS: ${self:custom.requirementsTable}
 
   httpApi:
     cors:
@@ -78,6 +85,8 @@ custom:
   savedSearchesTable: SavedSearches-${self:provider.stage}
   promptsTable: Prompts-${self:provider.stage}
   resumesBucket: quadzero-scout-resumes-${self:provider.stage}
+  bulkImportBatchesTable: BulkImportBatches-${self:provider.stage}
+  requirementsTable: Requirements-${self:provider.stage}
 
   dotenv:
     include:
@@ -240,6 +249,36 @@ functions:
           path: /recruiter/search/{searchId}
           method: DELETE
 
+  # Recruiter Requirements Endpoints
+  recruiterSaveRequirement:
+    handler: src/handlers/recruiter/saveRequirement.handler
+    events:
+      - httpApi:
+          path: /recruiter/requirements
+          method: POST
+
+  recruiterListRequirements:
+    handler: src/handlers/recruiter/listRequirements.handler
+    events:
+      - httpApi:
+          path: /recruiter/requirements
+          method: GET
+
+  recruiterGetRequirement:
+    handler: src/handlers/recruiter/getRequirement.handler
+    events:
+      - httpApi:
+          path: /recruiter/requirements/{requirementId}
+          method: GET
+
+  recruiterCheckDuplicate:
+    handler: src/handlers/recruiter/checkDuplicate.handler
+    timeout: 45
+    events:
+      - httpApi:
+          path: /recruiter/requirements/check-duplicate
+          method: POST
+
   # Admin Endpoints
   adminListPendingRecruiters:
     handler: src/handlers/admin/listPendingRecruiters.handler
@@ -275,6 +314,34 @@ functions:
       - httpApi:
           path: /admin/prompts
           method: PUT
+
+  # Admin Bulk Import
+  adminBulkImportStart:
+    handler: src/handlers/admin/bulkImportStart.handler
+    events:
+      - httpApi:
+          path: /admin/bulk-import/start
+          method: POST
+
+  adminBulkImportStatus:
+    handler: src/handlers/admin/bulkImportStatus.handler
+    events:
+      - httpApi:
+          path: /admin/bulk-import/status/{batchId}
+          method: GET
+
+  adminBulkImportResume:
+    handler: src/handlers/admin/bulkImportResume.handler
+    events:
+      - httpApi:
+          path: /admin/bulk-import/resume
+          method: POST
+
+  # Bulk Import Worker (no HTTP events)
+  bulkImportWorker:
+    handler: src/handlers/worker/bulkImportWorker.handler
+    timeout: 120
+    memorySize: 1024
 
 resources:
   - ${file(resources/dynamodb.yml)}

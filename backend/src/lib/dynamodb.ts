@@ -9,7 +9,7 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { config } from './config.js';
-import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem } from '../types/index.js';
+import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem } from '../types/index.js';
 
 const client = new DynamoDBClient({ region: config.region });
 const docClient = DynamoDBDocumentClient.from(client, {
@@ -365,6 +365,106 @@ export async function savePromptVersion(prompt: PromptItem): Promise<void> {
   );
 }
 
+// Bulk Import Batch Operations
+export async function createBulkImportBatch(batch: BulkImportBatchItem): Promise<void> {
+  await docClient.send(
+    new PutCommand({
+      TableName: config.dynamodb.bulkImportBatchesTable,
+      Item: batch,
+    })
+  );
+}
+
+export async function getBulkImportBatch(batchId: string): Promise<BulkImportBatchItem | null> {
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: config.dynamodb.bulkImportBatchesTable,
+      Key: { batch_id: batchId },
+    })
+  );
+  return (result.Item as BulkImportBatchItem) || null;
+}
+
+export async function updateBulkImportFileStatus(
+  batchId: string,
+  fileIndex: number,
+  status: string,
+  result?: { candidateId?: string; candidateName?: string; confidence?: number; isUpdate?: boolean; error?: string }
+): Promise<void> {
+  const now = new Date().toISOString();
+
+  let updateExpression = `SET files[${fileIndex}].#status = :status, updated_at = :now`;
+  const expressionAttributeNames: Record<string, string> = { '#status': 'status' };
+  const expressionAttributeValues: Record<string, unknown> = {
+    ':status': status,
+    ':now': now,
+  };
+
+  if (status === 'completed' || status === 'failed') {
+    updateExpression += `, files[${fileIndex}].processed_at = :processedAt`;
+    expressionAttributeValues[':processedAt'] = now;
+  }
+
+  if (result?.candidateId) {
+    updateExpression += `, files[${fileIndex}].candidate_id = :candidateId`;
+    expressionAttributeValues[':candidateId'] = result.candidateId;
+  }
+
+  if (result?.candidateName) {
+    updateExpression += `, files[${fileIndex}].candidate_name = :candidateName`;
+    expressionAttributeValues[':candidateName'] = result.candidateName;
+  }
+
+  if (result?.confidence !== undefined) {
+    updateExpression += `, files[${fileIndex}].confidence = :confidence`;
+    expressionAttributeValues[':confidence'] = result.confidence;
+  }
+
+  if (result?.isUpdate !== undefined) {
+    updateExpression += `, files[${fileIndex}].is_update = :isUpdate`;
+    expressionAttributeValues[':isUpdate'] = result.isUpdate;
+  }
+
+  if (result?.error) {
+    updateExpression += `, files[${fileIndex}].#error = :error`;
+    expressionAttributeNames['#error'] = 'error';
+    expressionAttributeValues[':error'] = result.error.substring(0, 500);
+  }
+
+  if (status === 'completed') {
+    updateExpression += ' ADD completed_count :one';
+    expressionAttributeValues[':one'] = 1;
+  } else if (status === 'failed') {
+    updateExpression += ' ADD failed_count :one';
+    expressionAttributeValues[':one'] = 1;
+  }
+
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.bulkImportBatchesTable,
+      Key: { batch_id: batchId },
+      UpdateExpression: updateExpression,
+      ExpressionAttributeNames: expressionAttributeNames,
+      ExpressionAttributeValues: expressionAttributeValues,
+    })
+  );
+}
+
+export async function finalizeBulkImportBatch(batchId: string): Promise<void> {
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.bulkImportBatchesTable,
+      Key: { batch_id: batchId },
+      UpdateExpression: 'SET #status = :status, updated_at = :now',
+      ExpressionAttributeNames: { '#status': 'status' },
+      ExpressionAttributeValues: {
+        ':status': 'completed',
+        ':now': new Date().toISOString(),
+      },
+    })
+  );
+}
+
 // Update candidate's formatted resume S3 key
 export async function updateCandidateFormattedResume(
   candidateId: string,
@@ -397,4 +497,156 @@ export async function updateCandidateFormattedResume(
       })
     );
   }
+}
+
+// Requirement Operations
+export async function saveRequirement(item: RequirementItem): Promise<void> {
+  await docClient.send(
+    new PutCommand({
+      TableName: config.dynamodb.requirementsTable,
+      Item: item,
+    })
+  );
+}
+
+export async function getRequirementById(requirementId: string): Promise<RequirementItem | null> {
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: config.dynamodb.requirementsTable,
+      Key: { requirement_id: requirementId },
+    })
+  );
+  return (result.Item as RequirementItem) || null;
+}
+
+export async function getRequirementsByClient(
+  clientNameLower: string,
+  dateFrom?: string,
+  dateTo?: string,
+  limit: number = 20,
+  lastEvaluatedKey?: Record<string, unknown>
+): Promise<{ items: RequirementItem[]; lastKey?: Record<string, unknown> }> {
+  let keyCondition = 'client_name_lower = :client';
+  const expressionValues: Record<string, unknown> = { ':client': clientNameLower };
+
+  if (dateFrom && dateTo) {
+    keyCondition += ' AND created_at BETWEEN :from AND :to';
+    expressionValues[':from'] = dateFrom;
+    expressionValues[':to'] = dateTo;
+  } else if (dateFrom) {
+    keyCondition += ' AND created_at >= :from';
+    expressionValues[':from'] = dateFrom;
+  } else if (dateTo) {
+    keyCondition += ' AND created_at <= :to';
+    expressionValues[':to'] = dateTo;
+  }
+
+  const params: {
+    TableName: string;
+    IndexName: string;
+    KeyConditionExpression: string;
+    ExpressionAttributeValues: Record<string, unknown>;
+    Limit: number;
+    ScanIndexForward: boolean;
+    ExclusiveStartKey?: Record<string, unknown>;
+  } = {
+    TableName: config.dynamodb.requirementsTable,
+    IndexName: 'ClientNameIndex',
+    KeyConditionExpression: keyCondition,
+    ExpressionAttributeValues: expressionValues,
+    Limit: limit,
+    ScanIndexForward: false,
+  };
+
+  if (lastEvaluatedKey) {
+    params.ExclusiveStartKey = lastEvaluatedKey;
+  }
+
+  const result = await docClient.send(new QueryCommand(params));
+  return {
+    items: (result.Items || []) as RequirementItem[],
+    lastKey: result.LastEvaluatedKey as Record<string, unknown> | undefined,
+  };
+}
+
+export async function getRequirementsByRecruiter(
+  recruiterId: string,
+  limit: number = 20,
+  lastEvaluatedKey?: Record<string, unknown>
+): Promise<{ items: RequirementItem[]; lastKey?: Record<string, unknown> }> {
+  const params: {
+    TableName: string;
+    IndexName: string;
+    KeyConditionExpression: string;
+    ExpressionAttributeValues: Record<string, unknown>;
+    Limit: number;
+    ScanIndexForward: boolean;
+    ExclusiveStartKey?: Record<string, unknown>;
+  } = {
+    TableName: config.dynamodb.requirementsTable,
+    IndexName: 'RecruiterIndex',
+    KeyConditionExpression: 'recruiter_id = :rid',
+    ExpressionAttributeValues: { ':rid': recruiterId },
+    Limit: limit,
+    ScanIndexForward: false,
+  };
+
+  if (lastEvaluatedKey) {
+    params.ExclusiveStartKey = lastEvaluatedKey;
+  }
+
+  const result = await docClient.send(new QueryCommand(params));
+  return {
+    items: (result.Items || []) as RequirementItem[],
+    lastKey: result.LastEvaluatedKey as Record<string, unknown> | undefined,
+  };
+}
+
+export async function getActiveRequirementsByClient(
+  clientNameLower: string
+): Promise<RequirementItem[]> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: config.dynamodb.requirementsTable,
+      IndexName: 'ClientNameIndex',
+      KeyConditionExpression: 'client_name_lower = :client',
+      FilterExpression: '#status = :active',
+      ExpressionAttributeNames: { '#status': 'status' },
+      ExpressionAttributeValues: {
+        ':client': clientNameLower,
+        ':active': 'active',
+      },
+      ScanIndexForward: false,
+      Limit: 10,
+    })
+  );
+  return (result.Items || []) as RequirementItem[];
+}
+
+export async function updateRequirementStatus(
+  requirementId: string,
+  status: string,
+  duplicateOf?: string
+): Promise<void> {
+  let updateExpression = 'SET #status = :status, last_updated = :now';
+  const expressionAttributeNames: Record<string, string> = { '#status': 'status' };
+  const expressionAttributeValues: Record<string, unknown> = {
+    ':status': status,
+    ':now': new Date().toISOString(),
+  };
+
+  if (duplicateOf) {
+    updateExpression += ', duplicate_of = :dupOf';
+    expressionAttributeValues[':dupOf'] = duplicateOf;
+  }
+
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.requirementsTable,
+      Key: { requirement_id: requirementId },
+      UpdateExpression: updateExpression,
+      ExpressionAttributeNames: expressionAttributeNames,
+      ExpressionAttributeValues: expressionAttributeValues,
+    })
+  );
 }

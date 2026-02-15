@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import mammoth from 'mammoth';
 import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import { config } from '../config.js';
@@ -88,7 +89,13 @@ You MUST respond with valid JSON matching this exact schema:
   "industries": ["array of preferred industries"],
   "roles": ["array of relevant job titles"],
   "rateRaw": number or null - the raw numeric rate/budget/cost mentioned in the JD (just the number, without currency symbol),
-  "rateUnit": "lpa" | "lpm" | "rupees_per_hour" | "usd_per_hour" | null - the unit of the rate. Use "lpa" for lakhs per annum, "lpm" for lakhs per month, "rupees_per_hour" for INR/hour or Rs/hour, "usd_per_hour" for $/hour or USD/hour
+  "rateUnit": "lpa" | "lpm" | "rupees_per_hour" | "usd_per_hour" | null - the unit of the rate,
+  "clientName": "string or null - the client or company name posting this requirement",
+  "endClient": "string or null - the end client who will leverage the resource",
+  "engagementModel": "full_time_regular | full_time_contract | part_time_contract | null",
+  "payroll": "quadzero | client | null",
+  "budgetMinLpa": number or null - minimum budget in LPA,
+  "budgetMaxLpa": number or null - maximum budget in LPA
 }
 
 Rules:
@@ -97,7 +104,9 @@ Rules:
 3. If experience is mentioned as "X+ years", set minExperience to X
 4. If no specific requirement, use null or empty array
 5. ONLY output valid JSON, no additional text
-6. For rate/budget/cost: extract the numeric value and its unit separately. Look for phrases like "budget", "rate", "CTC", "compensation", "salary range". Common patterns: "$X/hr", "Rs.X/hour", "X LPM", "X LPA", "X lakhs per month"`;
+6. For rate/budget/cost: extract the numeric value and its unit separately
+7. For client/engagement details: look for company names, "full-time", "contract", "part-time", "payroll" keywords
+8. For budget range: look for "budget", "salary range", "CTC range". Convert to LPA if in other units`;
 
 // Prompt cache with TTL
 const promptCache = new Map<string, { content: string; fetchedAt: number }>();
@@ -298,6 +307,118 @@ export async function formatResume(
       success: false,
     };
   }
+}
+
+// Duplicate detection schema
+const DuplicateComparisonSchema = z.array(z.object({
+  requirementId: z.string(),
+  similarityScore: z.number().min(0).max(100),
+  reason: z.string(),
+}));
+
+export interface RequirementComparisonInput {
+  jobTitle?: string;
+  mustHaveSkills: string[];
+  goodToHaveSkills?: string[];
+  minExperience?: number | null;
+  maxExperience?: number | null;
+  seniority?: string[];
+  location?: string | null;
+}
+
+export interface ExistingRequirementSummary {
+  requirementId: string;
+  jobTitle?: string;
+  mustHaveSkills: string[];
+  goodToHaveSkills?: string[];
+  minExperience?: number | null;
+  maxExperience?: number | null;
+  seniority?: string[];
+  location?: string | null;
+  createdAt: string;
+}
+
+export async function compareRequirements(
+  newRequirement: RequirementComparisonInput,
+  existingRequirements: ExistingRequirementSummary[]
+): Promise<Array<{ requirementId: string; jobTitle?: string; mustHaveSkills: string[]; similarityScore: number; reason: string; createdAt: string }>> {
+  if (existingRequirements.length === 0) return [];
+
+  const provider = getLLMProvider();
+
+  const systemPrompt = `You are a recruitment requirement duplicate detector. Compare a NEW job requirement against EXISTING requirements from the same client and identify potential duplicates.
+
+You MUST respond with valid JSON — an array of objects for requirements with similarity score above 60%. Each object has:
+{
+  "requirementId": "the ID of the existing requirement",
+  "similarityScore": number from 0 to 100,
+  "reason": "brief explanation of why they are similar"
+}
+
+Consider these factors when scoring:
+- Must-have skills overlap (most important — 50% weight)
+- Experience range overlap (20% weight)
+- Job title similarity (15% weight)
+- Seniority level overlap (10% weight)
+- Location match (5% weight)
+
+If no requirements score above 60%, return an empty array [].
+ONLY output valid JSON, no additional text.`;
+
+  const existingSummaries = existingRequirements.map((req, i) => {
+    return `[${i + 1}] ID: ${req.requirementId}
+  Title: ${req.jobTitle || 'N/A'}
+  Must-have skills: ${req.mustHaveSkills.join(', ') || 'N/A'}
+  Good-to-have skills: ${req.goodToHaveSkills?.join(', ') || 'N/A'}
+  Experience: ${req.minExperience ?? '?'}-${req.maxExperience ?? '?'} years
+  Seniority: ${req.seniority?.join(', ') || 'N/A'}
+  Location: ${req.location || 'N/A'}
+  Created: ${req.createdAt}`;
+  }).join('\n\n');
+
+  const userPrompt = `NEW REQUIREMENT:
+Title: ${newRequirement.jobTitle || 'N/A'}
+Must-have skills: ${newRequirement.mustHaveSkills.join(', ') || 'N/A'}
+Good-to-have skills: ${newRequirement.goodToHaveSkills?.join(', ') || 'N/A'}
+Experience: ${newRequirement.minExperience ?? '?'}-${newRequirement.maxExperience ?? '?'} years
+Seniority: ${newRequirement.seniority?.join(', ') || 'N/A'}
+Location: ${newRequirement.location || 'N/A'}
+
+EXISTING REQUIREMENTS FROM SAME CLIENT:
+${existingSummaries}
+
+Identify any existing requirements that are potential duplicates of the new one (similarity > 60%).`;
+
+  const messages: LLMMessage[] = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt },
+  ];
+
+  const response = await provider.completeWithRetry(messages, {
+    temperature: 0,
+    maxTokens: 2048,
+  }, config.llm.maxRetries);
+
+  const parsed = provider.parseJsonResponse<unknown>(response.content);
+  const validated = DuplicateComparisonSchema.safeParse(parsed);
+
+  if (!validated.success) {
+    console.warn('LLM duplicate comparison output invalid, treating as no duplicates:', validated.error);
+    return [];
+  }
+
+  // Enrich with data from existing requirements
+  return validated.data.map((match: { requirementId: string; similarityScore: number; reason: string }) => {
+    const existing = existingRequirements.find((r) => r.requirementId === match.requirementId);
+    return {
+      requirementId: match.requirementId,
+      jobTitle: existing?.jobTitle,
+      mustHaveSkills: existing?.mustHaveSkills || [],
+      similarityScore: match.similarityScore,
+      reason: match.reason,
+      createdAt: existing?.createdAt || '',
+    };
+  });
 }
 
 export { BaseLLMProvider };
