@@ -4,10 +4,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Header } from '@/components/Header';
-import { api, ParsedCriteria, SearchCriteria, CandidateSearchResult } from '@/lib/api';
-import { formatSeniority, formatAvailability, getMatchScoreColor, getMatchScoreBgColor, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS } from '@/lib/utils';
+import { api, ParsedCriteria, SearchCriteria, CandidateSearchResult, EngagementModel, Payroll, DuplicateMatch } from '@/lib/api';
+import { formatSeniority, formatAvailability, getMatchScoreColor, getMatchScoreBgColor, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS, ENGAGEMENT_MODEL_OPTIONS, PAYROLL_OPTIONS, formatEngagementModel } from '@/lib/utils';
 
-type ViewMode = 'input' | 'criteria' | 'results';
+type ViewMode = 'input' | 'requirement_details' | 'criteria' | 'results';
 
 const STORAGE_KEY = 'scout_recruiter_search';
 
@@ -29,6 +29,18 @@ export default function RecruiterSearchPage() {
   const [selectedCandidate, setSelectedCandidate] = useState<CandidateSearchResult | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [formattingCandidateId, setFormattingCandidateId] = useState<string | null>(null);
+
+  // Requirement details state
+  const [clientName, setClientName] = useState('');
+  const [endClient, setEndClient] = useState('');
+  const [engagementModel, setEngagementModel] = useState<EngagementModel | ''>('');
+  const [payroll, setPayroll] = useState<Payroll | ''>('');
+  const [budgetMinLpa, setBudgetMinLpa] = useState('');
+  const [budgetMaxLpa, setBudgetMaxLpa] = useState('');
+  const [duplicates, setDuplicates] = useState<DuplicateMatch[]>([]);
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [savingRequirement, setSavingRequirement] = useState(false);
+  const [requirementSaved, setRequirementSaved] = useState(false);
 
   // Search helper — reusable for both button click and state restore
   const runSearch = useCallback(async (criteria: SearchCriteria) => {
@@ -109,7 +121,29 @@ export default function RecruiterSearchPage() {
         maxBudgetLpa: response.parsedCriteria.rateLpa || undefined,
       });
 
-      setViewMode('criteria');
+      // Pre-fill requirement fields from LLM extraction
+      if (response.parsedCriteria.clientName) setClientName(response.parsedCriteria.clientName);
+      if (response.parsedCriteria.endClient) setEndClient(response.parsedCriteria.endClient);
+      if (response.parsedCriteria.engagementModel) {
+        const em = response.parsedCriteria.engagementModel;
+        if (['full_time_regular', 'full_time_contract', 'part_time_contract'].includes(em)) {
+          setEngagementModel(em as EngagementModel);
+        }
+      }
+      if (response.parsedCriteria.payroll) {
+        const p = response.parsedCriteria.payroll;
+        if (['quadzero', 'client'].includes(p)) setPayroll(p as Payroll);
+      }
+      if (response.parsedCriteria.budgetMinLpa != null) setBudgetMinLpa(response.parsedCriteria.budgetMinLpa.toString());
+      if (response.parsedCriteria.budgetMaxLpa != null) setBudgetMaxLpa(response.parsedCriteria.budgetMaxLpa.toString());
+
+      // Authenticated recruiters go through requirement details; others go straight to criteria
+      if (isAuthenticated) {
+        setRequirementSaved(false);
+        setViewMode('requirement_details');
+      } else {
+        setViewMode('criteria');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to parse job description');
     } finally {
@@ -173,6 +207,69 @@ export default function RecruiterSearchPage() {
     }
   };
 
+  const handleSaveAndContinue = async () => {
+    if (!clientName.trim()) { setError('Client name is required'); return; }
+    if (!engagementModel) { setError('Engagement model is required'); return; }
+    if (!payroll) { setError('Payroll is required'); return; }
+    if (!parsedCriteria) return;
+
+    try {
+      setSavingRequirement(true);
+      setError(null);
+
+      // Check for duplicates first
+      const dupResponse = await api.checkDuplicate(clientName, parsedCriteria, jobTitle || undefined);
+
+      if (dupResponse.duplicates.length > 0) {
+        setDuplicates(dupResponse.duplicates);
+        setShowDuplicateModal(true);
+        return;
+      }
+
+      // No duplicates — save directly
+      await doSaveRequirement();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save requirement');
+    } finally {
+      setSavingRequirement(false);
+    }
+  };
+
+  const doSaveRequirement = async (duplicateOf?: string) => {
+    if (!parsedCriteria) return;
+
+    try {
+      setSavingRequirement(true);
+      setError(null);
+
+      await api.saveRequirement({
+        clientName: clientName.trim(),
+        endClient: endClient.trim() || undefined,
+        engagementModel: engagementModel as EngagementModel,
+        payroll: payroll as Payroll,
+        budgetMinLpa: budgetMinLpa ? parseFloat(budgetMinLpa) : undefined,
+        budgetMaxLpa: budgetMaxLpa ? parseFloat(budgetMaxLpa) : undefined,
+        jobTitle: jobTitle.trim() || undefined,
+        jdText: jobDescription,
+        parsedCriteria,
+        status: duplicateOf ? 'duplicate' : 'active',
+        duplicateOf,
+      });
+
+      setRequirementSaved(true);
+      setShowDuplicateModal(false);
+      setViewMode('criteria');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save requirement');
+    } finally {
+      setSavingRequirement(false);
+    }
+  };
+
+  const handleSkipSave = () => {
+    setViewMode('criteria');
+  };
+
   const updateCriteria = (key: keyof SearchCriteria, value: unknown) => {
     setSearchCriteria({ ...searchCriteria, [key]: value });
   };
@@ -194,8 +291,20 @@ export default function RecruiterSearchPage() {
             onClick={() => setViewMode('input')}
             className={`text-sm ${viewMode === 'input' ? 'text-primary-600 dark:text-primary-400 font-medium' : 'text-gray-500 dark:text-gray-400'}`}
           >
-            Job Description
+            JD
           </button>
+          {isAuthenticated && (
+            <>
+              <span className="text-gray-300 dark:text-gray-600">/</span>
+              <button
+                onClick={() => parsedCriteria && setViewMode('requirement_details')}
+                disabled={!parsedCriteria}
+                className={`text-sm ${viewMode === 'requirement_details' ? 'text-primary-600 dark:text-primary-400 font-medium' : 'text-gray-500 dark:text-gray-400'} disabled:opacity-50`}
+              >
+                Requirement
+              </button>
+            </>
+          )}
           <span className="text-gray-300 dark:text-gray-600">/</span>
           <button
             onClick={() => parsedCriteria && setViewMode('criteria')}
@@ -264,6 +373,137 @@ export default function RecruiterSearchPage() {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Requirement Details (authenticated recruiters only) */}
+        {viewMode === 'requirement_details' && parsedCriteria && (
+          <div className="space-y-6">
+            <div className="card p-6">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">Save Requirement</h2>
+              <p className="text-gray-600 dark:text-gray-400 mb-6">
+                Fill in the requirement details to save this JD before searching candidates.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="label">Client Name <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    value={clientName}
+                    onChange={(e) => setClientName(e.target.value)}
+                    placeholder="Who shared this requirement?"
+                    className="input mt-1"
+                  />
+                </div>
+                <div>
+                  <label className="label">End Client</label>
+                  <input
+                    type="text"
+                    value={endClient}
+                    onChange={(e) => setEndClient(e.target.value)}
+                    placeholder="Who will leverage the resource? (optional)"
+                    className="input mt-1"
+                  />
+                </div>
+                <div>
+                  <label className="label">Engagement Model <span className="text-red-500">*</span></label>
+                  <select
+                    value={engagementModel}
+                    onChange={(e) => setEngagementModel(e.target.value as EngagementModel)}
+                    className="input mt-1"
+                  >
+                    <option value="">Select engagement model</option>
+                    {ENGAGEMENT_MODEL_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Payroll <span className="text-red-500">*</span></label>
+                  <select
+                    value={payroll}
+                    onChange={(e) => setPayroll(e.target.value as Payroll)}
+                    className="input mt-1"
+                  >
+                    <option value="">Select payroll</option>
+                    {PAYROLL_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Budget Range (LPA)</label>
+                  <div className="mt-1 flex items-center space-x-2">
+                    <input type="number" min="0" step="0.5" value={budgetMinLpa} onChange={(e) => setBudgetMinLpa(e.target.value)} placeholder="Min" className="input w-28" />
+                    <span className="text-gray-500 dark:text-gray-400">to</span>
+                    <input type="number" min="0" step="0.5" value={budgetMaxLpa} onChange={(e) => setBudgetMaxLpa(e.target.value)} placeholder="Max" className="input w-28" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Duplicate Modal */}
+            {showDuplicateModal && duplicates.length > 0 && (
+              <div className="card p-6 border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/10">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Potential Duplicates Found</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                  Similar requirements from <strong>{clientName}</strong> already exist. You can mark this as a copy or save as new.
+                </p>
+                <div className="space-y-3">
+                  {duplicates.map((dup) => (
+                    <div key={dup.requirementId} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 bg-white dark:bg-gray-800 rounded-lg border border-yellow-200 dark:border-yellow-700">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-gray-900 dark:text-gray-100 truncate">{dup.jobTitle || 'Untitled'}</span>
+                          <span className="badge bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300 text-xs">{dup.similarityScore}% match</span>
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{dup.reason}</p>
+                      </div>
+                      <button onClick={() => doSaveRequirement(dup.requirementId)} disabled={savingRequirement} className="btn-secondary text-sm whitespace-nowrap self-start">
+                        Mark as Copy
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 flex justify-end gap-3">
+                  <button onClick={() => setShowDuplicateModal(false)} className="btn-secondary text-sm">Cancel</button>
+                  <button onClick={() => doSaveRequirement()} disabled={savingRequirement} className="btn-primary text-sm">
+                    {savingRequirement ? 'Saving...' : 'Save as New Requirement'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-between">
+              <button onClick={() => setViewMode('input')} className="btn-secondary">Back to JD</button>
+              <div className="flex gap-3">
+                <button onClick={handleSkipSave} className="btn-secondary">
+                  Skip & Search
+                </button>
+                <button
+                  onClick={handleSaveAndContinue}
+                  disabled={savingRequirement || !clientName.trim() || !engagementModel || !payroll}
+                  className="btn-primary px-8"
+                >
+                  {savingRequirement ? 'Saving...' : 'Save & Search'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Requirement saved banner */}
+        {viewMode === 'criteria' && requirementSaved && (
+          <div className="mb-6 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg flex items-center gap-2">
+            <svg className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            <p className="text-sm text-green-700 dark:text-green-300">
+              Requirement saved for <strong>{clientName}</strong>
+              {engagementModel && <span> ({formatEngagementModel(engagementModel)})</span>}.
+              Now refine your search criteria below.
+            </p>
           </div>
         )}
 
