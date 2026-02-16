@@ -171,6 +171,13 @@ export const UpdatePricingConfigRequestSchema = z.object({
   description: z.string().max(500).optional(),
 });
 
+// Update candidate CTC
+export const UpdateCandidateCtcRequestSchema = z.object({
+  candidateId: z.string().min(1),
+  currentCtc: z.number().min(0).max(500).optional(),
+  expectedCtc: z.number().min(0).max(500),
+});
+
 // Format Zod errors for API response
 export function formatZodErrors(error: z.ZodError): string {
   return error.errors

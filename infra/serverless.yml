@@ -353,6 +353,13 @@ functions:
           path: /recruiter/pricing/calculate
           method: POST
 
+  recruiterUpdateCandidateCtc:
+    handler: src/handlers/recruiter/updateCandidateCtc.handler
+    events:
+      - httpApi:
+          path: /recruiter/candidate-ctc
+          method: PUT
+
   adminGetPricingConfig:
     handler: src/handlers/admin/getPricingConfig.handler
     events:

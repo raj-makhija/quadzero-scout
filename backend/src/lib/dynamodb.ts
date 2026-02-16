@@ -499,6 +499,36 @@ export async function updateCandidateFormattedResume(
   }
 }
 
+// Update candidate CTC fields (internal recruiter use)
+export async function updateCandidateCtc(
+  candidateId: string,
+  expectedCtc: number,
+  currentCtc?: number
+): Promise<void> {
+  const now = new Date().toISOString();
+
+  const expressionParts = ['expected_ctc = :ectc', 'last_updated = :now'];
+  const values: Record<string, unknown> = {
+    ':ectc': expectedCtc,
+    ':now': now,
+  };
+
+  if (currentCtc !== undefined) {
+    expressionParts.push('current_ctc = :cctc');
+    values[':cctc'] = currentCtc;
+  }
+
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.talentProfilesTable,
+      Key: { candidate_id: candidateId },
+      UpdateExpression: `SET ${expressionParts.join(', ')}`,
+      ExpressionAttributeValues: values,
+      ConditionExpression: 'attribute_exists(candidate_id)',
+    })
+  );
+}
+
 // Requirement Operations
 export async function saveRequirement(item: RequirementItem): Promise<void> {
   await docClient.send(

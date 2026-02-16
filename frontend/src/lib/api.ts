@@ -332,6 +332,13 @@ class ApiClient {
       body: JSON.stringify({ config, description }),
     });
   }
+
+  async updateCandidateCtc(candidateId: string, expectedCtc: number, currentCtc?: number) {
+    return this.request<{ candidateId: string; expectedCtc: number; currentCtc?: number }>('/recruiter/candidate-ctc', {
+      method: 'PUT',
+      body: JSON.stringify({ candidateId, expectedCtc, currentCtc }),
+    });
+  }
 }
 
 export const api = new ApiClient(API_URL);

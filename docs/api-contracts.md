@@ -1113,6 +1113,47 @@ Resume processing a paused/failed bulk import batch.
 
 ## Pricing Endpoints
 
+### PUT /recruiter/candidate-ctc
+
+Update a candidate's CTC fields. Only available to internal recruiters (`@quadzero.com`).
+
+**Auth:** Requires `recruiter` or `admin` role. Additionally requires `isInternal === true` (403 if not).
+
+**Request Headers:**
+```
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "candidateId": "string (required, min 1 char)",
+  "expectedCtc": "number (required, 0-500 LPA)",
+  "currentCtc": "number (optional, 0-500 LPA)"
+}
+```
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "candidateId": "abc123",
+    "expectedCtc": 18,
+    "currentCtc": 15
+  }
+}
+```
+
+**Error Responses:**
+- `400` — Validation error (missing/invalid fields)
+- `403` — Non-internal recruiter attempting update
+- `404` — Candidate not found (ConditionExpression failure)
+- `500` — Internal server error
+
+---
+
 ### POST /recruiter/pricing/calculate
 
 Calculate billing rates for a candidate based on CTC, experience, contract terms, and optional client budget.

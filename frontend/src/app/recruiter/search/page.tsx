@@ -14,8 +14,9 @@ const STORAGE_KEY = 'scout_recruiter_search';
 
 export default function RecruiterSearchPage() {
   const router = useRouter();
-  const { status } = useSession();
+  const { data: session, status } = useSession();
   const isAuthenticated = status === 'authenticated';
+  const isInternalRecruiter = (session?.user as any)?.isInternal === true;
 
   const [viewMode, setViewMode] = useState<ViewMode>('input');
   const [jobDescription, setJobDescription] = useState('');
@@ -940,8 +941,14 @@ export default function RecruiterSearchPage() {
                 {/* Pricing Calculator */}
                 <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
                   <PricingPanel
+                    candidateId={selectedCandidate.candidateId}
                     candidateExpectedCtcLpa={selectedCandidate.expectedCtc}
+                    candidateCurrentCtcLpa={selectedCandidate.currentCtc}
                     candidateExperienceYears={selectedCandidate.totalExperience}
+                    isInternalRecruiter={isInternalRecruiter}
+                    onCtcUpdated={(expectedCtc, currentCtc) => {
+                      setSelectedCandidate(prev => prev ? { ...prev, expectedCtc, currentCtc } : prev);
+                    }}
                   />
                 </div>
 

@@ -1,11 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api, PricingOutput } from '@/lib/api';
 
 interface PricingPanelProps {
+  candidateId?: string;
   candidateExpectedCtcLpa: number | undefined;
+  candidateCurrentCtcLpa: number | undefined;
   candidateExperienceYears: number;
+  isInternalRecruiter?: boolean;
+  onCtcUpdated?: (expectedCtc: number, currentCtc?: number) => void;
 }
 
 const formatInr = (value: number): string => {
@@ -22,7 +26,14 @@ const BUDGET_CASE_LABELS: Record<string, string> = {
   C: 'Below budget floor — margin uplifted',
 };
 
-export function PricingPanel({ candidateExpectedCtcLpa, candidateExperienceYears }: PricingPanelProps) {
+export function PricingPanel({
+  candidateId,
+  candidateExpectedCtcLpa,
+  candidateCurrentCtcLpa,
+  candidateExperienceYears,
+  isInternalRecruiter,
+  onCtcUpdated,
+}: PricingPanelProps) {
   const [contractDuration, setContractDuration] = useState(12);
   const [paymentTerms, setPaymentTerms] = useState(90);
   const [budgetMin, setBudgetMin] = useState('');
@@ -31,21 +42,24 @@ export function PricingPanel({ candidateExpectedCtcLpa, candidateExperienceYears
   const [result, setResult] = useState<PricingOutput | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  if (candidateExpectedCtcLpa == null) {
-    return (
-      <div>
-        <h3 className="font-medium text-gray-900 dark:text-gray-100 mb-2">Billing Rate Calculator</h3>
-        <p className="text-sm text-gray-500 dark:text-gray-400">Candidate CTC not available. Cannot calculate billing rate.</p>
-      </div>
-    );
-  }
+  // CTC editing state
+  const [ctcCurrentInput, setCtcCurrentInput] = useState('');
+  const [ctcExpectedInput, setCtcExpectedInput] = useState('');
+  const [savingCtc, setSavingCtc] = useState(false);
+  const [ctcError, setCtcError] = useState<string | null>(null);
+  const [savedCtc, setSavedCtc] = useState<number | null>(null);
 
-  const handleCalculate = async () => {
+  const effectiveExpectedCtc = savedCtc ?? candidateExpectedCtcLpa;
+
+  const handleCalculate = useCallback(async (expectedCtcOverride?: number) => {
+    const ctcToUse = expectedCtcOverride ?? effectiveExpectedCtc;
+    if (ctcToUse == null) return;
+
     setLoading(true);
     setErrorMsg(null);
     try {
       const input: Parameters<typeof api.calculatePricing>[0] = {
-        candidateExpectedCtcLpa,
+        candidateExpectedCtcLpa: ctcToUse,
         candidateExperienceYears,
         contractDurationMonths: contractDuration,
         paymentTermsDays: paymentTerms,
@@ -63,7 +77,108 @@ export function PricingPanel({ candidateExpectedCtcLpa, candidateExperienceYears
     } finally {
       setLoading(false);
     }
+  }, [effectiveExpectedCtc, candidateExperienceYears, contractDuration, paymentTerms, budgetMin, budgetMax]);
+
+  // Auto-calculate after CTC is saved
+  const [autoCalcPending, setAutoCalcPending] = useState(false);
+  useEffect(() => {
+    if (autoCalcPending && savedCtc != null) {
+      handleCalculate(savedCtc);
+      setAutoCalcPending(false);
+    }
+  }, [autoCalcPending, savedCtc, handleCalculate]);
+
+  const handleSaveCtc = async () => {
+    if (!candidateId) return;
+
+    const expectedVal = parseFloat(ctcExpectedInput);
+    if (isNaN(expectedVal) || expectedVal <= 0) {
+      setCtcError('Expected CTC is required and must be greater than 0');
+      return;
+    }
+    if (expectedVal > 500) {
+      setCtcError('Expected CTC must be 500 LPA or less');
+      return;
+    }
+
+    const currentVal = ctcCurrentInput ? parseFloat(ctcCurrentInput) : undefined;
+    if (currentVal !== undefined && (isNaN(currentVal) || currentVal < 0 || currentVal > 500)) {
+      setCtcError('Current CTC must be between 0 and 500 LPA');
+      return;
+    }
+
+    setSavingCtc(true);
+    setCtcError(null);
+    try {
+      await api.updateCandidateCtc(candidateId, expectedVal, currentVal);
+      setSavedCtc(expectedVal);
+      onCtcUpdated?.(expectedVal, currentVal);
+      setAutoCalcPending(true);
+    } catch (err) {
+      setCtcError(err instanceof Error ? err.message : 'Failed to save CTC');
+    } finally {
+      setSavingCtc(false);
+    }
   };
+
+  // Show CTC input form for internal recruiters when CTC is missing
+  if (effectiveExpectedCtc == null) {
+    if (isInternalRecruiter && candidateId) {
+      return (
+        <div>
+          <h3 className="font-medium text-gray-900 dark:text-gray-100 mb-2">Billing Rate Calculator</h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+            Candidate CTC not available. Enter CTC to calculate billing rate.
+          </p>
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <div>
+              <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Current CTC (LPA)</label>
+              <input
+                type="number"
+                min={0}
+                max={500}
+                step="0.1"
+                placeholder="Optional"
+                value={ctcCurrentInput}
+                onChange={(e) => setCtcCurrentInput(e.target.value)}
+                className="w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Expected CTC (LPA) *</label>
+              <input
+                type="number"
+                min={0}
+                max={500}
+                step="0.1"
+                placeholder="Required"
+                value={ctcExpectedInput}
+                onChange={(e) => setCtcExpectedInput(e.target.value)}
+                className="w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              />
+            </div>
+          </div>
+          {ctcError && (
+            <p className="mb-2 text-sm text-red-600 dark:text-red-400">{ctcError}</p>
+          )}
+          <button
+            onClick={handleSaveCtc}
+            disabled={savingCtc}
+            className="btn-primary w-full text-sm py-2"
+          >
+            {savingCtc ? 'Saving...' : 'Save & Calculate'}
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div>
+        <h3 className="font-medium text-gray-900 dark:text-gray-100 mb-2">Billing Rate Calculator</h3>
+        <p className="text-sm text-gray-500 dark:text-gray-400">Candidate CTC not available. Cannot calculate billing rate.</p>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -123,7 +238,7 @@ export function PricingPanel({ candidateExpectedCtcLpa, candidateExperienceYears
       </div>
 
       <button
-        onClick={handleCalculate}
+        onClick={() => handleCalculate()}
         disabled={loading}
         className="btn-primary w-full text-sm py-2"
       >
