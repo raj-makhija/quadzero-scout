@@ -43,7 +43,12 @@ Stores candidate profile data extracted from resumes and edited by candidates.
 | education | List<Map> | No | Education history |
 | certifications | List<String> | No | Professional certifications |
 | summary | String | No | Profile summary |
-| resume_s3_key | String | Yes | S3 object key for resume |
+| current_ctc | Number | No | Current CTC in LPA (Lakhs Per Annum) |
+| expected_ctc | Number | No | Expected CTC in LPA |
+| experience_bucket | String | Yes | Bucketed experience for GSI (e.g., "0-2", "3-5") |
+| resume_s3_key | String | Yes | S3 object key for original resume |
+| formatted_resume_s3_key | String | No | S3 key for LLM-formatted resume |
+| formatted_at | String | No | ISO 8601 timestamp of formatting |
 | created_at | String | Yes | ISO 8601 timestamp |
 | last_updated | String | Yes | ISO 8601 timestamp |
 
@@ -78,7 +83,12 @@ Stores candidate profile data extracted from resumes and edited by candidates.
   ],
   "certifications": ["AWS Solutions Architect Associate"],
   "summary": "Experienced full-stack developer specializing in React and Node.js",
+  "current_ctc": 18.5,
+  "expected_ctc": 25.0,
+  "experience_bucket": "6-10",
   "resume_s3_key": "resumes/2024/01/a1b2c3d4-resume.pdf",
+  "formatted_resume_s3_key": "formatted-resumes/a1b2c3d4.pdf",
+  "formatted_at": "2024-01-15T12:00:00Z",
   "created_at": "2024-01-10T08:00:00Z",
   "last_updated": "2024-01-15T10:30:00Z"
 }
@@ -86,15 +96,27 @@ Stores candidate profile data extracted from resumes and edited by candidates.
 
 **Global Secondary Indexes:**
 
-#### GSI: PrimarySkillIndex
-For querying candidates by specific skills.
+#### GSI: UserIdIndex
+For finding a user's profile.
 
 | Attribute | Key Type |
 |-----------|----------|
-| primary_skill | Partition Key |
-| total_experience | Sort Key |
+| user_id | Partition Key |
 
-*Note: This requires denormalization - each skill creates a separate index entry.*
+#### GSI: EmailIndex
+For looking up candidates by email (used for deduplication during bulk import).
+
+| Attribute | Key Type |
+|-----------|----------|
+| email | Partition Key |
+
+#### GSI: SeniorityIndex
+For filtering by career level.
+
+| Attribute | Key Type |
+|-----------|----------|
+| seniority | Partition Key |
+| last_updated | Sort Key |
 
 #### GSI: ExperienceIndex
 For filtering candidates by experience range.
@@ -105,21 +127,6 @@ For filtering candidates by experience range.
 | last_updated | Sort Key |
 
 *Buckets: 0-2, 3-5, 6-10, 11-15, 16+*
-
-#### GSI: SeniorityIndex
-For filtering by career level.
-
-| Attribute | Key Type |
-|-----------|----------|
-| seniority | Partition Key |
-| last_updated | Sort Key |
-
-#### GSI: UserIdIndex
-For finding a user's profile.
-
-| Attribute | Key Type |
-|-----------|----------|
-| user_id | Partition Key |
 
 ---
 
@@ -143,14 +150,17 @@ Stores user authentication and role data for NextAuth.js.
 | id | String | Yes | Unique identifier (PK) |
 | email | String | Yes | User email (unique) |
 | name | String | No | Display name |
-| password_hash | String | No | Hashed password (credentials auth) |
+| passwordHash | String | No | Hashed password (bcryptjs, credentials auth) |
 | role | String | Yes | User role: candidate, recruiter, admin |
+| status | String | Yes | Account status: pending, approved, rejected |
 | provider | String | Yes | Auth provider: credentials, google |
-| provider_account_id | String | No | OAuth provider account ID |
-| email_verified | Boolean | No | Email verification status |
+| providerAccountId | String | No | OAuth provider account ID |
+| emailVerified | Boolean | No | Email verification status |
 | image | String | No | Profile image URL |
-| created_at | String | Yes | ISO 8601 timestamp |
-| last_login | String | No | Last login timestamp |
+| createdAt | String | Yes | ISO 8601 timestamp |
+| lastLogin | String | No | Last login timestamp |
+| statusUpdatedAt | String | No | When status was last changed |
+| statusUpdatedBy | String | No | Admin who changed the status |
 
 **Example Item:**
 ```json
@@ -159,12 +169,13 @@ Stores user authentication and role data for NextAuth.js.
   "email": "john.doe@example.com",
   "name": "John Doe",
   "role": "candidate",
+  "status": "approved",
   "provider": "google",
-  "provider_account_id": "google_12345",
-  "email_verified": true,
+  "providerAccountId": "google_12345",
+  "emailVerified": true,
   "image": "https://lh3.googleusercontent.com/...",
-  "created_at": "2024-01-10T08:00:00Z",
-  "last_login": "2024-01-15T10:30:00Z"
+  "createdAt": "2024-01-10T08:00:00Z",
+  "lastLogin": "2024-01-15T10:30:00Z"
 }
 ```
 
@@ -179,7 +190,53 @@ For looking up users by email during authentication.
 
 ---
 
-### 3. SavedSearches (Phase 2)
+### 3. Prompts
+
+Stores versioned LLM prompts managed via the admin interface.
+
+**Table Configuration:**
+- Table Name: `Prompts-{stage}`
+- Billing Mode: PAY_PER_REQUEST
+
+**Primary Key:**
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| prompt_key | String (S) | Partition Key (e.g., "resume_parser") |
+| version | Number (N) | Sort Key - version number |
+
+**Attributes:**
+
+| Attribute | Type | Required | Description |
+|-----------|------|----------|-------------|
+| prompt_key | String | Yes | Prompt identifier (PK) |
+| version | Number | Yes | Version number (SK) |
+| content | String | Yes | Full prompt text |
+| is_active | Boolean | Yes | Whether this version is active |
+| created_at | String | Yes | ISO 8601 timestamp |
+| created_by | String | Yes | Admin who created this version |
+| description | String | No | Description of changes |
+
+**Known Prompt Keys:**
+- `resume_parser` - System prompt for LLM resume parsing
+- `jd_parser` - System prompt for LLM job description parsing
+- `resume_formatter` - System prompt for LLM resume formatting
+
+**Example Item:**
+```json
+{
+  "prompt_key": "resume_parser",
+  "version": 2,
+  "content": "You are an expert resume parser...",
+  "is_active": true,
+  "created_at": "2024-01-15T10:30:00Z",
+  "created_by": "admin@quadzero.com",
+  "description": "Added CTC extraction support"
+}
+```
+
+---
+
+### 4. SavedSearches
 
 Stores recruiter saved searches for quick access.
 
@@ -212,18 +269,148 @@ Stores recruiter saved searches for quick access.
   "search_id": "search_s1a2v3e4",
   "name": "Senior React Developers - Bangalore",
   "criteria": {
-    "must_have_skills": ["react", "nodejs"],
-    "good_to_have_skills": ["typescript", "aws"],
-    "min_experience": 5,
-    "max_experience": 12,
+    "mustHaveSkills": ["react", "nodejs"],
+    "goodToHaveSkills": ["typescript", "aws"],
+    "minExperience": 5,
+    "maxExperience": 12,
     "seniority": ["senior", "lead"],
-    "location": "Bangalore"
+    "location": "Bangalore",
+    "maxBudgetLpa": 30
   },
   "last_run": "2024-01-15T14:30:00Z",
   "result_count": 23,
   "created_at": "2024-01-10T09:00:00Z"
 }
 ```
+
+---
+
+### 5. BulkImportBatches
+
+Stores bulk resume import batch state and progress.
+
+**Table Configuration:**
+- Table Name: `BulkImportBatches-{stage}`
+- Billing Mode: PAY_PER_REQUEST
+- TTL: Enabled on `ttl` attribute
+
+**Primary Key:**
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| batch_id | String (S) | Partition Key |
+
+**Attributes:**
+
+| Attribute | Type | Required | Description |
+|-----------|------|----------|-------------|
+| batch_id | String | Yes | Unique batch identifier (PK) |
+| status | String | Yes | Batch status: processing, completed |
+| created_by | String | Yes | Admin who started the import |
+| created_at | String | Yes | ISO 8601 timestamp |
+| updated_at | String | Yes | ISO 8601 timestamp |
+| total_files | Number | Yes | Total files in batch |
+| completed_count | Number | Yes | Successfully processed count |
+| failed_count | Number | Yes | Failed processing count |
+| files | List<Map> | Yes | File entries with per-file status |
+| ttl | Number | No | TTL for auto-expiration (epoch seconds) |
+
+**File Entry Schema:**
+```json
+{
+  "s3_key": "resumes/2024/01/batch-file.pdf",
+  "file_name": "john_resume.pdf",
+  "status": "completed",
+  "candidate_id": "cand_xyz",
+  "candidate_name": "John Doe",
+  "confidence": 0.92,
+  "is_update": false,
+  "error": null,
+  "processed_at": "2024-01-15T10:35:00Z"
+}
+```
+
+---
+
+### 6. Requirements
+
+Stores job requirements created by recruiters with parsed JD criteria.
+
+**Table Configuration:**
+- Table Name: `Requirements-{stage}`
+- Billing Mode: PAY_PER_REQUEST
+
+**Primary Key:**
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| requirement_id | String (S) | Partition Key - UUID |
+
+**Attributes:**
+
+| Attribute | Type | Required | Description |
+|-----------|------|----------|-------------|
+| requirement_id | String | Yes | Unique identifier (PK) |
+| recruiter_id | String | Yes | User ID of recruiter who created it |
+| client_name | String | Yes | Client company name |
+| client_name_lower | String | Yes | Lowercase client name (for GSI) |
+| end_client | String | No | End client company |
+| engagement_model | String | Yes | full_time_regular, full_time_contract, part_time_contract |
+| payroll | String | Yes | quadzero or client |
+| budget_min_lpa | Number | No | Minimum budget in LPA |
+| budget_max_lpa | Number | No | Maximum budget in LPA |
+| job_title | String | No | Job title |
+| jd_text | String | Yes | Raw job description text |
+| parsed_criteria | Map | Yes | LLM-parsed search criteria |
+| status | String | Yes | active or duplicate |
+| duplicate_of | String | No | ID of the original requirement if duplicate |
+| created_at | String | Yes | ISO 8601 timestamp |
+| last_updated | String | Yes | ISO 8601 timestamp |
+
+**Example Item:**
+```json
+{
+  "requirement_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "recruiter_id": "user_r1e2c3",
+  "client_name": "Acme Corp",
+  "client_name_lower": "acme corp",
+  "end_client": "TechStartup Inc",
+  "engagement_model": "full_time_regular",
+  "payroll": "quadzero",
+  "budget_min_lpa": 15,
+  "budget_max_lpa": 30,
+  "job_title": "Senior React Developer",
+  "jd_text": "We are looking for a Senior React Developer...",
+  "parsed_criteria": {
+    "mustHaveSkills": ["react", "typescript"],
+    "goodToHaveSkills": ["nodejs", "aws"],
+    "minExperience": 5,
+    "maxExperience": null,
+    "seniority": ["senior"],
+    "location": null,
+    "remote": false
+  },
+  "status": "active",
+  "created_at": "2024-01-15T10:30:00Z",
+  "last_updated": "2024-01-15T10:30:00Z"
+}
+```
+
+**Global Secondary Indexes:**
+
+#### GSI: ClientNameIndex
+For querying requirements by client.
+
+| Attribute | Key Type |
+|-----------|----------|
+| client_name_lower | Partition Key |
+| created_at | Sort Key |
+
+#### GSI: RecruiterIndex
+For querying requirements by recruiter.
+
+| Attribute | Key Type |
+|-----------|----------|
+| recruiter_id | Partition Key |
+| created_at | Sort Key |
 
 ---
 
@@ -239,12 +426,16 @@ resumes/
 │   │   ├── {candidate_id}-{original_filename}.pdf
 │   │   ├── {candidate_id}-{original_filename}.docx
 │   │   └── ...
+formatted-resumes/
+├── {candidate_id}.pdf
+├── ...
 ```
 
 **Example Keys:**
 ```
 resumes/2024/01/a1b2c3d4-john_doe_resume.pdf
 resumes/2024/01/e5f6g7h8-jane_smith_cv.docx
+formatted-resumes/a1b2c3d4.pdf
 ```
 
 **CORS Configuration:**
@@ -252,24 +443,35 @@ resumes/2024/01/e5f6g7h8-jane_smith_cv.docx
 {
   "CORSRules": [
     {
-      "AllowedOrigins": ["https://app.quadzero.com", "http://localhost:3000"],
-      "AllowedMethods": ["PUT", "GET"],
+      "AllowedOrigins": ["<per-environment origins>"],
+      "AllowedMethods": ["PUT", "GET", "HEAD"],
       "AllowedHeaders": ["*"],
+      "ExposedHeaders": ["ETag"],
       "MaxAgeSeconds": 3000
     }
   ]
 }
 ```
 
+CORS origins per environment:
+- **dev**: `http://localhost:3000`, `http://localhost:3001`, `http://localhost:3002`, `https://dev.scout.quadzero.com`, Amplify dev URL
+- **qa**: `https://qa.scout.quadzero.com`, Amplify QA URL
+- **prod**: `https://scout.quadzero.com`, `https://app.quadzero.com`, Amplify prod URL
+
 **Lifecycle Rules:**
-- Transition to IA after 90 days
+- Transition to STANDARD_IA after 90 days
 - Transition to Glacier after 365 days
-- Delete after 7 years (compliance)
+- Delete after ~7 years (2555 days, compliance)
+
+**Security:**
+- Server-side encryption: AES256
+- Versioning: Enabled
+- Public access: Fully blocked
+- SSL enforcement: Bucket policy denies non-SSL requests
 
 **Pre-signed URL Configuration:**
 - Upload URL expiry: 5 minutes (300 seconds)
 - Download URL expiry: 5 minutes (300 seconds)
-- Max file size: 10 MB
 
 ---
 
@@ -290,16 +492,40 @@ type Availability = 'immediate' | '1_week' | '2_weeks' | '1_month' | '2_months' 
 type UserRole = 'candidate' | 'recruiter' | 'admin';
 ```
 
+### User Status
+```typescript
+type UserStatus = 'pending' | 'approved' | 'rejected';
+```
+
 ### Auth Providers
 ```typescript
 type AuthProvider = 'credentials' | 'google';
+```
+
+### LLM Providers
+```typescript
+type LLMProvider = 'claude' | 'openai' | 'openrouter' | 'gemini';
+```
+
+### Engagement Models
+```typescript
+type EngagementModel = 'full_time_regular' | 'full_time_contract' | 'part_time_contract';
+```
+
+### Payroll
+```typescript
+type Payroll = 'quadzero' | 'client';
+```
+
+### Requirement Status
+```typescript
+type RequirementStatus = 'active' | 'duplicate';
 ```
 
 ### Supported File Types
 ```typescript
 const SUPPORTED_CONTENT_TYPES = [
   'application/pdf',
-  'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 ] as const;
 ```
@@ -314,65 +540,63 @@ import { z } from 'zod';
 
 export const CandidateProfileSchema = z.object({
   candidateId: z.string().uuid().optional(),
+  userId: z.string().optional(),
   fullName: z.string().min(2).max(100),
   email: z.string().email(),
   phone: z.string().optional(),
   location: z.string().max(200).optional(),
-  primarySkills: z.array(z.string().toLowerCase()).min(1).max(20),
+  primarySkills: z.array(z.string()).min(1).max(20),
   primarySkillYears: z.record(z.string(), z.number().min(0).max(50)),
-  secondarySkills: z.array(z.string().toLowerCase()).max(30).optional(),
+  secondarySkills: z.array(z.string()).max(50).optional().default([]),
   totalExperience: z.number().min(0).max(50),
-  seniority: z.enum(['intern', 'junior', 'mid', 'senior', 'lead', 'principal', 'executive']),
-  availability: z.enum(['immediate', '1_week', '2_weeks', '1_month', '2_months', '3_months', 'negotiable']),
-  industries: z.array(z.string()).max(10).optional(),
-  roles: z.array(z.string()).max(10).optional(),
-  education: z.array(z.object({
-    degree: z.string(),
-    institution: z.string(),
-    year: z.number().optional()
-  })).optional(),
-  certifications: z.array(z.string()).max(20).optional(),
-  summary: z.string().max(2000).optional()
+  seniority: SeniorityEnum,
+  availability: AvailabilityEnum,
+  industries: z.array(z.string()).max(10).optional().default([]),
+  roles: z.array(z.string()).max(10).optional().default([]),
+  education: z.array(EducationSchema).optional().default([]),
+  certifications: z.array(z.string()).max(20).optional().default([]),
+  summary: z.string().max(2000).optional(),
+  currentCtc: z.number().min(0).max(500).optional(),
+  expectedCtc: z.number().min(0).max(500).optional()
 });
 ```
 
 ### Search Criteria Schema
 ```typescript
 export const SearchCriteriaSchema = z.object({
-  mustHaveSkills: z.array(z.string().toLowerCase()).optional(),
-  goodToHaveSkills: z.array(z.string().toLowerCase()).optional(),
+  mustHaveSkills: z.array(z.string()).optional().default([]),
+  goodToHaveSkills: z.array(z.string()).optional().default([]),
   minExperience: z.number().min(0).optional(),
   maxExperience: z.number().max(50).optional(),
-  seniority: z.array(z.enum(['intern', 'junior', 'mid', 'senior', 'lead', 'principal', 'executive'])).optional(),
-  availability: z.array(z.enum(['immediate', '1_week', '2_weeks', '1_month', '2_months', '3_months', 'negotiable'])).optional(),
+  seniority: z.array(SeniorityEnum).optional(),
+  availability: z.array(AvailabilityEnum).optional(),
   location: z.string().optional(),
   remote: z.boolean().optional(),
-  industries: z.array(z.string()).optional()
+  industries: z.array(z.string()).optional(),
+  maxBudgetLpa: z.number().min(0).optional()
 });
 ```
 
 ### LLM Resume Output Schema
 ```typescript
 export const LLMResumeOutputSchema = z.object({
-  fullName: z.string(),
-  email: z.string().email().optional(),
-  phone: z.string().optional(),
-  location: z.string().optional(),
-  primarySkills: z.array(z.string()),
-  primarySkillYears: z.record(z.string(), z.number()),
-  secondarySkills: z.array(z.string()).optional(),
-  totalExperience: z.number(),
-  seniority: z.string(),
-  availability: z.string().optional(),
-  industries: z.array(z.string()).optional(),
-  roles: z.array(z.string()).optional(),
-  education: z.array(z.object({
-    degree: z.string(),
-    institution: z.string(),
-    year: z.number().optional()
-  })).optional(),
-  certifications: z.array(z.string()).optional(),
-  summary: z.string().optional()
+  fullName: z.string().nullable().optional().transform(v => v ?? 'Unknown'),
+  email: z.string().email().optional().nullable(),
+  phone: z.string().optional().nullable(),
+  location: z.string().optional().nullable(),
+  primarySkills: z.array(z.string()).nullable().optional().transform(v => v ?? []),
+  primarySkillYears: z.record(z.string(), z.number()).nullable().optional().transform(v => v ?? {}),
+  secondarySkills: z.array(z.string()).nullable().optional().transform(v => v ?? []),
+  totalExperience: z.number().nullable().optional().transform(v => v ?? 0),
+  seniority: z.string().nullable().optional().transform(v => v ?? 'mid'),
+  availability: z.string().nullable().optional().transform(v => v ?? 'negotiable'),
+  industries: z.array(z.string()).nullable().optional().transform(v => v ?? []),
+  roles: z.array(z.string()).nullable().optional().transform(v => v ?? []),
+  education: z.array(EducationSchema).nullable().optional().transform(v => v ?? []),
+  certifications: z.array(z.string()).nullable().optional().transform(v => v ?? []),
+  summary: z.string().optional().nullable(),
+  currentCtc: z.number().nullable().optional().transform(v => v ?? null),
+  expectedCtc: z.number().nullable().optional().transform(v => v ?? null)
 });
 ```
 
@@ -384,17 +608,43 @@ export const LLMJDOutputSchema = z.object({
   minExperience: z.number().nullable(),
   maxExperience: z.number().nullable(),
   seniority: z.array(z.string()),
-  availability: z.array(z.string()).optional(),
+  availability: z.array(z.string()).optional().default([]),
   location: z.string().nullable(),
-  remote: z.boolean().optional(),
-  industries: z.array(z.string()).optional(),
-  roles: z.array(z.string()).optional()
+  remote: z.boolean().optional().default(false),
+  industries: z.array(z.string()).optional().default([]),
+  roles: z.array(z.string()).optional().default([]),
+  rateRaw: z.number().nullable().optional().default(null),
+  rateUnit: z.enum(['lpa', 'lpm', 'rupees_per_hour', 'usd_per_hour']).nullable().optional().default(null),
+  rateLpa: z.number().nullable().optional().default(null),
+  clientName: z.string().nullable().optional().default(null),
+  endClient: z.string().nullable().optional().default(null),
+  engagementModel: z.string().nullable().optional().default(null),
+  payroll: z.string().nullable().optional().default(null),
+  budgetMinLpa: z.number().nullable().optional().default(null),
+  budgetMaxLpa: z.number().nullable().optional().default(null),
+});
+```
+
+### Save Requirement Request Schema
+```typescript
+export const SaveRequirementRequestSchema = z.object({
+  clientName: z.string().min(1).max(200),
+  endClient: z.string().max(200).optional(),
+  engagementModel: z.enum(['full_time_regular', 'full_time_contract', 'part_time_contract']),
+  payroll: z.enum(['quadzero', 'client']),
+  budgetMinLpa: z.number().min(0).max(500).optional(),
+  budgetMaxLpa: z.number().min(0).max(500).optional(),
+  jobTitle: z.string().max(200).optional(),
+  jdText: z.string().min(50).max(10000),
+  parsedCriteria: LLMJDOutputSchema,
+  status: z.enum(['active', 'duplicate']).optional().default('active'),
+  duplicateOf: z.string().uuid().optional(),
 });
 ```
 
 ---
 
-## Skill Ontology (Phase 2)
+## Skill Ontology
 
 ### Normalization Mappings
 ```json
@@ -470,18 +720,46 @@ export const LLMJDOutputSchema = z.object({
 |-----------|---------------|-------|
 | Get profile by ID | Query by candidate_id | Primary |
 | Get profile by user | Query by user_id | UserIdIndex |
+| Get profile by email | Query by email | EmailIndex |
 | Update profile | Update by candidate_id | Primary |
 
 ### Recruiter Search Operations
 | Operation | Access Pattern | Index |
 |-----------|---------------|-------|
-| Search by skill | Query by primary_skill | PrimarySkillIndex |
+| Search all candidates | Scan with filters | Table Scan |
 | Filter by experience | Scan with filter / Query bucket | ExperienceIndex |
 | Filter by seniority | Query by seniority | SeniorityIndex |
-| Combined search | Parallel queries + merge | Multiple |
+
+### Recruiter Requirement Operations
+| Operation | Access Pattern | Index |
+|-----------|---------------|-------|
+| Get requirement by ID | Query by requirement_id | Primary |
+| List by client | Query by client_name_lower | ClientNameIndex |
+| List by recruiter | Query by recruiter_id | RecruiterIndex |
+| Get active by client | Query + filter status=active | ClientNameIndex |
 
 ### User Authentication
 | Operation | Access Pattern | Index |
 |-----------|---------------|-------|
 | Login by email | Query by email | EmailIndex |
 | Get user by ID | Query by id | Primary |
+| List pending recruiters | Scan with filter status=pending | Table Scan |
+
+### Prompt Management
+| Operation | Access Pattern | Index |
+|-----------|---------------|-------|
+| Get active prompt | Query by prompt_key + filter is_active | Primary |
+| Get all versions | Query by prompt_key | Primary |
+| List all prompt keys | Scan with projection | Table Scan |
+
+### Saved Search Operations
+| Operation | Access Pattern | Index |
+|-----------|---------------|-------|
+| List by recruiter | Query by recruiter_id | Primary |
+| Delete search | Delete by recruiter_id + search_id | Primary |
+
+### Bulk Import Operations
+| Operation | Access Pattern | Index |
+|-----------|---------------|-------|
+| Get batch status | Query by batch_id | Primary |
+| Update file status | Update by batch_id (nested update) | Primary |

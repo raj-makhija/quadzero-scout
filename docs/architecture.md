@@ -8,37 +8,62 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                              FRONTEND (Next.js 14)                          │
+│                              FRONTEND (Next.js 15)                          │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────────┐  │
 │  │  Candidate UI   │  │   Recruiter UI  │  │     NextAuth.js Auth        │  │
 │  │  - Upload       │  │  - JD Input     │  │  - Credentials Provider     │  │
 │  │  - Review       │  │  - Search       │  │  - Google OAuth             │  │
-│  │  - Edit Profile │  │  - Results      │  │  - JWT Sessions             │  │
+│  │  - Edit Profile │  │  - Results      │  │  - JWE Sessions             │  │
+│  │                 │  │  - Requirements │  │                             │  │
 │  └─────────────────┘  └─────────────────┘  └─────────────────────────────┘  │
+│                                                                             │
+│  ┌─────────────────┐                                                        │
+│  │   Admin UI      │                                                        │
+│  │  - Recruiters   │                                                        │
+│  │  - Prompts      │                                                        │
+│  │  - Bulk Import  │                                                        │
+│  └─────────────────┘                                                        │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
                                     │ HTTPS
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           AWS API GATEWAY                                    │
-│                    (REST API with CORS enabled)                              │
+│                       AWS HTTP API (API Gateway v2)                         │
+│                         (with CORS enabled)                                 │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         AWS LAMBDA (Node.js 20)                              │
-│  ┌─────────────────────────────┐  ┌─────────────────────────────────────┐   │
-│  │     Candidate Handlers      │  │        Recruiter Handlers           │   │
-│  │  - uploadUrl                │  │  - parseJd                          │   │
-│  │  - analyze                  │  │  - search                           │   │
-│  │  - saveProfile              │  │  - resumeUrl                        │   │
-│  │  - getProfile               │  │                                     │   │
-│  └─────────────────────────────┘  └─────────────────────────────────────┘   │
+│  ┌──────────────────────┐  ┌──────────────────────────────────────────────┐ │
+│  │  Auth Handlers       │  │        Candidate Handlers                    │ │
+│  │  - register          │  │  - uploadUrl                                │ │
+│  │  - login             │  │  - analyze                                  │ │
+│  └──────────────────────┘  │  - uploadAndAnalyze                         │ │
+│                            │  - saveProfile                              │ │
+│  ┌──────────────────────┐  │  - getProfile                               │ │
+│  │  Admin Handlers      │  └──────────────────────────────────────────────┘ │
+│  │  - listPendingRec.   │                                                   │
+│  │  - approveRejectUser │  ┌──────────────────────────────────────────────┐ │
+│  │  - listPrompts       │  │        Recruiter Handlers                    │ │
+│  │  - getPromptVersions │  │  - parseJd                                  │ │
+│  │  - updatePrompt      │  │  - search                                   │ │
+│  │  - bulkImportStart   │  │  - resumeUrl                                │ │
+│  │  - bulkImportStatus  │  │  - originalResumeUrl                        │ │
+│  │  - bulkImportResume  │  │  - saveSearch / getSearches / deleteSearch   │ │
+│  └──────────────────────┘  │  - saveRequirement / listRequirements       │ │
+│                            │  - getRequirement / checkDuplicate           │ │
+│  ┌──────────────────────┐  └──────────────────────────────────────────────┘ │
+│  │  Worker Lambdas      │                                                   │
+│  │  - formatResume      │                                                   │
+│  │  - bulkImportWorker  │                                                   │
+│  └──────────────────────┘                                                   │
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
 │  │                        Shared Libraries                              │    │
-│  │  - DynamoDB Client    - S3 Client       - Textract Client           │    │
-│  │  - LLM Adapter        - Validation      - Skill Ontology            │    │
+│  │  - DynamoDB Client    - S3 Client       - Text Extraction           │    │
+│  │  - LLM Adapter        - Validation      - Skill Normalizer          │    │
+│  │  - Auth (JWE)         - CTC Conversion  - PDF Generator             │    │
 │  └─────────────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────────────┘
           │                    │                    │
@@ -47,16 +72,13 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │   AWS DynamoDB  │  │     AWS S3      │  │   External AI Services          │
 │                 │  │                 │  │                                 │
 │  - TalentProfiles│ │  - Resumes      │  │  - Claude (Anthropic)          │
-│  - Users        │  │  - Documents    │  │  - GPT-4 (OpenAI)              │
-│  - SavedSearches│  │                 │  │                                 │
+│  - Users        │  │  - Formatted    │  │  - GPT-4 (OpenAI)              │
+│  - SavedSearches│  │    Resumes      │  │  - Gemini (Google)             │
+│  - Prompts      │  │                 │  │  - OpenRouter                  │
+│  - BulkImport   │  │                 │  │                                 │
+│    Batches      │  │                 │  │                                 │
+│  - Requirements │  │                 │  │                                 │
 └─────────────────┘  └─────────────────┘  └─────────────────────────────────┘
-          │
-          ▼
-┌─────────────────┐
-│  AWS Textract   │
-│  (OCR/Text      │
-│   Extraction)   │
-└─────────────────┘
 ```
 
 ## Data Flow Diagrams
@@ -65,7 +87,7 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 
 ```
 ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
-│ Candidate│     │ Frontend │     │  Lambda  │     │    S3    │     │ Textract │
+│ Candidate│     │ Frontend │     │  Lambda  │     │    S3    │     │   LLM    │
 └────┬─────┘     └────┬─────┘     └────┬─────┘     └────┬─────┘     └────┬─────┘
      │                │                │                │                │
      │ 1. Select File │                │                │                │
@@ -91,17 +113,19 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
      │                │    Analysis    │                │                │
      │                │───────────────>│                │                │
      │                │                │                │                │
-     │                │                │ 6. Extract     │                │
-     │                │                │    Text        │                │
-     │                │                │───────────────────────────────>│
-     │                │                │                │                │
-     │                │                │<───────────────────────────────│
+     │                │                │ 6. Download    │                │
+     │                │                │    from S3 &   │                │
+     │                │                │    Extract Text│                │
+     │                │                │    (pdf-parse/ │                │
+     │                │                │     mammoth)   │                │
+     │                │                │───────────────>│                │
+     │                │                │<───────────────│                │
      │                │                │                │                │
      │                │                │ 7. Send to LLM │                │
      │                │                │    for Parsing │                │
-     │                │                │─────────────────────────────────────>
+     │                │                │─────────────────────────────────>
      │                │                │                │                │
-     │                │                │<─────────────────────────────────────
+     │                │                │<─────────────────────────────────
      │                │                │                │                │
      │                │<───────────────│                │                │
      │<───────────────│                │                │                │
@@ -150,17 +174,16 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
      │                │    Search      │                │                │
      │                │───────────────>│                │                │
      │                │                │                │                │
-     │                │                │ 7. Query with  │                │
-     │                │                │    GSIs        │                │
+     │                │                │ 7. Scan with   │                │
+     │                │                │    Filters     │                │
      │                │                │───────────────────────────────>│
      │                │                │                │                │
      │                │                │<───────────────────────────────│
      │                │                │                │                │
-     │                │                │ 8. Rank        │                │
-     │                │                │    Candidates  │                │
-     │                │                │───────────────>│                │
-     │                │                │                │                │
-     │                │                │<───────────────│                │
+     │                │                │ 8. Score &     │                │
+     │                │                │    Rank with   │                │
+     │                │                │    Skill       │                │
+     │                │                │    Normalizer  │                │
      │                │                │                │                │
      │                │<───────────────│                │                │
      │<───────────────│                │                │                │
@@ -180,120 +203,173 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 
 ## Component Details
 
-### Frontend (Next.js 14)
+### Frontend (Next.js 15)
 
 | Component | Technology | Responsibility |
 |-----------|------------|----------------|
-| App Router | Next.js 14 | Page routing, SSR/SSG |
-| Authentication | NextAuth.js | User sessions, OAuth |
+| App Router | Next.js 15 | Page routing, SSR/SSG |
+| Authentication | NextAuth.js v4 | User sessions, OAuth |
 | Styling | TailwindCSS | Responsive UI |
 | State Management | React hooks | Local component state |
 | API Client | Fetch API | Backend communication |
+| Icons | lucide-react | UI icons |
+| Utilities | clsx, tailwind-merge | Class management |
 
 ### Backend (AWS Lambda)
 
 | Component | Technology | Responsibility |
 |-----------|------------|----------------|
-| Runtime | Node.js 20 | Lambda execution |
+| Runtime | Node.js 20 (arm64) | Lambda execution |
 | Language | TypeScript | Type safety |
 | Validation | Zod | Schema validation |
 | AWS SDK | v3 | AWS service integration |
+| Auth | jose (JWE) | Token decryption & verification |
+| Password Hashing | bcryptjs | Credential authentication |
+| Text Extraction | pdf-parse, mammoth | PDF and DOCX text extraction |
+| PDF Generation | puppeteer-core, @sparticuz/chromium | Resume formatting to PDF |
+| Markdown | marked | Resume content rendering |
 
 ### AI Layer
 
 | Component | Technology | Responsibility |
 |-----------|------------|----------------|
-| Resume Parsing | Claude/GPT-4 | Extract structured data |
-| JD Parsing | Claude/GPT-4 | Extract requirements |
-| Ranking | Claude/GPT-4 | Match scoring |
-| Adapter | Custom | Provider abstraction |
+| Resume Parsing | Configurable LLM | Extract structured data |
+| JD Parsing | Configurable LLM | Extract requirements |
+| Ranking | Skill Normalizer | Match scoring (in-Lambda) |
+| Duplicate Detection | Configurable LLM | Requirement deduplication |
+| Resume Formatting | Configurable LLM | Clean resume reformatting |
+| Adapter | Custom provider abstraction | LLM provider switching |
+
+**Supported LLM Providers:**
+
+| Provider | Package | Default Model |
+|----------|---------|---------------|
+| Claude | @anthropic-ai/sdk | Claude 3.5 Sonnet |
+| OpenAI | openai | GPT-4 |
+| Gemini | @google/generative-ai | gemini-2.0-flash |
+| OpenRouter | openai (compatible API) | anthropic/claude-3.5-sonnet |
+
+The active provider is configured via the `LLM_PROVIDER` environment variable.
 
 ### Data Layer
 
 | Component | Technology | Responsibility |
 |-----------|------------|----------------|
-| Profile Storage | DynamoDB | Candidate data, users |
-| File Storage | S3 | Resume documents |
-| Text Extraction | Textract | OCR, document parsing |
+| Profile Storage | DynamoDB | Candidate data, users, prompts, requirements |
+| File Storage | S3 | Resume documents (original + formatted) |
+| Text Extraction | pdf-parse / mammoth | In-Lambda PDF and DOCX parsing |
 
 ## Security Architecture
 
 ### Authentication Flow
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   Browser   │     │  NextAuth   │     │   Backend   │
-└──────┬──────┘     └──────┬──────┘     └──────┬──────┘
-       │                   │                   │
-       │ 1. Login Request  │                   │
-       │──────────────────>│                   │
-       │                   │                   │
-       │ 2. OAuth/Creds    │                   │
-       │   Verification    │                   │
-       │<─────────────────>│                   │
-       │                   │                   │
-       │ 3. JWT Token      │                   │
-       │<──────────────────│                   │
-       │                   │                   │
-       │ 4. API Request    │                   │
-       │   + JWT Header    │                   │
-       │──────────────────────────────────────>│
-       │                   │                   │
-       │                   │ 5. Validate JWT   │
-       │                   │<──────────────────│
-       │                   │                   │
-       │ 6. Response       │                   │
-       │<──────────────────────────────────────│
+┌─────────────┐     ┌─────────────┐     ┌──────────────┐     ┌─────────────┐
+│   Browser   │     │  NextAuth   │     │ Backend Auth │     │  DynamoDB   │
+└──────┬──────┘     └──────┬──────┘     └──────┬───────┘     └──────┬──────┘
+       │                   │                   │                    │
+       │ 1. Login Request  │                   │                    │
+       │──────────────────>│                   │                    │
+       │                   │                   │                    │
+       │                   │ 2. Verify creds   │                    │
+       │                   │   via backend API │                    │
+       │                   │──────────────────>│                    │
+       │                   │                   │                    │
+       │                   │                   │ 3. Lookup user     │
+       │                   │                   │    & verify pwd    │
+       │                   │                   │───────────────────>│
+       │                   │<──────────────────│<───────────────────│
+       │                   │                   │                    │
+       │ 4. JWE Token      │                   │                    │
+       │   (Encrypted JWT) │                   │                    │
+       │<──────────────────│                   │                    │
+       │                   │                   │                    │
+       │ 5. API Request    │                   │                    │
+       │   + Bearer JWE    │                   │                    │
+       │──────────────────────────────────────>│                    │
+       │                   │                   │                    │
+       │                   │                   │ 6. Decrypt JWE     │
+       │                   │                   │    (HKDF key       │
+       │                   │                   │     derivation)    │
+       │                   │                   │                    │
+       │                   │                   │ 7. Fetch user role │
+       │                   │                   │    & status        │
+       │                   │                   │───────────────────>│
+       │                   │                   │<───────────────────│
+       │                   │                   │                    │
+       │ 8. Response       │                   │                    │
+       │<──────────────────────────────────────│                    │
 ```
+
+### Recruiter Approval Workflow
+
+Recruiters go through an approval process before accessing the platform:
+
+1. Recruiter registers via `/auth/register` with role `recruiter`
+2. Account is created with status `pending`
+3. Admin reviews pending recruiters via `/admin/recruiters/pending`
+4. Admin approves/rejects via `/admin/users/status`
+5. Approved recruiters can access recruiter endpoints
+6. `withAuth` middleware checks both role AND approval status
 
 ### Security Measures
 
-1. **Pre-signed URLs**: All S3 uploads/downloads use time-limited pre-signed URLs
-2. **JWT Authentication**: Stateless authentication with secure tokens
-3. **CORS Configuration**: Restricted origins for API access
+1. **Pre-signed URLs**: All S3 uploads/downloads use time-limited pre-signed URLs (5 min expiry)
+2. **JWE Authentication**: Encrypted JWT tokens using HKDF-derived keys (compatible with NextAuth)
+3. **CORS Configuration**: Per-environment restricted origins for API access
 4. **IAM Roles**: Least-privilege access for Lambda functions
 5. **Input Validation**: Zod schemas validate all inputs
-6. **Environment Variables**: Secrets stored in AWS SSM/environment
+6. **Environment Variables**: Secrets stored in AWS SSM Parameter Store
+7. **S3 Encryption**: Server-side AES256 encryption enabled
+8. **SSL Enforcement**: S3 bucket policy denies non-SSL requests
+9. **Role-Based Access**: `withAuth` middleware enforces role checks per endpoint
+10. **Recruiter Approval**: Recruiters require admin approval before access
+11. **Optional Auth**: Search endpoint supports unauthenticated access with PII redaction
 
 ## Scalability Considerations
 
 ### DynamoDB
 
-- On-demand capacity mode for variable workloads
+- On-demand capacity mode (PAY_PER_REQUEST) for variable workloads
 - Global Secondary Indexes for efficient queries
 - Partition key design for even distribution
 
 ### Lambda
 
 - Automatic scaling based on request volume
-- Cold start optimization with provisioned concurrency (if needed)
-- Timeout configuration per function
+- arm64 architecture for better price/performance (except PDF worker which uses x86_64)
+- Timeout configuration per function (30s default, up to 150s for workers)
+- Memory configured per function (512 MB default, up to 1536 MB for workers)
+- Cold start optimization with connection reuse (`AWS_NODEJS_CONNECTION_REUSE_ENABLED`)
 
 ### S3
 
 - Unlimited storage capacity
 - Lifecycle policies for cost optimization
-- Multi-part upload for large files
+- Versioning enabled for data protection
 
 ## Environment Configuration
 
-| Environment | Purpose | AWS Account |
-|-------------|---------|-------------|
-| dev | Development & testing | Development |
-| staging | Pre-production testing | Development |
-| prod | Production workloads | Production |
+| Environment | Purpose | Stage Name |
+|-------------|---------|------------|
+| dev | Development & testing | dev |
+| qa | Pre-production testing | qa |
+| prod | Production workloads | prod |
 
 ## Technology Stack Summary
 
 | Layer | Technology |
 |-------|------------|
-| Frontend | Next.js 14, TypeScript, TailwindCSS |
-| Authentication | NextAuth.js (JWT) |
-| API Gateway | AWS API Gateway (REST) |
-| Compute | AWS Lambda (Node.js 20) |
-| Database | AWS DynamoDB |
+| Frontend | Next.js 15, React 19, TypeScript, TailwindCSS |
+| Authentication | NextAuth.js v4 (JWE sessions) |
+| API Gateway | AWS HTTP API (API Gateway v2) |
+| Compute | AWS Lambda (Node.js 20, arm64) |
+| Database | AWS DynamoDB (6 tables) |
 | Storage | AWS S3 |
-| OCR | AWS Textract |
-| AI | Claude (Anthropic) / GPT-4 (OpenAI) |
-| IaC | Serverless Framework |
+| Text Extraction | pdf-parse (PDF), mammoth (DOCX) |
+| PDF Generation | puppeteer-core + @sparticuz/chromium |
+| AI | Claude / GPT-4 / Gemini / OpenRouter (configurable) |
+| IaC | Serverless Framework v3 |
+| Bundler | esbuild (via serverless-esbuild) |
+| Testing | Vitest |
 | Region | ap-south-1 (Mumbai) |
