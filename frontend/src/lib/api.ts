@@ -313,6 +313,25 @@ class ApiClient {
       body: JSON.stringify({ batchId }),
     });
   }
+
+  // Pricing endpoints
+  async calculatePricing(input: PricingInput) {
+    return this.request<PricingOutput>('/recruiter/pricing/calculate', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async getPricingConfig() {
+    return this.request<{ config: PricingConfig }>('/admin/pricing-config');
+  }
+
+  async updatePricingConfig(config: PricingConfig, description?: string) {
+    return this.request<{ version: number }>('/admin/pricing-config', {
+      method: 'PUT',
+      body: JSON.stringify({ config, description }),
+    });
+  }
 }
 
 export const api = new ApiClient(API_URL);
@@ -545,4 +564,72 @@ export interface DuplicateMatch {
   similarityScore: number;
   reason: string;
   createdAt: string;
+}
+
+// Pricing types
+export type PricingExperienceBand = 'junior' | 'mid' | 'senior' | 'architect';
+
+export interface PricingConfig {
+  platformFees: Record<PricingExperienceBand, number>;
+  variableMarkupPct: Record<PricingExperienceBand, number>;
+  minContributionPerMonth: number;
+  idealContributionPerMonth: number;
+  costOfCapitalPctAnnual: number;
+  negotiationBufferPct: number;
+  annualRecruiterCost: number;
+  maxCostMultiplierThreshold: number;
+  maxContributionCapPerMonth: number;
+  budgetCeilingBufferPct: number;
+}
+
+export interface PricingInput {
+  candidateExpectedCtcLpa: number;
+  candidateExperienceYears: number;
+  contractDurationMonths: number;
+  paymentTermsDays: number;
+  clientBudgetMinHourly?: number;
+  clientBudgetMaxHourly?: number;
+}
+
+export interface BudgetOptimizationResult {
+  applied: boolean;
+  budgetCase: 'none' | 'A' | 'B' | 'C';
+  clientBudgetMinHourly: number;
+  clientBudgetMaxHourly: number;
+  internalIdealHourly: number;
+  optimizedHourly: number;
+  optimizedMonthly: number;
+  optimizedAnnual: number;
+  contributionImpact: number;
+  effectiveMultiplierOnCost: number;
+  marginConstrained: boolean;
+  marginUplifted: boolean;
+  contributionCapped: boolean;
+}
+
+export interface PricingOutput {
+  experienceBand: PricingExperienceBand;
+  monthlyCtcInr: number;
+  platformFee: number;
+  variableMarkupPct: number;
+  variableMarkupAmount: number;
+  workingCapitalBlocked: number;
+  workingCapitalCostPerMonth: number;
+  quotedBillingMonthly: number;
+  quotedBillingAnnual: number;
+  quotedBillingHourly: number;
+  minimumBillingMonthly: number;
+  minimumBillingAnnual: number;
+  minimumBillingHourly: number;
+  effectiveMarkupPct: number;
+  netContribution: number;
+  recruiterBreakeven: number;
+  variableMarkupAdjusted: boolean;
+  adjustedVariableMarkupPct: number;
+  budgetOptimization: BudgetOptimizationResult;
+  finalQuotedHourly: number;
+  finalQuotedMonthly: number;
+  finalQuotedAnnual: number;
+  finalContribution: number;
+  finalEffectiveMarkupPct: number;
 }

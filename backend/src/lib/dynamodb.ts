@@ -9,7 +9,7 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { config } from './config.js';
-import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem } from '../types/index.js';
+import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, PricingConfig, PricingConfigItem } from '../types/index.js';
 
 const client = new DynamoDBClient({ region: config.region });
 const docClient = DynamoDBDocumentClient.from(client, {
@@ -649,4 +649,118 @@ export async function updateRequirementStatus(
       ExpressionAttributeValues: expressionAttributeValues,
     })
   );
+}
+
+// ─── Pricing Config Operations ──────────────────────────────────────────────
+
+const DEFAULT_PRICING_CONFIG: PricingConfig = {
+  platformFees: { junior: 25000, mid: 25000, senior: 30000, architect: 35000 },
+  variableMarkupPct: { junior: 0.10, mid: 0.10, senior: 0.12, architect: 0.15 },
+  minContributionPerMonth: 30000,
+  idealContributionPerMonth: 40000,
+  costOfCapitalPctAnnual: 0.12,
+  negotiationBufferPct: 0.05,
+  annualRecruiterCost: 600000,
+  maxCostMultiplierThreshold: 1.75,
+  maxContributionCapPerMonth: 70000,
+  budgetCeilingBufferPct: 0.02,
+};
+
+let pricingConfigCache: { config: PricingConfig; fetchedAt: number } | null = null;
+const PRICING_CONFIG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+export async function getActivePricingConfig(): Promise<PricingConfig> {
+  if (pricingConfigCache && Date.now() - pricingConfigCache.fetchedAt < PRICING_CONFIG_CACHE_TTL) {
+    return pricingConfigCache.config;
+  }
+
+  try {
+    const result = await docClient.send(
+      new QueryCommand({
+        TableName: config.dynamodb.pricingConfigTable,
+        KeyConditionExpression: 'config_key = :key',
+        FilterExpression: 'is_active = :active',
+        ExpressionAttributeValues: {
+          ':key': 'default',
+          ':active': true,
+        },
+        ScanIndexForward: false,
+        Limit: 1,
+      })
+    );
+
+    const item = result.Items?.[0] as PricingConfigItem | undefined;
+    const pricingConfig = item?.config ?? DEFAULT_PRICING_CONFIG;
+    pricingConfigCache = { config: pricingConfig, fetchedAt: Date.now() };
+    return pricingConfig;
+  } catch {
+    return DEFAULT_PRICING_CONFIG;
+  }
+}
+
+export async function savePricingConfig(
+  pricingConf: PricingConfig,
+  createdBy: string,
+  description?: string
+): Promise<number> {
+  // Get latest version number
+  const existing = await docClient.send(
+    new QueryCommand({
+      TableName: config.dynamodb.pricingConfigTable,
+      KeyConditionExpression: 'config_key = :key',
+      ExpressionAttributeValues: { ':key': 'default' },
+      ScanIndexForward: false,
+      Limit: 1,
+    })
+  );
+
+  const latestVersion = (existing.Items?.[0] as PricingConfigItem | undefined)?.version ?? 0;
+  const newVersion = latestVersion + 1;
+
+  // Deactivate current active version
+  const activeItems = await docClient.send(
+    new QueryCommand({
+      TableName: config.dynamodb.pricingConfigTable,
+      KeyConditionExpression: 'config_key = :key',
+      FilterExpression: 'is_active = :active',
+      ExpressionAttributeValues: {
+        ':key': 'default',
+        ':active': true,
+      },
+    })
+  );
+
+  for (const item of (activeItems.Items || []) as PricingConfigItem[]) {
+    await docClient.send(
+      new UpdateCommand({
+        TableName: config.dynamodb.pricingConfigTable,
+        Key: { config_key: item.config_key, version: item.version },
+        UpdateExpression: 'SET is_active = :inactive',
+        ExpressionAttributeValues: { ':inactive': false },
+      })
+    );
+  }
+
+  // Save new version
+  const newItem: PricingConfigItem = {
+    config_key: 'default',
+    version: newVersion,
+    config: pricingConf,
+    is_active: true,
+    created_at: new Date().toISOString(),
+    created_by: createdBy,
+    ...(description && { description }),
+  };
+
+  await docClient.send(
+    new PutCommand({
+      TableName: config.dynamodb.pricingConfigTable,
+      Item: newItem,
+    })
+  );
+
+  // Invalidate cache
+  pricingConfigCache = null;
+
+  return newVersion;
 }

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Header } from '@/components/Header';
+import { PricingPanel } from '@/components/PricingPanel';
 import { api, ParsedCriteria, SearchCriteria, CandidateSearchResult, EngagementModel, Payroll, DuplicateMatch } from '@/lib/api';
 import { formatSeniority, formatAvailability, getMatchScoreColor, getMatchScoreBgColor, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS, ENGAGEMENT_MODEL_OPTIONS, PAYROLL_OPTIONS, formatEngagementModel } from '@/lib/utils';
 
@@ -934,6 +935,14 @@ export default function RecruiterSearchPage() {
                       </div>
                     )}
                   </div>
+                </div>
+
+                {/* Pricing Calculator */}
+                <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                  <PricingPanel
+                    candidateExpectedCtcLpa={selectedCandidate.expectedCtc}
+                    candidateExperienceYears={selectedCandidate.totalExperience}
+                  />
                 </div>
 
                 {/* Actions */}

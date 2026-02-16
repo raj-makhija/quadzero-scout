@@ -416,3 +416,111 @@ export interface ListRequirementsResponse {
     lastEvaluatedKey?: string;
   };
 }
+
+// ─── Pricing Engine Types ───────────────────────────────────────────────────
+
+export const PricingExperienceBandEnum = z.enum(['junior', 'mid', 'senior', 'architect']);
+export type PricingExperienceBand = z.infer<typeof PricingExperienceBandEnum>;
+
+export const PricingConfigSchema = z.object({
+  platformFees: z.object({
+    junior: z.number().min(0),
+    mid: z.number().min(0),
+    senior: z.number().min(0),
+    architect: z.number().min(0),
+  }),
+  variableMarkupPct: z.object({
+    junior: z.number().min(0).max(1),
+    mid: z.number().min(0).max(1),
+    senior: z.number().min(0).max(1),
+    architect: z.number().min(0).max(1),
+  }),
+  minContributionPerMonth: z.number().min(0),
+  idealContributionPerMonth: z.number().min(0),
+  costOfCapitalPctAnnual: z.number().min(0).max(1),
+  negotiationBufferPct: z.number().min(0).max(1),
+  annualRecruiterCost: z.number().min(0),
+  maxCostMultiplierThreshold: z.number().min(1),
+  maxContributionCapPerMonth: z.number().min(0),
+  budgetCeilingBufferPct: z.number().min(0).max(1),
+});
+export type PricingConfig = z.infer<typeof PricingConfigSchema>;
+
+export interface PricingConfigItem {
+  config_key: string;
+  version: number;
+  config: PricingConfig;
+  is_active: boolean;
+  created_at: string;
+  created_by: string;
+  description?: string;
+}
+
+export interface PricingInput {
+  candidateExpectedCtcLpa: number;
+  candidateExperienceYears: number;
+  contractDurationMonths: number;
+  paymentTermsDays: number;
+  clientBudgetMinHourly?: number;
+  clientBudgetMaxHourly?: number;
+}
+
+export interface BudgetOptimizationResult {
+  applied: boolean;
+  budgetCase: 'none' | 'A' | 'B' | 'C';
+  clientBudgetMinHourly: number;
+  clientBudgetMaxHourly: number;
+  internalIdealHourly: number;
+  optimizedHourly: number;
+  optimizedMonthly: number;
+  optimizedAnnual: number;
+  contributionImpact: number;
+  effectiveMultiplierOnCost: number;
+  marginConstrained: boolean;
+  marginUplifted: boolean;
+  contributionCapped: boolean;
+}
+
+export interface PricingOutput {
+  experienceBand: PricingExperienceBand;
+  monthlyCtcInr: number;
+  platformFee: number;
+  variableMarkupPct: number;
+  variableMarkupAmount: number;
+  workingCapitalBlocked: number;
+  workingCapitalCostPerMonth: number;
+  quotedBillingMonthly: number;
+  quotedBillingAnnual: number;
+  quotedBillingHourly: number;
+  minimumBillingMonthly: number;
+  minimumBillingAnnual: number;
+  minimumBillingHourly: number;
+  effectiveMarkupPct: number;
+  netContribution: number;
+  recruiterBreakeven: number;
+  variableMarkupAdjusted: boolean;
+  adjustedVariableMarkupPct: number;
+  budgetOptimization: BudgetOptimizationResult;
+  finalQuotedHourly: number;
+  finalQuotedMonthly: number;
+  finalQuotedAnnual: number;
+  finalContribution: number;
+  finalEffectiveMarkupPct: number;
+}
+
+export interface CalculatePricingRequest extends PricingInput {}
+
+export interface CalculatePricingResponse extends PricingOutput {}
+
+export interface UpdatePricingConfigRequest {
+  config: PricingConfig;
+  description?: string;
+}
+
+export interface UpdatePricingConfigResponse {
+  version: number;
+}
+
+export interface GetPricingConfigResponse {
+  config: PricingConfig;
+}

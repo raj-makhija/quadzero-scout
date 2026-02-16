@@ -42,6 +42,7 @@ provider:
     DYNAMODB_TABLE_BULK_IMPORT_BATCHES: ${self:custom.bulkImportBatchesTable}
     BULK_IMPORT_WORKER_NAME: ${self:service}-${self:provider.stage}-bulkImportWorker
     DYNAMODB_TABLE_REQUIREMENTS: ${self:custom.requirementsTable}
+    DYNAMODB_TABLE_PRICING_CONFIG: ${self:custom.pricingConfigTable}
 
   httpApi:
     cors:
@@ -87,6 +88,7 @@ custom:
   resumesBucket: quadzero-scout-resumes-${self:provider.stage}
   bulkImportBatchesTable: BulkImportBatches-${self:provider.stage}
   requirementsTable: Requirements-${self:provider.stage}
+  pricingConfigTable: PricingConfig-${self:provider.stage}
 
   dotenv:
     include:
@@ -342,6 +344,28 @@ functions:
     handler: src/handlers/worker/bulkImportWorker.handler
     timeout: 120
     memorySize: 1024
+
+  # Pricing Endpoints
+  recruiterCalculatePricing:
+    handler: src/handlers/recruiter/calculatePricing.handler
+    events:
+      - httpApi:
+          path: /recruiter/pricing/calculate
+          method: POST
+
+  adminGetPricingConfig:
+    handler: src/handlers/admin/getPricingConfig.handler
+    events:
+      - httpApi:
+          path: /admin/pricing-config
+          method: GET
+
+  adminUpdatePricingConfig:
+    handler: src/handlers/admin/updatePricingConfig.handler
+    events:
+      - httpApi:
+          path: /admin/pricing-config
+          method: PUT
 
 resources:
   - ${file(resources/dynamodb.yml)}

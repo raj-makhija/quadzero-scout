@@ -22,6 +22,7 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │  │  - Recruiters   │                                                        │
 │  │  - Prompts      │                                                        │
 │  │  - Bulk Import  │                                                        │
+│  │  - Pricing Cfg  │                                                        │
 │  └─────────────────┘                                                        │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
@@ -51,9 +52,11 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │  │  - bulkImportStart   │  │  - resumeUrl                                │ │
 │  │  - bulkImportStatus  │  │  - originalResumeUrl                        │ │
 │  │  - bulkImportResume  │  │  - saveSearch / getSearches / deleteSearch   │ │
-│  └──────────────────────┘  │  - saveRequirement / listRequirements       │ │
-│                            │  - getRequirement / checkDuplicate           │ │
-│  ┌──────────────────────┐  └──────────────────────────────────────────────┘ │
+│  │  - getPricingConfig  │  │  - saveRequirement / listRequirements       │ │
+│  │  - updatePricingCfg  │  │  - getRequirement / checkDuplicate          │ │
+│  └──────────────────────┘  │  - calculatePricing                         │ │
+│                            └──────────────────────────────────────────────┘ │
+│  ┌──────────────────────┐                                                   │
 │  │  Worker Lambdas      │                                                   │
 │  │  - formatResume      │                                                   │
 │  │  - bulkImportWorker  │                                                   │
@@ -64,6 +67,7 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │  │  - DynamoDB Client    - S3 Client       - Text Extraction           │    │
 │  │  - LLM Adapter        - Validation      - Skill Normalizer          │    │
 │  │  - Auth (JWE)         - CTC Conversion  - PDF Generator             │    │
+│  │  - Pricing Engine                                                  │    │
 │  └─────────────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────────────┘
           │                    │                    │
@@ -78,6 +82,7 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │  - BulkImport   │  │                 │  │                                 │
 │    Batches      │  │                 │  │                                 │
 │  - Requirements │  │                 │  │                                 │
+│  - PricingConfig│  │                 │  │                                 │
 └─────────────────┘  └─────────────────┘  └─────────────────────────────────┘
 ```
 
@@ -364,7 +369,7 @@ Recruiters go through an approval process before accessing the platform:
 | Authentication | NextAuth.js v4 (JWE sessions) |
 | API Gateway | AWS HTTP API (API Gateway v2) |
 | Compute | AWS Lambda (Node.js 20, arm64) |
-| Database | AWS DynamoDB (6 tables) |
+| Database | AWS DynamoDB (7 tables) |
 | Storage | AWS S3 |
 | Text Extraction | pdf-parse (PDF), mammoth (DOCX) |
 | PDF Generation | puppeteer-core + @sparticuz/chromium |
@@ -373,3 +378,63 @@ Recruiters go through an approval process before accessing the platform:
 | Bundler | esbuild (via serverless-esbuild) |
 | Testing | Vitest |
 | Region | ap-south-1 (Mumbai) |
+
+## Pricing Engine
+
+The pricing engine is a deterministic module that generates recommended billing rates when a candidate is matched to a client requirement. It runs as a pure function with no side effects — same inputs always produce identical outputs.
+
+### Two-Phase Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                         Pricing Engine                               │
+│                                                                      │
+│  ┌────────────────────────────────────────────────────────────────┐  │
+│  │  Phase 1: Internal Pricing                                     │  │
+│  │                                                                │  │
+│  │  Inputs: CTC (LPA), Experience Years, Payment Terms            │  │
+│  │                                                                │  │
+│  │  1. Map experience → band (junior/mid/senior/architect)        │  │
+│  │  2. Look up platform fee + variable markup % for band          │  │
+│  │  3. Calculate working capital cost from payment terms           │  │
+│  │  4. Auto-adjust variable % if contribution < minimum floor     │  │
+│  │  5. Compute quoted billing (ideal + negotiation buffer)        │  │
+│  │  6. Compute minimum billing (cost + min contribution)          │  │
+│  │  7. Round: annual to nearest ₹1,000, hourly to nearest ₹100   │  │
+│  │                                                                │  │
+│  │  Outputs: Quoted & Minimum rates (monthly/annual/hourly)       │  │
+│  └────────────────────────────────────────────────────────────────┘  │
+│                              │                                       │
+│                              ▼                                       │
+│  ┌────────────────────────────────────────────────────────────────┐  │
+│  │  Phase 2: Budget-Aware Optimization (optional)                 │  │
+│  │                                                                │  │
+│  │  Additional Inputs: Client Budget Min/Max (₹/hr)               │  │
+│  │                                                                │  │
+│  │  Case A: Internal ideal > budget max                           │  │
+│  │    → Cap at budget max, flag margin-constrained                │  │
+│  │                                                                │  │
+│  │  Case B: Internal ideal within budget range                    │  │
+│  │    → min(ceiling - buffer, ideal + negotiation buffer)         │  │
+│  │                                                                │  │
+│  │  Case C: Internal ideal < budget floor                         │  │
+│  │    → Uplift with cost multiplier cap + contribution cap        │  │
+│  │    → Flag margin-uplifted for audit                            │  │
+│  │                                                                │  │
+│  │  Post-case: enforce multiplier ceiling, min contribution floor │  │
+│  │                                                                │  │
+│  │  Outputs: Optimized rate + audit flags                         │  │
+│  └────────────────────────────────────────────────────────────────┘  │
+│                              │                                       │
+│                              ▼                                       │
+│  Final Recommended Rate = Budget-optimized (if applied) or Internal  │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### Key Design Decisions
+
+- **Pure functions**: No database calls, no side effects. Config is loaded by the handler and passed in.
+- **Versioned config**: PricingConfig table stores versioned configurations with 5-minute cache. Admin changes create new versions.
+- **Audit flags**: `marginUplifted`, `marginConstrained`, `contributionCapped`, `variableMarkupAdjusted` provide transparency into pricing decisions.
+- **4-band experience mapping**: Simplified from the 7-level ATS seniority system. Uses years as the primary discriminator (0-4: junior, 5-8: mid, 9-12: senior, 12+: architect).
+- **INR-centric**: All calculations in INR. CTC input is LPA (Lakhs Per Annum), converted to monthly (÷12). Hourly assumes 160 hours/month.

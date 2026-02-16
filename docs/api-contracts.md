@@ -1111,6 +1111,172 @@ Resume processing a paused/failed bulk import batch.
 
 ---
 
+## Pricing Endpoints
+
+### POST /recruiter/pricing/calculate
+
+Calculate billing rates for a candidate based on CTC, experience, contract terms, and optional client budget.
+
+**Auth:** Requires `recruiter` or `admin` role.
+
+**Request Headers:**
+```
+Content-Type: application/json
+Authorization: Bearer <jwe_token>
+```
+
+**Request Body:**
+```json
+{
+  "candidateExpectedCtcLpa": 10,
+  "candidateExperienceYears": 6,
+  "contractDurationMonths": 12,
+  "paymentTermsDays": 90,
+  "clientBudgetMinHourly": 700,
+  "clientBudgetMaxHourly": 1000
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "experienceBand": "mid",
+    "monthlyCtcInr": 83333.33,
+    "platformFee": 25000,
+    "variableMarkupPct": 0.10,
+    "variableMarkupAmount": 8333.33,
+    "workingCapitalBlocked": 250000,
+    "workingCapitalCostPerMonth": 2500,
+    "quotedBillingMonthly": 132125,
+    "quotedBillingAnnual": 1586000,
+    "quotedBillingHourly": 900,
+    "minimumBillingMonthly": 115833.33,
+    "minimumBillingAnnual": 1390000,
+    "minimumBillingHourly": 800,
+    "effectiveMarkupPct": 58.55,
+    "netContribution": 46291.67,
+    "recruiterBreakeven": 2,
+    "variableMarkupAdjusted": false,
+    "adjustedVariableMarkupPct": 0.10,
+    "budgetOptimization": {
+      "applied": true,
+      "budgetCase": "B",
+      "clientBudgetMinHourly": 700,
+      "clientBudgetMaxHourly": 1000,
+      "internalIdealHourly": 786.46,
+      "optimizedHourly": 825.78,
+      "optimizedMonthly": 132125,
+      "optimizedAnnual": 1586000,
+      "contributionImpact": 46291.67,
+      "effectiveMultiplierOnCost": 1.585,
+      "marginConstrained": false,
+      "marginUplifted": false,
+      "contributionCapped": false
+    },
+    "finalQuotedHourly": 900,
+    "finalQuotedMonthly": 144000,
+    "finalQuotedAnnual": 1728000,
+    "finalContribution": 58166.67,
+    "finalEffectiveMarkupPct": 72.8
+  }
+}
+```
+
+**Validation Rules:**
+- `candidateExpectedCtcLpa`: Required, number, min 0, max 500
+- `candidateExperienceYears`: Required, number, min 0, max 50
+- `contractDurationMonths`: Required, number, min 1, max 60
+- `paymentTermsDays`: Required, number, must be one of: 30, 45, 60, 90
+- `clientBudgetMinHourly`: Optional, number, min 0 (must be provided with `clientBudgetMaxHourly`)
+- `clientBudgetMaxHourly`: Optional, number, min 0 (must be provided with `clientBudgetMinHourly`)
+
+**Notes:**
+- Budget fields must both be provided or both omitted
+- `clientBudgetMinHourly` must be <= `clientBudgetMaxHourly`
+- When no budget is provided, `budgetOptimization.applied` is `false` and final values equal internal quoted values
+- Budget optimization cases: A (over budget, margin constrained), B (within range), C (below floor, uplift opportunity)
+- `marginUplifted` flag is set when budget optimization increases margin beyond internal ideal (audit visibility)
+
+---
+
+### GET /admin/pricing-config
+
+Get the current active pricing configuration.
+
+**Auth:** Requires `admin` role.
+
+**Request Headers:**
+```
+Authorization: Bearer <jwe_token>
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "config": {
+      "platformFees": { "junior": 25000, "mid": 25000, "senior": 30000, "architect": 35000 },
+      "variableMarkupPct": { "junior": 0.10, "mid": 0.10, "senior": 0.12, "architect": 0.15 },
+      "minContributionPerMonth": 30000,
+      "idealContributionPerMonth": 40000,
+      "costOfCapitalPctAnnual": 0.12,
+      "negotiationBufferPct": 0.05,
+      "annualRecruiterCost": 600000,
+      "maxCostMultiplierThreshold": 1.75,
+      "maxContributionCapPerMonth": 70000,
+      "budgetCeilingBufferPct": 0.02
+    }
+  }
+}
+```
+
+---
+
+### PUT /admin/pricing-config
+
+Save a new version of the pricing configuration (becomes the active version).
+
+**Auth:** Requires `admin` role.
+
+**Request Body:**
+```json
+{
+  "config": {
+    "platformFees": { "junior": 25000, "mid": 25000, "senior": 30000, "architect": 35000 },
+    "variableMarkupPct": { "junior": 0.10, "mid": 0.10, "senior": 0.12, "architect": 0.15 },
+    "minContributionPerMonth": 30000,
+    "idealContributionPerMonth": 40000,
+    "costOfCapitalPctAnnual": 0.12,
+    "negotiationBufferPct": 0.05,
+    "annualRecruiterCost": 600000,
+    "maxCostMultiplierThreshold": 1.75,
+    "maxContributionCapPerMonth": 70000,
+    "budgetCeilingBufferPct": 0.02
+  },
+  "description": "Updated platform fees for Q2"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "version": 3
+  }
+}
+```
+
+**Notes:**
+- Each save creates a new version; previous active version is deactivated
+- `description` is optional (max 500 characters)
+- Config is cached for 5 minutes on reads
+
+---
+
 ## Webhook Events (Future)
 
 For future integrations, the system can emit webhook events:

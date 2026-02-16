@@ -414,6 +414,99 @@ For querying requirements by recruiter.
 
 ---
 
+### 7. PricingConfig
+
+Stores versioned pricing configuration parameters managed via the admin interface. Used by the pricing engine to calculate billing rates.
+
+**Table Configuration:**
+- Table Name: `PricingConfig-{stage}`
+- Billing Mode: PAY_PER_REQUEST
+
+**Primary Key:**
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| config_key | String (S) | Partition Key (always `'default'`) |
+| version | Number (N) | Sort Key - version number |
+
+**Attributes:**
+
+| Attribute | Type | Required | Description |
+|-----------|------|----------|-------------|
+| config_key | String | Yes | Partition key, always `'default'` (PK) |
+| version | Number | Yes | Auto-incremented version number (SK) |
+| config | Map | Yes | Full pricing configuration object (see below) |
+| is_active | Boolean | Yes | Whether this version is the active config |
+| created_at | String | Yes | ISO 8601 timestamp |
+| created_by | String | Yes | User ID of admin who saved this version |
+| description | String | No | Description of changes made |
+
+**Config Object Schema:**
+
+| Field | Type | Description | Default |
+|-------|------|-------------|---------|
+| platformFees.junior | Number | Platform fee for Junior band (INR/month) | 25000 |
+| platformFees.mid | Number | Platform fee for Mid band (INR/month) | 25000 |
+| platformFees.senior | Number | Platform fee for Senior band (INR/month) | 30000 |
+| platformFees.architect | Number | Platform fee for Architect band (INR/month) | 35000 |
+| variableMarkupPct.junior | Number | Variable markup as decimal (0.10 = 10%) | 0.10 |
+| variableMarkupPct.mid | Number | Variable markup as decimal | 0.10 |
+| variableMarkupPct.senior | Number | Variable markup as decimal | 0.12 |
+| variableMarkupPct.architect | Number | Variable markup as decimal | 0.15 |
+| minContributionPerMonth | Number | Minimum contribution floor (INR/month) | 30000 |
+| idealContributionPerMonth | Number | Target contribution (INR/month) | 40000 |
+| costOfCapitalPctAnnual | Number | Annual cost of capital as decimal | 0.12 |
+| negotiationBufferPct | Number | Negotiation buffer as decimal | 0.05 |
+| annualRecruiterCost | Number | Annual cost per recruiter (INR) | 600000 |
+| maxCostMultiplierThreshold | Number | Max allowed billing/CTC multiplier | 1.75 |
+| maxContributionCapPerMonth | Number | Max contribution cap (INR/month) | 70000 |
+| budgetCeilingBufferPct | Number | Buffer below budget ceiling as decimal | 0.02 |
+
+**Example Item:**
+```json
+{
+  "config_key": "default",
+  "version": 2,
+  "config": {
+    "platformFees": { "junior": 25000, "mid": 25000, "senior": 30000, "architect": 35000 },
+    "variableMarkupPct": { "junior": 0.10, "mid": 0.10, "senior": 0.12, "architect": 0.15 },
+    "minContributionPerMonth": 30000,
+    "idealContributionPerMonth": 40000,
+    "costOfCapitalPctAnnual": 0.12,
+    "negotiationBufferPct": 0.05,
+    "annualRecruiterCost": 600000,
+    "maxCostMultiplierThreshold": 1.75,
+    "maxContributionCapPerMonth": 70000,
+    "budgetCeilingBufferPct": 0.02
+  },
+  "is_active": true,
+  "created_at": "2024-02-15T10:30:00Z",
+  "created_by": "user_admin123",
+  "description": "Updated platform fees for Q2"
+}
+```
+
+**Access Patterns:**
+
+| Operation | Access Pattern | Index |
+|-----------|---------------|-------|
+| Get active config | Query config_key='default', ScanIndexForward=false, filter is_active=true | Primary |
+| Get latest version | Query config_key='default', ScanIndexForward=false, Limit=1 | Primary |
+| Save new version | Put item with incremented version | Primary |
+| Deactivate old version | Update is_active=false on previous active | Primary |
+
+**Pricing Experience Bands:**
+
+| Band | Experience Range | Description |
+|------|-----------------|-------------|
+| junior | 0–4 years | Junior level |
+| mid | 5–8 years | Mid level |
+| senior | 9–12 years | Senior level |
+| architect | 12+ years | Architect level |
+
+*Note: These 4 pricing bands are distinct from the 7-level ATS seniority system (intern/junior/mid/senior/lead/principal/executive). Pricing bands use years of experience as the primary discriminator.*
+
+---
+
 ## S3 Storage Structure
 
 ### Bucket: quadzero-scout-resumes-{stage}
@@ -763,3 +856,11 @@ export const SaveRequirementRequestSchema = z.object({
 |-----------|---------------|-------|
 | Get batch status | Query by batch_id | Primary |
 | Update file status | Update by batch_id (nested update) | Primary |
+
+### Pricing Config Operations
+| Operation | Access Pattern | Index |
+|-----------|---------------|-------|
+| Get active config | Query config_key='default' + filter is_active | Primary |
+| Get latest version | Query config_key='default', desc, limit 1 | Primary |
+| Save new version | Put with incremented version | Primary |
+| Deactivate old version | Update is_active on previous | Primary |

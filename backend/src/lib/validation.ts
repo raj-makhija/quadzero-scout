@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { LLMJDOutputSchema } from '../types/index.js';
+import { LLMJDOutputSchema, PricingConfigSchema } from '../types/index.js';
 
 // Upload URL Request Validation
 export const UploadUrlRequestSchema = z.object({
@@ -138,6 +138,38 @@ export function validate<T>(schema: z.ZodSchema<T>, data: unknown): { success: t
   }
   return { success: false, errors: result.error };
 }
+
+// Pricing Validation
+export const CalculatePricingRequestSchema = z.object({
+  candidateExpectedCtcLpa: z.number().min(0).max(500),
+  candidateExperienceYears: z.number().min(0).max(50),
+  contractDurationMonths: z.number().min(1).max(60),
+  paymentTermsDays: z.number().refine(v => [30, 45, 60, 90].includes(v), {
+    message: 'paymentTermsDays must be 30, 45, 60, or 90',
+  }),
+  clientBudgetMinHourly: z.number().min(0).optional(),
+  clientBudgetMaxHourly: z.number().min(0).optional(),
+}).refine(
+  data => {
+    const hasMin = data.clientBudgetMinHourly !== undefined;
+    const hasMax = data.clientBudgetMaxHourly !== undefined;
+    return hasMin === hasMax;
+  },
+  { message: 'clientBudgetMinHourly and clientBudgetMaxHourly must both be provided or both omitted' }
+).refine(
+  data => {
+    if (data.clientBudgetMinHourly !== undefined && data.clientBudgetMaxHourly !== undefined) {
+      return data.clientBudgetMinHourly <= data.clientBudgetMaxHourly;
+    }
+    return true;
+  },
+  { message: 'clientBudgetMinHourly must be <= clientBudgetMaxHourly' }
+);
+
+export const UpdatePricingConfigRequestSchema = z.object({
+  config: PricingConfigSchema,
+  description: z.string().max(500).optional(),
+});
 
 // Format Zod errors for API response
 export function formatZodErrors(error: z.ZodError): string {
