@@ -559,12 +559,16 @@ describe('calculatePricing() — Hand-Calculated Verification', () => {
     // contribution = 116666.67 - 83333.33 - 2500 = 30833.33 > 30000 ✓
     expect(result.variableMarkupAdjusted).toBe(false);
 
-    // minimumBilling = 83333.33 + 2500 + 30000 = 115833.33 → rounded up to 116000
-    expect(result.minimumBillingMonthly).toBe(116000);
+    // minimumBilling raw = 83333.33 + 2500 + 30000 = 115833.33
+    // minimumBillingHourly = ceil(115833.33 / 160 / 100) * 100 = 800
+    // minimumBillingMonthly = ceil(800 * 160 / 1000) * 1000 = 128000
+    expect(result.minimumBillingMonthly).toBe(128000);
 
     // idealBilling = 83333.33 + 2500 + 40000 = 125833.33
-    // quotedBilling = 125833.33 * 1.05 = 132125 → rounded up to 133000
-    expect(result.quotedBillingMonthly).toBe(133000);
+    // quotedBillingRaw = 125833.33 * 1.05 = 132125
+    // quotedBillingHourly = ceil(132125 / 160 / 100) * 100 = 900
+    // quotedBillingMonthly = ceil(900 * 160 / 1000) * 1000 = 144000
+    expect(result.quotedBillingMonthly).toBe(144000);
 
     // effectiveMarkup = ((132125 - 83333.33) / 83333.33) * 100 = 58.55%
     expect(result.effectiveMarkupPct).toBeCloseTo(58.55, 0);

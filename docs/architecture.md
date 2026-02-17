@@ -402,7 +402,10 @@ The pricing engine is a deterministic module that generates recommended billing 
 │  │  4. Auto-adjust variable % if contribution < minimum floor     │  │
 │  │  5. Compute quoted billing (ideal + negotiation buffer)        │  │
 │  │  6. Compute minimum billing (cost + min contribution)          │  │
-│  │  7. Round: hourly→₹100, monthly→₹1,000, annual→₹10,000       │  │
+│  │  7. Cascading round (hourly is base rate):                     │  │
+│  │       hourly  = ceil(raw monthly / 160, ₹100)                 │  │
+│  │       monthly = ceil(hourly × 160, ₹1,000)                   │  │
+│  │       annual  = ceil(monthly × 12, ₹10,000)                  │  │
 │  │                                                                │  │
 │  │  Outputs: Quoted & Minimum rates (monthly/annual/hourly)       │  │
 │  └────────────────────────────────────────────────────────────────┘  │

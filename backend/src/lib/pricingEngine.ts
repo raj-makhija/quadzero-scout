@@ -70,20 +70,20 @@ export function calculatePricing(
   const quotedBillingMonthlyRaw =
     idealBillingMonthly * (1 + config.negotiationBufferPct);
 
-  // Rounding: hourly → nearest 100, monthly → nearest 1000, annual → nearest 10,000
+  // Rounding: hourly is the base → monthly derived from hourly → annual derived from monthly
   const quotedBillingHourly = roundUpToNearest(
     quotedBillingMonthlyRaw / HOURS_PER_MONTH,
     100
   );
-  const quotedBillingMonthly = roundUpToNearest(quotedBillingMonthlyRaw, 1000);
-  const quotedBillingAnnual = roundUpToNearest(quotedBillingMonthlyRaw * 12, 10000);
+  const quotedBillingMonthly = roundUpToNearest(quotedBillingHourly * HOURS_PER_MONTH, 1000);
+  const quotedBillingAnnual = roundUpToNearest(quotedBillingMonthly * 12, 10000);
   const minimumBillingHourly = roundUpToNearest(
     minimumBillingMonthly / HOURS_PER_MONTH,
     100
   );
-  const minimumBillingMonthlyRounded = roundUpToNearest(minimumBillingMonthly, 1000);
+  const minimumBillingMonthlyRounded = roundUpToNearest(minimumBillingHourly * HOURS_PER_MONTH, 1000);
   const minimumBillingAnnual = roundUpToNearest(
-    minimumBillingMonthly * 12,
+    minimumBillingMonthlyRounded * 12,
     10000
   );
 
