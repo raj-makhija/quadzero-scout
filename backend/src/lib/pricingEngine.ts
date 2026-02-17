@@ -67,29 +67,31 @@ export function calculatePricing(
     monthlyCtc + workingCapitalCostPerMonth + config.idealContributionPerMonth;
 
   // Quoted billing = ideal + negotiation buffer
-  const quotedBillingMonthly =
+  const quotedBillingMonthlyRaw =
     idealBillingMonthly * (1 + config.negotiationBufferPct);
 
-  // Rounding
-  const quotedBillingAnnual = roundUpToNearest(quotedBillingMonthly * 12, 1000);
+  // Rounding: hourly → nearest 100, monthly → nearest 1000, annual → nearest 10,000
   const quotedBillingHourly = roundUpToNearest(
-    quotedBillingMonthly / HOURS_PER_MONTH,
+    quotedBillingMonthlyRaw / HOURS_PER_MONTH,
     100
   );
-  const minimumBillingAnnual = roundUpToNearest(
-    minimumBillingMonthly * 12,
-    1000
-  );
+  const quotedBillingMonthly = roundUpToNearest(quotedBillingMonthlyRaw, 1000);
+  const quotedBillingAnnual = roundUpToNearest(quotedBillingMonthlyRaw * 12, 10000);
   const minimumBillingHourly = roundUpToNearest(
     minimumBillingMonthly / HOURS_PER_MONTH,
     100
   );
+  const minimumBillingMonthlyRounded = roundUpToNearest(minimumBillingMonthly, 1000);
+  const minimumBillingAnnual = roundUpToNearest(
+    minimumBillingMonthly * 12,
+    10000
+  );
 
-  // Analysis
+  // Analysis (use raw values for precise calculations)
   const effectiveMarkupPct =
-    ((quotedBillingMonthly - monthlyCtc) / monthlyCtc) * 100;
+    ((quotedBillingMonthlyRaw - monthlyCtc) / monthlyCtc) * 100;
   const netContribution =
-    quotedBillingMonthly - monthlyCtc - workingCapitalCostPerMonth;
+    quotedBillingMonthlyRaw - monthlyCtc - workingCapitalCostPerMonth;
   const recruiterBreakeven = Math.ceil(
     config.annualRecruiterCost / (netContribution * 12)
   );
@@ -114,8 +116,8 @@ export function calculatePricing(
 
   if (budgetOptimization.applied) {
     finalQuotedHourly = roundUpToNearest(budgetOptimization.optimizedHourly, 100);
-    finalQuotedMonthly = finalQuotedHourly * HOURS_PER_MONTH;
-    finalQuotedAnnual = roundUpToNearest(finalQuotedMonthly * 12, 1000);
+    finalQuotedMonthly = roundUpToNearest(finalQuotedHourly * HOURS_PER_MONTH, 1000);
+    finalQuotedAnnual = roundUpToNearest(finalQuotedMonthly * 12, 10000);
     finalContribution =
       finalQuotedMonthly - monthlyCtc - workingCapitalCostPerMonth;
     finalEffectiveMarkupPct =
@@ -139,7 +141,7 @@ export function calculatePricing(
     quotedBillingMonthly,
     quotedBillingAnnual,
     quotedBillingHourly,
-    minimumBillingMonthly,
+    minimumBillingMonthly: minimumBillingMonthlyRounded,
     minimumBillingAnnual,
     minimumBillingHourly,
     effectiveMarkupPct,
@@ -249,7 +251,7 @@ function applyBudgetOptimization(
 
   // Recompute after adjustments
   optimizedMonthly = optimizedHourly * HOURS_PER_MONTH;
-  const optimizedAnnual = roundUpToNearest(optimizedMonthly * 12, 1000);
+  const optimizedAnnual = roundUpToNearest(optimizedMonthly * 12, 10000);
   const contributionImpact =
     optimizedMonthly - monthlyCtc - workingCapitalCostPerMonth;
   const effectiveMultiplierOnCost = monthlyCtc > 0 ? optimizedMonthly / monthlyCtc : 0;

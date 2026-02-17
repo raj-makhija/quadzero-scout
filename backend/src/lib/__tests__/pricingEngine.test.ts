@@ -218,9 +218,13 @@ describe('calculatePricing() — Phase 1: Internal Pricing', () => {
     const input = makeInput();
     const result = calculatePricing(input, DEFAULT_CONFIG);
 
-    // Annual must be a multiple of 1000
-    expect(result.quotedBillingAnnual % 1000).toBe(0);
-    expect(result.minimumBillingAnnual % 1000).toBe(0);
+    // Annual must be a multiple of 10000
+    expect(result.quotedBillingAnnual % 10000).toBe(0);
+    expect(result.minimumBillingAnnual % 10000).toBe(0);
+
+    // Monthly must be a multiple of 1000
+    expect(result.quotedBillingMonthly % 1000).toBe(0);
+    expect(result.minimumBillingMonthly % 1000).toBe(0);
 
     // Hourly must be a multiple of 100
     expect(result.quotedBillingHourly % 100).toBe(0);
@@ -481,10 +485,10 @@ describe('calculatePricing() — Phase 2: Budget Optimization', () => {
     if (result.budgetOptimization.applied) {
       // finalQuotedHourly should be rounded up to nearest 100
       expect(result.finalQuotedHourly % 100).toBe(0);
-      // finalQuotedMonthly = finalQuotedHourly * 160
-      expect(result.finalQuotedMonthly).toBe(result.finalQuotedHourly * HOURS_PER_MONTH);
-      // finalQuotedAnnual should be rounded up to nearest 1000
-      expect(result.finalQuotedAnnual % 1000).toBe(0);
+      // finalQuotedMonthly should be rounded up to nearest 1000
+      expect(result.finalQuotedMonthly % 1000).toBe(0);
+      // finalQuotedAnnual should be rounded up to nearest 10000
+      expect(result.finalQuotedAnnual % 10000).toBe(0);
     }
   });
 
@@ -555,12 +559,12 @@ describe('calculatePricing() — Hand-Calculated Verification', () => {
     // contribution = 116666.67 - 83333.33 - 2500 = 30833.33 > 30000 ✓
     expect(result.variableMarkupAdjusted).toBe(false);
 
-    // minimumBilling = 83333.33 + 2500 + 30000 = 115833.33
-    expect(result.minimumBillingMonthly).toBeCloseTo(115833.33, 0);
+    // minimumBilling = 83333.33 + 2500 + 30000 = 115833.33 → rounded up to 116000
+    expect(result.minimumBillingMonthly).toBe(116000);
 
     // idealBilling = 83333.33 + 2500 + 40000 = 125833.33
-    // quotedBilling = 125833.33 * 1.05 = 132125
-    expect(result.quotedBillingMonthly).toBeCloseTo(132125, 0);
+    // quotedBilling = 125833.33 * 1.05 = 132125 → rounded up to 133000
+    expect(result.quotedBillingMonthly).toBe(133000);
 
     // effectiveMarkup = ((132125 - 83333.33) / 83333.33) * 100 = 58.55%
     expect(result.effectiveMarkupPct).toBeCloseTo(58.55, 0);
