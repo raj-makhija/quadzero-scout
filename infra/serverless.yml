@@ -377,3 +377,8 @@ functions:
 resources:
   - ${file(resources/dynamodb.yml)}
   - ${file(resources/s3.yml)}
+  - Resources:
+      BulkImportWorkerLambdaFunction:
+        Type: AWS::Lambda::Function
+        Properties:
+          RecursiveLoop: Allow

@@ -348,6 +348,7 @@ External recruiters go through an approval process before accessing the platform
 - Timeout configuration per function (30s default, up to 150s for workers)
 - Memory configured per function (512 MB default, up to 1536 MB for workers)
 - Cold start optimization with connection reuse (`AWS_NODEJS_CONNECTION_REUSE_ENABLED`)
+- `bulkImportWorker` uses `RecursiveLoop: Allow` — this worker intentionally self-chains via async invocation to process files sequentially; AWS's default recursive loop detection (which terminates chains after ~16 iterations) must be disabled for this pattern
 
 ### S3
 
