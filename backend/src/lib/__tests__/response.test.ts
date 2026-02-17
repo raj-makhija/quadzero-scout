@@ -110,7 +110,7 @@ describe('ErrorCodes', () => {
     expect(ErrorCodes.DYNAMODB_ERROR).toBe('DYNAMODB_ERROR');
   });
 
-  it('has exactly 9 error codes', () => {
-    expect(Object.keys(ErrorCodes)).toHaveLength(9);
+  it('has exactly 10 error codes', () => {
+    expect(Object.keys(ErrorCodes)).toHaveLength(10);
   });
 });

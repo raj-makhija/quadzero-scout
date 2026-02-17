@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Header } from '@/components/Header';
+import { PricingPanel } from '@/components/PricingPanel';
 import { api, ParsedCriteria, SearchCriteria, CandidateSearchResult, EngagementModel, Payroll, DuplicateMatch } from '@/lib/api';
 import { formatSeniority, formatAvailability, getMatchScoreColor, getMatchScoreBgColor, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS, ENGAGEMENT_MODEL_OPTIONS, PAYROLL_OPTIONS, formatEngagementModel } from '@/lib/utils';
 
@@ -13,8 +14,9 @@ const STORAGE_KEY = 'scout_recruiter_search';
 
 export default function RecruiterSearchPage() {
   const router = useRouter();
-  const { status } = useSession();
+  const { data: session, status } = useSession();
   const isAuthenticated = status === 'authenticated';
+  const isInternalRecruiter = (session?.user as any)?.isInternal === true;
 
   const [viewMode, setViewMode] = useState<ViewMode>('input');
   const [jobDescription, setJobDescription] = useState('');
@@ -934,6 +936,20 @@ export default function RecruiterSearchPage() {
                       </div>
                     )}
                   </div>
+                </div>
+
+                {/* Pricing Calculator */}
+                <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                  <PricingPanel
+                    candidateId={selectedCandidate.candidateId}
+                    candidateExpectedCtcLpa={selectedCandidate.expectedCtc}
+                    candidateCurrentCtcLpa={selectedCandidate.currentCtc}
+                    candidateExperienceYears={selectedCandidate.totalExperience}
+                    isInternalRecruiter={isInternalRecruiter}
+                    onCtcUpdated={(expectedCtc, currentCtc) => {
+                      setSelectedCandidate(prev => prev ? { ...prev, expectedCtc, currentCtc } : prev);
+                    }}
+                  />
                 </div>
 
                 {/* Actions */}

@@ -132,8 +132,15 @@ export default function RecruitersPage() {
               {recruiters.map((recruiter) => (
                 <tr key={recruiter.id}>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                      {recruiter.email}
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                        {recruiter.email}
+                      </span>
+                      {recruiter.email.toLowerCase().endsWith('@quadzero.com') && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                          QuadZero
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">

@@ -2,6 +2,7 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda
 import bcrypt from 'bcryptjs';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { getUserByEmail } from '../../lib/dynamodb.js';
+import { isInternalUser } from '../../lib/auth.js';
 
 export async function handler(
   event: APIGatewayProxyEventV2
@@ -46,6 +47,7 @@ export async function handler(
       email: user.email,
       name: user.name,
       role: user.role,
+      isInternal: isInternalUser(user.email),
     });
   } catch (err) {
     console.error('Error during login:', err);

@@ -9,9 +9,10 @@ import { withAuth, withOptionalAuth, type AuthenticatedEvent, type OptionalAuthE
 
 vi.mock('../dynamodb.js', () => ({
   getUserById: vi.fn(),
+  getUserByEmail: vi.fn(),
 }));
 
-import { getUserById } from '../dynamodb.js';
+import { getUserById, getUserByEmail } from '../dynamodb.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -182,6 +183,14 @@ describe('withAuth middleware', () => {
       email: 'candidate@example.com',
       role: 'candidate',
     });
+    vi.mocked(getUserById).mockResolvedValueOnce({
+      id: 'user_1',
+      email: 'candidate@example.com',
+      role: 'candidate',
+      status: 'approved',
+      provider: 'credentials',
+      createdAt: '2024-01-01T00:00:00Z',
+    });
     const handler = withAuth(['recruiter'], dummyHandler);
     const event = makeEvent({
       headers: { authorization: `Bearer ${token}` },
@@ -200,6 +209,14 @@ describe('withAuth middleware', () => {
       email: 'recruiter@example.com',
       role: 'recruiter',
     });
+    vi.mocked(getUserById).mockResolvedValueOnce({
+      id: 'user_2',
+      email: 'recruiter@example.com',
+      role: 'recruiter',
+      status: 'approved',
+      provider: 'credentials',
+      createdAt: '2024-01-01T00:00:00Z',
+    });
     const handler = withAuth(['candidate'], dummyHandler);
     const event = makeEvent({
       headers: { authorization: `Bearer ${token}` },
@@ -216,6 +233,14 @@ describe('withAuth middleware', () => {
       id: 'user_1',
       email: 'candidate@example.com',
       role: 'candidate',
+    });
+    vi.mocked(getUserById).mockResolvedValueOnce({
+      id: 'user_1',
+      email: 'candidate@example.com',
+      role: 'candidate',
+      status: 'approved',
+      provider: 'credentials',
+      createdAt: '2024-01-01T00:00:00Z',
     });
     const handler = withAuth(['candidate'], dummyHandler);
     const event = makeEvent({
@@ -235,6 +260,14 @@ describe('withAuth middleware', () => {
       id: 'user_2',
       email: 'recruiter@example.com',
       role: 'recruiter',
+    });
+    vi.mocked(getUserById).mockResolvedValueOnce({
+      id: 'user_2',
+      email: 'recruiter@example.com',
+      role: 'recruiter',
+      status: 'approved',
+      provider: 'credentials',
+      createdAt: '2024-01-01T00:00:00Z',
     });
     const handler = withAuth(['recruiter'], dummyHandler);
     const event = makeEvent({
@@ -256,6 +289,14 @@ describe('withAuth middleware', () => {
       email: 'admin@example.com',
       role: 'admin',
     });
+    vi.mocked(getUserById).mockResolvedValueOnce({
+      id: 'admin_1',
+      email: 'admin@example.com',
+      role: 'admin',
+      status: 'approved',
+      provider: 'credentials',
+      createdAt: '2024-01-01T00:00:00Z',
+    });
     const handler = withAuth(['candidate'], dummyHandler);
     const event = makeEvent({
       headers: { authorization: `Bearer ${token}` },
@@ -272,6 +313,14 @@ describe('withAuth middleware', () => {
       id: 'admin_1',
       email: 'admin@example.com',
       role: 'admin',
+    });
+    vi.mocked(getUserById).mockResolvedValueOnce({
+      id: 'admin_1',
+      email: 'admin@example.com',
+      role: 'admin',
+      status: 'approved',
+      provider: 'credentials',
+      createdAt: '2024-01-01T00:00:00Z',
     });
     const handler = withAuth(['recruiter'], dummyHandler);
     const event = makeEvent({
@@ -315,6 +364,7 @@ describe('withAuth middleware', () => {
       email: 'gone@example.com',
     });
     vi.mocked(getUserById).mockResolvedValueOnce(null);
+    vi.mocked(getUserByEmail).mockResolvedValueOnce(null);
 
     const handler = withAuth(['candidate'], dummyHandler);
     const event = makeEvent({
@@ -441,6 +491,15 @@ describe('withOptionalAuth middleware', () => {
       email: 'recruiter@example.com',
       role: 'recruiter',
     });
+    // Recruiter approval check needs an approved user in DB
+    vi.mocked(getUserById).mockResolvedValueOnce({
+      id: 'user_1',
+      email: 'recruiter@example.com',
+      role: 'recruiter',
+      status: 'approved',
+      provider: 'credentials',
+      createdAt: '2024-01-01T00:00:00Z',
+    });
     const handler = withOptionalAuth(optionalDummyHandler);
     const event = makeEvent({
       headers: { authorization: `Bearer ${token}` },
@@ -482,6 +541,7 @@ describe('withOptionalAuth middleware', () => {
       id: 'user_3',
       email: 'norole@example.com',
       role: 'recruiter',
+      status: 'approved',
       provider: 'credentials',
       createdAt: '2024-01-01T00:00:00Z',
     });
@@ -504,6 +564,7 @@ describe('withOptionalAuth middleware', () => {
       email: 'gone@example.com',
     });
     vi.mocked(getUserById).mockResolvedValueOnce(null);
+    vi.mocked(getUserByEmail).mockResolvedValueOnce(null);
 
     const handler = withOptionalAuth(optionalDummyHandler);
     const event = makeEvent({
@@ -528,5 +589,83 @@ describe('withOptionalAuth middleware', () => {
     expect(result.statusCode).toBe(200);
     expect(body.hasAuth).toBe(true);
     expect(body.userId).toBe('dev-user-1');
+  });
+
+  // ------ Email fallback (Google OAuth users) ------
+
+  it('falls back to email lookup when user ID not found in DB', async () => {
+    const token = await createTestToken({
+      id: 'google-oauth-id-123',
+      email: 'user@example.com',
+    });
+    vi.mocked(getUserById).mockResolvedValueOnce(null);
+    vi.mocked(getUserByEmail).mockResolvedValueOnce({
+      id: 'db-user-1',
+      email: 'user@example.com',
+      role: 'candidate',
+      status: 'approved',
+      provider: 'google',
+      createdAt: '2024-01-01T00:00:00Z',
+    });
+
+    const handler = withOptionalAuth(optionalDummyHandler);
+    const event = makeEvent({
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const result = await handler(event);
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.hasAuth).toBe(true);
+    expect(body.role).toBe('candidate');
+    expect(getUserByEmail).toHaveBeenCalledWith('user@example.com');
+  });
+
+  // ------ Internal user bypass ------
+
+  it('bypasses recruiter approval check for internal users', async () => {
+    const token = await createTestToken({
+      id: 'internal-user-1',
+      email: 'raj@quadzero.com',
+      role: 'recruiter',
+    });
+    // No getUserById mock needed - internal users bypass approval check
+    const handler = withOptionalAuth(optionalDummyHandler);
+    const event = makeEvent({
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const result = await handler(event);
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.hasAuth).toBe(true);
+    expect(body.role).toBe('recruiter');
+    expect(body.email).toBe('raj@quadzero.com');
+  });
+
+  it('does not bypass recruiter approval check for external users', async () => {
+    const token = await createTestToken({
+      id: 'ext-recruiter-1',
+      email: 'recruiter@external.com',
+      role: 'recruiter',
+    });
+    vi.mocked(getUserById).mockResolvedValueOnce({
+      id: 'ext-recruiter-1',
+      email: 'recruiter@external.com',
+      role: 'recruiter',
+      status: 'pending',
+      provider: 'credentials',
+      createdAt: '2024-01-01T00:00:00Z',
+    });
+
+    const handler = withOptionalAuth(optionalDummyHandler);
+    const event = makeEvent({
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const result = await handler(event);
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.hasAuth).toBe(false);
   });
 });
