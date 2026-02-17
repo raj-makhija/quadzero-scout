@@ -308,7 +308,7 @@ The active provider is configured via the `LLM_PROVIDER` environment variable.
 
 ### Recruiter Approval Workflow
 
-Recruiters go through an approval process before accessing the platform:
+External recruiters go through an approval process before accessing the platform:
 
 1. Recruiter registers via `/auth/register` with role `recruiter`
 2. Account is created with status `pending`
@@ -316,6 +316,7 @@ Recruiters go through an approval process before accessing the platform:
 4. Admin approves/rejects via `/admin/users/status`
 5. Approved recruiters can access recruiter endpoints
 6. `withAuth` middleware checks both role AND approval status
+7. Internal users (`@quadzero.com`) bypass the approval requirement
 
 ### Security Measures
 
@@ -328,8 +329,9 @@ Recruiters go through an approval process before accessing the platform:
 7. **S3 Encryption**: Server-side AES256 encryption enabled
 8. **SSL Enforcement**: S3 bucket policy denies non-SSL requests
 9. **Role-Based Access**: `withAuth` middleware enforces role checks per endpoint
-10. **Recruiter Approval**: Recruiters require admin approval before access
+10. **Recruiter Approval**: External recruiters require admin approval before access; internal users (`@quadzero.com`) are exempt
 11. **Optional Auth**: Search endpoint supports unauthenticated access with PII redaction
+12. **User Lookup Fallback**: Auth middleware falls back to email-based lookup when user ID is not found (supports Google OAuth users whose token ID differs from their database ID)
 
 ## Scalability Considerations
 

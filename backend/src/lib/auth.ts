@@ -1,7 +1,7 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { jwtDecrypt } from 'jose';
 import { error, ErrorCodes } from './response.js';
-import { getUserById } from './dynamodb.js';
+import { getUserById, getUserByEmail } from './dynamodb.js';
 import type { UserRole } from '../types/index.js';
 
 export interface AuthContext {
@@ -151,12 +151,19 @@ export function withAuth(
 
     // Always fetch current role from database to ensure role changes take effect immediately
     let userRole: UserRole;
+    let resolvedUser: { role: UserRole; status?: string } | null = null;
     try {
-      const user = await getUserById(tokenPayload.id);
+      let user = await getUserById(tokenPayload.id);
+      // Fall back to email lookup (e.g. Google OAuth users whose token ID
+      // doesn't match their DynamoDB user ID)
+      if (!user && tokenPayload.email) {
+        user = await getUserByEmail(tokenPayload.email);
+      }
       if (!user) {
         return error(ErrorCodes.UNAUTHORIZED, 'User not found', 401);
       }
       userRole = user.role;
+      resolvedUser = user;
     } catch (err) {
       console.error('User lookup failed:', err);
       return error(ErrorCodes.INTERNAL_ERROR, 'Failed to verify user', 500);
@@ -171,22 +178,13 @@ export function withAuth(
       );
     }
 
-    // Check recruiter approval status
-    if (userRole === 'recruiter') {
-      try {
-        const user = await getUserById(tokenPayload.id);
-        if (!user) {
-          return error(ErrorCodes.UNAUTHORIZED, 'User not found', 401);
-        }
-        if (user.status !== 'approved') {
-          const message = user.status === 'pending'
-            ? 'Your account is pending approval. Please wait for admin approval.'
-            : 'Your account has been rejected. Please contact support.';
-          return error(ErrorCodes.FORBIDDEN, message, 403);
-        }
-      } catch (err) {
-        console.error('Recruiter status check failed:', err);
-        return error(ErrorCodes.INTERNAL_ERROR, 'Failed to verify account status', 500);
+    // Check recruiter approval status - internal users bypass approval requirement
+    if (userRole === 'recruiter' && !isInternalUser(tokenPayload.email)) {
+      if (resolvedUser && resolvedUser.status !== 'approved') {
+        const message = resolvedUser.status === 'pending'
+          ? 'Your account is pending approval. Please wait for admin approval.'
+          : 'Your account has been rejected. Please contact support.';
+        return error(ErrorCodes.FORBIDDEN, message, 403);
       }
     }
 
@@ -229,13 +227,20 @@ export function withOptionalAuth(
         const tokenPayload = await decryptNextAuthToken(token, secret);
 
         let userRole: UserRole;
+        let resolvedUser: { role: UserRole; status?: string } | null = null;
         if (tokenPayload.role && ['candidate', 'recruiter', 'admin'].includes(tokenPayload.role)) {
           userRole = tokenPayload.role as UserRole;
         } else {
           try {
-            const user = await getUserById(tokenPayload.id);
+            let user = await getUserById(tokenPayload.id);
+            // Fall back to email lookup (e.g. Google OAuth users whose token ID
+            // doesn't match their DynamoDB user ID)
+            if (!user && tokenPayload.email) {
+              user = await getUserByEmail(tokenPayload.email);
+            }
             if (user) {
               userRole = user.role;
+              resolvedUser = user;
             } else {
               return handler(optionalEvent);
             }
@@ -246,9 +251,10 @@ export function withOptionalAuth(
         }
 
         // For recruiters, check approval status - treat unapproved recruiters as unauthenticated
-        if (userRole === 'recruiter') {
+        // Internal users (@quadzero.com) bypass the approval requirement
+        if (userRole === 'recruiter' && !isInternalUser(tokenPayload.email)) {
           try {
-            const user = await getUserById(tokenPayload.id);
+            const user = resolvedUser ?? await getUserById(tokenPayload.id);
             if (!user || user.status !== 'approved') {
               // Unapproved recruiter - proceed without auth (like unauthenticated user)
               return handler(optionalEvent);
