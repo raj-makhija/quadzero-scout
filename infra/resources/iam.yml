@@ -22,6 +22,7 @@ dynamoDbPolicy:
     - !GetAtt BulkImportBatchesTable.Arn
     - !GetAtt RequirementsTable.Arn
     - !Sub '${RequirementsTable.Arn}/index/*'
+    - !GetAtt PricingConfigTable.Arn
 
 # S3 Policy
 s3Policy:

@@ -92,7 +92,8 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id;
         token.role = (user as { role?: string }).role;
-        console.log('[NextAuth] jwt() - set token.id:', user.id, 'token.role:', (user as { role?: string }).role);
+        token.isInternal = (user as { isInternal?: boolean }).isInternal ?? false;
+        console.log('[NextAuth] jwt() - set token.id:', user.id, 'token.role:', (user as { role?: string }).role, 'token.isInternal:', token.isInternal);
       }
       return token;
     },
@@ -101,6 +102,7 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         (session.user as { id?: string }).id = token.id as string;
         (session.user as { role?: string }).role = token.role as string;
+        (session.user as { isInternal?: boolean }).isInternal = token.isInternal as boolean;
       }
       return session;
     },
