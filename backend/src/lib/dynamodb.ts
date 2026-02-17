@@ -75,7 +75,7 @@ export async function saveCandidateProfile(candidate: CandidateItem): Promise<vo
 
 export async function searchCandidates(
   criteria: SearchCriteria,
-  limit: number = 20,
+  _limit?: number,
   lastEvaluatedKey?: Record<string, unknown>
 ): Promise<{ items: CandidateItem[]; lastKey?: Record<string, unknown> }> {
   const filterExpressions: string[] = [];
@@ -115,7 +115,10 @@ export async function searchCandidates(
     expressionAttributeValues[':location'] = criteria.location.toLowerCase();
   }
 
-  const scanParams: {
+  const PAGE_SIZE = 100;
+  const MAX_ITEMS = 500;
+
+  const baseScanParams: {
     TableName: string;
     Limit: number;
     ExclusiveStartKey?: Record<string, unknown>;
@@ -124,26 +127,36 @@ export async function searchCandidates(
     ExpressionAttributeValues?: Record<string, unknown>;
   } = {
     TableName: config.dynamodb.talentProfilesTable,
-    Limit: limit,
+    Limit: PAGE_SIZE,
   };
 
-  if (lastEvaluatedKey) {
-    scanParams.ExclusiveStartKey = lastEvaluatedKey;
-  }
-
   if (filterExpressions.length > 0) {
-    scanParams.FilterExpression = filterExpressions.join(' AND ');
+    baseScanParams.FilterExpression = filterExpressions.join(' AND ');
     if (Object.keys(expressionAttributeNames).length > 0) {
-      scanParams.ExpressionAttributeNames = expressionAttributeNames;
+      baseScanParams.ExpressionAttributeNames = expressionAttributeNames;
     }
-    scanParams.ExpressionAttributeValues = expressionAttributeValues;
+    baseScanParams.ExpressionAttributeValues = expressionAttributeValues;
   }
 
-  const result = await docClient.send(new ScanCommand(scanParams));
+  const allItems: CandidateItem[] = [];
+  let currentKey: Record<string, unknown> | undefined = lastEvaluatedKey;
+
+  do {
+    const scanParams = { ...baseScanParams };
+    if (currentKey) {
+      scanParams.ExclusiveStartKey = currentKey;
+    }
+
+    const result = await docClient.send(new ScanCommand(scanParams));
+    const items = (result.Items || []) as CandidateItem[];
+    allItems.push(...items);
+
+    currentKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (currentKey && allItems.length < MAX_ITEMS);
 
   return {
-    items: (result.Items || []) as CandidateItem[],
-    lastKey: result.LastEvaluatedKey as Record<string, unknown> | undefined,
+    items: allItems,
+    lastKey: currentKey,
   };
 }
 

@@ -740,6 +740,10 @@ export const SaveRequirementRequestSchema = z.object({
 ## Skill Ontology
 
 ### Normalization Mappings
+
+The skill ontology normalizes variant skill names to canonical forms and groups them into categories for related-skill matching. It covers engineering, CRM/ERP, marketing/analytics, design, and HR/finance domains.
+
+**Example mappings (abbreviated):**
 ```json
 {
   "mappings": {
@@ -759,50 +763,58 @@ export const SaveRequirementRequestSchema = z.object({
     "reactjs": "react",
     "react.js": "react",
 
-    "vue": "vue",
-    "vuejs": "vue",
-    "vue.js": "vue",
-
-    "angular": "angular",
-    "angularjs": "angular",
-
     "py": "python",
     "python": "python",
     "python3": "python",
 
-    "spring": "spring_boot",
-    "springboot": "spring_boot",
-    "spring boot": "spring_boot",
-
     "k8s": "kubernetes",
     "kubernetes": "kubernetes",
 
-    "postgres": "postgresql",
-    "postgresql": "postgresql",
-    "psql": "postgresql",
+    "salesforce": "salesforce",
+    "sfdc": "salesforce",
+    "salesforce crm": "salesforce",
+    "salesforce.com": "salesforce",
+    "salesforce admin": "salesforce_admin",
+    "salesforce administrator": "salesforce_admin",
+    "apex": "salesforce_apex",
+    "lightning": "salesforce_lightning",
+    "lwc": "salesforce_lightning",
 
-    "mongo": "mongodb",
-    "mongodb": "mongodb",
+    "hubspot": "hubspot",
+    "zoho crm": "zoho_crm",
+    "dynamics 365": "dynamics_365",
+    "sap": "sap",
+    "servicenow": "servicenow",
 
-    "aws": "aws",
-    "amazon web services": "aws",
+    "google analytics": "google_analytics",
+    "ga4": "google_analytics",
+    "tableau": "tableau",
+    "power bi": "power_bi",
 
-    "gcp": "google_cloud",
-    "google cloud": "google_cloud",
-    "google cloud platform": "google_cloud",
+    "figma": "figma",
+    "photoshop": "photoshop",
+    "adobe xd": "adobe_xd",
 
-    "azure": "azure",
-    "microsoft azure": "azure"
+    "excel": "excel",
+    "ms excel": "excel",
+    "tally": "tally",
+    "workday": "workday"
   },
   "categories": {
     "frontend": ["javascript", "typescript", "react", "vue", "angular", "html", "css"],
     "backend": ["nodejs", "python", "java", "go", "rust", "spring_boot"],
     "database": ["postgresql", "mongodb", "mysql", "redis", "elasticsearch"],
     "cloud": ["aws", "azure", "google_cloud"],
-    "devops": ["docker", "kubernetes", "terraform", "jenkins", "gitlab_ci"]
+    "devops": ["docker", "kubernetes", "terraform", "jenkins", "gitlab_ci"],
+    "crm_erp": ["salesforce", "salesforce_admin", "salesforce_developer", "hubspot", "zoho_crm", "dynamics_365", "sap", "servicenow"],
+    "marketing_analytics": ["google_analytics", "seo", "sem", "google_ads", "tableau", "power_bi", "looker"],
+    "design": ["figma", "sketch", "adobe_xd", "photoshop", "illustrator", "canva"],
+    "hr_finance": ["workday", "bamboohr", "tally", "quickbooks", "excel", "ms_office"]
   }
 }
 ```
+
+See `backend/src/data/skills_ontology.json` for the full list of mappings, categories, and synonym groups.
 
 ---
 
@@ -819,7 +831,7 @@ export const SaveRequirementRequestSchema = z.object({
 ### Recruiter Search Operations
 | Operation | Access Pattern | Index |
 |-----------|---------------|-------|
-| Search all candidates | Scan with filters | Table Scan |
+| Search all candidates | Paginated scan with filters (up to 500 items) | Table Scan |
 | Filter by experience | Scan with filter / Query bucket | ExperienceIndex |
 | Filter by seniority | Query by seniority | SeniorityIndex |
 

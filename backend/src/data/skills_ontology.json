@@ -159,7 +159,6 @@
     "opensearch": "opensearch",
 
     "cassandra": "cassandra",
-    "dynamodb": "dynamodb",
 
     "graphql": "graphql",
     "gql": "graphql",
@@ -241,7 +240,99 @@
     "apache spark": "apache_spark",
     "hadoop": "hadoop",
     "airflow": "apache_airflow",
-    "apache airflow": "apache_airflow"
+    "apache airflow": "apache_airflow",
+
+    "salesforce": "salesforce",
+    "sfdc": "salesforce",
+    "salesforce crm": "salesforce",
+    "salesforce.com": "salesforce",
+    "salesforce admin": "salesforce_admin",
+    "salesforce administrator": "salesforce_admin",
+    "salesforce administration": "salesforce_admin",
+    "salesforce developer": "salesforce_developer",
+    "salesforce development": "salesforce_developer",
+    "apex": "salesforce_apex",
+    "visualforce": "visualforce",
+    "lightning": "salesforce_lightning",
+    "salesforce lightning": "salesforce_lightning",
+    "lwc": "salesforce_lightning",
+    "lightning web components": "salesforce_lightning",
+    "soql": "soql",
+    "sosl": "soql",
+
+    "hubspot": "hubspot",
+    "hub spot": "hubspot",
+    "zoho": "zoho_crm",
+    "zoho crm": "zoho_crm",
+    "dynamics 365": "dynamics_365",
+    "dynamics crm": "dynamics_365",
+    "microsoft dynamics": "dynamics_365",
+    "ms dynamics": "dynamics_365",
+    "sap": "sap",
+    "sap erp": "sap",
+    "sap hana": "sap_hana",
+    "sap s/4hana": "sap_hana",
+    "oracle erp": "oracle_erp",
+    "oracle financials": "oracle_erp",
+    "servicenow": "servicenow",
+    "service now": "servicenow",
+
+    "google analytics": "google_analytics",
+    "ga4": "google_analytics",
+    "ga": "google_analytics",
+    "seo": "seo",
+    "search engine optimization": "seo",
+    "sem": "sem",
+    "search engine marketing": "sem",
+    "google ads": "google_ads",
+    "adwords": "google_ads",
+    "google adwords": "google_ads",
+    "facebook ads": "meta_ads",
+    "meta ads": "meta_ads",
+    "fb ads": "meta_ads",
+    "marketo": "marketo",
+    "mailchimp": "mailchimp",
+
+    "tableau": "tableau",
+    "power bi": "power_bi",
+    "powerbi": "power_bi",
+    "microsoft power bi": "power_bi",
+    "looker": "looker",
+    "qlik": "qlik",
+    "qlikview": "qlik",
+    "qlik sense": "qlik",
+
+    "figma": "figma",
+    "sketch": "sketch",
+    "adobe xd": "adobe_xd",
+    "xd": "adobe_xd",
+    "photoshop": "photoshop",
+    "adobe photoshop": "photoshop",
+    "illustrator": "illustrator",
+    "adobe illustrator": "illustrator",
+    "invision": "invision",
+    "canva": "canva",
+
+    "workday": "workday",
+    "bamboohr": "bamboohr",
+    "bamboo hr": "bamboohr",
+    "tally": "tally",
+    "tally erp": "tally",
+    "tally prime": "tally",
+    "quickbooks": "quickbooks",
+    "quick books": "quickbooks",
+    "excel": "excel",
+    "ms excel": "excel",
+    "microsoft excel": "excel",
+    "power automate": "power_automate",
+    "microsoft power automate": "power_automate",
+    "sharepoint": "sharepoint",
+    "ms sharepoint": "sharepoint",
+    "microsoft sharepoint": "sharepoint",
+    "ms office": "ms_office",
+    "microsoft office": "ms_office",
+    "office 365": "ms_office",
+    "microsoft 365": "ms_office"
   },
   "categories": {
     "frontend": [
@@ -270,6 +361,22 @@
     ],
     "mobile": [
       "react_native", "flutter", "swift", "kotlin", "ios", "android"
+    ],
+    "crm_erp": [
+      "salesforce", "salesforce_admin", "salesforce_developer", "salesforce_apex",
+      "visualforce", "salesforce_lightning", "soql", "hubspot", "zoho_crm",
+      "dynamics_365", "sap", "sap_hana", "oracle_erp", "servicenow"
+    ],
+    "marketing_analytics": [
+      "google_analytics", "seo", "sem", "google_ads", "meta_ads",
+      "marketo", "mailchimp", "tableau", "power_bi", "looker", "qlik"
+    ],
+    "design": [
+      "figma", "sketch", "adobe_xd", "photoshop", "illustrator", "invision", "canva"
+    ],
+    "hr_finance": [
+      "workday", "bamboohr", "tally", "quickbooks", "excel", "ms_office",
+      "sharepoint", "power_automate"
     ]
   },
   "synonymGroups": {
@@ -278,6 +385,9 @@
     "sql_databases": ["postgresql", "mysql", "mariadb"],
     "nosql_databases": ["mongodb", "dynamodb", "cassandra"],
     "cloud_providers": ["aws", "azure", "google_cloud"],
-    "container_orchestration": ["kubernetes", "docker_swarm", "aws_ecs"]
+    "container_orchestration": ["kubernetes", "docker_swarm", "aws_ecs"],
+    "crm_platforms": ["salesforce", "hubspot", "zoho_crm", "dynamics_365"],
+    "bi_tools": ["tableau", "power_bi", "looker", "qlik"],
+    "design_tools": ["figma", "sketch", "adobe_xd", "invision"]
   }
 }
