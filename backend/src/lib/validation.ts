@@ -180,13 +180,13 @@ export const UpdateCandidateCtcRequestSchema = z.object({
 
 // Match Requirements Request Validation
 export const MatchRequirementsRequestSchema = z.object({
-  candidateId: z.string().uuid(),
+  candidateId: z.string().min(1),
 });
 
 // Shortlist Candidate Request Validation
 export const ShortlistCandidateRequestSchema = z.object({
-  requirementId: z.string().uuid(),
-  candidateId: z.string().uuid(),
+  requirementId: z.string().min(1),
+  candidateId: z.string().min(1),
   notes: z.string().max(1000).optional(),
 });
 
