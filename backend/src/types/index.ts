@@ -524,3 +524,63 @@ export interface UpdatePricingConfigResponse {
 export interface GetPricingConfigResponse {
   config: PricingConfig;
 }
+
+// ─── Shortlist Types ────────────────────────────────────────────────────────
+
+export const ShortlistStatusEnum = z.enum(['shortlisted', 'submitted', 'rejected']);
+export type ShortlistStatus = z.infer<typeof ShortlistStatusEnum>;
+
+export interface ShortlistItem {
+  requirement_id: string;
+  candidate_id: string;
+  tagged_by: string;
+  tagged_at: string;
+  notes?: string;
+  status: ShortlistStatus;
+}
+
+// ─── Requirement Matching Types ─────────────────────────────────────────────
+
+export interface MatchedRequirement {
+  requirementId: string;
+  clientName: string;
+  endClient?: string;
+  jobTitle?: string;
+  engagementModel: string;
+  payroll: string;
+  budgetMinLpa?: number;
+  budgetMaxLpa?: number;
+  mustHaveSkills: string[];
+  goodToHaveSkills: string[];
+  matchScore: number;
+  matchDetails: {
+    mustHaveMatched: string[];
+    mustHaveMissing: string[];
+    goodToHaveMatched: string[];
+    experienceMatch: boolean;
+    seniorityMatch: boolean;
+    budgetFit: boolean;
+  };
+  isShortlisted: boolean;
+  createdAt: string;
+}
+
+export interface MatchRequirementsResponse {
+  matches: MatchedRequirement[];
+}
+
+export interface ShortlistedCandidate {
+  candidateId: string;
+  fullName: string;
+  primarySkills: string[];
+  totalExperience: number;
+  seniority: string;
+  expectedCtc?: number;
+  taggedAt: string;
+  notes?: string;
+  status: ShortlistStatus;
+}
+
+export interface ShortlistedCandidatesResponse {
+  candidates: ShortlistedCandidate[];
+}

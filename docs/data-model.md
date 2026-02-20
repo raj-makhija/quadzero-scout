@@ -414,7 +414,67 @@ For querying requirements by recruiter.
 
 ---
 
-### 7. PricingConfig
+### 7. Shortlists
+
+Links candidates to requirements via recruiter shortlisting (tagging).
+
+**Table Configuration:**
+- Table Name: `Shortlists-{stage}`
+- Billing Mode: PAY_PER_REQUEST
+
+**Primary Key:**
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| requirement_id | String (S) | Partition Key - Requirement ID |
+| candidate_id | String (S) | Sort Key - Candidate ID |
+
+**Attributes:**
+
+| Attribute | Type | Required | Description |
+|-----------|------|----------|-------------|
+| requirement_id | String | Yes | Requirement ID (PK) |
+| candidate_id | String | Yes | Candidate ID (SK) |
+| tagged_by | String | Yes | User ID of recruiter who tagged |
+| tagged_at | String | Yes | ISO 8601 timestamp |
+| notes | String | No | Optional notes (max 1000 chars) |
+| status | String | Yes | Shortlist status |
+
+**Example Item:**
+```json
+{
+  "requirement_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "candidate_id": "cand_x1y2z3w4-a5b6-7890-cdef-gh1234567890",
+  "tagged_by": "user_r1e2c3",
+  "tagged_at": "2024-01-15T10:30:00Z",
+  "notes": "Strong React skills, good culture fit",
+  "status": "shortlisted"
+}
+```
+
+**Global Secondary Indexes:**
+
+#### GSI: CandidateIndex
+For looking up all shortlists for a given candidate (reverse lookup).
+
+| Attribute | Key Type |
+|-----------|----------|
+| candidate_id | Partition Key |
+| requirement_id | Sort Key |
+
+*Projection: ALL*
+
+**Access Patterns:**
+
+| Operation | Access Pattern | Index |
+|-----------|---------------|-------|
+| Get all shortlists for a requirement | Query by requirement_id | Primary |
+| Get all shortlists for a candidate | Query by candidate_id | CandidateIndex |
+| Get single shortlist entry | GetItem with requirement_id + candidate_id | Primary |
+| Delete shortlist entry | DeleteItem with requirement_id + candidate_id | Primary |
+
+---
+
+### 8. PricingConfig
 
 Stores versioned pricing configuration parameters managed via the admin interface. Used by the pricing engine to calculate billing rates.
 
@@ -613,6 +673,11 @@ type Payroll = 'quadzero' | 'client';
 ### Requirement Status
 ```typescript
 type RequirementStatus = 'active' | 'duplicate';
+```
+
+### Shortlist Status
+```typescript
+type ShortlistStatus = 'shortlisted' | 'submitted' | 'rejected';
 ```
 
 ### Supported File Types
@@ -868,6 +933,14 @@ See `backend/src/data/skills_ontology.json` for the full list of mappings, categ
 |-----------|---------------|-------|
 | Get batch status | Query by batch_id | Primary |
 | Update file status | Update by batch_id (nested update) | Primary |
+
+### Shortlist Operations
+| Operation | Access Pattern | Index |
+|-----------|---------------|-------|
+| Get all shortlists for a requirement | Query by requirement_id | Primary |
+| Get all shortlists for a candidate | Query by candidate_id | CandidateIndex |
+| Get single shortlist entry | GetItem with requirement_id + candidate_id | Primary |
+| Delete shortlist entry | DeleteItem with requirement_id + candidate_id | Primary |
 
 ### Pricing Config Operations
 | Operation | Access Pattern | Index |

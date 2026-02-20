@@ -201,6 +201,39 @@ Resources:
         - Key: Project
           Value: quadzero-scout
 
+  # Shortlists Table
+  ShortlistsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: ${self:custom.shortlistsTable}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: requirement_id
+          AttributeType: S
+        - AttributeName: candidate_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: requirement_id
+          KeyType: HASH
+        - AttributeName: candidate_id
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: CandidateIndex
+          KeySchema:
+            - AttributeName: candidate_id
+              KeyType: HASH
+            - AttributeName: requirement_id
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Project
+          Value: quadzero-scout
+
   # PricingConfig Table
   PricingConfigTable:
     Type: AWS::DynamoDB::Table
@@ -261,6 +294,12 @@ Outputs:
     Value: !GetAtt RequirementsTable.Arn
     Export:
       Name: ${self:provider.stage}-RequirementsTableArn
+
+  ShortlistsTableArn:
+    Description: Shortlists table ARN
+    Value: !GetAtt ShortlistsTable.Arn
+    Export:
+      Name: ${self:provider.stage}-ShortlistsTableArn
 
   PricingConfigTableArn:
     Description: PricingConfig table ARN

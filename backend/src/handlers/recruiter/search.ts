@@ -2,79 +2,10 @@ import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, SearchRequestSchema } from '../../lib/validation.js';
 import { searchCandidates } from '../../lib/dynamodb.js';
-import { normalizeSkills, calculateSkillMatch } from '../../lib/skillNormalizer.js';
-import { isCandidateWithinBudget } from '../../lib/ctcConversion.js';
+import { normalizeSkills } from '../../lib/skillNormalizer.js';
+import { calculateMatchScore } from '../../lib/matchScoring.js';
 import { withOptionalAuth, type OptionalAuthEvent } from '../../lib/auth.js';
-import type { CandidateItem, CandidateSearchResult, SearchResponse, SearchCriteria } from '../../types/index.js';
-
-function calculateMatchScore(
-  candidate: CandidateItem,
-  mustHaveSkills: string[],
-  goodToHaveSkills: string[],
-  minExp?: number,
-  maxExp?: number,
-  seniority?: string[],
-  maxBudgetLpa?: number
-): { score: number; details: CandidateSearchResult['matchDetails'] } {
-  let score = 0;
-
-  // Get candidate skills
-  const candidateSkills = [
-    ...candidate.primary_skills,
-    ...candidate.secondary_skills,
-  ];
-
-  // Must-have skills match (50% of score)
-  const mustHaveMatch = calculateSkillMatch(candidateSkills, mustHaveSkills);
-  const mustHaveRatio = mustHaveSkills.length > 0
-    ? mustHaveMatch.matched.length / mustHaveSkills.length
-    : 1;
-  score += mustHaveRatio * 50;
-
-  // Good-to-have skills match (20% of score)
-  const goodToHaveMatch = calculateSkillMatch(candidateSkills, goodToHaveSkills);
-  const goodToHaveRatio = goodToHaveSkills.length > 0
-    ? goodToHaveMatch.matched.length / goodToHaveSkills.length
-    : 1;
-  score += goodToHaveRatio * 20;
-
-  // Experience match (15% of score)
-  const experience = candidate.total_experience;
-  let experienceMatch = true;
-  if (minExp !== undefined && experience < minExp) {
-    experienceMatch = false;
-  }
-  if (maxExp !== undefined && experience > maxExp) {
-    experienceMatch = false;
-  }
-  if (experienceMatch) {
-    score += 15;
-  }
-
-  // Seniority match (15% of score)
-  let seniorityMatch = true;
-  if (seniority && seniority.length > 0) {
-    seniorityMatch = seniority.includes(candidate.seniority);
-  }
-  if (seniorityMatch) {
-    score += 15;
-  }
-
-  // CTC budget check
-  const ctcMatch = isCandidateWithinBudget(candidate.expected_ctc, maxBudgetLpa);
-
-  return {
-    score: Math.round(score),
-    details: {
-      mustHaveMatched: mustHaveMatch.matched,
-      mustHaveMissing: mustHaveMatch.missing,
-      goodToHaveMatched: goodToHaveMatch.matched,
-      experienceMatch,
-      seniorityMatch,
-      ctcMatch,
-    },
-  };
-}
+import type { CandidateSearchResult, SearchResponse, SearchCriteria } from '../../types/index.js';
 
 async function handleRequest(
   event: OptionalAuthEvent

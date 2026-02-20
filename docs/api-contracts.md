@@ -404,6 +404,67 @@ Authorization: Bearer <jwe_token>
 
 ---
 
+### POST /candidate/match-requirements
+
+Score a candidate against all active requirements and return the top 20 matches.
+
+**Request Headers:**
+```
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "candidateId": "cand_a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+}
+```
+
+**Validation Rules:**
+- `candidateId`: Required, string, UUID format
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "matches": [
+      {
+        "requirementId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "clientName": "Acme Corp",
+        "endClient": "TechStartup Inc",
+        "jobTitle": "Senior React Developer",
+        "engagementModel": "full_time_regular",
+        "payroll": "quadzero",
+        "budgetMinLpa": 15,
+        "budgetMaxLpa": 30,
+        "mustHaveSkills": ["react", "typescript"],
+        "goodToHaveSkills": ["nodejs", "aws"],
+        "matchScore": 92,
+        "matchDetails": {
+          "mustHaveMatched": ["react", "typescript"],
+          "mustHaveMissing": [],
+          "goodToHaveMatched": ["nodejs"],
+          "experienceMatch": true,
+          "seniorityMatch": true,
+          "budgetFit": true
+        },
+        "isShortlisted": false,
+        "createdAt": "2024-01-15T10:30:00Z"
+      }
+    ]
+  }
+}
+```
+
+**Notes:**
+- No authentication required
+- Scans all active requirements and scores them against the candidate profile using the shared `calculateMatchScore()` function
+- Returns the top 20 matches sorted by match score descending
+- `isShortlisted` indicates whether the candidate has already been shortlisted for that requirement
+
+---
+
 ## Recruiter Endpoints
 
 ### POST /recruiter/parse-jd
@@ -812,6 +873,108 @@ Authorization: Bearer <jwe_token>
 **Notes:**
 - Uses LLM to compare new requirement against existing active requirements from the same client
 - Only returns requirements with similarity score above 60%
+
+---
+
+## Recruiter Shortlist Endpoints
+
+### POST /recruiter/shortlist
+
+Tag/shortlist a candidate to a requirement.
+
+**Auth:** Requires `recruiter` role.
+
+**Request Headers:**
+```
+Content-Type: application/json
+Authorization: Bearer <jwe_token>
+```
+
+**Request Body:**
+```json
+{
+  "requirementId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "candidateId": "cand_x1y2z3w4-a5b6-7890-cdef-gh1234567890",
+  "notes": "Strong React skills, good culture fit"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true
+}
+```
+
+**Validation Rules:**
+- `requirementId`: Required, string, UUID format
+- `candidateId`: Required, string, UUID format
+- `notes`: Optional, string, max 1000 characters
+
+**Notes:**
+- Returns 409 if the candidate is already shortlisted for the requirement
+
+---
+
+### DELETE /recruiter/shortlist/{requirementId}/{candidateId}
+
+Remove a shortlist entry.
+
+**Auth:** Requires `recruiter` role.
+
+**Request Headers:**
+```
+Authorization: Bearer <jwe_token>
+```
+
+**Path Parameters:**
+- `requirementId`: The unique requirement identifier
+- `candidateId`: The unique candidate identifier
+
+**Response (200 OK):**
+```json
+{
+  "success": true
+}
+```
+
+---
+
+### GET /recruiter/requirements/{requirementId}/shortlisted
+
+List all shortlisted candidates for a requirement.
+
+**Auth:** Requires `recruiter` role.
+
+**Request Headers:**
+```
+Authorization: Bearer <jwe_token>
+```
+
+**Path Parameters:**
+- `requirementId`: The unique requirement identifier
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "candidates": [
+      {
+        "candidateId": "cand_x1y2z3w4-a5b6-7890-cdef-gh1234567890",
+        "fullName": "John Doe",
+        "primarySkills": ["javascript", "typescript", "react", "nodejs"],
+        "totalExperience": 6,
+        "seniority": "senior",
+        "expectedCtc": 25.0,
+        "taggedAt": "2024-01-15T10:30:00Z",
+        "notes": "Strong React skills, good culture fit",
+        "status": "shortlisted"
+      }
+    ]
+  }
+}
+```
 
 ---
 

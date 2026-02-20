@@ -9,7 +9,7 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { config } from './config.js';
-import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, PricingConfig, PricingConfigItem } from '../types/index.js';
+import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, PricingConfig, PricingConfigItem, ShortlistItem } from '../types/index.js';
 
 const client = new DynamoDBClient({ region: config.region });
 const docClient = DynamoDBDocumentClient.from(client, {
@@ -806,4 +806,96 @@ export async function savePricingConfig(
   pricingConfigCache = null;
 
   return newVersion;
+}
+
+// ─── Requirement Scanning ───────────────────────────────────────────────────
+
+export async function getAllActiveRequirements(): Promise<RequirementItem[]> {
+  const PAGE_SIZE = 100;
+  const MAX_ITEMS = 500;
+  const allItems: RequirementItem[] = [];
+  let currentKey: Record<string, unknown> | undefined;
+
+  do {
+    const params: {
+      TableName: string;
+      FilterExpression: string;
+      ExpressionAttributeNames: Record<string, string>;
+      ExpressionAttributeValues: Record<string, unknown>;
+      Limit: number;
+      ExclusiveStartKey?: Record<string, unknown>;
+    } = {
+      TableName: config.dynamodb.requirementsTable,
+      FilterExpression: '#status = :active',
+      ExpressionAttributeNames: { '#status': 'status' },
+      ExpressionAttributeValues: { ':active': 'active' },
+      Limit: PAGE_SIZE,
+    };
+
+    if (currentKey) {
+      params.ExclusiveStartKey = currentKey;
+    }
+
+    const result = await docClient.send(new ScanCommand(params));
+    allItems.push(...((result.Items || []) as RequirementItem[]));
+    currentKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (currentKey && allItems.length < MAX_ITEMS);
+
+  return allItems;
+}
+
+// ─── Shortlist Operations ───────────────────────────────────────────────────
+
+export async function saveShortlist(item: ShortlistItem): Promise<void> {
+  await docClient.send(
+    new PutCommand({
+      TableName: config.dynamodb.shortlistsTable,
+      Item: item,
+    })
+  );
+}
+
+export async function getShortlistEntry(
+  requirementId: string,
+  candidateId: string
+): Promise<ShortlistItem | null> {
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: config.dynamodb.shortlistsTable,
+      Key: { requirement_id: requirementId, candidate_id: candidateId },
+    })
+  );
+  return (result.Item as ShortlistItem) || null;
+}
+
+export async function getShortlistsForCandidate(candidateId: string): Promise<ShortlistItem[]> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: config.dynamodb.shortlistsTable,
+      IndexName: 'CandidateIndex',
+      KeyConditionExpression: 'candidate_id = :cid',
+      ExpressionAttributeValues: { ':cid': candidateId },
+    })
+  );
+  return (result.Items || []) as ShortlistItem[];
+}
+
+export async function getShortlistsForRequirement(requirementId: string): Promise<ShortlistItem[]> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: config.dynamodb.shortlistsTable,
+      KeyConditionExpression: 'requirement_id = :rid',
+      ExpressionAttributeValues: { ':rid': requirementId },
+    })
+  );
+  return (result.Items || []) as ShortlistItem[];
+}
+
+export async function deleteShortlist(requirementId: string, candidateId: string): Promise<void> {
+  await docClient.send(
+    new DeleteCommand({
+      TableName: config.dynamodb.shortlistsTable,
+      Key: { requirement_id: requirementId, candidate_id: candidateId },
+    })
+  );
 }

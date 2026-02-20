@@ -178,6 +178,18 @@ export const UpdateCandidateCtcRequestSchema = z.object({
   expectedCtc: z.number().min(0).max(500),
 });
 
+// Match Requirements Request Validation
+export const MatchRequirementsRequestSchema = z.object({
+  candidateId: z.string().uuid(),
+});
+
+// Shortlist Candidate Request Validation
+export const ShortlistCandidateRequestSchema = z.object({
+  requirementId: z.string().uuid(),
+  candidateId: z.string().uuid(),
+  notes: z.string().max(1000).optional(),
+});
+
 // Format Zod errors for API response
 export function formatZodErrors(error: z.ZodError): string {
   return error.errors

@@ -339,6 +339,32 @@ class ApiClient {
       body: JSON.stringify({ candidateId, expectedCtc, currentCtc }),
     });
   }
+
+  // Match requirements for a candidate
+  async matchRequirements(candidateId: string) {
+    return this.request<MatchRequirementsResponse>('/candidate/match-requirements', {
+      method: 'POST',
+      body: JSON.stringify({ candidateId }),
+    });
+  }
+
+  // Shortlist endpoints
+  async shortlistCandidate(requirementId: string, candidateId: string, notes?: string) {
+    return this.request<{ success: boolean }>('/recruiter/shortlist', {
+      method: 'POST',
+      body: JSON.stringify({ requirementId, candidateId, notes }),
+    });
+  }
+
+  async removeShortlist(requirementId: string, candidateId: string) {
+    return this.request<{ success: boolean }>(`/recruiter/shortlist/${requirementId}/${candidateId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getShortlistedCandidates(requirementId: string) {
+    return this.request<ShortlistedCandidatesResponse>(`/recruiter/requirements/${requirementId}/shortlisted`);
+  }
 }
 
 export const api = new ApiClient(API_URL);
@@ -639,4 +665,52 @@ export interface PricingOutput {
   finalQuotedAnnual: number;
   finalContribution: number;
   finalEffectiveMarkupPct: number;
+}
+
+// Requirement Matching types
+export interface MatchedRequirement {
+  requirementId: string;
+  clientName: string;
+  endClient?: string;
+  jobTitle?: string;
+  engagementModel: string;
+  payroll: string;
+  budgetMinLpa?: number;
+  budgetMaxLpa?: number;
+  mustHaveSkills: string[];
+  goodToHaveSkills: string[];
+  matchScore: number;
+  matchDetails: {
+    mustHaveMatched: string[];
+    mustHaveMissing: string[];
+    goodToHaveMatched: string[];
+    experienceMatch: boolean;
+    seniorityMatch: boolean;
+    budgetFit: boolean;
+  };
+  isShortlisted: boolean;
+  createdAt: string;
+}
+
+export interface MatchRequirementsResponse {
+  matches: MatchedRequirement[];
+}
+
+// Shortlist types
+export type ShortlistStatus = 'shortlisted' | 'submitted' | 'rejected';
+
+export interface ShortlistedCandidate {
+  candidateId: string;
+  fullName: string;
+  primarySkills: string[];
+  totalExperience: number;
+  seniority: string;
+  expectedCtc?: number;
+  taggedAt: string;
+  notes?: string;
+  status: ShortlistStatus;
+}
+
+export interface ShortlistedCandidatesResponse {
+  candidates: ShortlistedCandidate[];
 }
