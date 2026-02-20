@@ -1,9 +1,14 @@
 'use client';
 
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
 import { Header } from '@/components/Header';
+import { RecruiterHome } from '@/components/RecruiterHome';
 
 export default function Home() {
+  const { data: session, status } = useSession();
+  const userRole = (session?.user as { role?: string })?.role;
+
   return (
     <div className="min-h-screen">
       {/* Navigation */}
@@ -12,24 +17,38 @@ export default function Home() {
       {/* Hero Section */}
       <div className="bg-gradient-to-br from-primary-50 to-white dark:from-gray-900 dark:to-gray-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-24">
-          <div className="text-center">
-            <h1 className="text-4xl font-extrabold text-gray-900 dark:text-gray-100 sm:text-5xl md:text-6xl">
-              <span className="block">AI-Powered</span>
-              <span className="block text-primary-600">Talent Matching</span>
-            </h1>
-            <p className="mt-6 max-w-2xl mx-auto text-lg sm:text-xl text-gray-500 dark:text-gray-400">
-              Connect IT professionals with recruiters through intelligent resume parsing
-              and smart candidate matching. Find the perfect fit faster.
-            </p>
-            <div className="mt-10 flex flex-col sm:flex-row justify-center items-center gap-3 sm:gap-4">
-              <Link href="/candidate/upload" className="btn-primary text-lg px-8 py-3 w-full sm:w-auto">
-                I'm a Candidate
-              </Link>
-              <Link href="/recruiter/search" className="btn-outline text-lg px-8 py-3 w-full sm:w-auto">
-                I'm a Recruiter
-              </Link>
+          {status === 'loading' ? (
+            /* Loading skeleton to prevent content flash */
+            <div className="text-center">
+              <div className="h-10 w-64 bg-gray-200 dark:bg-gray-700 rounded-lg mx-auto animate-pulse" />
+              <div className="h-5 w-48 bg-gray-200 dark:bg-gray-700 rounded mx-auto mt-4 animate-pulse" />
+              <div className="mt-10 max-w-2xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div className="h-48 bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse" />
+                <div className="h-48 bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse" />
+              </div>
             </div>
-          </div>
+          ) : status === 'authenticated' && userRole === 'recruiter' ? (
+            <RecruiterHome userName={session?.user?.name} />
+          ) : (
+            <div className="text-center">
+              <h1 className="text-4xl font-extrabold text-gray-900 dark:text-gray-100 sm:text-5xl md:text-6xl">
+                <span className="block">AI-Powered</span>
+                <span className="block text-primary-600">Talent Matching</span>
+              </h1>
+              <p className="mt-6 max-w-2xl mx-auto text-lg sm:text-xl text-gray-500 dark:text-gray-400">
+                Connect IT professionals with recruiters through intelligent resume parsing
+                and smart candidate matching. Find the perfect fit faster.
+              </p>
+              <div className="mt-10 flex flex-col sm:flex-row justify-center items-center gap-3 sm:gap-4">
+                <Link href="/candidate/upload" className="btn-primary text-lg px-8 py-3 w-full sm:w-auto">
+                  I'm a Candidate
+                </Link>
+                <Link href="/recruiter/search" className="btn-outline text-lg px-8 py-3 w-full sm:w-auto">
+                  I'm a Recruiter
+                </Link>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

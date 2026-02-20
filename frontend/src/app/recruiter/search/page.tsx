@@ -28,6 +28,9 @@ export default function RecruiterSearchPage() {
   const [totalMatches, setTotalMatches] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [paginationKey, setPaginationKey] = useState<string | undefined>(undefined);
+  const [hasMore, setHasMore] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
   const [selectedCandidate, setSelectedCandidate] = useState<CandidateSearchResult | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [formattingCandidateId, setFormattingCandidateId] = useState<string | null>(null);
@@ -45,13 +48,16 @@ export default function RecruiterSearchPage() {
   const [requirementSaved, setRequirementSaved] = useState(false);
 
   // Search helper — reusable for both button click and state restore
-  const runSearch = useCallback(async (criteria: SearchCriteria) => {
+  const runSearch = useCallback(async (criteria: SearchCriteria, lastEvaluatedKey?: string) => {
     try {
       setLoading(true);
       setError(null);
-      const response = await api.searchCandidates(criteria);
+      const pagination = lastEvaluatedKey ? { lastEvaluatedKey } : undefined;
+      const response = await api.searchCandidates(criteria, pagination);
       setResults(response.candidates);
       setTotalMatches(response.totalMatches);
+      setPaginationKey(response.pagination.lastEvaluatedKey);
+      setHasMore(response.pagination.hasMore);
       setViewMode('results');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Search failed');
@@ -154,6 +160,21 @@ export default function RecruiterSearchPage() {
   };
 
   const handleSearch = async () => {
+    setCurrentPage(1);
+    await runSearch(searchCriteria);
+  };
+
+  const handleNextPage = async () => {
+    if (!paginationKey || !hasMore) return;
+    setCurrentPage(prev => prev + 1);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    await runSearch(searchCriteria, paginationKey);
+  };
+
+  const handlePreviousPage = async () => {
+    if (currentPage <= 1) return;
+    setCurrentPage(1);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
     await runSearch(searchCriteria);
   };
 
@@ -815,6 +836,35 @@ export default function RecruiterSearchPage() {
                   </svg>
                   <h3 className="mt-4 text-lg font-medium text-gray-900 dark:text-gray-100">No candidates found</h3>
                   <p className="mt-2 text-gray-500 dark:text-gray-400">Try adjusting your search criteria</p>
+                </div>
+              )}
+
+              {/* Pagination */}
+              {results.length > 0 && (currentPage > 1 || hasMore) && (
+                <div className="mt-6 flex items-center justify-between">
+                  <button
+                    onClick={handlePreviousPage}
+                    disabled={currentPage <= 1 || loading}
+                    className="btn-secondary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                    Previous
+                  </button>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">
+                    Page {currentPage}
+                  </span>
+                  <button
+                    onClick={handleNextPage}
+                    disabled={!hasMore || loading}
+                    className="btn-secondary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
                 </div>
               )}
             </div>

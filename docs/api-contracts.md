@@ -460,7 +460,7 @@ Authorization: Bearer <jwe_token>
 ```
 
 **Validation Rules:**
-- `jobDescription`: Required, string, min 50 characters, max 10000 characters
+- `jobDescription`: Required, string, min 3 characters, max 10000 characters
 - `jobTitle`: Optional, string, max 200 characters
 
 ---
@@ -581,7 +581,8 @@ Authorization: Bearer <jwe_token> (optional)
 - Unauthenticated users see redacted results (names hidden, skills hidden, CTC hidden)
 - Candidates with 0% match on must-have skills are filtered out
 - Candidates exceeding `maxBudgetLpa` are filtered out
-- Skills are normalized using the skill normalizer before matching
+- Skills are normalized using the skill normalizer before matching (supports CRM, marketing, design, and HR/finance skills in addition to engineering skills)
+- Search paginates through all candidates in the database (up to 500) to ensure comprehensive results
 
 ---
 
