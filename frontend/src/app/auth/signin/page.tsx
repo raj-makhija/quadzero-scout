@@ -41,7 +41,10 @@ function SignInContent() {
       if (result?.error) {
         setAuthError('Invalid email or password');
       } else if (result?.ok) {
-        router.push(callbackUrl);
+        // Full page navigation ensures SessionProvider initialises with
+        // the freshly-set JWT cookie (client-side router.push can race
+        // against the session update and show stale state).
+        window.location.href = callbackUrl;
       }
     } catch {
       setAuthError('An unexpected error occurred');

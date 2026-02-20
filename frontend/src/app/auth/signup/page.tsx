@@ -70,14 +70,15 @@ export default function SignUpPage() {
       });
 
       if (result?.ok) {
-        // Redirect based on role
+        // Full page navigation ensures SessionProvider initialises with
+        // the freshly-set JWT cookie.
         if (formData.role === 'candidate') {
-          router.push('/candidate/upload');
+          window.location.href = '/candidate/upload';
         } else {
-          router.push('/recruiter/search');
+          window.location.href = '/';
         }
       } else {
-        router.push('/auth/signin');
+        window.location.href = '/auth/signin';
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
