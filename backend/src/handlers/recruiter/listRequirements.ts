@@ -1,13 +1,12 @@
 import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
-import { getRequirementsByClient, getRequirementsByRecruiter } from '../../lib/dynamodb.js';
+import { getRequirementsByClient, getAllRequirementsPaginated } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 
 async function handleRequest(
   event: AuthenticatedEvent
 ): Promise<APIGatewayProxyResultV2> {
   try {
-    const recruiterId = event.auth.userId;
     const params = event.queryStringParameters || {};
 
     const clientName = params.clientName;
@@ -32,8 +31,7 @@ async function handleRequest(
       items = result.items;
       lastKey = result.lastKey;
     } else {
-      const result = await getRequirementsByRecruiter(
-        recruiterId,
+      const result = await getAllRequirementsPaginated(
         limit,
         lastEvaluatedKey
       );

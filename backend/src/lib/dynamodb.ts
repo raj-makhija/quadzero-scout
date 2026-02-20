@@ -808,6 +808,35 @@ export async function savePricingConfig(
   return newVersion;
 }
 
+export async function getAllRequirementsPaginated(
+  limit: number = 20,
+  lastEvaluatedKey?: Record<string, unknown>
+): Promise<{ items: RequirementItem[]; lastKey?: Record<string, unknown> }> {
+  const params: {
+    TableName: string;
+    Limit: number;
+    ExclusiveStartKey?: Record<string, unknown>;
+  } = {
+    TableName: config.dynamodb.requirementsTable,
+    Limit: limit,
+  };
+
+  if (lastEvaluatedKey) {
+    params.ExclusiveStartKey = lastEvaluatedKey;
+  }
+
+  const result = await docClient.send(new ScanCommand(params));
+  const items = (result.Items || []) as RequirementItem[];
+
+  // Sort by created_at descending (Scan doesn't guarantee order)
+  items.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+  return {
+    items,
+    lastKey: result.LastEvaluatedKey as Record<string, unknown> | undefined,
+  };
+}
+
 // ─── Requirement Scanning ───────────────────────────────────────────────────
 
 export async function getAllActiveRequirements(): Promise<RequirementItem[]> {

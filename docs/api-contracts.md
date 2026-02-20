@@ -771,7 +771,7 @@ Authorization: Bearer <jwe_token>
 
 ### GET /recruiter/requirements
 
-List requirements for the authenticated recruiter.
+List all requirements across the team (not scoped to the authenticated recruiter).
 
 **Auth:** Requires `recruiter` role.
 
