@@ -46,7 +46,7 @@ export const SaveProfileRequestSchema = z.object({
 
 // Parse JD Request Validation
 export const ParseJdRequestSchema = z.object({
-  jobDescription: z.string().min(50).max(10000),
+  jobDescription: z.string().min(3).max(10000),
   jobTitle: z.string().max(200).optional(),
 });
 
