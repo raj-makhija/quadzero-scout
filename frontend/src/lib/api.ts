@@ -421,6 +421,7 @@ export interface ParsedCriteria {
   payroll?: string | null;
   budgetMinLpa?: number | null;
   budgetMaxLpa?: number | null;
+  coreSkill?: string | null;
 }
 
 export interface SearchCriteria {

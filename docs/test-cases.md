@@ -628,22 +628,24 @@ All functional and non-functional aspects of Quadzero Scout covering:
 
 ## 6. Module 5: Recruiter - Job Description Parsing
 
+**Note:** The LLM JD parser output now includes a `coreSkill` field (string or null) representing the primary skill or technology focus of the job description. The `jobTitle` field is no longer a manual user input on the frontend; it is auto-generated as "Client Name (End Client) - Core Skill". The `jobTitle` parameter is still accepted by the parse-jd API for backward compatibility but is not sent by the current frontend.
+
 ### TC-PARSEJD-001: Parse standard job description
 | Field | Value |
 |-------|-------|
 | **ID** | TC-PARSEJD-001 |
 | **Priority** | P0 |
 | **Endpoint** | `POST /recruiter/parse-jd` |
-| **Request** | `{"jobDescription": "We are looking for a Senior Full Stack Developer with 5+ years of experience in React, Node.js, and TypeScript. Must have AWS experience. Nice to have: Docker, Kubernetes. Remote position.", "jobTitle": "Senior Full Stack Developer"}` |
-| **Expected Result** | HTTP 200; `parsedCriteria` contains: `mustHaveSkills` includes react, nodejs, typescript, aws; `goodToHaveSkills` includes docker, kubernetes; `minExperience: 5`; `seniority` includes "senior"; `remote: true`; `confidence` > 0.8 |
+| **Request** | `{"jobDescription": "We are looking for a Senior Full Stack Developer with 5+ years of experience in React, Node.js, and TypeScript. Must have AWS experience. Nice to have: Docker, Kubernetes. Remote position."}` |
+| **Expected Result** | HTTP 200; `parsedCriteria` contains: `mustHaveSkills` includes react, nodejs, typescript, aws; `goodToHaveSkills` includes docker, kubernetes; `minExperience: 5`; `seniority` includes "senior"; `remote: true`; `coreSkill` is a string (e.g., "React") or null; `confidence` > 0.8 |
 
-### TC-PARSEJD-002: Parse JD without optional jobTitle
+### TC-PARSEJD-002: Parse JD without jobTitle (default frontend behavior)
 | Field | Value |
 |-------|-------|
 | **ID** | TC-PARSEJD-002 |
 | **Priority** | P1 |
-| **Request** | `{"jobDescription": "<valid 50+ char JD>"}` (omit jobTitle) |
-| **Expected Result** | HTTP 200; parsing succeeds; criteria extracted from JD text alone |
+| **Request** | `{"jobDescription": "<valid 50+ char JD>"}` (jobTitle omitted; this is now the standard frontend behavior since jobTitle is no longer a user input field) |
+| **Expected Result** | HTTP 200; parsing succeeds; criteria extracted from JD text alone; `coreSkill` is present in `parsedCriteria` (string or null) |
 
 ### TC-PARSEJD-003: Parse JD with only must-have skills
 | Field | Value |
@@ -685,13 +687,14 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | **Request** | `{"jobDescription": "<10001 chars>"}` |
 | **Expected Result** | HTTP 400; `VALIDATION_ERROR` |
 
-### TC-PARSEJD-008: Reject jobTitle over 200 characters
+### TC-PARSEJD-008: Reject jobTitle over 200 characters (API-level validation only)
 | Field | Value |
 |-------|-------|
 | **ID** | TC-PARSEJD-008 |
 | **Priority** | P3 |
 | **Request** | `{"jobDescription": "<valid>", "jobTitle": "<201 chars>"}` |
 | **Expected Result** | HTTP 400; `VALIDATION_ERROR` |
+| **Notes** | The `jobTitle` field is no longer user-facing on the frontend (it is auto-generated as "Client Name (End Client) - Core Skill"). This test validates the backend API-level constraint only. |
 
 ### TC-PARSEJD-009: Skills extracted in lowercase normalized form
 | Field | Value |

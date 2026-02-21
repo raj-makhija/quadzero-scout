@@ -501,6 +501,7 @@ Authorization: Bearer <jwe_token>
       "remote": true,
       "industries": [],
       "roles": ["Full Stack Developer"],
+      "coreSkill": "React",
       "rateRaw": null,
       "rateUnit": null,
       "rateLpa": null,
@@ -522,7 +523,11 @@ Authorization: Bearer <jwe_token>
 
 **Validation Rules:**
 - `jobDescription`: Required, string, min 3 characters, max 10000 characters
-- `jobTitle`: Optional, string, max 200 characters
+- `jobTitle`: Optional, string, max 200 characters (still accepted by the API but no longer sent by the frontend; job titles are now auto-generated on the frontend as "Client Name (End Client) - Core Skill")
+
+**Notes:**
+- The `coreSkill` field in `parsedCriteria` is extracted by the LLM and represents the primary skill or technology focus of the job description. It may be `null` if the LLM cannot determine a single core skill.
+- `jobTitle` is now auto-generated on the frontend using the pattern: `"Client Name (End Client) - Core Skill"`. The manual `jobTitle` input field has been removed from the frontend.
 
 ---
 
@@ -738,7 +743,8 @@ Authorization: Bearer <jwe_token>
     "location": null,
     "remote": false,
     "industries": [],
-    "roles": ["React Developer"]
+    "roles": ["React Developer"],
+    "coreSkill": "React"
   }
 }
 ```
@@ -761,9 +767,9 @@ Authorization: Bearer <jwe_token>
 - `payroll`: Required, enum: `quadzero`, `client`
 - `budgetMinLpa`: Optional, number, min 0, max 500
 - `budgetMaxLpa`: Optional, number, min 0, max 500
-- `jobTitle`: Optional, string, max 200
+- `jobTitle`: Optional, string, max 200 (auto-generated on frontend as "Client Name (End Client) - Core Skill")
 - `jdText`: Required, string, min 50, max 10000
-- `parsedCriteria`: Required, LLM JD output schema
+- `parsedCriteria`: Required, LLM JD output schema (includes `coreSkill`)
 - `status`: Optional, enum: `active` (default), `duplicate`
 - `duplicateOf`: Optional, string, uuid
 
@@ -845,9 +851,10 @@ Authorization: Bearer <jwe_token>
     "minExperience": 5,
     "maxExperience": null,
     "seniority": ["senior"],
-    "location": null
+    "location": null,
+    "coreSkill": "React"
   },
-  "jobTitle": "Senior React Developer"
+  "jobTitle": "Acme Corp (TechStartup Inc) - React"
 }
 ```
 

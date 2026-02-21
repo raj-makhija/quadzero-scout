@@ -357,7 +357,7 @@ Stores job requirements created by recruiters with parsed JD criteria.
 | payroll | String | Yes | quadzero or client |
 | budget_min_lpa | Number | No | Minimum budget in LPA |
 | budget_max_lpa | Number | No | Maximum budget in LPA |
-| job_title | String | No | Job title |
+| job_title | String | No | Job title (auto-generated on frontend as "Client Name (End Client) - Core Skill") |
 | jd_text | String | Yes | Raw job description text |
 | parsed_criteria | Map | Yes | LLM-parsed search criteria |
 | status | String | Yes | active or duplicate |
@@ -386,7 +386,8 @@ Stores job requirements created by recruiters with parsed JD criteria.
     "maxExperience": null,
     "seniority": ["senior"],
     "location": null,
-    "remote": false
+    "remote": false,
+    "coreSkill": "React"
   },
   "status": "active",
   "created_at": "2024-01-15T10:30:00Z",
@@ -771,6 +772,7 @@ export const LLMJDOutputSchema = z.object({
   remote: z.boolean().optional().default(false),
   industries: z.array(z.string()).optional().default([]),
   roles: z.array(z.string()).optional().default([]),
+  coreSkill: z.string().nullable().optional().default(null),
   rateRaw: z.number().nullable().optional().default(null),
   rateUnit: z.enum(['lpa', 'lpm', 'rupees_per_hour', 'usd_per_hour']).nullable().optional().default(null),
   rateLpa: z.number().nullable().optional().default(null),

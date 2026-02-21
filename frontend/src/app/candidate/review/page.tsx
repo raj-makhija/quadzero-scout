@@ -91,6 +91,7 @@ export default function ReviewPage() {
         ...profile,
         availability: profile.availability || 'negotiable',
         seniority: profile.seniority || 'mid',
+        location: profile.location || undefined,
         currentCtc: profile.currentCtc || undefined,
         expectedCtc: profile.expectedCtc || undefined,
       };

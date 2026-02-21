@@ -20,7 +20,7 @@ export default function RecruiterSearchPage() {
 
   const [viewMode, setViewMode] = useState<ViewMode>('input');
   const [jobDescription, setJobDescription] = useState('');
-  const [jobTitle, setJobTitle] = useState('');
+  const [coreSkill, setCoreSkill] = useState('');
   const [parsedCriteria, setParsedCriteria] = useState<ParsedCriteria | null>(null);
   const [searchCriteria, setSearchCriteria] = useState<SearchCriteria>({});
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -46,6 +46,17 @@ export default function RecruiterSearchPage() {
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [savingRequirement, setSavingRequirement] = useState(false);
   const [requirementSaved, setRequirementSaved] = useState(false);
+
+  const generateJobTitle = (client: string, end: string, skill: string): string => {
+    const parts: string[] = [];
+    if (client.trim()) {
+      let part = client.trim();
+      if (end.trim()) part += ` (${end.trim()})`;
+      parts.push(part);
+    }
+    if (skill.trim()) parts.push(skill.trim());
+    return parts.join(' - ') || '';
+  };
 
   // Search helper — reusable for both button click and state restore
   const runSearch = useCallback(async (criteria: SearchCriteria, lastEvaluatedKey?: string) => {
@@ -74,7 +85,7 @@ export default function RecruiterSearchPage() {
     try {
       const state = JSON.parse(saved);
       setJobDescription(state.jobDescription || '');
-      setJobTitle(state.jobTitle || '');
+      setCoreSkill(state.coreSkill || '');
       setSearchCriteria(state.searchCriteria || {});
       setParsedCriteria(state.parsedCriteria || null);
       setSuggestions(state.suggestions || []);
@@ -93,7 +104,7 @@ export default function RecruiterSearchPage() {
   const handleLoginRequired = () => {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
       jobDescription,
-      jobTitle,
+      coreSkill,
       searchCriteria,
       parsedCriteria,
       suggestions,
@@ -112,7 +123,7 @@ export default function RecruiterSearchPage() {
       setLoading(true);
       setError(null);
 
-      const response = await api.parseJobDescription(jobDescription, jobTitle || undefined);
+      const response = await api.parseJobDescription(jobDescription);
 
       setParsedCriteria(response.parsedCriteria);
       setSuggestions(response.suggestions);
@@ -144,6 +155,7 @@ export default function RecruiterSearchPage() {
       }
       if (response.parsedCriteria.budgetMinLpa != null) setBudgetMinLpa(response.parsedCriteria.budgetMinLpa.toString());
       if (response.parsedCriteria.budgetMaxLpa != null) setBudgetMaxLpa(response.parsedCriteria.budgetMaxLpa.toString());
+      if (response.parsedCriteria.coreSkill) setCoreSkill(response.parsedCriteria.coreSkill);
 
       // Authenticated recruiters go through requirement details; others go straight to criteria
       if (isAuthenticated) {
@@ -241,7 +253,8 @@ export default function RecruiterSearchPage() {
       setError(null);
 
       // Check for duplicates first
-      const dupResponse = await api.checkDuplicate(clientName, parsedCriteria, jobTitle || undefined);
+      const generatedTitle = generateJobTitle(clientName, endClient, coreSkill);
+      const dupResponse = await api.checkDuplicate(clientName, parsedCriteria, generatedTitle || undefined);
 
       if (dupResponse.duplicates.length > 0) {
         setDuplicates(dupResponse.duplicates);
@@ -265,6 +278,7 @@ export default function RecruiterSearchPage() {
       setSavingRequirement(true);
       setError(null);
 
+      const generatedTitle = generateJobTitle(clientName, endClient, coreSkill);
       await api.saveRequirement({
         clientName: clientName.trim(),
         endClient: endClient.trim() || undefined,
@@ -272,7 +286,7 @@ export default function RecruiterSearchPage() {
         payroll: payroll as Payroll,
         budgetMinLpa: budgetMinLpa ? parseFloat(budgetMinLpa) : undefined,
         budgetMaxLpa: budgetMaxLpa ? parseFloat(budgetMaxLpa) : undefined,
-        jobTitle: jobTitle.trim() || undefined,
+        jobTitle: generatedTitle || undefined,
         jdText: jobDescription,
         parsedCriteria,
         status: duplicateOf ? 'duplicate' : 'active',
@@ -365,17 +379,6 @@ export default function RecruiterSearchPage() {
 
             <div className="space-y-4">
               <div>
-                <label className="label">Job Title (Optional)</label>
-                <input
-                  type="text"
-                  value={jobTitle}
-                  onChange={(e) => setJobTitle(e.target.value)}
-                  placeholder="e.g., Senior Full Stack Developer"
-                  className="input mt-1"
-                />
-              </div>
-
-              <div>
                 <label className="label">Job Description</label>
                 <textarea
                   value={jobDescription}
@@ -462,6 +465,19 @@ export default function RecruiterSearchPage() {
                     <span className="text-gray-500 dark:text-gray-400">to</span>
                     <input type="number" min="0" step="0.5" value={budgetMaxLpa} onChange={(e) => setBudgetMaxLpa(e.target.value)} placeholder="Max" className="input w-28" />
                   </div>
+                </div>
+                <div>
+                  <label className="label">Core Skill</label>
+                  <input
+                    type="text"
+                    value={coreSkill}
+                    onChange={(e) => setCoreSkill(e.target.value)}
+                    placeholder="e.g., React, Java, Data Engineering"
+                    className="input mt-1"
+                  />
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Auto-detected from JD. Used to generate the requirement title.
+                  </p>
                 </div>
               </div>
             </div>

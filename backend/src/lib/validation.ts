@@ -22,7 +22,7 @@ export const SaveProfileRequestSchema = z.object({
     fullName: z.string().min(2).max(100),
     email: z.string().email(),
     phone: z.string().optional(),
-    location: z.string().max(200).optional(),
+    location: z.string().max(200).nullable().optional(),
     primarySkills: z.array(z.string().min(1)).min(1).max(20),
     primarySkillYears: z.record(z.string(), z.number().min(0).max(50)),
     secondarySkills: z.array(z.string()).max(50).optional(),
