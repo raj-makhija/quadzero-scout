@@ -62,7 +62,8 @@ You MUST respond with valid JSON matching this exact schema:
   "industries": ["array of preferred industries"],
   "roles": ["array of relevant job titles"],
   "rateRaw": number or null - the raw numeric rate/budget/cost mentioned in the JD (just the number, without currency symbol),
-  "rateUnit": "lpa" | "lpm" | "rupees_per_hour" | "usd_per_hour" | null - the unit of the rate. Use "lpa" for lakhs per annum, "lpm" for lakhs per month, "rupees_per_hour" for INR/hour or Rs/hour, "usd_per_hour" for $/hour or USD/hour
+  "rateUnit": "lpa" | "lpm" | "rupees_per_hour" | "usd_per_hour" | null - the unit of the rate. Use "lpa" for lakhs per annum, "lpm" for lakhs per month, "rupees_per_hour" for INR/hour or Rs/hour, "usd_per_hour" for $/hour or USD/hour,
+  "coreSkill": "string or null - the single most important technology or domain skill this role centers on (e.g. 'React', 'Java', 'Data Engineering', 'SAP FICO'). Concise, 1-3 words"
 }
 
 Rules:
@@ -71,7 +72,8 @@ Rules:
 3. If experience is mentioned as "X+ years", set minExperience to X
 4. If no specific requirement, use null or empty array
 5. ONLY output valid JSON, no additional text
-6. For rate/budget/cost: extract the numeric value and its unit separately. Look for phrases like "budget", "rate", "CTC", "compensation", "salary range". Common patterns: "$X/hr", "Rs.X/hour", "X LPM", "X LPA", "X lakhs per month"`;
+6. For rate/budget/cost: extract the numeric value and its unit separately. Look for phrases like "budget", "rate", "CTC", "compensation", "salary range". Common patterns: "$X/hr", "Rs.X/hour", "X LPM", "X LPA", "X lakhs per month"
+7. For coreSkill: identify the primary technology, framework, or domain that is central to this role. Pick the single most defining skill from mustHaveSkills. Use title case (e.g. "React", "Java", "DevOps", "Data Engineering")`;
 
 const RESUME_FORMATTER_PROMPT = `Format the provided resume into a clean, professional Markdown document.
 

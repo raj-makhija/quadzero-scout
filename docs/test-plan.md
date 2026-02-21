@@ -15,7 +15,7 @@ This document defines the test strategy, scope, approach, tooling, environment r
 ### 1.2 Application Overview
 Quadzero Scout connects IT professionals with recruiters through:
 - **Candidate workflow**: Resume upload (PDF/DOCX) -> AI extraction via Textract + LLM -> Profile review/edit -> Save profile
-- **Recruiter workflow**: Paste JD -> AI parsing -> Criteria review -> Search candidates -> View scores -> Download resumes -> Save searches
+- **Recruiter workflow**: Paste JD -> AI parsing (extracts criteria incl. `coreSkill`) -> Criteria review -> Job title auto-generated as "Client Name (End Client) - Core Skill" -> Search candidates -> View scores -> Download resumes -> Save searches
 
 ### 1.3 Technology Stack
 
@@ -215,7 +215,7 @@ Detailed test cases are in [test-cases.md](test-cases.md). Summary below:
 | 2 | Candidate - Resume Upload | 17 | Pre-signed URLs, file types, S3 upload, validation |
 | 3 | Candidate - Resume Analysis | 13 | Textract, LLM parsing, confidence, retries, errors |
 | 4 | Candidate - Profile Management | 26 | Save/get profile, normalization, buckets, validation |
-| 5 | Recruiter - JD Parsing | 12 | LLM extraction, criteria, confidence, suggestions |
+| 5 | Recruiter - JD Parsing | 12 | LLM extraction, criteria (incl. coreSkill), confidence, suggestions, auto-generated jobTitle |
 | 6 | Recruiter - Candidate Search | 18 | Scoring, sorting, pagination, filtering, location |
 | 7 | Recruiter - Resume Download | 5 | Pre-signed download URL, filename extraction |
 | 8 | Recruiter - Saved Searches | 8 | CRUD operations, isolation between recruiters |
@@ -347,7 +347,7 @@ Detailed test cases are in [test-cases.md](test-cases.md). Summary below:
 | certifications | SaveProfile | 0 | 20 | array | TC-VALID-012 |
 | summary | SaveProfile | 0 | 2000 | string | TC-PROFILE-021 |
 | jobDescription | ParseJd | 50 | 10000 | string | TC-PARSEJD-006, TC-PARSEJD-007 |
-| jobTitle | ParseJd | 0 | 200 | string | TC-PARSEJD-008 |
+| jobTitle | ParseJd | 0 | 200 | string (auto-generated on frontend; API-only validation) | TC-PARSEJD-008 |
 | pagination.limit | Search | 1 | 100 | number | TC-SEARCH-010 to TC-SEARCH-012 |
 | sortBy | Search | enum | enum | enum(3) | TC-VALID-005 |
 | search name | SaveSearch | 1 | 100 | string | TC-SAVEDSEARCH-002, TC-SAVEDSEARCH-003 |

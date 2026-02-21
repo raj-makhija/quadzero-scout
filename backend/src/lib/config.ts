@@ -11,6 +11,7 @@ interface Config {
     bulkImportBatchesTable: string;
     requirementsTable: string;
     pricingConfigTable: string;
+    shortlistsTable: string;
   };
   s3: {
     resumesBucket: string;
@@ -55,6 +56,7 @@ export const config: Config = {
     bulkImportBatchesTable: getEnvVar('DYNAMODB_TABLE_BULK_IMPORT_BATCHES', 'BulkImportBatches-dev'),
     requirementsTable: getEnvVar('DYNAMODB_TABLE_REQUIREMENTS', 'Requirements-dev'),
     pricingConfigTable: getEnvVar('DYNAMODB_TABLE_PRICING_CONFIG', 'PricingConfig-dev'),
+    shortlistsTable: getEnvVar('DYNAMODB_TABLE_SHORTLISTS', 'Shortlists-dev'),
   },
   s3: {
     resumesBucket: getEnvVar('S3_BUCKET_RESUMES', 'quadzero-scout-resumes-dev'),

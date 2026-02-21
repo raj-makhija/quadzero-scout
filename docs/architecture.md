@@ -15,6 +15,7 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │  │  - Review       │  │  - Search       │  │  - Google OAuth             │  │
 │  │  - Edit Profile │  │  - Results      │  │  - JWE Sessions             │  │
 │  │                 │  │  - Requirements │  │                             │  │
+│  │                 │  │  - Shortlists   │  │                             │  │
 │  └─────────────────┘  └─────────────────┘  └─────────────────────────────┘  │
 │                                                                             │
 │  ┌─────────────────┐                                                        │
@@ -43,7 +44,8 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │  └──────────────────────┘  │  - uploadAndAnalyze                         │ │
 │                            │  - saveProfile                              │ │
 │  ┌──────────────────────┐  │  - getProfile                               │ │
-│  │  Admin Handlers      │  └──────────────────────────────────────────────┘ │
+│  │  Admin Handlers      │  │  - matchRequirements                        │ │
+│  │                      │  └──────────────────────────────────────────────┘ │
 │  │  - listPendingRec.   │                                                   │
 │  │  - approveRejectUser │  ┌──────────────────────────────────────────────┐ │
 │  │  - listPrompts       │  │        Recruiter Handlers                    │ │
@@ -55,6 +57,8 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │  │  - getPricingConfig  │  │  - saveRequirement / listRequirements       │ │
 │  │  - updatePricingCfg  │  │  - getRequirement / checkDuplicate          │ │
 │  └──────────────────────┘  │  - calculatePricing                         │ │
+│                            │  - shortlist / deleteShortlist              │ │
+│                            │  - getShortlistedCandidates                 │ │
 │                            └──────────────────────────────────────────────┘ │
 │  ┌──────────────────────┐                                                   │
 │  │  Worker Lambdas      │                                                   │
@@ -67,7 +71,7 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │  │  - DynamoDB Client    - S3 Client       - Text Extraction           │    │
 │  │  - LLM Adapter        - Validation      - Skill Normalizer          │    │
 │  │  - Auth (JWE)         - CTC Conversion  - PDF Generator             │    │
-│  │  - Pricing Engine                                                  │    │
+│  │  - Pricing Engine     - Match Scoring                              │    │
 │  └─────────────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────────────┘
           │                    │                    │
@@ -82,6 +86,7 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │  - BulkImport   │  │                 │  │                                 │
 │    Batches      │  │                 │  │                                 │
 │  - Requirements │  │                 │  │                                 │
+│  - Shortlists   │  │                 │  │                                 │
 │  - PricingConfig│  │                 │  │                                 │
 └─────────────────┘  └─────────────────┘  └─────────────────────────────────┘
 ```
@@ -206,6 +211,105 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
      │                │                │                │                │
 ```
 
+### Requirement Matching & Shortlisting Flow
+
+```
+┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
+│Candidate │     │ Frontend │     │  Lambda  │     │ DynamoDB │
+│/Recruiter│     │          │     │          │     │          │
+└────┬─────┘     └────┬─────┘     └────┬─────┘     └────┬─────┘
+     │                │                │                │
+     │ 1. Save Profile│                │                │
+     │───────────────>│                │                │
+     │                │                │                │
+     │                │ 2. POST        │                │
+     │                │ /candidate/    │                │
+     │                │ match-         │                │
+     │                │ requirements   │                │
+     │                │───────────────>│                │
+     │                │                │                │
+     │                │                │ 3. Fetch       │
+     │                │                │    candidate   │
+     │                │                │    profile     │
+     │                │                │───────────────>│
+     │                │                │<───────────────│
+     │                │                │                │
+     │                │                │ 4. Scan active │
+     │                │                │    requirements│
+     │                │                │───────────────>│
+     │                │                │<───────────────│
+     │                │                │                │
+     │                │                │ 5. Score each  │
+     │                │                │    requirement │
+     │                │                │    using       │
+     │                │                │    calculate   │
+     │                │                │    MatchScore()│
+     │                │                │                │
+     │                │                │ 6. Check       │
+     │                │                │    existing    │
+     │                │                │    shortlists  │
+     │                │                │───────────────>│
+     │                │                │<───────────────│
+     │                │                │                │
+     │                │<───────────────│                │
+     │<───────────────│                │                │
+     │                │                │                │
+     │ 7. View Match  │                │                │
+     │    Results &   │                │                │
+     │    JD Details  │                │                │
+     │    (Drawer)    │                │                │
+     │                │                │                │
+     │ 8. Shortlist   │                │                │
+     │    Candidate   │                │                │
+     │───────────────>│                │                │
+     │                │                │                │
+     │                │ 9. POST        │                │
+     │                │ /recruiter/    │                │
+     │                │ shortlist      │                │
+     │                │───────────────>│                │
+     │                │                │                │
+     │                │                │ 10. Store in   │
+     │                │                │     Shortlists │
+     │                │                │     table      │
+     │                │                │───────────────>│
+     │                │                │<───────────────│
+     │                │                │                │
+     │                │<───────────────│                │
+     │<───────────────│                │                │
+     │                │                │                │
+     │ 11. View       │                │                │
+     │     Requirement│                │                │
+     │     Pipeline   │                │                │
+     │───────────────>│                │                │
+     │                │                │                │
+     │                │ 12. GET        │                │
+     │                │ /recruiter/    │                │
+     │                │ requirements/  │                │
+     │                │ {id}/          │                │
+     │                │ shortlisted    │                │
+     │                │───────────────>│                │
+     │                │                │                │
+     │                │                │ 13. Query      │
+     │                │                │     Shortlists │
+     │                │                │     + enrich   │
+     │                │                │     with       │
+     │                │                │     profiles   │
+     │                │                │───────────────>│
+     │                │                │<───────────────│
+     │                │                │                │
+     │                │<───────────────│                │
+     │<───────────────│                │                │
+     │                │                │                │
+```
+
+**Key Implementation Details:**
+
+- **Shared scoring module**: The `calculateMatchScore()` function is extracted into `backend/src/lib/matchScoring.ts`, shared by both the recruiter search handler and the candidate match-requirements handler.
+- **Shortlists table**: Uses a composite primary key (`requirement_id` + `candidate_id`) with a `CandidateIndex` GSI for reverse lookups by candidate.
+- **Candidate profile page**: After profile save, the frontend calls `POST /candidate/match-requirements` to display matching opportunities.
+- **Recruiter requirement detail page** (`/recruiter/requirements/[id]`): Shows a candidate pipeline with all shortlisted candidates for that requirement.
+- **JD detail drawer**: Recruiters can view full JD details via a slide-out drawer on the match results page before shortlisting.
+
 ## Component Details
 
 ### Frontend (Next.js 15)
@@ -260,7 +364,7 @@ The active provider is configured via the `LLM_PROVIDER` environment variable.
 
 | Component | Technology | Responsibility |
 |-----------|------------|----------------|
-| Profile Storage | DynamoDB | Candidate data, users, prompts, requirements |
+| Profile Storage | DynamoDB | Candidate data, users, prompts, requirements, shortlists |
 | File Storage | S3 | Resume documents (original + formatted) |
 | Text Extraction | pdf-parse / mammoth | In-Lambda PDF and DOCX parsing |
 
@@ -372,7 +476,7 @@ External recruiters go through an approval process before accessing the platform
 | Authentication | NextAuth.js v4 (JWE sessions) |
 | API Gateway | AWS HTTP API (API Gateway v2) |
 | Compute | AWS Lambda (Node.js 20, arm64) |
-| Database | AWS DynamoDB (7 tables) |
+| Database | AWS DynamoDB (8 tables) |
 | Storage | AWS S3 |
 | Text Extraction | pdf-parse (PDF), mammoth (DOCX) |
 | PDF Generation | puppeteer-core + @sparticuz/chromium |

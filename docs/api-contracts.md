@@ -404,6 +404,67 @@ Authorization: Bearer <jwe_token>
 
 ---
 
+### POST /candidate/match-requirements
+
+Score a candidate against all active requirements and return the top 20 matches.
+
+**Request Headers:**
+```
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "candidateId": "cand_a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+}
+```
+
+**Validation Rules:**
+- `candidateId`: Required, string, UUID format
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "matches": [
+      {
+        "requirementId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "clientName": "Acme Corp",
+        "endClient": "TechStartup Inc",
+        "jobTitle": "Senior React Developer",
+        "engagementModel": "full_time_regular",
+        "payroll": "quadzero",
+        "budgetMinLpa": 15,
+        "budgetMaxLpa": 30,
+        "mustHaveSkills": ["react", "typescript"],
+        "goodToHaveSkills": ["nodejs", "aws"],
+        "matchScore": 92,
+        "matchDetails": {
+          "mustHaveMatched": ["react", "typescript"],
+          "mustHaveMissing": [],
+          "goodToHaveMatched": ["nodejs"],
+          "experienceMatch": true,
+          "seniorityMatch": true,
+          "budgetFit": true
+        },
+        "isShortlisted": false,
+        "createdAt": "2024-01-15T10:30:00Z"
+      }
+    ]
+  }
+}
+```
+
+**Notes:**
+- No authentication required
+- Scans all active requirements and scores them against the candidate profile using the shared `calculateMatchScore()` function
+- Returns the top 20 matches sorted by match score descending
+- `isShortlisted` indicates whether the candidate has already been shortlisted for that requirement
+
+---
+
 ## Recruiter Endpoints
 
 ### POST /recruiter/parse-jd
@@ -440,6 +501,7 @@ Authorization: Bearer <jwe_token>
       "remote": true,
       "industries": [],
       "roles": ["Full Stack Developer"],
+      "coreSkill": "React",
       "rateRaw": null,
       "rateUnit": null,
       "rateLpa": null,
@@ -461,7 +523,11 @@ Authorization: Bearer <jwe_token>
 
 **Validation Rules:**
 - `jobDescription`: Required, string, min 3 characters, max 10000 characters
-- `jobTitle`: Optional, string, max 200 characters
+- `jobTitle`: Optional, string, max 200 characters (still accepted by the API but no longer sent by the frontend; job titles are now auto-generated on the frontend as "Client Name (End Client) - Core Skill")
+
+**Notes:**
+- The `coreSkill` field in `parsedCriteria` is extracted by the LLM and represents the primary skill or technology focus of the job description. It may be `null` if the LLM cannot determine a single core skill.
+- `jobTitle` is now auto-generated on the frontend using the pattern: `"Client Name (End Client) - Core Skill"`. The manual `jobTitle` input field has been removed from the frontend.
 
 ---
 
@@ -677,7 +743,8 @@ Authorization: Bearer <jwe_token>
     "location": null,
     "remote": false,
     "industries": [],
-    "roles": ["React Developer"]
+    "roles": ["React Developer"],
+    "coreSkill": "React"
   }
 }
 ```
@@ -700,9 +767,9 @@ Authorization: Bearer <jwe_token>
 - `payroll`: Required, enum: `quadzero`, `client`
 - `budgetMinLpa`: Optional, number, min 0, max 500
 - `budgetMaxLpa`: Optional, number, min 0, max 500
-- `jobTitle`: Optional, string, max 200
+- `jobTitle`: Optional, string, max 200 (auto-generated on frontend as "Client Name (End Client) - Core Skill")
 - `jdText`: Required, string, min 50, max 10000
-- `parsedCriteria`: Required, LLM JD output schema
+- `parsedCriteria`: Required, LLM JD output schema (includes `coreSkill`)
 - `status`: Optional, enum: `active` (default), `duplicate`
 - `duplicateOf`: Optional, string, uuid
 
@@ -710,7 +777,7 @@ Authorization: Bearer <jwe_token>
 
 ### GET /recruiter/requirements
 
-List requirements for the authenticated recruiter.
+List all requirements across the team (not scoped to the authenticated recruiter).
 
 **Auth:** Requires `recruiter` role.
 
@@ -784,9 +851,10 @@ Authorization: Bearer <jwe_token>
     "minExperience": 5,
     "maxExperience": null,
     "seniority": ["senior"],
-    "location": null
+    "location": null,
+    "coreSkill": "React"
   },
-  "jobTitle": "Senior React Developer"
+  "jobTitle": "Acme Corp (TechStartup Inc) - React"
 }
 ```
 
@@ -812,6 +880,108 @@ Authorization: Bearer <jwe_token>
 **Notes:**
 - Uses LLM to compare new requirement against existing active requirements from the same client
 - Only returns requirements with similarity score above 60%
+
+---
+
+## Recruiter Shortlist Endpoints
+
+### POST /recruiter/shortlist
+
+Tag/shortlist a candidate to a requirement.
+
+**Auth:** Requires `recruiter` role.
+
+**Request Headers:**
+```
+Content-Type: application/json
+Authorization: Bearer <jwe_token>
+```
+
+**Request Body:**
+```json
+{
+  "requirementId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "candidateId": "cand_x1y2z3w4-a5b6-7890-cdef-gh1234567890",
+  "notes": "Strong React skills, good culture fit"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true
+}
+```
+
+**Validation Rules:**
+- `requirementId`: Required, string, UUID format
+- `candidateId`: Required, string, UUID format
+- `notes`: Optional, string, max 1000 characters
+
+**Notes:**
+- Returns 409 if the candidate is already shortlisted for the requirement
+
+---
+
+### DELETE /recruiter/shortlist/{requirementId}/{candidateId}
+
+Remove a shortlist entry.
+
+**Auth:** Requires `recruiter` role.
+
+**Request Headers:**
+```
+Authorization: Bearer <jwe_token>
+```
+
+**Path Parameters:**
+- `requirementId`: The unique requirement identifier
+- `candidateId`: The unique candidate identifier
+
+**Response (200 OK):**
+```json
+{
+  "success": true
+}
+```
+
+---
+
+### GET /recruiter/requirements/{requirementId}/shortlisted
+
+List all shortlisted candidates for a requirement.
+
+**Auth:** Requires `recruiter` role.
+
+**Request Headers:**
+```
+Authorization: Bearer <jwe_token>
+```
+
+**Path Parameters:**
+- `requirementId`: The unique requirement identifier
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "candidates": [
+      {
+        "candidateId": "cand_x1y2z3w4-a5b6-7890-cdef-gh1234567890",
+        "fullName": "John Doe",
+        "primarySkills": ["javascript", "typescript", "react", "nodejs"],
+        "totalExperience": 6,
+        "seniority": "senior",
+        "expectedCtc": 25.0,
+        "taggedAt": "2024-01-15T10:30:00Z",
+        "notes": "Strong React skills, good culture fit",
+        "status": "shortlisted"
+      }
+    ]
+  }
+}
+```
 
 ---
 

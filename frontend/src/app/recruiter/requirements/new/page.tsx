@@ -25,7 +25,6 @@ export default function PostRequirementPage() {
 
   // Step 1: JD input
   const [jobDescription, setJobDescription] = useState('');
-  const [jobTitle, setJobTitle] = useState('');
 
   // Step 2: Requirement details
   const [parsedCriteria, setParsedCriteria] = useState<ParsedCriteria | null>(null);
@@ -35,6 +34,7 @@ export default function PostRequirementPage() {
   const [payroll, setPayroll] = useState<Payroll | ''>('');
   const [budgetMinLpa, setBudgetMinLpa] = useState<string>('');
   const [budgetMaxLpa, setBudgetMaxLpa] = useState<string>('');
+  const [coreSkill, setCoreSkill] = useState('');
 
   // Step 3: Duplicate check
   const [duplicates, setDuplicates] = useState<DuplicateMatch[]>([]);
@@ -42,6 +42,17 @@ export default function PostRequirementPage() {
 
   // Step 4: Confirmation
   const [savedRequirementId, setSavedRequirementId] = useState<string | null>(null);
+
+  const generateJobTitle = (client: string, end: string, skill: string): string => {
+    const parts: string[] = [];
+    if (client.trim()) {
+      let part = client.trim();
+      if (end.trim()) part += ` (${end.trim()})`;
+      parts.push(part);
+    }
+    if (skill.trim()) parts.push(skill.trim());
+    return parts.join(' - ') || '';
+  };
 
   const handleParseJD = async () => {
     if (!jobDescription.trim()) {
@@ -53,7 +64,7 @@ export default function PostRequirementPage() {
       setLoading(true);
       setError(null);
 
-      const response = await api.parseJobDescription(jobDescription, jobTitle || undefined);
+      const response = await api.parseJobDescription(jobDescription);
       setParsedCriteria(response.parsedCriteria);
 
       // Pre-fill fields from LLM extraction
@@ -80,6 +91,9 @@ export default function PostRequirementPage() {
       }
       if (response.parsedCriteria.budgetMaxLpa != null) {
         setBudgetMaxLpa(response.parsedCriteria.budgetMaxLpa.toString());
+      }
+      if (response.parsedCriteria.coreSkill) {
+        setCoreSkill(response.parsedCriteria.coreSkill);
       }
 
       setStep('details');
@@ -109,7 +123,8 @@ export default function PostRequirementPage() {
       setCheckingDuplicates(true);
       setError(null);
 
-      const response = await api.checkDuplicate(clientName, parsedCriteria, jobTitle || undefined);
+      const generatedTitle = generateJobTitle(clientName, endClient, coreSkill);
+      const response = await api.checkDuplicate(clientName, parsedCriteria, generatedTitle || undefined);
 
       if (response.duplicates.length > 0) {
         setDuplicates(response.duplicates);
@@ -132,6 +147,7 @@ export default function PostRequirementPage() {
       setLoading(true);
       setError(null);
 
+      const generatedTitle = generateJobTitle(clientName, endClient, coreSkill);
       const response = await api.saveRequirement({
         clientName: clientName.trim(),
         endClient: endClient.trim() || undefined,
@@ -139,7 +155,7 @@ export default function PostRequirementPage() {
         payroll: payroll as Payroll,
         budgetMinLpa: budgetMinLpa ? parseFloat(budgetMinLpa) : undefined,
         budgetMaxLpa: budgetMaxLpa ? parseFloat(budgetMaxLpa) : undefined,
-        jobTitle: jobTitle.trim() || undefined,
+        jobTitle: generatedTitle || undefined,
         jdText: jobDescription,
         parsedCriteria,
         status: duplicateOf ? 'duplicate' : 'active',
@@ -218,17 +234,6 @@ export default function PostRequirementPage() {
             </p>
 
             <div className="space-y-4">
-              <div>
-                <label className="label">Job Title (Optional)</label>
-                <input
-                  type="text"
-                  value={jobTitle}
-                  onChange={(e) => setJobTitle(e.target.value)}
-                  placeholder="e.g., Senior Full Stack Developer"
-                  className="input mt-1"
-                />
-              </div>
-
               <div>
                 <label className="label">Job Description</label>
                 <textarea
@@ -347,6 +352,21 @@ export default function PostRequirementPage() {
                       className="input w-28"
                     />
                   </div>
+                </div>
+
+                {/* Core Skill */}
+                <div>
+                  <label className="label">Core Skill</label>
+                  <input
+                    type="text"
+                    value={coreSkill}
+                    onChange={(e) => setCoreSkill(e.target.value)}
+                    placeholder="e.g., React, Java, Data Engineering"
+                    className="input mt-1"
+                  />
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Auto-detected from JD. Used to generate the requirement title.
+                  </p>
                 </div>
               </div>
             </div>
@@ -511,7 +531,7 @@ export default function PostRequirementPage() {
                   if (parsedCriteria) {
                     sessionStorage.setItem('scout_recruiter_search', JSON.stringify({
                       jobDescription,
-                      jobTitle,
+                      coreSkill,
                       searchCriteria: {
                         mustHaveSkills: parsedCriteria.mustHaveSkills,
                         goodToHaveSkills: parsedCriteria.goodToHaveSkills,
@@ -538,7 +558,7 @@ export default function PostRequirementPage() {
                   // Reset form
                   setStep('jd_input');
                   setJobDescription('');
-                  setJobTitle('');
+                  setCoreSkill('');
                   setParsedCriteria(null);
                   setClientName('');
                   setEndClient('');
