@@ -95,7 +95,8 @@ You MUST respond with valid JSON matching this exact schema:
   "engagementModel": "full_time_regular | full_time_contract | part_time_contract | null",
   "payroll": "quadzero | client | null",
   "budgetMinLpa": number or null - minimum budget in LPA,
-  "budgetMaxLpa": number or null - maximum budget in LPA
+  "budgetMaxLpa": number or null - maximum budget in LPA,
+  "coreSkill": "string or null - the single most important technology or domain skill this role centers on (e.g. 'React', 'Java', 'Data Engineering', 'SAP FICO'). Concise, 1-3 words"
 }
 
 Rules:
@@ -106,7 +107,8 @@ Rules:
 5. ONLY output valid JSON, no additional text
 6. For rate/budget/cost: extract the numeric value and its unit separately
 7. For client/engagement details: look for company names, "full-time", "contract", "part-time", "payroll" keywords
-8. For budget range: look for "budget", "salary range", "CTC range". Convert to LPA if in other units`;
+8. For budget range: look for "budget", "salary range", "CTC range". Convert to LPA if in other units
+9. For coreSkill: identify the primary technology, framework, or domain that is central to this role. Pick the single most defining skill from mustHaveSkills. Use title case (e.g. "React", "Java", "DevOps", "Data Engineering")`;
 
 // Prompt cache with TTL
 const promptCache = new Map<string, { content: string; fetchedAt: number }>();

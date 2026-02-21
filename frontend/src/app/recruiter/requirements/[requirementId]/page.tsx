@@ -1,0 +1,328 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useRouter, useParams } from 'next/navigation';
+import { useSession } from 'next-auth/react';
+import { Header } from '@/components/Header';
+import { api, RequirementDetail, ShortlistedCandidate } from '@/lib/api';
+import {
+  formatDate,
+  formatEngagementModel,
+  formatPayroll,
+  formatSeniority,
+} from '@/lib/utils';
+
+export default function RequirementDetailPage() {
+  const router = useRouter();
+  const params = useParams();
+  const { status } = useSession();
+  const requirementId = params.requirementId as string;
+
+  const [requirement, setRequirement] = useState<RequirementDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [candidates, setCandidates] = useState<ShortlistedCandidate[]>([]);
+  const [candidatesLoading, setCandidatesLoading] = useState(true);
+
+  const [jdExpanded, setJdExpanded] = useState(false);
+
+  // Redirect if not authenticated
+  if (status === 'unauthenticated') {
+    router.push('/auth/signin?callbackUrl=' + encodeURIComponent(`/recruiter/requirements/${requirementId}`));
+    return null;
+  }
+
+  useEffect(() => {
+    if (status !== 'authenticated' || !requirementId) return;
+
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const data = await api.getRequirement(requirementId);
+        setRequirement(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load requirement');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const fetchCandidates = async () => {
+      try {
+        setCandidatesLoading(true);
+        const data = await api.getShortlistedCandidates(requirementId);
+        setCandidates(data.candidates);
+      } catch {
+        // Non-fatal — just show empty list
+      } finally {
+        setCandidatesLoading(false);
+      }
+    };
+
+    fetchData();
+    fetchCandidates();
+  }, [status, requirementId]);
+
+  const handleSearchCandidates = () => {
+    if (!requirement) return;
+    // Pre-fill search criteria via sessionStorage (matches the pattern in requirements/new/page.tsx)
+    const criteria = {
+      mustHaveSkills: requirement.parsedCriteria.mustHaveSkills,
+      goodToHaveSkills: requirement.parsedCriteria.goodToHaveSkills,
+      minExperience: requirement.parsedCriteria.minExperience,
+      maxExperience: requirement.parsedCriteria.maxExperience,
+      seniority: requirement.parsedCriteria.seniority,
+      maxBudgetLpa: requirement.budgetMaxLpa,
+    };
+    sessionStorage.setItem('prefillCriteria', JSON.stringify(criteria));
+    router.push('/recruiter/search');
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <Header>
+        <nav className="flex items-center space-x-4">
+          <button
+            onClick={() => router.push('/recruiter/requirements')}
+            className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+          >
+            Requirements
+          </button>
+          <span className="text-gray-300 dark:text-gray-600">/</span>
+          <span className="text-sm text-primary-600 dark:text-primary-400 font-medium">
+            Detail
+          </span>
+        </nav>
+      </Header>
+
+      <main className="max-w-5xl mx-auto px-4 py-8">
+        {loading && (
+          <div className="card p-8 text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500 mx-auto" />
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Loading requirement...</p>
+          </div>
+        )}
+
+        {error && (
+          <div className="card p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+            <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+            <button
+              onClick={() => router.push('/recruiter/requirements')}
+              className="mt-2 btn-secondary text-sm"
+            >
+              Back to Requirements
+            </button>
+          </div>
+        )}
+
+        {!loading && !error && requirement && (
+          <>
+            {/* Requirement Header */}
+            <div className="card overflow-hidden mb-6">
+              <div className="bg-gradient-to-r from-primary-600 to-primary-700 px-6 py-6 text-white">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <h1 className="text-2xl font-bold">{requirement.jobTitle || 'Untitled Requirement'}</h1>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-primary-100 text-sm">
+                      <span className="font-medium">{requirement.clientName}</span>
+                      {requirement.endClient && <span>End Client: {requirement.endClient}</span>}
+                      <span>{formatDate(requirement.createdAt)}</span>
+                    </div>
+                  </div>
+                  <span className={`self-start px-3 py-1 rounded-full text-sm font-medium ${
+                    requirement.status === 'active'
+                      ? 'bg-green-500/20 text-green-100'
+                      : 'bg-yellow-500/20 text-yellow-100'
+                  }`}>
+                    {requirement.status === 'active' ? 'Active' : 'Duplicate'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-5">
+                {/* Quick info grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div>
+                    <label className="text-xs text-gray-500 dark:text-gray-400">Engagement</label>
+                    <p className="font-medium text-gray-900 dark:text-gray-100">{formatEngagementModel(requirement.engagementModel)}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 dark:text-gray-400">Payroll</label>
+                    <p className="font-medium text-gray-900 dark:text-gray-100">{formatPayroll(requirement.payroll)}</p>
+                  </div>
+                  {(requirement.budgetMinLpa != null || requirement.budgetMaxLpa != null) && (
+                    <div>
+                      <label className="text-xs text-gray-500 dark:text-gray-400">Budget Range</label>
+                      <p className="font-medium text-gray-900 dark:text-gray-100">
+                        {requirement.budgetMinLpa ?? '0'} - {requirement.budgetMaxLpa ?? '∞'} LPA
+                      </p>
+                    </div>
+                  )}
+                  {(requirement.parsedCriteria.minExperience != null || requirement.parsedCriteria.maxExperience != null) && (
+                    <div>
+                      <label className="text-xs text-gray-500 dark:text-gray-400">Experience</label>
+                      <p className="font-medium text-gray-900 dark:text-gray-100">
+                        {requirement.parsedCriteria.minExperience ?? 0} - {requirement.parsedCriteria.maxExperience ?? '∞'} years
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Parsed Criteria */}
+                {requirement.parsedCriteria.mustHaveSkills.length > 0 && (
+                  <div>
+                    <label className="text-sm text-gray-500 dark:text-gray-400 block mb-1">Must-Have Skills</label>
+                    <div className="flex flex-wrap gap-1">
+                      {requirement.parsedCriteria.mustHaveSkills.map((skill) => (
+                        <span key={skill} className="badge bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 text-xs">{skill}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {requirement.parsedCriteria.goodToHaveSkills.length > 0 && (
+                  <div>
+                    <label className="text-sm text-gray-500 dark:text-gray-400 block mb-1">Good-to-Have Skills</label>
+                    <div className="flex flex-wrap gap-1">
+                      {requirement.parsedCriteria.goodToHaveSkills.map((skill) => (
+                        <span key={skill} className="badge bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs">{skill}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {requirement.parsedCriteria.seniority.length > 0 && (
+                  <div>
+                    <label className="text-sm text-gray-500 dark:text-gray-400 block mb-1">Seniority</label>
+                    <p className="text-gray-900 dark:text-gray-100">
+                      {requirement.parsedCriteria.seniority.map(formatSeniority).join(', ')}
+                    </p>
+                  </div>
+                )}
+
+                {requirement.parsedCriteria.location && (
+                  <div>
+                    <label className="text-sm text-gray-500 dark:text-gray-400 block mb-1">Location</label>
+                    <p className="text-gray-900 dark:text-gray-100">{requirement.parsedCriteria.location}</p>
+                  </div>
+                )}
+
+                {/* JD Text (collapsible) */}
+                <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                  <button
+                    onClick={() => setJdExpanded(!jdExpanded)}
+                    className="flex items-center justify-between w-full text-left"
+                  >
+                    <h3 className="font-medium text-gray-900 dark:text-gray-100">Job Description</h3>
+                    <svg
+                      className={`w-5 h-5 text-gray-400 transition-transform ${jdExpanded ? 'rotate-180' : ''}`}
+                      fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {jdExpanded && (
+                    <div className="mt-3 text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap">
+                      {requirement.jdText}
+                    </div>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div className="flex flex-wrap gap-3 pt-2">
+                  <button onClick={handleSearchCandidates} className="btn-primary">
+                    Search Candidates
+                  </button>
+                  <button onClick={() => router.push('/recruiter/requirements')} className="btn-secondary">
+                    Back to Requirements
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Shortlisted Candidates Pipeline */}
+            <div>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">
+                Shortlisted Candidates
+                {!candidatesLoading && candidates.length > 0 && (
+                  <span className="ml-2 text-base font-normal text-gray-500 dark:text-gray-400">
+                    ({candidates.length})
+                  </span>
+                )}
+              </h2>
+
+              {candidatesLoading && (
+                <div className="card p-8 text-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500 mx-auto" />
+                  <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Loading pipeline...</p>
+                </div>
+              )}
+
+              {!candidatesLoading && candidates.length === 0 && (
+                <div className="card p-8 text-center">
+                  <svg className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                  <h3 className="mt-4 text-lg font-medium text-gray-900 dark:text-gray-100">No candidates shortlisted yet</h3>
+                  <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                    Upload resumes and shortlist matching candidates to build your pipeline.
+                  </p>
+                  <button onClick={handleSearchCandidates} className="btn-primary mt-4">
+                    Search Candidates
+                  </button>
+                </div>
+              )}
+
+              {!candidatesLoading && candidates.length > 0 && (
+                <div className="space-y-3">
+                  {candidates.map((candidate) => (
+                    <div key={candidate.candidateId} className="card p-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-semibold text-gray-900 dark:text-gray-100">{candidate.fullName}</h3>
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-gray-400 mt-1">
+                            <span>{candidate.totalExperience} years exp</span>
+                            <span>{formatSeniority(candidate.seniority)}</span>
+                            {candidate.expectedCtc != null && <span>{candidate.expectedCtc} LPA expected</span>}
+                            <span>Tagged: {formatDate(candidate.taggedAt)}</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {candidate.primarySkills.slice(0, 6).map((skill) => (
+                              <span key={skill} className="badge bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 text-xs">
+                                {skill}
+                              </span>
+                            ))}
+                            {candidate.primarySkills.length > 6 && (
+                              <span className="badge bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 text-xs">
+                                +{candidate.primarySkills.length - 6} more
+                              </span>
+                            )}
+                          </div>
+                          {candidate.notes && (
+                            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 italic">{candidate.notes}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            candidate.status === 'shortlisted'
+                              ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                              : candidate.status === 'submitted'
+                              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                              : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                          }`}>
+                            {candidate.status.charAt(0).toUpperCase() + candidate.status.slice(1)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </main>
+    </div>
+  );
+}

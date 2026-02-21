@@ -56,7 +56,7 @@ export const CandidateProfileSchema = z.object({
   fullName: z.string().min(2).max(100),
   email: z.string().email(),
   phone: z.string().optional(),
-  location: z.string().max(200).optional(),
+  location: z.string().max(200).nullable().optional(),
   primarySkills: z.array(z.string()).min(1).max(20),
   primarySkillYears: z.record(z.string(), z.number().min(0).max(50)),
   secondarySkills: z.array(z.string()).max(50).optional().default([]),
@@ -160,6 +160,7 @@ export const LLMJDOutputSchema = z.object({
   payroll: z.string().nullable().optional().default(null),
   budgetMinLpa: z.number().nullable().optional().default(null),
   budgetMaxLpa: z.number().nullable().optional().default(null),
+  coreSkill: z.string().nullable().optional().default(null),
 });
 export type LLMJDOutput = z.infer<typeof LLMJDOutputSchema>;
 
@@ -523,4 +524,64 @@ export interface UpdatePricingConfigResponse {
 
 export interface GetPricingConfigResponse {
   config: PricingConfig;
+}
+
+// ─── Shortlist Types ────────────────────────────────────────────────────────
+
+export const ShortlistStatusEnum = z.enum(['shortlisted', 'submitted', 'rejected']);
+export type ShortlistStatus = z.infer<typeof ShortlistStatusEnum>;
+
+export interface ShortlistItem {
+  requirement_id: string;
+  candidate_id: string;
+  tagged_by: string;
+  tagged_at: string;
+  notes?: string;
+  status: ShortlistStatus;
+}
+
+// ─── Requirement Matching Types ─────────────────────────────────────────────
+
+export interface MatchedRequirement {
+  requirementId: string;
+  clientName: string;
+  endClient?: string;
+  jobTitle?: string;
+  engagementModel: string;
+  payroll: string;
+  budgetMinLpa?: number;
+  budgetMaxLpa?: number;
+  mustHaveSkills: string[];
+  goodToHaveSkills: string[];
+  matchScore: number;
+  matchDetails: {
+    mustHaveMatched: string[];
+    mustHaveMissing: string[];
+    goodToHaveMatched: string[];
+    experienceMatch: boolean;
+    seniorityMatch: boolean;
+    budgetFit: boolean;
+  };
+  isShortlisted: boolean;
+  createdAt: string;
+}
+
+export interface MatchRequirementsResponse {
+  matches: MatchedRequirement[];
+}
+
+export interface ShortlistedCandidate {
+  candidateId: string;
+  fullName: string;
+  primarySkills: string[];
+  totalExperience: number;
+  seniority: string;
+  expectedCtc?: number;
+  taggedAt: string;
+  notes?: string;
+  status: ShortlistStatus;
+}
+
+export interface ShortlistedCandidatesResponse {
+  candidates: ShortlistedCandidate[];
 }

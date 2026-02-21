@@ -43,6 +43,7 @@ provider:
     BULK_IMPORT_WORKER_NAME: ${self:service}-${self:provider.stage}-bulkImportWorker
     DYNAMODB_TABLE_REQUIREMENTS: ${self:custom.requirementsTable}
     DYNAMODB_TABLE_PRICING_CONFIG: ${self:custom.pricingConfigTable}
+    DYNAMODB_TABLE_SHORTLISTS: ${self:custom.shortlistsTable}
 
   httpApi:
     cors:
@@ -89,6 +90,7 @@ custom:
   bulkImportBatchesTable: BulkImportBatches-${self:provider.stage}
   requirementsTable: Requirements-${self:provider.stage}
   pricingConfigTable: PricingConfig-${self:provider.stage}
+  shortlistsTable: Shortlists-${self:provider.stage}
 
   dotenv:
     include:
@@ -359,6 +361,36 @@ functions:
       - httpApi:
           path: /recruiter/candidate-ctc
           method: PUT
+
+  # Candidate Match Requirements
+  candidateMatchRequirements:
+    handler: src/handlers/candidate/matchRequirements.handler
+    events:
+      - httpApi:
+          path: /candidate/match-requirements
+          method: POST
+
+  # Shortlist Endpoints
+  recruiterShortlistCandidate:
+    handler: src/handlers/recruiter/shortlistCandidate.handler
+    events:
+      - httpApi:
+          path: /recruiter/shortlist
+          method: POST
+
+  recruiterRemoveShortlist:
+    handler: src/handlers/recruiter/removeShortlist.handler
+    events:
+      - httpApi:
+          path: /recruiter/shortlist/{requirementId}/{candidateId}
+          method: DELETE
+
+  recruiterGetShortlistedCandidates:
+    handler: src/handlers/recruiter/getShortlistedCandidates.handler
+    events:
+      - httpApi:
+          path: /recruiter/requirements/{requirementId}/shortlisted
+          method: GET
 
   adminGetPricingConfig:
     handler: src/handlers/admin/getPricingConfig.handler
