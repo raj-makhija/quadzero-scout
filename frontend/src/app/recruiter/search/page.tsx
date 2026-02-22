@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Header } from '@/components/Header';
 import { PricingPanel } from '@/components/PricingPanel';
-import { api, ParsedCriteria, SearchCriteria, CandidateSearchResult, EngagementModel, Payroll, DuplicateMatch } from '@/lib/api';
+import { api, ParsedCriteria, SearchCriteria, CandidateSearchResult, EngagementModel, Payroll, DuplicateMatch, ConsolidateResponse } from '@/lib/api';
 import { formatSeniority, formatAvailability, getMatchScoreColor, getMatchScoreBgColor, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS, ENGAGEMENT_MODEL_OPTIONS, PAYROLL_OPTIONS, formatEngagementModel } from '@/lib/utils';
 
 type ViewMode = 'input' | 'requirement_details' | 'criteria' | 'results';
@@ -46,6 +46,8 @@ export default function RecruiterSearchPage() {
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [savingRequirement, setSavingRequirement] = useState(false);
   const [requirementSaved, setRequirementSaved] = useState(false);
+  const [consolidated, setConsolidated] = useState(false);
+  const [consolidateResult, setConsolidateResult] = useState<ConsolidateResponse | null>(null);
 
   const generateJobTitle = (client: string, end: string, skill: string): string => {
     const parts: string[] = [];
@@ -271,7 +273,7 @@ export default function RecruiterSearchPage() {
     }
   };
 
-  const doSaveRequirement = async (duplicateOf?: string) => {
+  const doSaveRequirement = async () => {
     if (!parsedCriteria) return;
 
     try {
@@ -289,15 +291,37 @@ export default function RecruiterSearchPage() {
         jobTitle: generatedTitle || undefined,
         jdText: jobDescription,
         parsedCriteria,
-        status: duplicateOf ? 'duplicate' : 'active',
-        duplicateOf,
+        status: 'active',
       });
 
       setRequirementSaved(true);
+      setConsolidated(false);
       setShowDuplicateModal(false);
       setViewMode('criteria');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save requirement');
+    } finally {
+      setSavingRequirement(false);
+    }
+  };
+
+  const handleConsolidate = async (match: DuplicateMatch) => {
+    if (!parsedCriteria) return;
+    try {
+      setSavingRequirement(true);
+      setError(null);
+      const result = await api.consolidateRequirement(match.requirementId, {
+        jdText: jobDescription,
+        parsedCriteria,
+        similarityScore: match.similarityScore,
+      });
+      setConsolidated(true);
+      setConsolidateResult(result);
+      setRequirementSaved(true);
+      setShowDuplicateModal(false);
+      setViewMode('criteria');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to consolidate requirement');
     } finally {
       setSavingRequirement(false);
     }
@@ -485,28 +509,32 @@ export default function RecruiterSearchPage() {
             {/* Duplicate Modal */}
             {showDuplicateModal && duplicates.length > 0 && (
               <div className="card p-6 border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/10">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Potential Duplicates Found</h3>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Similar Requirements Found</h3>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                  Similar requirements from <strong>{clientName}</strong> already exist. You can mark this as a copy or save as new.
+                  Similar requirements from <strong>{clientName}</strong> already exist. You can add this to an existing requirement to track demand, or save it as a new one.
                 </p>
                 <div className="space-y-3">
                   {duplicates.map((dup) => (
                     <div key={dup.requirementId} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 bg-white dark:bg-gray-800 rounded-lg border border-yellow-200 dark:border-yellow-700">
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium text-gray-900 dark:text-gray-100 truncate">{dup.jobTitle || 'Untitled'}</span>
                           <span className="badge bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300 text-xs">{dup.similarityScore}% match</span>
+                          {dup.requestCount && dup.requestCount > 1 && (
+                            <span className="badge bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 text-xs">
+                              Received {dup.requestCount}x
+                            </span>
+                          )}
                         </div>
                         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{dup.reason}</p>
                       </div>
-                      <button onClick={() => doSaveRequirement(dup.requirementId)} disabled={savingRequirement} className="btn-secondary text-sm whitespace-nowrap self-start">
-                        Mark as Copy
+                      <button onClick={() => handleConsolidate(dup)} disabled={savingRequirement} className="btn-secondary text-sm whitespace-nowrap self-start">
+                        Add to Existing
                       </button>
                     </div>
                   ))}
                 </div>
                 <div className="mt-4 flex justify-end gap-3">
-                  <button onClick={() => setShowDuplicateModal(false)} className="btn-secondary text-sm">Cancel</button>
                   <button onClick={() => doSaveRequirement()} disabled={savingRequirement} className="btn-primary text-sm">
                     {savingRequirement ? 'Saving...' : 'Save as New Requirement'}
                   </button>
@@ -515,19 +543,21 @@ export default function RecruiterSearchPage() {
             )}
 
             <div className="flex justify-between">
-              <button onClick={() => setViewMode('input')} className="btn-secondary">Back to JD</button>
-              <div className="flex gap-3">
-                <button onClick={handleSkipSave} className="btn-secondary">
-                  Skip & Search
-                </button>
-                <button
-                  onClick={handleSaveAndContinue}
-                  disabled={savingRequirement || !clientName.trim() || !engagementModel || !payroll}
-                  className="btn-primary px-8"
-                >
-                  {savingRequirement ? 'Saving...' : 'Save & Search'}
-                </button>
-              </div>
+              <button onClick={() => { setShowDuplicateModal(false); setViewMode('input'); }} className="btn-secondary">Back to JD</button>
+              {!showDuplicateModal && (
+                <div className="flex gap-3">
+                  <button onClick={handleSkipSave} className="btn-secondary">
+                    Skip & Search
+                  </button>
+                  <button
+                    onClick={handleSaveAndContinue}
+                    disabled={savingRequirement || !clientName.trim() || !engagementModel || !payroll}
+                    className="btn-primary px-8"
+                  >
+                    {savingRequirement ? 'Checking...' : 'Save & Search'}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -539,9 +569,19 @@ export default function RecruiterSearchPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
             <p className="text-sm text-green-700 dark:text-green-300">
-              Requirement saved for <strong>{clientName}</strong>
-              {engagementModel && <span> ({formatEngagementModel(engagementModel)})</span>}.
-              Now refine your search criteria below.
+              {consolidated && consolidateResult ? (
+                <>
+                  Requirement consolidated for <strong>{clientName}</strong>.
+                  It has now been received <strong>{consolidateResult.requestCount} {consolidateResult.requestCount === 1 ? 'time' : 'times'}</strong>.
+                  Now refine your search criteria below.
+                </>
+              ) : (
+                <>
+                  Requirement saved for <strong>{clientName}</strong>
+                  {engagementModel && <span> ({formatEngagementModel(engagementModel)})</span>}.
+                  Now refine your search criteria below.
+                </>
+              )}
             </p>
           </div>
         )}
