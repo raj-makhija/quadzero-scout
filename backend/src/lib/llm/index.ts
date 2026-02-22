@@ -338,12 +338,14 @@ export interface ExistingRequirementSummary {
   seniority?: string[];
   location?: string | null;
   createdAt: string;
+  requestCount?: number;
+  lastRequestedAt?: string;
 }
 
 export async function compareRequirements(
   newRequirement: RequirementComparisonInput,
   existingRequirements: ExistingRequirementSummary[]
-): Promise<Array<{ requirementId: string; jobTitle?: string; mustHaveSkills: string[]; similarityScore: number; reason: string; createdAt: string }>> {
+): Promise<Array<{ requirementId: string; jobTitle?: string; mustHaveSkills: string[]; similarityScore: number; reason: string; createdAt: string; requestCount?: number; lastRequestedAt?: string }>> {
   if (existingRequirements.length === 0) return [];
 
   const provider = getLLMProvider();
@@ -419,6 +421,8 @@ Identify any existing requirements that are potential duplicates of the new one 
       similarityScore: match.similarityScore,
       reason: match.reason,
       createdAt: existing?.createdAt || '',
+      requestCount: existing?.requestCount,
+      lastRequestedAt: existing?.lastRequestedAt,
     };
   });
 }

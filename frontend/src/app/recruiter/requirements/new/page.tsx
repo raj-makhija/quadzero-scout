@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Header } from '@/components/Header';
-import { api, ParsedCriteria, DuplicateMatch, EngagementModel, Payroll } from '@/lib/api';
+import { api, ParsedCriteria, DuplicateMatch, EngagementModel, Payroll, ConsolidateResponse } from '@/lib/api';
 import { ENGAGEMENT_MODEL_OPTIONS, PAYROLL_OPTIONS, formatEngagementModel } from '@/lib/utils';
 
 type Step = 'jd_input' | 'details' | 'duplicate_check' | 'confirmation';
@@ -42,6 +42,8 @@ export default function PostRequirementPage() {
 
   // Step 4: Confirmation
   const [savedRequirementId, setSavedRequirementId] = useState<string | null>(null);
+  const [consolidated, setConsolidated] = useState(false);
+  const [consolidateResult, setConsolidateResult] = useState<ConsolidateResponse | null>(null);
 
   const generateJobTitle = (client: string, end: string, skill: string): string => {
     const parts: string[] = [];
@@ -171,11 +173,30 @@ export default function PostRequirementPage() {
     }
   };
 
-  const handleMarkAsCopy = async (existingRequirementId: string) => {
-    await saveRequirement(existingRequirementId);
+  const handleConsolidate = async (match: DuplicateMatch) => {
+    if (!parsedCriteria) return;
+    try {
+      setLoading(true);
+      setError(null);
+      const result = await api.consolidateRequirement(match.requirementId, {
+        jdText: jobDescription,
+        parsedCriteria,
+        similarityScore: match.similarityScore,
+      });
+      setSavedRequirementId(result.requirementId);
+      setConsolidated(true);
+      setConsolidateResult(result);
+      setStep('confirmation');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to consolidate requirement');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSaveAsNew = async () => {
+    setConsolidated(false);
+    setConsolidateResult(null);
     await saveRequirement();
   };
 
@@ -444,9 +465,9 @@ export default function PostRequirementPage() {
         {step === 'duplicate_check' && (
           <div className="space-y-6">
             <div className="card p-6">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">Potential Duplicates Found</h2>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">Similar Requirements Found</h2>
               <p className="text-gray-600 dark:text-gray-400 mb-6">
-                We found similar requirements from <strong>{clientName}</strong>. You can mark this as a copy of an existing requirement, or save it as a new one.
+                We found similar requirements from <strong>{clientName}</strong>. You can add this to an existing requirement to track demand, or save it as a new one.
               </p>
 
               <div className="space-y-4">
@@ -461,6 +482,11 @@ export default function PostRequirementPage() {
                           <span className="badge bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300">
                             {dup.similarityScore}% match
                           </span>
+                          {dup.requestCount && dup.requestCount > 1 && (
+                            <span className="badge bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 text-xs">
+                              Received {dup.requestCount}x
+                            </span>
+                          )}
                         </div>
                         <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{dup.reason}</p>
                         <div className="flex flex-wrap gap-1">
@@ -475,11 +501,11 @@ export default function PostRequirementPage() {
                         </p>
                       </div>
                       <button
-                        onClick={() => handleMarkAsCopy(dup.requirementId)}
+                        onClick={() => handleConsolidate(dup)}
                         disabled={loading}
                         className="btn-secondary text-sm whitespace-nowrap self-start"
                       >
-                        Mark as Copy
+                        Add to Existing
                       </button>
                     </div>
                   </div>
@@ -510,11 +536,22 @@ export default function PostRequirementPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Requirement Saved</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+              {consolidated ? 'Requirement Consolidated' : 'Requirement Saved'}
+            </h2>
             <p className="text-gray-600 dark:text-gray-400 mb-6">
-              Your requirement for <strong>{clientName}</strong> has been saved successfully.
-              {engagementModel && (
-                <span> ({formatEngagementModel(engagementModel)})</span>
+              {consolidated && consolidateResult ? (
+                <>
+                  This requirement has been consolidated into the existing record for <strong>{clientName}</strong>.
+                  It has now been received <strong>{consolidateResult.requestCount} {consolidateResult.requestCount === 1 ? 'time' : 'times'}</strong>.
+                </>
+              ) : (
+                <>
+                  Your requirement for <strong>{clientName}</strong> has been saved successfully.
+                  {engagementModel && (
+                    <span> ({formatEngagementModel(engagementModel)})</span>
+                  )}
+                </>
               )}
             </p>
 
@@ -568,6 +605,8 @@ export default function PostRequirementPage() {
                   setBudgetMaxLpa('');
                   setDuplicates([]);
                   setSavedRequirementId(null);
+                  setConsolidated(false);
+                  setConsolidateResult(null);
                   setError(null);
                 }}
                 className="btn-secondary"

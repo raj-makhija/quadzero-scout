@@ -361,9 +361,30 @@ Stores job requirements created by recruiters with parsed JD criteria.
 | jd_text | String | Yes | Raw job description text |
 | parsed_criteria | Map | Yes | LLM-parsed search criteria |
 | status | String | Yes | active or duplicate |
-| duplicate_of | String | No | ID of the original requirement if duplicate |
+| duplicate_of | String | No | ID of the original requirement if duplicate (legacy) |
 | created_at | String | Yes | ISO 8601 timestamp |
 | last_updated | String | Yes | ISO 8601 timestamp |
+| request_count | Number | No | Total times this requirement was received (1 = original only). Defaults to 1. |
+| last_requested_at | String | No | ISO 8601 timestamp of the most recent repeat request |
+| contributing_recruiters | List\<String\> | No | Deduplicated list of recruiter IDs who submitted this requirement |
+| demand_score | Number | No | Computed demand score 0-100 based on request frequency, recency, and distinct recruiters |
+| request_history | List\<Map\> | No | Array of repeat request entries (see below) |
+
+**Request History Entry Schema:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| received_at | String | ISO 8601 timestamp of the repeat request |
+| recruiter_id | String | User ID of the recruiter who submitted |
+| similarity_score | Number | LLM similarity score at time of consolidation (0-100) |
+| jd_text | String | The JD text of the repeat submission (optional) |
+| notes | String | Optional recruiter notes (optional) |
+
+**Demand Score Computation:**
+- Count score: `min(requestCount * 15, 60)` -- max 60 points from request frequency
+- Recency bonus: 25 points if last request within 7 days, decays after
+- Multi-recruiter bonus: `min((distinctRecruiters - 1) * 10, 15)` -- max 15 points
+- Total capped at 100
 
 **Example Item:**
 ```json
@@ -390,8 +411,25 @@ Stores job requirements created by recruiters with parsed JD criteria.
     "coreSkill": "React"
   },
   "status": "active",
+  "request_count": 3,
+  "last_requested_at": "2024-02-10T14:00:00Z",
+  "contributing_recruiters": ["user_r1e2c3", "user_a4b5c6"],
+  "demand_score": 70,
+  "request_history": [
+    {
+      "received_at": "2024-01-20T09:00:00Z",
+      "recruiter_id": "user_a4b5c6",
+      "similarity_score": 85,
+      "jd_text": "Looking for a Sr. React/TypeScript developer..."
+    },
+    {
+      "received_at": "2024-02-10T14:00:00Z",
+      "recruiter_id": "user_r1e2c3",
+      "similarity_score": 92
+    }
+  ],
   "created_at": "2024-01-15T10:30:00Z",
-  "last_updated": "2024-01-15T10:30:00Z"
+  "last_updated": "2024-02-10T14:00:00Z"
 }
 ```
 
@@ -799,6 +837,16 @@ export const SaveRequirementRequestSchema = z.object({
   parsedCriteria: LLMJDOutputSchema,
   status: z.enum(['active', 'duplicate']).optional().default('active'),
   duplicateOf: z.string().uuid().optional(),
+});
+```
+
+### Consolidate Requirement Request Schema
+```typescript
+export const ConsolidateRequirementRequestSchema = z.object({
+  jdText: z.string().min(50).max(10000),
+  parsedCriteria: LLMJDOutputSchema,
+  similarityScore: z.number().min(0).max(100),
+  notes: z.string().max(500).optional(),
 });
 ```
 
