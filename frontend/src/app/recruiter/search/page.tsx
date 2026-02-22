@@ -19,15 +19,25 @@ export default function RecruiterSearchPage() {
   const isAuthenticated = status === 'authenticated';
   const isInternalRecruiter = (session?.user as any)?.isInternal === true;
 
-  const [viewMode, setViewMode] = useState<ViewMode>('input');
-  const [jobDescription, setJobDescription] = useState('');
-  const [coreSkill, setCoreSkill] = useState('');
-  const [parsedCriteria, setParsedCriteria] = useState<ParsedCriteria | null>(null);
-  const [searchCriteria, setSearchCriteria] = useState<SearchCriteria>({});
-  const [suggestions, setSuggestions] = useState<string[]>([]);
+  // Pre-read sessionStorage synchronously to avoid a flash of the input view
+  // when navigating here from a requirement detail page with viewMode 'results'.
+  const [prefilled] = useState(() => {
+    try {
+      const saved = typeof window !== 'undefined' ? sessionStorage.getItem(STORAGE_KEY) : null;
+      if (saved) return JSON.parse(saved);
+    } catch { /* ignore */ }
+    return null;
+  });
+
+  const [viewMode, setViewMode] = useState<ViewMode>(prefilled?.viewMode === 'results' ? 'results' : (prefilled?.viewMode || 'input'));
+  const [jobDescription, setJobDescription] = useState(prefilled?.jobDescription || '');
+  const [coreSkill, setCoreSkill] = useState(prefilled?.coreSkill || '');
+  const [parsedCriteria, setParsedCriteria] = useState<ParsedCriteria | null>(prefilled?.parsedCriteria || null);
+  const [searchCriteria, setSearchCriteria] = useState<SearchCriteria>(prefilled?.searchCriteria || {});
+  const [suggestions, setSuggestions] = useState<string[]>(prefilled?.suggestions || []);
   const [results, setResults] = useState<CandidateSearchResult[]>([]);
   const [totalMatches, setTotalMatches] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(prefilled?.viewMode === 'results');
   const [error, setError] = useState<string | null>(null);
   const [paginationKey, setPaginationKey] = useState<string | undefined>(undefined);
   const [hasMore, setHasMore] = useState(false);
@@ -35,6 +45,7 @@ export default function RecruiterSearchPage() {
   const [selectedCandidate, setSelectedCandidate] = useState<CandidateSearchResult | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [formattingCandidateId, setFormattingCandidateId] = useState<string | null>(null);
+  const [sourceRequirementId, setSourceRequirementId] = useState<string | null>(prefilled?.requirementId || null);
 
   // Requirement details state
   const [clientName, setClientName] = useState('');
@@ -82,28 +93,15 @@ export default function RecruiterSearchPage() {
     }
   }, []);
 
-  // Restore search state from sessionStorage after login redirect
+  // Run auto-search and clean up sessionStorage for prefilled state
   useEffect(() => {
-    const saved = sessionStorage.getItem(STORAGE_KEY);
-    if (!saved) return;
-
-    try {
-      const state = JSON.parse(saved);
-      setJobDescription(state.jobDescription || '');
-      setCoreSkill(state.coreSkill || '');
-      setSearchCriteria(state.searchCriteria || {});
-      setParsedCriteria(state.parsedCriteria || null);
-      setSuggestions(state.suggestions || []);
-
-      if (state.viewMode === 'results' && state.searchCriteria) {
-        runSearch(state.searchCriteria);
-      } else if (state.viewMode) {
-        setViewMode(state.viewMode);
-      }
-    } catch { /* ignore corrupt data */ }
-
+    if (!prefilled) return;
     sessionStorage.removeItem(STORAGE_KEY);
-  }, [runSearch]);
+
+    if (prefilled.viewMode === 'results' && prefilled.searchCriteria) {
+      runSearch(prefilled.searchCriteria);
+    }
+  }, [prefilled, runSearch]);
 
   // Fetch distinct client names for autocomplete
   useEffect(() => {
@@ -133,6 +131,7 @@ export default function RecruiterSearchPage() {
       parsedCriteria,
       suggestions,
       viewMode,
+      requirementId: sourceRequirementId,
     }));
     router.push('/auth/signin?callbackUrl=' + encodeURIComponent('/recruiter/search'));
   };
@@ -789,16 +788,33 @@ export default function RecruiterSearchPage() {
         )}
 
         {/* Search Results */}
-        {viewMode === 'results' && (
+        {viewMode === 'results' && loading && results.length === 0 && (
+          <div className="card p-12 text-center">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-500 mx-auto" />
+            <p className="mt-4 text-gray-600 dark:text-gray-400">Searching for candidates...</p>
+          </div>
+        )}
+
+        {viewMode === 'results' && !(loading && results.length === 0) && (
           <div>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
               <div>
                 <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Search Results</h2>
                 <p className="text-gray-600 dark:text-gray-400">{totalMatches} candidates found</p>
               </div>
-              <button onClick={() => setViewMode('criteria')} className="btn-secondary self-start sm:self-auto">
-                Modify Search
-              </button>
+              <div className="flex items-center gap-3 self-start sm:self-auto">
+                {sourceRequirementId && (
+                  <button
+                    onClick={() => router.push(`/recruiter/requirements/${sourceRequirementId}`)}
+                    className="btn-secondary"
+                  >
+                    Back to Requirement
+                  </button>
+                )}
+                <button onClick={() => setViewMode('criteria')} className="btn-secondary">
+                  Modify Search
+                </button>
+              </div>
             </div>
 
             {/* Sign-in banner for non-authenticated users */}

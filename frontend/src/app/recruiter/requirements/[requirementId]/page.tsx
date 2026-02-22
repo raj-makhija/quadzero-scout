@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Header } from '@/components/Header';
-import { api, RequirementDetail, ShortlistedCandidate } from '@/lib/api';
+import { api, RequirementDetail, ShortlistedCandidate, SearchCriteria } from '@/lib/api';
 import {
   formatDate,
   formatEngagementModel,
@@ -66,16 +66,28 @@ export default function RequirementDetailPage() {
 
   const handleSearchCandidates = () => {
     if (!requirement) return;
-    // Pre-fill search criteria via sessionStorage (matches the pattern in requirements/new/page.tsx)
-    const criteria = {
+
+    const searchCriteria: SearchCriteria = {
       mustHaveSkills: requirement.parsedCriteria.mustHaveSkills,
       goodToHaveSkills: requirement.parsedCriteria.goodToHaveSkills,
-      minExperience: requirement.parsedCriteria.minExperience,
-      maxExperience: requirement.parsedCriteria.maxExperience,
+      minExperience: requirement.parsedCriteria.minExperience || undefined,
+      maxExperience: requirement.parsedCriteria.maxExperience || undefined,
       seniority: requirement.parsedCriteria.seniority,
-      maxBudgetLpa: requirement.budgetMaxLpa,
+      availability: requirement.parsedCriteria.availability,
+      location: requirement.parsedCriteria.location || undefined,
+      maxBudgetLpa: requirement.budgetMaxLpa || undefined,
     };
-    sessionStorage.setItem('prefillCriteria', JSON.stringify(criteria));
+
+    sessionStorage.setItem('scout_recruiter_search', JSON.stringify({
+      jobDescription: requirement.jdText,
+      coreSkill: requirement.parsedCriteria.coreSkill || '',
+      searchCriteria,
+      parsedCriteria: requirement.parsedCriteria,
+      suggestions: [],
+      viewMode: 'results',
+      requirementId,
+    }));
+
     router.push('/recruiter/search');
   };
 
