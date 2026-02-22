@@ -35,6 +35,7 @@ export default function RecruiterSearchPage() {
   const [selectedCandidate, setSelectedCandidate] = useState<CandidateSearchResult | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [formattingCandidateId, setFormattingCandidateId] = useState<string | null>(null);
+  const [sourceRequirementId, setSourceRequirementId] = useState<string | null>(null);
 
   // Requirement details state
   const [clientName, setClientName] = useState('');
@@ -94,6 +95,7 @@ export default function RecruiterSearchPage() {
       setSearchCriteria(state.searchCriteria || {});
       setParsedCriteria(state.parsedCriteria || null);
       setSuggestions(state.suggestions || []);
+      if (state.requirementId) setSourceRequirementId(state.requirementId);
 
       if (state.viewMode === 'results' && state.searchCriteria) {
         runSearch(state.searchCriteria);
@@ -133,6 +135,7 @@ export default function RecruiterSearchPage() {
       parsedCriteria,
       suggestions,
       viewMode,
+      requirementId: sourceRequirementId,
     }));
     router.push('/auth/signin?callbackUrl=' + encodeURIComponent('/recruiter/search'));
   };
@@ -796,9 +799,19 @@ export default function RecruiterSearchPage() {
                 <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Search Results</h2>
                 <p className="text-gray-600 dark:text-gray-400">{totalMatches} candidates found</p>
               </div>
-              <button onClick={() => setViewMode('criteria')} className="btn-secondary self-start sm:self-auto">
-                Modify Search
-              </button>
+              <div className="flex items-center gap-3 self-start sm:self-auto">
+                {sourceRequirementId && (
+                  <button
+                    onClick={() => router.push(`/recruiter/requirements/${sourceRequirementId}`)}
+                    className="btn-secondary"
+                  >
+                    Back to Requirement
+                  </button>
+                )}
+                <button onClick={() => setViewMode('criteria')} className="btn-secondary">
+                  Modify Search
+                </button>
+              </div>
             </div>
 
             {/* Sign-in banner for non-authenticated users */}
