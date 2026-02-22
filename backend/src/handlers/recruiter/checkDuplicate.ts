@@ -51,6 +51,8 @@ async function handleRequest(
       seniority: req.parsed_criteria?.seniority || [],
       location: req.parsed_criteria?.location,
       createdAt: req.created_at,
+      requestCount: req.request_count || 1,
+      lastRequestedAt: req.last_requested_at,
     }));
 
     const duplicates = await compareRequirements(

@@ -247,6 +247,23 @@ class ApiClient {
     });
   }
 
+  async getClientNames() {
+    return this.request<{
+      clientNames: string[];
+      endClients: string[];
+    }>('/recruiter/client-names');
+  }
+
+  async consolidateRequirement(requirementId: string, payload: ConsolidatePayload) {
+    return this.request<ConsolidateResponse>(
+      `/recruiter/requirements/${requirementId}/consolidate`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      }
+    );
+  }
+
   // Admin endpoints
   async listPendingRecruiters() {
     return this.request<{
@@ -564,6 +581,22 @@ export interface RequirementSummary {
   mustHaveSkills: string[];
   status: string;
   createdAt: string;
+  requestCount?: number;
+  demandScore?: number;
+}
+
+export interface RequestHistoryEntry {
+  receivedAt: string;
+  recruiterId: string;
+  similarityScore: number;
+  jdText?: string;
+  notes?: string;
+}
+
+export interface ContributingRecruiter {
+  id: string;
+  name: string;
+  email?: string;
 }
 
 export interface RequirementDetail extends RequirementSummary {
@@ -572,6 +605,22 @@ export interface RequirementDetail extends RequirementSummary {
   parsedCriteria: ParsedCriteria;
   duplicateOf?: string;
   lastUpdated: string;
+  requestHistory?: RequestHistoryEntry[];
+  lastRequestedAt?: string;
+  contributingRecruiters?: ContributingRecruiter[];
+}
+
+export interface ConsolidatePayload {
+  jdText: string;
+  parsedCriteria: ParsedCriteria;
+  similarityScore: number;
+  notes?: string;
+}
+
+export interface ConsolidateResponse {
+  requirementId: string;
+  requestCount: number;
+  lastRequestedAt: string;
 }
 
 export interface RequirementFilters {
@@ -598,6 +647,8 @@ export interface DuplicateMatch {
   similarityScore: number;
   reason: string;
   createdAt: string;
+  requestCount?: number;
+  lastRequestedAt?: string;
 }
 
 // Pricing types

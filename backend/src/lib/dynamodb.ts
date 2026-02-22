@@ -9,7 +9,7 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { config } from './config.js';
-import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, PricingConfig, PricingConfigItem, ShortlistItem } from '../types/index.js';
+import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, PricingConfig, PricingConfigItem, ShortlistItem } from '../types/index.js';
 
 const client = new DynamoDBClient({ region: config.region });
 const docClient = DynamoDBDocumentClient.from(client, {
@@ -666,6 +666,47 @@ export async function getActiveRequirementsByClient(
   return (result.Items || []) as RequirementItem[];
 }
 
+export async function getDistinctClientNames(
+  recruiterId: string
+): Promise<{ clientNames: string[]; endClients: string[] }> {
+  const clientNameSet = new Set<string>();
+  const endClientSet = new Set<string>();
+  let currentKey: Record<string, unknown> | undefined;
+
+  do {
+    const params: {
+      TableName: string;
+      IndexName: string;
+      KeyConditionExpression: string;
+      ExpressionAttributeValues: Record<string, unknown>;
+      ProjectionExpression: string;
+      ExclusiveStartKey?: Record<string, unknown>;
+    } = {
+      TableName: config.dynamodb.requirementsTable,
+      IndexName: 'RecruiterIndex',
+      KeyConditionExpression: 'recruiter_id = :rid',
+      ExpressionAttributeValues: { ':rid': recruiterId },
+      ProjectionExpression: 'client_name, end_client',
+    };
+
+    if (currentKey) {
+      params.ExclusiveStartKey = currentKey;
+    }
+
+    const result = await docClient.send(new QueryCommand(params));
+    for (const item of (result.Items || []) as Pick<RequirementItem, 'client_name' | 'end_client'>[]) {
+      if (item.client_name) clientNameSet.add(item.client_name);
+      if (item.end_client) endClientSet.add(item.end_client);
+    }
+    currentKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (currentKey);
+
+  return {
+    clientNames: Array.from(clientNameSet).sort((a, b) => a.localeCompare(b)),
+    endClients: Array.from(endClientSet).sort((a, b) => a.localeCompare(b)),
+  };
+}
+
 export async function updateRequirementStatus(
   requirementId: string,
   status: string,
@@ -690,6 +731,39 @@ export async function updateRequirementStatus(
       UpdateExpression: updateExpression,
       ExpressionAttributeNames: expressionAttributeNames,
       ExpressionAttributeValues: expressionAttributeValues,
+    })
+  );
+}
+
+export async function consolidateRequirement(
+  requirementId: string,
+  entry: RequirementRequestEntry,
+  contributingRecruiters: string[],
+  demandScore: number
+): Promise<void> {
+  const now = new Date().toISOString();
+
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.requirementsTable,
+      Key: { requirement_id: requirementId },
+      UpdateExpression: `
+        SET request_history = list_append(if_not_exists(request_history, :emptyList), :newEntry),
+            request_count = if_not_exists(request_count, :one) + :one,
+            last_requested_at = :now,
+            contributing_recruiters = :recruiters,
+            demand_score = :demandScore,
+            last_updated = :now
+      `,
+      ExpressionAttributeValues: {
+        ':newEntry': [entry],
+        ':emptyList': [],
+        ':one': 1,
+        ':now': now,
+        ':recruiters': contributingRecruiters,
+        ':demandScore': demandScore,
+      },
+      ConditionExpression: 'attribute_exists(requirement_id)',
     })
   );
 }
