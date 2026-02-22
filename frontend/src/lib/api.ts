@@ -247,6 +247,13 @@ class ApiClient {
     });
   }
 
+  async getClientNames() {
+    return this.request<{
+      clientNames: string[];
+      endClients: string[];
+    }>('/recruiter/client-names');
+  }
+
   async consolidateRequirement(requirementId: string, payload: ConsolidatePayload) {
     return this.request<ConsolidateResponse>(
       `/recruiter/requirements/${requirementId}/consolidate`,

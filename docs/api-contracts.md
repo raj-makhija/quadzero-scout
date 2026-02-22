@@ -951,6 +951,28 @@ Authorization: Bearer <jwe_token>
 - Adds the current recruiter to `contributing_recruiters` (if not already present)
 - Recomputes `demand_score`
 
+### GET /recruiter/client-names
+
+Fetch distinct client names and end-client names from the authenticated recruiter's requirements. Used for autocomplete/type-ahead on requirement forms.
+
+**Auth:** Requires `recruiter` role.
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "clientNames": ["Acme Corp", "Globex Industries", "Initech"],
+    "endClients": ["BigTech Inc", "MegaCorp"]
+  }
+}
+```
+
+**Notes:**
+- Results are scoped to the authenticated recruiter's own requirements only
+- Both arrays are sorted alphabetically
+- If the recruiter has no prior requirements, both arrays will be empty
+
 ---
 
 ## Recruiter Shortlist Endpoints

@@ -290,6 +290,13 @@ functions:
           path: /recruiter/requirements/{requirementId}/consolidate
           method: PUT
 
+  recruiterGetClientNames:
+    handler: src/handlers/recruiter/getClientNames.handler
+    events:
+      - httpApi:
+          path: /recruiter/client-names
+          method: GET
+
   # Admin Endpoints
   adminListPendingRecruiters:
     handler: src/handlers/admin/listPendingRecruiters.handler

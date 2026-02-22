@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Header } from '@/components/Header';
 import { PricingPanel } from '@/components/PricingPanel';
+import { ComboboxInput } from '@/components/ui/combobox-input';
 import { api, ParsedCriteria, SearchCriteria, CandidateSearchResult, EngagementModel, Payroll, DuplicateMatch, ConsolidateResponse } from '@/lib/api';
 import { formatSeniority, formatAvailability, getMatchScoreColor, getMatchScoreBgColor, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS, ENGAGEMENT_MODEL_OPTIONS, PAYROLL_OPTIONS, formatEngagementModel } from '@/lib/utils';
 
@@ -48,6 +49,8 @@ export default function RecruiterSearchPage() {
   const [requirementSaved, setRequirementSaved] = useState(false);
   const [consolidated, setConsolidated] = useState(false);
   const [consolidateResult, setConsolidateResult] = useState<ConsolidateResponse | null>(null);
+  const [clientNameOptions, setClientNameOptions] = useState<string[]>([]);
+  const [endClientOptions, setEndClientOptions] = useState<string[]>([]);
 
   const generateJobTitle = (client: string, end: string, skill: string): string => {
     const parts: string[] = [];
@@ -101,6 +104,25 @@ export default function RecruiterSearchPage() {
 
     sessionStorage.removeItem(STORAGE_KEY);
   }, [runSearch]);
+
+  // Fetch distinct client names for autocomplete
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let cancelled = false;
+
+    api.getClientNames()
+      .then((data) => {
+        if (!cancelled) {
+          setClientNameOptions(data.clientNames);
+          setEndClientOptions(data.endClients);
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to fetch client names for autocomplete:', err);
+      });
+
+    return () => { cancelled = true; };
+  }, [isAuthenticated]);
 
   // Persist state and redirect to sign-in
   const handleLoginRequired = () => {
@@ -438,22 +460,24 @@ export default function RecruiterSearchPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="label">Client Name <span className="text-red-500">*</span></label>
-                  <input
-                    type="text"
+                  <ComboboxInput
                     value={clientName}
-                    onChange={(e) => setClientName(e.target.value)}
+                    onChange={setClientName}
+                    options={clientNameOptions}
                     placeholder="Who shared this requirement?"
-                    className="input mt-1"
+                    className="mt-1"
+                    id="client-name"
                   />
                 </div>
                 <div>
                   <label className="label">End Client</label>
-                  <input
-                    type="text"
+                  <ComboboxInput
                     value={endClient}
-                    onChange={(e) => setEndClient(e.target.value)}
+                    onChange={setEndClient}
+                    options={endClientOptions}
                     placeholder="Who will leverage the resource? (optional)"
-                    className="input mt-1"
+                    className="mt-1"
+                    id="end-client"
                   />
                 </div>
                 <div>
