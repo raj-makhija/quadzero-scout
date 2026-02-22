@@ -3,7 +3,7 @@ import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, MatchRequirementsRequestSchema } from '../../lib/validation.js';
 import { getCandidateById, getAllActiveRequirements, getShortlistsForCandidate } from '../../lib/dynamodb.js';
 import { normalizeSkills } from '../../lib/skillNormalizer.js';
-import { calculateMatchScore } from '../../lib/matchScoring.js';
+import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO } from '../../lib/matchScoring.js';
 import { isCandidateWithinBudget } from '../../lib/ctcConversion.js';
 import type { MatchedRequirement, MatchRequirementsResponse } from '../../types/index.js';
 
@@ -62,9 +62,12 @@ export async function handler(
         req.budget_max_lpa ?? undefined
       );
 
-      // Filter out requirements with 0 must-have matches
-      if (normalizedMustHave.length > 0 && details.mustHaveMatched.length === 0) {
-        continue;
+      // Filter out requirements below minimum must-have match ratio
+      if (normalizedMustHave.length > 0) {
+        const exactRatio = details.mustHaveMatched.length / normalizedMustHave.length;
+        if (exactRatio < MIN_MUST_HAVE_MATCH_RATIO) {
+          continue;
+        }
       }
 
       const budgetFit = isCandidateWithinBudget(candidate.expected_ctc, req.budget_max_lpa);
@@ -83,8 +86,10 @@ export async function handler(
         matchScore: score,
         matchDetails: {
           mustHaveMatched: details.mustHaveMatched,
+          mustHaveRelated: details.mustHaveRelated,
           mustHaveMissing: details.mustHaveMissing,
           goodToHaveMatched: details.goodToHaveMatched,
+          goodToHaveRelated: details.goodToHaveRelated,
           experienceMatch: details.experienceMatch,
           seniorityMatch: details.seniorityMatch,
           budgetFit,

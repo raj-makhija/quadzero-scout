@@ -1,63 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import type { CandidateItem } from '../../types/index.js';
+import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, RELATED_MATCH_WEIGHT } from '../../lib/matchScoring.js';
 
 // ---------------------------------------------------------------------------
-// TC-SCORE-001 through TC-SCORE-011: Match Scoring Algorithm
-//
-// The scoring function is local to search.ts. We replicate its logic here
-// to unit-test the algorithm in isolation. The integration test in
-// recruiter.test.ts validates it end-to-end through the handler.
+// TC-SCORE-001 through TC-SCORE-018: Match Scoring Algorithm
 // ---------------------------------------------------------------------------
-
-// Replicating the scoring function from search handler for unit testing
-import { normalizeSkills, calculateSkillMatch } from '../../lib/skillNormalizer.js';
-
-function calculateMatchScore(
-  candidate: CandidateItem,
-  mustHaveSkills: string[],
-  goodToHaveSkills: string[],
-  minExp?: number,
-  maxExp?: number,
-  seniority?: string[]
-): { score: number; details: { mustHaveMatched: string[]; mustHaveMissing: string[]; goodToHaveMatched: string[]; experienceMatch: boolean; seniorityMatch: boolean } } {
-  let score = 0;
-  const candidateSkills = [...candidate.primary_skills, ...candidate.secondary_skills];
-
-  const mustHaveMatch = calculateSkillMatch(candidateSkills, mustHaveSkills);
-  const mustHaveRatio = mustHaveSkills.length > 0
-    ? mustHaveMatch.matched.length / mustHaveSkills.length
-    : 1;
-  score += mustHaveRatio * 50;
-
-  const goodToHaveMatch = calculateSkillMatch(candidateSkills, goodToHaveSkills);
-  const goodToHaveRatio = goodToHaveSkills.length > 0
-    ? goodToHaveMatch.matched.length / goodToHaveSkills.length
-    : 1;
-  score += goodToHaveRatio * 20;
-
-  const experience = candidate.total_experience;
-  let experienceMatch = true;
-  if (minExp !== undefined && experience < minExp) experienceMatch = false;
-  if (maxExp !== undefined && experience > maxExp) experienceMatch = false;
-  if (experienceMatch) score += 15;
-
-  let seniorityMatch = true;
-  if (seniority && seniority.length > 0) {
-    seniorityMatch = seniority.includes(candidate.seniority);
-  }
-  if (seniorityMatch) score += 15;
-
-  return {
-    score: Math.round(score),
-    details: {
-      mustHaveMatched: mustHaveMatch.matched,
-      mustHaveMissing: mustHaveMatch.missing,
-      goodToHaveMatched: goodToHaveMatch.matched,
-      experienceMatch,
-      seniorityMatch,
-    },
-  };
-}
 
 // Test fixture
 function makeCandidate(overrides: Partial<CandidateItem> = {}): CandidateItem {
@@ -95,21 +42,24 @@ describe('Match Scoring Algorithm', () => {
       ['senior', 'lead']              // seniority: matches
     );
     expect(result.score).toBe(100);
+    expect(result.details.mustHaveMatched).toContain('react');
+    expect(result.details.mustHaveMatched).toContain('nodejs');
+    expect(result.details.mustHaveRelated).toEqual([]);
+    expect(result.details.mustHaveMissing).toEqual([]);
     expect(result.details.experienceMatch).toBe(true);
     expect(result.details.seniorityMatch).toBe(true);
   });
 
   // TC-SCORE-002
-  it('must-have skills contribute 50% of score (prorated)', () => {
+  it('must-have skills contribute 50% of score (prorated, exact only)', () => {
     const candidate = makeCandidate({
       primary_skills: ['react', 'python'],
       secondary_skills: [],
     });
-    // Candidate has react but not nodejs, not angular, not vue
-    // out of 4 must-have, only react is a direct match
+    // Candidate has react but not golang, rust, scala (all different sub-categories)
     const result = calculateMatchScore(
       candidate,
-      ['react', 'golang', 'rust', 'scala'], // only react matches, rest are different categories
+      ['react', 'golang', 'rust', 'scala'], // only react matches exactly
       [],
       undefined,
       undefined,
@@ -121,6 +71,7 @@ describe('Match Scoring Algorithm', () => {
     // seniority: no filter → 15
     // Total: 13 + 20 + 15 + 15 = 63
     expect(result.details.mustHaveMatched).toContain('react');
+    expect(result.details.mustHaveMatched).not.toContain('golang');
     expect(result.score).toBeLessThan(100);
   });
 
@@ -133,10 +84,10 @@ describe('Match Scoring Algorithm', () => {
     const result = calculateMatchScore(
       candidate,
       [],                           // no must-have
-      ['typescript', 'kubernetes'], // 1 of 2 good-to-have
+      ['typescript', 'kubernetes'], // 1 of 2 good-to-have (exact)
     );
     // must-have: none specified → 50
-    // good-to-have: 1/2 = 20 * 0.5 = 10
+    // good-to-have: 1/2 exact = (1 + 0) / 2 * 20 = 10
     // experience: no filter → 15
     // seniority: no filter → 15
     // Total: 50 + 10 + 15 + 15 = 90
@@ -148,7 +99,6 @@ describe('Match Scoring Algorithm', () => {
     const candidate = makeCandidate({ total_experience: 5 });
     const result = calculateMatchScore(candidate, [], [], 3, 10);
     expect(result.details.experienceMatch).toBe(true);
-    // Score includes 15 from experience
   });
 
   // TC-SCORE-005
@@ -237,7 +187,7 @@ describe('Match Scoring Algorithm', () => {
   it('empty must-have skills results in full 50 points', () => {
     const candidate = makeCandidate();
     const result = calculateMatchScore(candidate, [], ['typescript']);
-    // must-have: 50 (no required), good-to-have: 20 (1/1), exp: 15, seniority: 15
+    // must-have: 50 (no required), good-to-have: 20 (1/1 exact), exp: 15, seniority: 15
     expect(result.score).toBe(100);
   });
 
@@ -246,5 +196,106 @@ describe('Match Scoring Algorithm', () => {
     const result = calculateMatchScore(candidate, ['react'], []);
     // must-have: 50 (1/1), good-to-have: 20 (no required), exp: 15, seniority: 15
     expect(result.score).toBe(100);
+  });
+
+  // TC-SCORE-012: Related skill does NOT count as must-have match
+  it('related skill does NOT count as must-have match (exact only)', () => {
+    const candidate = makeCandidate({
+      primary_skills: ['vue'],  // vue is in frontend category, same as react
+      secondary_skills: [],
+    });
+    const result = calculateMatchScore(candidate, ['react'], []);
+    // Before this fix, vue would match react. Now it should not count for scoring.
+    expect(result.details.mustHaveMatched).not.toContain('react');
+    expect(result.details.mustHaveRelated).toContain('react'); // shown as related for display
+    expect(result.details.mustHaveMissing).toEqual([]);
+    // Score: 0/1 must-have = 0 * 50 = 0 + 20 + 15 + 15 = 50
+    expect(result.score).toBe(50);
+  });
+
+  // TC-SCORE-013: Related skill counts at 0.3x for good-to-have
+  it('related skill counts at 0.3x weight for good-to-have', () => {
+    const candidate = makeCandidate({
+      primary_skills: ['vue'],
+      secondary_skills: [],
+    });
+    const result = calculateMatchScore(candidate, [], ['react']); // react is good-to-have
+    // vue is related to react (both frontend), so related match
+    expect(result.details.goodToHaveMatched).toEqual([]);
+    expect(result.details.goodToHaveRelated).toContain('react');
+    // Score: 50 (no must-have) + (0 + 1*0.3)/1 * 20 = 6 + 15 + 15 = 86
+    expect(result.score).toBe(86);
+  });
+
+  // TC-SCORE-014: Salesforce and ServiceNow are in different categories after split
+  it('salesforce and servicenow are in different categories after split', () => {
+    const candidate = makeCandidate({
+      primary_skills: ['servicenow'],
+      secondary_skills: [],
+    });
+    const result = calculateMatchScore(candidate, ['salesforce'], []);
+    // After category split: salesforce is in "salesforce", servicenow is in "erp"
+    expect(result.details.mustHaveMatched).toEqual([]);
+    expect(result.details.mustHaveRelated).toEqual([]); // different categories
+    expect(result.details.mustHaveMissing).toContain('salesforce');
+  });
+
+  // TC-SCORE-015: 1/10 must-have is below 30% threshold
+  it('candidate with 1 of 10 must-have skills is below 30% threshold', () => {
+    const candidate = makeCandidate({
+      primary_skills: ['react'],
+      secondary_skills: [],
+    });
+    const mustHave = ['react', 'nodejs', 'python', 'java', 'golang',
+                       'rust', 'csharp', 'ruby', 'php', 'scala'];
+    const result = calculateMatchScore(candidate, mustHave, []);
+    const ratio = result.details.mustHaveMatched.length / mustHave.length;
+    expect(ratio).toBe(0.1);
+    expect(ratio).toBeLessThan(MIN_MUST_HAVE_MATCH_RATIO);
+  });
+
+  // TC-SCORE-016: 3/10 must-have passes 30% threshold
+  it('candidate with 3 of 10 must-have skills passes 30% threshold', () => {
+    const candidate = makeCandidate({
+      primary_skills: ['react', 'nodejs', 'python'],
+      secondary_skills: [],
+    });
+    const mustHave = ['react', 'nodejs', 'python', 'java', 'golang',
+                       'rust', 'csharp', 'ruby', 'php', 'scala'];
+    const result = calculateMatchScore(candidate, mustHave, []);
+    const ratio = result.details.mustHaveMatched.length / mustHave.length;
+    expect(ratio).toBe(0.3);
+    expect(ratio).toBeGreaterThanOrEqual(MIN_MUST_HAVE_MATCH_RATIO);
+  });
+
+  // TC-SCORE-017: SAP and Oracle ERP are related (same erp sub-category)
+  it('sap and oracle_erp are related (both in erp sub-category)', () => {
+    const candidate = makeCandidate({
+      primary_skills: ['sap'],
+      secondary_skills: [],
+    });
+    const result = calculateMatchScore(candidate, [], ['oracle_erp']);
+    expect(result.details.goodToHaveRelated).toContain('oracle_erp');
+  });
+
+  // TC-SCORE-018: must-have related skills appear in mustHaveRelated
+  it('must-have related skills are reported in mustHaveRelated for display', () => {
+    const candidate = makeCandidate({
+      primary_skills: ['postgresql'],
+      secondary_skills: [],
+    });
+    const result = calculateMatchScore(candidate, ['mysql'], []);
+    // postgresql and mysql are both in sql_databases
+    expect(result.details.mustHaveMatched).toEqual([]); // no exact match
+    expect(result.details.mustHaveRelated).toContain('mysql'); // related for display
+    expect(result.details.mustHaveMissing).toEqual([]); // not truly missing
+  });
+
+  it('RELATED_MATCH_WEIGHT is 0.3', () => {
+    expect(RELATED_MATCH_WEIGHT).toBe(0.3);
+  });
+
+  it('MIN_MUST_HAVE_MATCH_RATIO is 0.3', () => {
+    expect(MIN_MUST_HAVE_MATCH_RATIO).toBe(0.3);
   });
 });
