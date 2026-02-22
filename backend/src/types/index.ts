@@ -230,8 +230,10 @@ export interface CandidateSearchResult {
   matchScore: number;
   matchDetails: {
     mustHaveMatched: string[];
+    mustHaveRelated: string[];
     mustHaveMissing: string[];
     goodToHaveMatched: string[];
+    goodToHaveRelated: string[];
     experienceMatch: boolean;
     seniorityMatch: boolean;
     ctcMatch: boolean;
@@ -587,8 +589,10 @@ export interface MatchedRequirement {
   matchScore: number;
   matchDetails: {
     mustHaveMatched: string[];
+    mustHaveRelated: string[];
     mustHaveMissing: string[];
     goodToHaveMatched: string[];
+    goodToHaveRelated: string[];
     experienceMatch: boolean;
     seniorityMatch: boolean;
     budgetFit: boolean;

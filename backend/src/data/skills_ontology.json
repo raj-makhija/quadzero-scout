@@ -339,17 +339,40 @@
       "javascript", "typescript", "react", "vue", "angular", "svelte",
       "nextjs", "nuxtjs", "html", "css", "sass", "tailwindcss", "bootstrap"
     ],
-    "backend": [
-      "nodejs", "python", "java", "golang", "rust", "csharp", "ruby", "php",
-      "expressjs", "django", "flask", "fastapi", "spring_boot", "rails", "laravel"
+    "backend_js": [
+      "nodejs", "expressjs"
     ],
-    "database": [
-      "postgresql", "mysql", "mongodb", "redis", "elasticsearch", "cassandra",
-      "dynamodb", "mariadb"
+    "backend_python": [
+      "python", "django", "flask", "fastapi"
     ],
-    "cloud": [
-      "aws", "azure", "google_cloud", "aws_lambda", "aws_ec2", "aws_s3",
-      "aws_dynamodb", "aws_ecs", "aws_eks"
+    "backend_jvm": [
+      "java", "spring_boot", "kotlin", "scala"
+    ],
+    "backend_dotnet": [
+      "csharp", "dotnet", "aspnet"
+    ],
+    "backend_other": [
+      "golang", "rust", "ruby", "rails", "php", "laravel"
+    ],
+    "sql_databases": [
+      "postgresql", "mysql", "mariadb"
+    ],
+    "nosql_databases": [
+      "mongodb", "cassandra", "dynamodb"
+    ],
+    "cache_search": [
+      "redis", "memcached", "elasticsearch", "opensearch"
+    ],
+    "aws": [
+      "aws", "aws_lambda", "aws_ec2", "aws_s3", "aws_dynamodb",
+      "aws_ecs", "aws_eks", "aws_cloudformation", "aws_cdk", "aws_rds",
+      "aws_sqs", "aws_sns"
+    ],
+    "azure": [
+      "azure", "azure_devops"
+    ],
+    "gcp": [
+      "google_cloud", "gcp_bigquery", "gcp_cloud_functions"
     ],
     "devops": [
       "docker", "kubernetes", "terraform", "ansible", "jenkins", "gitlab_ci",
@@ -360,12 +383,17 @@
       "tensorflow", "pytorch", "apache_spark", "hadoop"
     ],
     "mobile": [
-      "react_native", "flutter", "swift", "kotlin", "ios", "android"
+      "react_native", "flutter", "swift", "ios", "android"
     ],
-    "crm_erp": [
+    "salesforce": [
       "salesforce", "salesforce_admin", "salesforce_developer", "salesforce_apex",
-      "visualforce", "salesforce_lightning", "soql", "hubspot", "zoho_crm",
-      "dynamics_365", "sap", "sap_hana", "oracle_erp", "servicenow"
+      "visualforce", "salesforce_lightning", "soql"
+    ],
+    "other_crm": [
+      "hubspot", "zoho_crm", "dynamics_365"
+    ],
+    "erp": [
+      "sap", "sap_hana", "oracle_erp", "servicenow"
     ],
     "marketing_analytics": [
       "google_analytics", "seo", "sem", "google_ads", "meta_ads",

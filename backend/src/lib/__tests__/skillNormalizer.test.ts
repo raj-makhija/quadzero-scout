@@ -146,9 +146,9 @@ describe('getSkillCategory()', () => {
     expect(getSkillCategory('react')).toBe('frontend');
   });
 
-  // TC-SKILL-013
-  it('returns "backend" for python', () => {
-    expect(getSkillCategory('python')).toBe('backend');
+  // TC-SKILL-013 (updated: backend split into sub-categories)
+  it('returns "backend_python" for python', () => {
+    expect(getSkillCategory('python')).toBe('backend_python');
   });
 
   // TC-SKILL-014
@@ -160,12 +160,12 @@ describe('getSkillCategory()', () => {
     expect(getSkillCategory('flutter')).toBe('mobile');
   });
 
-  it('returns "database" for postgresql', () => {
-    expect(getSkillCategory('postgresql')).toBe('database');
+  it('returns "sql_databases" for postgresql', () => {
+    expect(getSkillCategory('postgresql')).toBe('sql_databases');
   });
 
-  it('returns "cloud" for aws', () => {
-    expect(getSkillCategory('aws')).toBe('cloud');
+  it('returns "aws" for aws', () => {
+    expect(getSkillCategory('aws')).toBe('aws');
   });
 
   it('returns "devops" for docker', () => {
@@ -174,16 +174,29 @@ describe('getSkillCategory()', () => {
 
   it('normalizes input before lookup', () => {
     expect(getSkillCategory('React')).toBe('frontend');
-    expect(getSkillCategory('PYTHON')).toBe('backend');
+    expect(getSkillCategory('PYTHON')).toBe('backend_python');
   });
 
   it('handles alias input (k8s → kubernetes → devops)', () => {
     expect(getSkillCategory('k8s')).toBe('devops');
   });
+
+  it('returns "salesforce" for salesforce skills', () => {
+    expect(getSkillCategory('salesforce')).toBe('salesforce');
+    expect(getSkillCategory('salesforce_apex')).toBe('salesforce');
+  });
+
+  it('returns "erp" for servicenow', () => {
+    expect(getSkillCategory('servicenow')).toBe('erp');
+  });
+
+  it('returns "backend_jvm" for java', () => {
+    expect(getSkillCategory('java')).toBe('backend_jvm');
+  });
 });
 
 describe('getRelatedSkills()', () => {
-  // TC-SKILL-015
+  // TC-SKILL-015 (unchanged: frontend not split)
   it('returns frontend skills excluding react', () => {
     const related = getRelatedSkills('react');
     expect(related).not.toContain('react');
@@ -201,10 +214,12 @@ describe('getRelatedSkills()', () => {
     expect(related.length).toBeGreaterThan(0);
   });
 
-  it('returns backend skills excluding nodejs', () => {
+  // Updated: nodejs now only relates to expressjs (backend_js sub-category)
+  it('returns backend_js skills excluding nodejs', () => {
     const related = getRelatedSkills('nodejs');
     expect(related).not.toContain('nodejs');
-    expect(related).toContain('python');
+    expect(related).toContain('expressjs');
+    expect(related).not.toContain('python'); // different sub-category
   });
 
   it('normalizes input before lookup', () => {
@@ -212,66 +227,112 @@ describe('getRelatedSkills()', () => {
     expect(related).not.toContain('nodejs');
     expect(related.length).toBeGreaterThan(0);
   });
+
+  // New: salesforce skills are separate from other CRM
+  it('salesforce related skills do not include servicenow or sap', () => {
+    const related = getRelatedSkills('salesforce');
+    expect(related).toContain('salesforce_apex');
+    expect(related).toContain('visualforce');
+    expect(related).not.toContain('servicenow');
+    expect(related).not.toContain('sap');
+    expect(related).not.toContain('hubspot');
+  });
+
+  // New: cloud providers are separate
+  it('aws related skills do not include azure or gcp', () => {
+    const related = getRelatedSkills('aws');
+    expect(related).toContain('aws_lambda');
+    expect(related).not.toContain('azure');
+    expect(related).not.toContain('google_cloud');
+  });
 });
 
 describe('calculateSkillMatch()', () => {
-  // TC-SKILL-016
-  it('returns full match when candidate has all required skills', () => {
+  // TC-SKILL-016 (updated to new return shape)
+  it('returns full exact match when candidate has all required skills', () => {
     const result = calculateSkillMatch(
       ['react', 'nodejs', 'typescript'],
       ['react', 'nodejs']
     );
-    expect(result.matched).toContain('react');
-    expect(result.matched).toContain('nodejs');
+    expect(result.exactMatched).toContain('react');
+    expect(result.exactMatched).toContain('nodejs');
+    expect(result.relatedMatched).toEqual([]);
     expect(result.missing).toEqual([]);
   });
 
-  // TC-SKILL-017
-  it('returns partial match when some skills are missing', () => {
+  // TC-SKILL-017 (updated)
+  it('separates exact and related matches', () => {
     const result = calculateSkillMatch(
       ['react', 'python'],
       ['react', 'nodejs', 'typescript']
     );
-    expect(result.matched).toContain('react');
-    // python is backend, nodejs is backend - they are related
-    expect(result.missing.length + result.matched.length).toBe(3);
+    expect(result.exactMatched).toContain('react');
+    // python is backend_python, nodejs is backend_js - NOT related anymore (different sub-categories)
+    // typescript is frontend, react is frontend - but react already exact matched
+    expect(result.exactMatched.length + result.relatedMatched.length + result.missing.length).toBe(3);
   });
 
-  // TC-SKILL-018
-  it('matches related skills within same category', () => {
-    const result = calculateSkillMatch(['vue'], ['react']);
+  // TC-SKILL-018 (updated: related match now in relatedMatched)
+  it('matches related skills within same category when exactOnly is false', () => {
+    const result = calculateSkillMatch(['vue'], ['react'], false);
     // vue and react are both frontend, so related skill match
-    expect(result.matched).toContain('react');
+    expect(result.exactMatched).toEqual([]);
+    expect(result.relatedMatched).toContain('react');
     expect(result.missing).toEqual([]);
   });
 
-  // TC-SKILL-019
+  // New: exactOnly=true rejects related matches
+  it('rejects related skills when exactOnly is true', () => {
+    const result = calculateSkillMatch(['vue'], ['react'], true);
+    expect(result.exactMatched).toEqual([]);
+    expect(result.relatedMatched).toEqual([]);
+    expect(result.missing).toContain('react');
+  });
+
+  // TC-SKILL-019 (updated)
   it('returns no match for unrelated skills', () => {
     const result = calculateSkillMatch(
       ['python', 'django'],
       ['react', 'nodejs']
     );
-    // python and nodejs are both backend - related match possible
-    // but react has no backend related match from python/django
-    expect(result.matched.length + result.missing.length).toBe(2);
+    // python/django are backend_python, nodejs is backend_js - different sub-categories now
+    // react is frontend - no relation to python/django
+    expect(result.exactMatched.length + result.relatedMatched.length + result.missing.length).toBe(2);
   });
 
   it('handles empty required skills', () => {
     const result = calculateSkillMatch(['react', 'nodejs'], []);
-    expect(result.matched).toEqual([]);
+    expect(result.exactMatched).toEqual([]);
+    expect(result.relatedMatched).toEqual([]);
     expect(result.missing).toEqual([]);
   });
 
   it('handles empty candidate skills', () => {
     const result = calculateSkillMatch([], ['react', 'nodejs']);
-    expect(result.matched).toEqual([]);
+    expect(result.exactMatched).toEqual([]);
+    expect(result.relatedMatched).toEqual([]);
     expect(result.missing).toEqual(['react', 'nodejs']);
   });
 
   it('normalizes skills before matching', () => {
     const result = calculateSkillMatch(['JS', 'Node.js'], ['javascript', 'nodejs']);
-    expect(result.matched).toContain('javascript');
-    expect(result.matched).toContain('nodejs');
+    expect(result.exactMatched).toContain('javascript');
+    expect(result.exactMatched).toContain('nodejs');
     expect(result.missing).toEqual([]);
+  });
+
+  // New: cross-platform skills no longer match after category split
+  it('servicenow does not match salesforce after category split', () => {
+    const result = calculateSkillMatch(['servicenow'], ['salesforce'], false);
+    expect(result.exactMatched).toEqual([]);
+    expect(result.relatedMatched).toEqual([]); // different categories now
+    expect(result.missing).toContain('salesforce');
+  });
+
+  it('aws does not match azure after category split', () => {
+    const result = calculateSkillMatch(['aws'], ['azure'], false);
+    expect(result.exactMatched).toEqual([]);
+    expect(result.relatedMatched).toEqual([]); // different categories now
+    expect(result.missing).toContain('azure');
   });
 });

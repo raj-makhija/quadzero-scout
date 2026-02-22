@@ -316,8 +316,10 @@ describe('POST /recruiter/search', () => {
 
     for (const c of body.data.candidates) {
       expect(c.matchDetails).toHaveProperty('mustHaveMatched');
+      expect(c.matchDetails).toHaveProperty('mustHaveRelated');
       expect(c.matchDetails).toHaveProperty('mustHaveMissing');
       expect(c.matchDetails).toHaveProperty('goodToHaveMatched');
+      expect(c.matchDetails).toHaveProperty('goodToHaveRelated');
       expect(c.matchDetails).toHaveProperty('experienceMatch');
       expect(c.matchDetails).toHaveProperty('seniorityMatch');
     }

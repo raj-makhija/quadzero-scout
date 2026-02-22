@@ -3,7 +3,7 @@ import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, SearchRequestSchema } from '../../lib/validation.js';
 import { searchCandidates } from '../../lib/dynamodb.js';
 import { normalizeSkills } from '../../lib/skillNormalizer.js';
-import { calculateMatchScore } from '../../lib/matchScoring.js';
+import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO } from '../../lib/matchScoring.js';
 import { withOptionalAuth, type OptionalAuthEvent } from '../../lib/auth.js';
 import type { CandidateSearchResult, SearchResponse, SearchCriteria } from '../../types/index.js';
 
@@ -97,10 +97,13 @@ async function handleRequest(
           lastUpdated: candidate.last_updated,
         };
       })
-      // Filter out candidates with 0% match on must-have skills
+      // Filter out candidates below minimum must-have match ratio
       .filter((c) => {
-        if (normalizedMustHave.length > 0 && c.matchDetails.mustHaveMatched.length === 0) {
-          return false;
+        if (normalizedMustHave.length > 0) {
+          const exactRatio = c.matchDetails.mustHaveMatched.length / normalizedMustHave.length;
+          if (exactRatio < MIN_MUST_HAVE_MATCH_RATIO) {
+            return false;
+          }
         }
         if (criteria.maxBudgetLpa != null && !c.matchDetails.ctcMatch) {
           return false;
@@ -152,8 +155,10 @@ async function handleRequest(
           matchDetails: {
             // Hide specific skill matches
             mustHaveMatched: [],
+            mustHaveRelated: [],
             mustHaveMissing: [],
             goodToHaveMatched: [],
+            goodToHaveRelated: [],
             experienceMatch: candidate.matchDetails.experienceMatch,
             seniorityMatch: candidate.matchDetails.seniorityMatch,
             ctcMatch: candidate.matchDetails.ctcMatch,
