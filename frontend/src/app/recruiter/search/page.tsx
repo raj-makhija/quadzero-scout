@@ -880,6 +880,12 @@ export default function RecruiterSearchPage() {
                             )}
                           </div>
 
+                          {candidate.matchDetails.mustHaveRelated?.length > 0 && (
+                            <div className="mt-2 text-sm text-yellow-600 dark:text-yellow-400">
+                              Related: {candidate.matchDetails.mustHaveRelated.join(', ')}
+                            </div>
+                          )}
+
                           {candidate.matchDetails.mustHaveMissing.length > 0 && (
                             <div className="mt-2 text-sm text-red-600 dark:text-red-400">
                               Missing: {candidate.matchDetails.mustHaveMissing.join(', ')}
@@ -1053,6 +1059,14 @@ export default function RecruiterSearchPage() {
                       </svg>
                       Must-have matched: {selectedCandidate.matchDetails.mustHaveMatched.join(', ') || 'None'}
                     </div>
+                    {selectedCandidate.matchDetails.mustHaveRelated?.length > 0 && (
+                      <div className="flex items-center text-yellow-600 dark:text-yellow-400">
+                        <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Related (not scored): {selectedCandidate.matchDetails.mustHaveRelated.join(', ')}
+                      </div>
+                    )}
                     {selectedCandidate.matchDetails.mustHaveMissing.length > 0 && (
                       <div className="flex items-center text-red-600 dark:text-red-400">
                         <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1067,6 +1081,14 @@ export default function RecruiterSearchPage() {
                       </svg>
                       Nice-to-have matched: {selectedCandidate.matchDetails.goodToHaveMatched.join(', ') || 'None'}
                     </div>
+                    {selectedCandidate.matchDetails.goodToHaveRelated?.length > 0 && (
+                      <div className="flex items-center text-blue-400 dark:text-blue-500">
+                        <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Nice-to-have related: {selectedCandidate.matchDetails.goodToHaveRelated.join(', ')}
+                      </div>
+                    )}
                     {searchCriteria.maxBudgetLpa && (
                       <div className={`flex items-center ${selectedCandidate.matchDetails.ctcMatch ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                         {selectedCandidate.matchDetails.ctcMatch ? (

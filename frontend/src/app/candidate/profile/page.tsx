@@ -404,6 +404,11 @@ export default function ProfilePage() {
                               {skill}
                             </span>
                           ))}
+                          {match.matchDetails.mustHaveRelated?.map((skill) => (
+                            <span key={`related-${skill}`} className="badge bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 text-xs">
+                              ~{skill}
+                            </span>
+                          ))}
                           {match.matchDetails.mustHaveMissing.map((skill) => (
                             <span key={skill} className="badge bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 text-xs line-through">
                               {skill}
@@ -412,6 +417,11 @@ export default function ProfilePage() {
                           {match.matchDetails.goodToHaveMatched.map((skill) => (
                             <span key={skill} className="badge bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs">
                               {skill}
+                            </span>
+                          ))}
+                          {match.matchDetails.goodToHaveRelated?.map((skill) => (
+                            <span key={`gtr-${skill}`} className="badge bg-blue-50 text-blue-500 dark:bg-blue-900/15 dark:text-blue-400 text-xs">
+                              ~{skill}
                             </span>
                           ))}
                         </div>

@@ -56,31 +56,41 @@ export function getRelatedSkills(skill: string): string[] {
   return categories[category]?.filter((s) => s !== normalizedSkill) || [];
 }
 
+export interface SkillMatchResult {
+  exactMatched: string[];
+  relatedMatched: string[];
+  missing: string[];
+}
+
 export function calculateSkillMatch(
   candidateSkills: string[],
-  requiredSkills: string[]
-): { matched: string[]; missing: string[] } {
+  requiredSkills: string[],
+  exactOnly: boolean = false
+): SkillMatchResult {
   const normalizedCandidate = new Set(normalizeSkills(candidateSkills));
   const normalizedRequired = normalizeSkills(requiredSkills);
 
-  const matched: string[] = [];
+  const exactMatched: string[] = [];
+  const relatedMatched: string[] = [];
   const missing: string[] = [];
 
   for (const skill of normalizedRequired) {
     if (normalizedCandidate.has(skill)) {
-      matched.push(skill);
-    } else {
+      exactMatched.push(skill);
+    } else if (!exactOnly) {
       // Check for related skills in the same category
       const related = getRelatedSkills(skill);
       const hasRelated = related.some((r) => normalizedCandidate.has(r));
 
       if (hasRelated) {
-        matched.push(skill); // Partial match through related skill
+        relatedMatched.push(skill);
       } else {
         missing.push(skill);
       }
+    } else {
+      missing.push(skill);
     }
   }
 
-  return { matched, missing };
+  return { exactMatched, relatedMatched, missing };
 }
