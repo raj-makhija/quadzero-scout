@@ -255,9 +255,9 @@ export default function RequirementDetailPage() {
                   Submitted By ({requirement.contributingRecruiters.length} recruiters)
                 </h3>
                 <div className="flex flex-wrap gap-2">
-                  {requirement.contributingRecruiters.map((id) => (
-                    <span key={id} className="badge bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 text-xs">
-                      {id}
+                  {requirement.contributingRecruiters.map((recruiter) => (
+                    <span key={recruiter.id} className="badge bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 text-xs">
+                      {recruiter.name}
                     </span>
                   ))}
                 </div>

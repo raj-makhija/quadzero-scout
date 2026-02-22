@@ -586,6 +586,12 @@ export interface RequestHistoryEntry {
   notes?: string;
 }
 
+export interface ContributingRecruiter {
+  id: string;
+  name: string;
+  email?: string;
+}
+
 export interface RequirementDetail extends RequirementSummary {
   recruiterId: string;
   jdText: string;
@@ -594,7 +600,7 @@ export interface RequirementDetail extends RequirementSummary {
   lastUpdated: string;
   requestHistory?: RequestHistoryEntry[];
   lastRequestedAt?: string;
-  contributingRecruiters?: string[];
+  contributingRecruiters?: ContributingRecruiter[];
 }
 
 export interface ConsolidatePayload {
