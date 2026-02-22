@@ -51,6 +51,8 @@ async function handleRequest(
       mustHaveSkills: item.parsed_criteria?.mustHaveSkills || [],
       status: item.status,
       createdAt: item.created_at,
+      requestCount: item.request_count || 1,
+      demandScore: item.demand_score || 0,
     }));
 
     return success({

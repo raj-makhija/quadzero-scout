@@ -173,6 +173,16 @@ export default function RequirementsListPage() {
                         Duplicate
                       </span>
                     )}
+                    {req.requestCount != null && req.requestCount > 1 && (
+                      <span className="badge bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 text-xs">
+                        Received {req.requestCount}x
+                      </span>
+                    )}
+                    {req.demandScore != null && req.demandScore >= 50 && (
+                      <span className="badge bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300 text-xs">
+                        High Demand
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-gray-400 mb-2">

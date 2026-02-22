@@ -9,7 +9,7 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { config } from './config.js';
-import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, PricingConfig, PricingConfigItem, ShortlistItem } from '../types/index.js';
+import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, PricingConfig, PricingConfigItem, ShortlistItem } from '../types/index.js';
 
 const client = new DynamoDBClient({ region: config.region });
 const docClient = DynamoDBDocumentClient.from(client, {
@@ -690,6 +690,39 @@ export async function updateRequirementStatus(
       UpdateExpression: updateExpression,
       ExpressionAttributeNames: expressionAttributeNames,
       ExpressionAttributeValues: expressionAttributeValues,
+    })
+  );
+}
+
+export async function consolidateRequirement(
+  requirementId: string,
+  entry: RequirementRequestEntry,
+  contributingRecruiters: string[],
+  demandScore: number
+): Promise<void> {
+  const now = new Date().toISOString();
+
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.requirementsTable,
+      Key: { requirement_id: requirementId },
+      UpdateExpression: `
+        SET request_history = list_append(if_not_exists(request_history, :emptyList), :newEntry),
+            request_count = if_not_exists(request_count, :one) + :one,
+            last_requested_at = :now,
+            contributing_recruiters = :recruiters,
+            demand_score = :demandScore,
+            last_updated = :now
+      `,
+      ExpressionAttributeValues: {
+        ':newEntry': [entry],
+        ':emptyList': [],
+        ':one': 1,
+        ':now': now,
+        ':recruiters': contributingRecruiters,
+        ':demandScore': demandScore,
+      },
+      ConditionExpression: 'attribute_exists(requirement_id)',
     })
   );
 }

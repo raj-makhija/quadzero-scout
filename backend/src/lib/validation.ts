@@ -130,6 +130,14 @@ export const CheckDuplicateRequestSchema = z.object({
   jobTitle: z.string().max(200).optional(),
 });
 
+// Consolidate Requirement Request Validation
+export const ConsolidateRequirementRequestSchema = z.object({
+  jdText: z.string().min(50).max(10000),
+  parsedCriteria: LLMJDOutputSchema,
+  similarityScore: z.number().min(0).max(100),
+  notes: z.string().max(500).optional(),
+});
+
 // Validate function with proper error handling
 export function validate<T>(schema: z.ZodSchema<T>, data: unknown): { success: true; data: T } | { success: false; errors: z.ZodError } {
   const result = schema.safeParse(data);

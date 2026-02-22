@@ -803,7 +803,9 @@ Authorization: Bearer <jwe_token>
         "jobTitle": "Senior React Developer",
         "mustHaveSkills": ["react", "typescript"],
         "status": "active",
-        "createdAt": "2024-01-15T10:30:00Z"
+        "createdAt": "2024-01-15T10:30:00Z",
+        "requestCount": 3,
+        "demandScore": 70
       }
     ],
     "pagination": {
@@ -870,7 +872,9 @@ Authorization: Bearer <jwe_token>
         "mustHaveSkills": ["react", "typescript", "nodejs"],
         "similarityScore": 85,
         "reason": "High skill overlap with similar experience requirements",
-        "createdAt": "2024-01-10T08:00:00Z"
+        "createdAt": "2024-01-10T08:00:00Z",
+        "requestCount": 2,
+        "lastRequestedAt": "2024-01-12T14:00:00Z"
       }
     ]
   }
@@ -880,6 +884,72 @@ Authorization: Bearer <jwe_token>
 **Notes:**
 - Uses LLM to compare new requirement against existing active requirements from the same client
 - Only returns requirements with similarity score above 60%
+- Response includes `requestCount` and `lastRequestedAt` to show how many times the existing requirement has been received
+
+---
+
+### PUT /recruiter/requirements/{requirementId}/consolidate
+
+Consolidate a duplicate requirement into an existing one. Instead of creating a separate duplicate record, this updates the original requirement with request history, increments the request count, and recomputes the demand score.
+
+**Auth:** Requires `recruiter` role.
+
+**Path Parameters:**
+- `requirementId`: The ID of the existing requirement to consolidate into
+
+**Request Headers:**
+```
+Content-Type: application/json
+Authorization: Bearer <jwe_token>
+```
+
+**Request Body:**
+```json
+{
+  "jdText": "We are looking for a Senior React Developer with 5+ years...",
+  "parsedCriteria": {
+    "mustHaveSkills": ["react", "typescript"],
+    "goodToHaveSkills": ["nodejs", "aws"],
+    "minExperience": 5,
+    "maxExperience": null,
+    "seniority": ["senior"],
+    "availability": [],
+    "location": null,
+    "remote": false,
+    "industries": [],
+    "roles": ["React Developer"],
+    "coreSkill": "React"
+  },
+  "similarityScore": 85,
+  "notes": "Same role re-requested by different recruiter"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "requirementId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "requestCount": 3,
+    "lastRequestedAt": "2024-02-10T14:00:00Z"
+  }
+}
+```
+
+**Validation Rules:**
+- `jdText`: Required, string, min 50, max 10000
+- `parsedCriteria`: Required, LLM JD output schema
+- `similarityScore`: Required, number, 0-100
+- `notes`: Optional, string, max 500
+- Target requirement must exist and have `status: 'active'`
+
+**Side Effects:**
+- Appends a new entry to the requirement's `request_history` array
+- Increments `request_count`
+- Updates `last_requested_at`
+- Adds the current recruiter to `contributing_recruiters` (if not already present)
+- Recomputes `demand_score`
 
 ---
 

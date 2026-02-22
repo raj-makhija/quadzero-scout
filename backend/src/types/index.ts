@@ -329,6 +329,15 @@ export interface PromptItem {
   description?: string;
 }
 
+// Requirement request history entry (tracks each repeat/duplicate submission)
+export interface RequirementRequestEntry {
+  received_at: string;
+  recruiter_id: string;
+  similarity_score: number;
+  jd_text?: string;
+  notes?: string;
+}
+
 // Requirement Item (DynamoDB Requirements table, snake_case)
 export interface RequirementItem {
   requirement_id: string;
@@ -347,6 +356,11 @@ export interface RequirementItem {
   duplicate_of?: string;
   created_at: string;
   last_updated: string;
+  request_history?: RequirementRequestEntry[];
+  request_count?: number;
+  last_requested_at?: string;
+  contributing_recruiters?: string[];
+  demand_score?: number;
 }
 
 // Requirement API types
@@ -389,6 +403,8 @@ export interface DuplicateMatch {
   similarityScore: number;
   reason: string;
   createdAt: string;
+  requestCount?: number;
+  lastRequestedAt?: string;
 }
 
 export interface CheckDuplicateResponse {
@@ -407,6 +423,21 @@ export interface RequirementSummary {
   mustHaveSkills: string[];
   status: string;
   createdAt: string;
+  requestCount?: number;
+  demandScore?: number;
+}
+
+export interface ConsolidateRequirementRequest {
+  jdText: string;
+  parsedCriteria: LLMJDOutput;
+  similarityScore: number;
+  notes?: string;
+}
+
+export interface ConsolidateRequirementResponse {
+  requirementId: string;
+  requestCount: number;
+  lastRequestedAt: string;
 }
 
 export interface ListRequirementsResponse {

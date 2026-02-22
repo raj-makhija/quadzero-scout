@@ -52,6 +52,10 @@ async function handleRequest(
       duplicate_of: data.duplicateOf,
       created_at: now,
       last_updated: now,
+      request_count: 1,
+      last_requested_at: now,
+      contributing_recruiters: [recruiterId],
+      demand_score: 0,
     };
 
     await saveRequirement(item);

@@ -283,6 +283,13 @@ functions:
           path: /recruiter/requirements/check-duplicate
           method: POST
 
+  recruiterConsolidateRequirement:
+    handler: src/handlers/recruiter/consolidateRequirement.handler
+    events:
+      - httpApi:
+          path: /recruiter/requirements/{requirementId}/consolidate
+          method: PUT
+
   # Admin Endpoints
   adminListPendingRecruiters:
     handler: src/handlers/admin/listPendingRecruiters.handler

@@ -33,6 +33,11 @@ async function handleRequest(
       duplicateOf: item.duplicate_of,
       createdAt: item.created_at,
       lastUpdated: item.last_updated,
+      requestHistory: item.request_history || [],
+      requestCount: item.request_count || 1,
+      lastRequestedAt: item.last_requested_at || item.created_at,
+      contributingRecruiters: item.contributing_recruiters || [item.recruiter_id],
+      demandScore: item.demand_score || 0,
     });
   } catch (err) {
     console.error('Error fetching requirement:', err);

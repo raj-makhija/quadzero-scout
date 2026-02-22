@@ -130,13 +130,20 @@ export default function RequirementDetailPage() {
                       <span>{formatDate(requirement.createdAt)}</span>
                     </div>
                   </div>
-                  <span className={`self-start px-3 py-1 rounded-full text-sm font-medium ${
-                    requirement.status === 'active'
-                      ? 'bg-green-500/20 text-green-100'
-                      : 'bg-yellow-500/20 text-yellow-100'
-                  }`}>
-                    {requirement.status === 'active' ? 'Active' : 'Duplicate'}
-                  </span>
+                  <div className="flex flex-col items-end gap-2 self-start">
+                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                      requirement.status === 'active'
+                        ? 'bg-green-500/20 text-green-100'
+                        : 'bg-yellow-500/20 text-yellow-100'
+                    }`}>
+                      {requirement.status === 'active' ? 'Active' : 'Duplicate'}
+                    </span>
+                    {requirement.requestCount != null && requirement.requestCount > 1 && (
+                      <span className="px-3 py-1 rounded-full text-xs font-medium bg-blue-500/20 text-blue-100">
+                        Received {requirement.requestCount}x
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -240,6 +247,55 @@ export default function RequirementDetailPage() {
                 </div>
               </div>
             </div>
+
+            {/* Contributing Recruiters */}
+            {requirement.contributingRecruiters && requirement.contributingRecruiters.length > 1 && (
+              <div className="card p-6 mb-6">
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">
+                  Submitted By ({requirement.contributingRecruiters.length} recruiters)
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  {requirement.contributingRecruiters.map((id) => (
+                    <span key={id} className="badge bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 text-xs">
+                      {id}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Request History */}
+            {requirement.requestHistory && requirement.requestHistory.length > 0 && (
+              <div className="card p-6 mb-6">
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Request History</h3>
+                <div className="space-y-4">
+                  <div className="flex items-start gap-3 border-l-2 border-green-400 pl-4">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Original Request</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{formatDate(requirement.createdAt)}</p>
+                    </div>
+                  </div>
+                  {requirement.requestHistory.map((entry, i) => (
+                    <div key={i} className="flex items-start gap-3 border-l-2 border-blue-400 pl-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                            Repeat Request #{i + 1}
+                          </p>
+                          <span className="badge bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300 text-xs">
+                            {entry.similarityScore}% match
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{formatDate(entry.receivedAt)}</p>
+                        {entry.notes && (
+                          <p className="text-xs text-gray-400 italic mt-1">{entry.notes}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Shortlisted Candidates Pipeline */}
             <div>
