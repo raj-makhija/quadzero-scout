@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Upload, Search, FileText, ArrowRight, PlusCircle } from 'lucide-react';
+import { Upload, Search, FileText, ArrowRight } from 'lucide-react';
 
 interface RecruiterHomeProps {
   userName?: string | null;
@@ -19,7 +19,7 @@ export function RecruiterHome({ userName }: RecruiterHomeProps) {
         What would you like to do today?
       </p>
 
-      <div className="mt-10 max-w-3xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-6">
+      <div className="mt-10 max-w-2xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-6">
         {/* Upload Resume Card */}
         <Link
           href="/candidate/upload"
@@ -33,22 +33,6 @@ export function RecruiterHome({ userName }: RecruiterHomeProps) {
           </h3>
           <p className="text-sm text-gray-500 dark:text-gray-400">
             Add a candidate profile with AI-powered extraction
-          </p>
-        </Link>
-
-        {/* Post Requirement Card */}
-        <Link
-          href="/recruiter/requirements/new"
-          className="card p-8 text-left hover:shadow-md transition-shadow group"
-        >
-          <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-lg flex items-center justify-center mb-4">
-            <PlusCircle className="w-6 h-6 text-primary-600" />
-          </div>
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
-            Post Requirement
-          </h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Post a JD with client defaults, contract terms, and pricing
           </p>
         </Link>
 
