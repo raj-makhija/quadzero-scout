@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
-import { Menu, X, LogOut, User } from 'lucide-react';
+import { Menu, X, LogOut, User, FileText, Building2, Search } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 import { MobileNav } from './MobileNav';
 import { cn } from '@/lib/utils';
@@ -39,6 +39,32 @@ export function Header({ children, className, showNav = true }: HeaderProps) {
             {/* Desktop Navigation */}
             {showNav && (
               <nav className="hidden md:flex items-center space-x-4">
+                {session && (
+                  <div className="flex items-center space-x-1 mr-2 border-r border-gray-200 dark:border-gray-700 pr-4">
+                    <Link
+                      href="/recruiter/requirements"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"
+                    >
+                      <FileText className="h-4 w-4" />
+                      Requirements
+                    </Link>
+                    <Link
+                      href="/recruiter/clients"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"
+                    >
+                      <Building2 className="h-4 w-4" />
+                      Clients
+                    </Link>
+                    <Link
+                      href="/recruiter/search"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"
+                    >
+                      <Search className="h-4 w-4" />
+                      Search
+                    </Link>
+                  </div>
+                )}
+
                 <ThemeToggle />
 
                 {status === 'loading' ? (

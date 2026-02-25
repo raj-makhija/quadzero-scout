@@ -89,7 +89,7 @@ export default function RequirementsListPage() {
             <p className="text-gray-600 dark:text-gray-400">All open JD requirements across the team</p>
           </div>
           <button
-            onClick={() => router.push('/recruiter/search')}
+            onClick={() => router.push('/recruiter/requirements/new')}
             className="btn-primary self-start sm:self-auto"
           >
             Post New Requirement
@@ -231,7 +231,7 @@ export default function RequirementsListPage() {
               </p>
               {!clientNameFilter && !dateFrom && !dateTo && (
                 <button
-                  onClick={() => router.push('/recruiter/search')}
+                  onClick={() => router.push('/recruiter/requirements/new')}
                   className="btn-primary mt-4"
                 >
                   Post New Requirement
