@@ -322,6 +322,7 @@ Authorization: Bearer <jwe_token>
     "totalExperience": 6,
     "seniority": "senior",
     "availability": "immediate",
+    "engagementModel": "either",
     "industries": ["fintech", "e-commerce"],
     "roles": ["Full Stack Developer", "Frontend Lead"],
     "currentCtc": 18.5,
@@ -350,6 +351,7 @@ Authorization: Bearer <jwe_token>
 - `profile.totalExperience`: Required, number, min 0, max 50
 - `profile.seniority`: Required, enum: `intern`, `junior`, `mid`, `senior`, `lead`, `principal`, `executive`
 - `profile.availability`: Required, enum: `immediate`, `1_week`, `2_weeks`, `1_month`, `2_months`, `3_months`, `negotiable`
+- `profile.engagementModel`: Optional, enum: `contract`, `full_time`, `either` (default: `either`)
 - `profile.currentCtc`: Optional, number, min 0, max 500 (in LPA)
 - `profile.expectedCtc`: Optional, number, min 0, max 500 (in LPA)
 - `resumeS3Key`: Required, string, min 1, max 500
@@ -390,6 +392,7 @@ Authorization: Bearer <jwe_token>
     "totalExperience": 6,
     "seniority": "senior",
     "availability": "immediate",
+    "engagementModel": "either",
     "industries": ["fintech", "e-commerce"],
     "roles": ["Full Stack Developer", "Frontend Lead"],
     "currentCtc": 18.5,
@@ -577,6 +580,7 @@ Authorization: Bearer <jwe_token> (optional)
         "totalExperience": 6,
         "seniority": "senior",
         "availability": "immediate",
+        "engagementModel": "either",
         "currentCtc": 18.5,
         "expectedCtc": 25.0,
         "matchScore": 92,
@@ -614,6 +618,7 @@ Authorization: Bearer <jwe_token> (optional)
         "totalExperience": 6,
         "seniority": "senior",
         "availability": "immediate",
+        "engagementModel": "either",
         "matchScore": 92,
         "matchDetails": {
           "mustHaveMatched": [],

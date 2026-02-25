@@ -90,6 +90,7 @@ async function handleRequest(
           totalExperience: candidate.total_experience,
           seniority: candidate.seniority,
           availability: candidate.availability,
+          engagementModel: candidate.engagement_model || 'either',
           currentCtc: candidate.current_ctc,
           expectedCtc: candidate.expected_ctc,
           matchScore: score,
@@ -149,6 +150,7 @@ async function handleRequest(
           totalExperience: candidate.totalExperience,
           seniority: candidate.seniority,
           availability: candidate.availability,
+          engagementModel: candidate.engagementModel,
           currentCtc: undefined, // Hide CTC
           expectedCtc: undefined, // Hide CTC
           matchScore: candidate.matchScore,

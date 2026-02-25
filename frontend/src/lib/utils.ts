@@ -99,6 +99,21 @@ export const AVAILABILITY_OPTIONS = [
   { value: 'negotiable', label: 'Negotiable' },
 ];
 
+export const CANDIDATE_ENGAGEMENT_OPTIONS = [
+  { value: 'contract', label: 'Contract' },
+  { value: 'full_time', label: 'Full-time' },
+  { value: 'either', label: 'Either' },
+];
+
+export function formatCandidateEngagement(value: string): string {
+  const map: Record<string, string> = {
+    contract: 'Contract',
+    full_time: 'Full-time',
+    either: 'Either',
+  };
+  return map[value] || capitalizeFirst(value);
+}
+
 export function formatEngagementModel(value: string): string {
   const map: Record<string, string> = {
     full_time_regular: 'Full-time (Regular)',

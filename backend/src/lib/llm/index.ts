@@ -52,6 +52,7 @@ You MUST respond with valid JSON matching this exact schema:
   "totalExperience": number - total years of professional experience,
   "seniority": "one of: intern, junior, mid, senior, lead, principal, executive",
   "availability": "one of: immediate, 1_week, 2_weeks, 1_month, 2_months, 3_months, negotiable - or null if unknown",
+  "engagementModel": "one of: contract, full_time, either - candidate's preferred engagement type. Look for phrases like 'looking for contract', 'prefer full-time', 'open to contract/freelance'. Default to 'either' if not found",
   "industries": ["array of industries worked in"],
   "roles": ["array of job titles held"],
   "education": [{"degree": "string", "institution": "string", "year": number_or_null}],

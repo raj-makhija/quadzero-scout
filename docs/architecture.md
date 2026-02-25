@@ -331,6 +331,7 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 | Runtime | Node.js 20 (arm64) | Lambda execution |
 | Language | TypeScript | Type safety |
 | Validation | Zod | Schema validation |
+| Enums | TypeScript enums | Domain value constraints (see below) |
 | AWS SDK | v3 | AWS service integration |
 | Auth | jose (JWE) | Token decryption & verification |
 | Password Hashing | bcryptjs | Credential authentication |
@@ -367,6 +368,19 @@ The active provider is configured via the `LLM_PROVIDER` environment variable.
 | Profile Storage | DynamoDB | Candidate data, users, prompts, requirements, shortlists |
 | File Storage | S3 | Resume documents (original + formatted) |
 | Text Extraction | pdf-parse / mammoth | In-Lambda PDF and DOCX parsing |
+
+## Engagement Model Enums
+
+The platform has two distinct engagement model enums serving different purposes:
+
+| Enum | Context | Values | Description |
+|------|---------|--------|-------------|
+| `EngagementModelEnum` | Requirements (job postings) | `full_time_regular`, `full_time_contract`, `part_time_contract` | Describes the contract type a client is offering for a specific role |
+| `CandidateEngagementModelEnum` | Candidate profiles | `contract`, `full_time`, `either` | Describes the candidate's preferred engagement model (default: `either`) |
+
+These are intentionally separate: a requirement specifies the exact contract structure, while a candidate expresses a general preference. The candidate-side values are coarser-grained because candidates typically care about whether a role is contract-based or permanent, not the specific contract variant.
+
+---
 
 ## Security Architecture
 

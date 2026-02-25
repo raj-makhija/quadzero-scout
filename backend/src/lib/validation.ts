@@ -29,6 +29,7 @@ export const SaveProfileRequestSchema = z.object({
     totalExperience: z.number().min(0).max(50),
     seniority: z.enum(['intern', 'junior', 'mid', 'senior', 'lead', 'principal', 'executive']),
     availability: z.enum(['immediate', '1_week', '2_weeks', '1_month', '2_months', '3_months', 'negotiable']),
+    engagementModel: z.enum(['contract', 'full_time', 'either']).optional().default('either'),
     industries: z.array(z.string()).max(10).optional(),
     roles: z.array(z.string()).max(10).optional(),
     education: z.array(z.object({

@@ -37,7 +37,8 @@ Stores candidate profile data extracted from resumes and edited by candidates.
 | secondary_skills | List<String> | No | Additional skills |
 | total_experience | Number | Yes | Total years of experience |
 | seniority | String | Yes | Career level |
-| availability | String | Yes | Notice period |
+| availability | String | Yes | Notice period (displayed as "Notice Period" in the UI) |
+| engagement_model | String | No | Candidate's preferred engagement model. Values: `contract`, `full_time`, `either`. Default: `either` |
 | industries | List<String> | No | Industry experience |
 | roles | List<String> | No | Job titles held |
 | education | List<Map> | No | Education history |
@@ -72,6 +73,7 @@ Stores candidate profile data extracted from resumes and edited by candidates.
   "total_experience": 6,
   "seniority": "senior",
   "availability": "immediate",
+  "engagement_model": "either",
   "industries": ["fintech", "e-commerce"],
   "roles": ["Full Stack Developer", "Frontend Lead"],
   "education": [
@@ -699,10 +701,17 @@ type AuthProvider = 'credentials' | 'google';
 type LLMProvider = 'claude' | 'openai' | 'openrouter' | 'gemini';
 ```
 
-### Engagement Models
+### Engagement Models (Requirements)
 ```typescript
-type EngagementModel = 'full_time_regular' | 'full_time_contract' | 'part_time_contract';
+type EngagementModelEnum = 'full_time_regular' | 'full_time_contract' | 'part_time_contract';
 ```
+
+### Candidate Engagement Models
+```typescript
+type CandidateEngagementModelEnum = 'contract' | 'full_time' | 'either';
+```
+
+*Note: `CandidateEngagementModelEnum` represents a candidate's preferred engagement model and is distinct from the requirement-side `EngagementModelEnum` which describes the contract type for a job requirement.*
 
 ### Payroll
 ```typescript
@@ -748,6 +757,7 @@ export const CandidateProfileSchema = z.object({
   totalExperience: z.number().min(0).max(50),
   seniority: SeniorityEnum,
   availability: AvailabilityEnum,
+  engagementModel: z.enum(['contract', 'full_time', 'either']).optional().default('either'),
   industries: z.array(z.string()).max(10).optional().default([]),
   roles: z.array(z.string()).max(10).optional().default([]),
   education: z.array(EducationSchema).optional().default([]),

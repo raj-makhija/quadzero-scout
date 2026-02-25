@@ -23,6 +23,9 @@ export const AvailabilityEnum = z.enum([
 ]);
 export type Availability = z.infer<typeof AvailabilityEnum>;
 
+export const CandidateEngagementModelEnum = z.enum(['contract', 'full_time', 'either']);
+export type CandidateEngagementModel = z.infer<typeof CandidateEngagementModelEnum>;
+
 export const UserRoleEnum = z.enum(['candidate', 'recruiter', 'admin']);
 export type UserRole = z.infer<typeof UserRoleEnum>;
 
@@ -63,6 +66,7 @@ export const CandidateProfileSchema = z.object({
   totalExperience: z.number().min(0).max(50),
   seniority: SeniorityEnum,
   availability: AvailabilityEnum,
+  engagementModel: CandidateEngagementModelEnum.optional().default('either'),
   industries: z.array(z.string()).max(10).optional().default([]),
   roles: z.array(z.string()).max(10).optional().default([]),
   education: z.array(EducationSchema).optional().default([]),
@@ -87,6 +91,7 @@ export interface CandidateItem {
   total_experience: number;
   seniority: string;
   availability: string;
+  engagement_model: string;
   industries: string[];
   roles: string[];
   education?: Education[];
@@ -129,6 +134,7 @@ export const LLMResumeOutputSchema = z.object({
   totalExperience: z.number().nullable().optional().transform(v => v ?? 0),
   seniority: z.string().nullable().optional().transform(v => v ?? 'mid'),
   availability: z.string().nullable().optional().transform(v => v ?? 'negotiable'),
+  engagementModel: z.string().nullable().optional().transform(v => v ?? 'either'),
   industries: z.array(z.string()).nullable().optional().transform(v => v ?? []),
   roles: z.array(z.string()).nullable().optional().transform(v => v ?? []),
   education: z.array(EducationSchema).nullable().optional().transform(v => v ?? []),
@@ -225,6 +231,7 @@ export interface CandidateSearchResult {
   totalExperience: number;
   seniority: string;
   availability: string;
+  engagementModel: string;
   currentCtc?: number;
   expectedCtc?: number;
   matchScore: number;

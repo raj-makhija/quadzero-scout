@@ -398,6 +398,7 @@ export interface ExtractedProfile {
   totalExperience: number;
   seniority: string;
   availability?: string | null;
+  engagementModel?: string | null;
   industries?: string[];
   roles?: string[];
   education?: Array<{
@@ -467,6 +468,7 @@ export interface CandidateSearchResult {
   totalExperience: number;
   seniority: string;
   availability: string;
+  engagementModel: string;
   currentCtc?: number;
   expectedCtc?: number;
   matchScore: number;

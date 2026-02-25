@@ -7,7 +7,7 @@ import { Header } from '@/components/Header';
 import { PricingPanel } from '@/components/PricingPanel';
 import { ComboboxInput } from '@/components/ui/combobox-input';
 import { api, ParsedCriteria, SearchCriteria, CandidateSearchResult, EngagementModel, Payroll, DuplicateMatch, ConsolidateResponse } from '@/lib/api';
-import { formatSeniority, formatAvailability, getMatchScoreColor, getMatchScoreBgColor, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS, ENGAGEMENT_MODEL_OPTIONS, PAYROLL_OPTIONS, formatEngagementModel } from '@/lib/utils';
+import { formatSeniority, formatAvailability, formatCandidateEngagement, getMatchScoreColor, getMatchScoreBgColor, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS, ENGAGEMENT_MODEL_OPTIONS, PAYROLL_OPTIONS, formatEngagementModel } from '@/lib/utils';
 
 type ViewMode = 'input' | 'requirement_details' | 'criteria' | 'results';
 
@@ -747,9 +747,9 @@ export default function RecruiterSearchPage() {
                   />
                 </div>
 
-                {/* Availability */}
+                {/* Notice Period */}
                 <div>
-                  <label className="label">Availability</label>
+                  <label className="label">Notice Period</label>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {AVAILABILITY_OPTIONS.slice(0, 4).map((opt) => (
                       <button
@@ -1015,8 +1015,12 @@ export default function RecruiterSearchPage() {
                     <p className="font-medium">{selectedCandidate.location || 'Not specified'}</p>
                   </div>
                   <div>
-                    <label className="text-sm text-gray-500 dark:text-gray-400">Availability</label>
+                    <label className="text-sm text-gray-500 dark:text-gray-400">Notice Period</label>
                     <p className="font-medium">{formatAvailability(selectedCandidate.availability)}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-500 dark:text-gray-400">Engagement Preference</label>
+                    <p className="font-medium">{formatCandidateEngagement(selectedCandidate.engagementModel || 'either')}</p>
                   </div>
                   <div>
                     <label className="text-sm text-gray-500 dark:text-gray-400">Current CTC</label>

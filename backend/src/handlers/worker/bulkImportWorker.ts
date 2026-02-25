@@ -129,6 +129,7 @@ async function processOneResume(
     experience_bucket: getExperienceBucket(profile.totalExperience || 0),
     seniority: profile.seniority || 'mid',
     availability: profile.availability || 'negotiable',
+    engagement_model: profile.engagementModel || 'either',
     industries: profile.industries || [],
     roles: profile.roles || [],
     education: profile.education || [],
