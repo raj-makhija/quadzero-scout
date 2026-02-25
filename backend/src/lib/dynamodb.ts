@@ -9,7 +9,7 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { config } from './config.js';
-import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, PricingConfig, PricingConfigItem, ShortlistItem } from '../types/index.js';
+import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, PricingConfig, PricingConfigItem, ShortlistItem, ClientItem } from '../types/index.js';
 
 const client = new DynamoDBClient({ region: config.region });
 const docClient = DynamoDBDocumentClient.from(client, {
@@ -781,6 +781,14 @@ const DEFAULT_PRICING_CONFIG: PricingConfig = {
   maxCostMultiplierThreshold: 1.75,
   maxContributionCapPerMonth: 70000,
   budgetCeilingBufferPct: 0.02,
+  contractDurationDiscount: {
+    thresholds: [
+      { minMonths: 1, maxMonths: 5, discountPct: 0 },
+      { minMonths: 6, maxMonths: 11, discountPct: 0.05 },
+      { minMonths: 12, maxMonths: 23, discountPct: 0.10 },
+      { minMonths: 24, maxMonths: 60, discountPct: 0.15 },
+    ],
+  },
 };
 
 let pricingConfigCache: { config: PricingConfig; fetchedAt: number } | null = null;
@@ -999,6 +1007,97 @@ export async function deleteShortlist(requirementId: string, candidateId: string
     new DeleteCommand({
       TableName: config.dynamodb.shortlistsTable,
       Key: { requirement_id: requirementId, candidate_id: candidateId },
+    })
+  );
+}
+
+// ─── Client Master Operations ───────────────────────────────────────────────
+
+export async function saveClient(item: ClientItem): Promise<void> {
+  await docClient.send(
+    new PutCommand({
+      TableName: config.dynamodb.clientsTable,
+      Item: item,
+    })
+  );
+}
+
+export async function getClientByName(clientNameLower: string): Promise<ClientItem | null> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: config.dynamodb.clientsTable,
+      IndexName: 'ClientNameLowerIndex',
+      KeyConditionExpression: 'client_name_lower = :name',
+      ExpressionAttributeValues: { ':name': clientNameLower },
+      Limit: 1,
+    })
+  );
+  return (result.Items?.[0] as ClientItem) || null;
+}
+
+export async function listClients(): Promise<ClientItem[]> {
+  const allItems: ClientItem[] = [];
+  let currentKey: Record<string, unknown> | undefined;
+
+  do {
+    const params: {
+      TableName: string;
+      Limit: number;
+      ExclusiveStartKey?: Record<string, unknown>;
+    } = {
+      TableName: config.dynamodb.clientsTable,
+      Limit: 100,
+    };
+
+    if (currentKey) {
+      params.ExclusiveStartKey = currentKey;
+    }
+
+    const result = await docClient.send(new ScanCommand(params));
+    allItems.push(...((result.Items || []) as ClientItem[]));
+    currentKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (currentKey);
+
+  allItems.sort((a, b) => a.client_name.localeCompare(b.client_name));
+  return allItems;
+}
+
+export async function updateClient(
+  clientId: string,
+  updates: {
+    defaultPaymentTermsDays?: number;
+    defaultEngagementModel?: string;
+    defaultPayroll?: string;
+    notes?: string;
+  }
+): Promise<void> {
+  const expressionParts: string[] = ['last_updated = :now'];
+  const values: Record<string, unknown> = { ':now': new Date().toISOString() };
+
+  if (updates.defaultPaymentTermsDays !== undefined) {
+    expressionParts.push('default_payment_terms_days = :dptd');
+    values[':dptd'] = updates.defaultPaymentTermsDays;
+  }
+  if (updates.defaultEngagementModel !== undefined) {
+    expressionParts.push('default_engagement_model = :dem');
+    values[':dem'] = updates.defaultEngagementModel;
+  }
+  if (updates.defaultPayroll !== undefined) {
+    expressionParts.push('default_payroll = :dp');
+    values[':dp'] = updates.defaultPayroll;
+  }
+  if (updates.notes !== undefined) {
+    expressionParts.push('notes = :notes');
+    values[':notes'] = updates.notes;
+  }
+
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.clientsTable,
+      Key: { client_id: clientId },
+      UpdateExpression: `SET ${expressionParts.join(', ')}`,
+      ExpressionAttributeValues: values,
+      ConditionExpression: 'attribute_exists(client_id)',
     })
   );
 }

@@ -167,6 +167,8 @@ export const LLMJDOutputSchema = z.object({
   budgetMinLpa: z.number().nullable().optional().default(null),
   budgetMaxLpa: z.number().nullable().optional().default(null),
   coreSkill: z.string().nullable().optional().default(null),
+  contractDurationMonths: z.number().nullable().optional().default(null),
+  paymentTermsDays: z.number().nullable().optional().default(null),
 });
 export type LLMJDOutput = z.infer<typeof LLMJDOutputSchema>;
 
@@ -358,6 +360,8 @@ export interface RequirementItem {
   payroll: string;
   budget_min_lpa?: number;
   budget_max_lpa?: number;
+  contract_duration_months?: number;
+  payment_terms_days?: number;
   job_title?: string;
   jd_text: string;
   parsed_criteria: LLMJDOutput;
@@ -380,6 +384,8 @@ export interface SaveRequirementRequest {
   payroll: string;
   budgetMinLpa?: number;
   budgetMaxLpa?: number;
+  contractDurationMonths?: number;
+  paymentTermsDays?: number;
   jobTitle?: string;
   jdText: string;
   parsedCriteria: LLMJDOutput;
@@ -428,6 +434,8 @@ export interface RequirementSummary {
   payroll: string;
   budgetMinLpa?: number;
   budgetMaxLpa?: number;
+  contractDurationMonths?: number;
+  paymentTermsDays?: number;
   jobTitle?: string;
   mustHaveSkills: string[];
   status: string;
@@ -484,8 +492,28 @@ export const PricingConfigSchema = z.object({
   maxCostMultiplierThreshold: z.number().min(1),
   maxContributionCapPerMonth: z.number().min(0),
   budgetCeilingBufferPct: z.number().min(0).max(1),
+  contractDurationDiscount: z.object({
+    thresholds: z.array(z.object({
+      minMonths: z.number().min(1),
+      maxMonths: z.number().min(1),
+      discountPct: z.number().min(0).max(1),
+    })),
+  }).optional().default({
+    thresholds: [
+      { minMonths: 1, maxMonths: 5, discountPct: 0 },
+      { minMonths: 6, maxMonths: 11, discountPct: 0.05 },
+      { minMonths: 12, maxMonths: 23, discountPct: 0.10 },
+      { minMonths: 24, maxMonths: 60, discountPct: 0.15 },
+    ],
+  }),
 });
 export type PricingConfig = z.infer<typeof PricingConfigSchema>;
+
+export interface ContractDurationThreshold {
+  minMonths: number;
+  maxMonths: number;
+  discountPct: number;
+}
 
 export interface PricingConfigItem {
   config_key: string;
@@ -504,6 +532,7 @@ export interface PricingInput {
   paymentTermsDays: number;
   clientBudgetMinHourly?: number;
   clientBudgetMaxHourly?: number;
+  engagementModel?: string;
 }
 
 export interface BudgetOptimizationResult {
@@ -526,6 +555,8 @@ export interface PricingOutput {
   experienceBand: PricingExperienceBand;
   monthlyCtcInr: number;
   platformFee: number;
+  originalPlatformFee: number;
+  contractDurationDiscountPct: number;
   variableMarkupPct: number;
   variableMarkupAmount: number;
   workingCapitalBlocked: number;
@@ -626,4 +657,57 @@ export interface ShortlistedCandidate {
 
 export interface ShortlistedCandidatesResponse {
   candidates: ShortlistedCandidate[];
+}
+
+// ─── Client Master Types ────────────────────────────────────────────────────
+
+export interface ClientItem {
+  client_id: string;
+  client_name: string;
+  client_name_lower: string;
+  default_payment_terms_days?: number;
+  default_engagement_model?: string;
+  default_payroll?: string;
+  notes?: string;
+  created_by: string;
+  created_at: string;
+  last_updated: string;
+}
+
+export interface SaveClientRequest {
+  clientName: string;
+  defaultPaymentTermsDays?: number;
+  defaultEngagementModel?: string;
+  defaultPayroll?: string;
+  notes?: string;
+}
+
+export interface UpdateClientRequest {
+  defaultPaymentTermsDays?: number;
+  defaultEngagementModel?: string;
+  defaultPayroll?: string;
+  notes?: string;
+}
+
+export interface ClientDefaultsResponse {
+  found: boolean;
+  clientId?: string;
+  clientName?: string;
+  defaultPaymentTermsDays?: number;
+  defaultEngagementModel?: string;
+  defaultPayroll?: string;
+}
+
+export interface ClientSummary {
+  clientId: string;
+  clientName: string;
+  defaultPaymentTermsDays?: number;
+  defaultEngagementModel?: string;
+  defaultPayroll?: string;
+  createdAt: string;
+  lastUpdated: string;
+}
+
+export interface ListClientsResponse {
+  clients: ClientSummary[];
 }

@@ -97,7 +97,9 @@ You MUST respond with valid JSON matching this exact schema:
   "payroll": "quadzero | client | null",
   "budgetMinLpa": number or null - minimum budget in LPA,
   "budgetMaxLpa": number or null - maximum budget in LPA,
-  "coreSkill": "string or null - the single most important technology or domain skill this role centers on (e.g. 'React', 'Java', 'Data Engineering', 'SAP FICO'). Concise, 1-3 words"
+  "coreSkill": "string or null - the single most important technology or domain skill this role centers on (e.g. 'React', 'Java', 'Data Engineering', 'SAP FICO'). Concise, 1-3 words",
+  "contractDurationMonths": number or null - the contract duration in months. Look for "6-month contract", "1-year engagement", "12 months", "3 month initial period". Convert years to months. Default to null if not mentioned,
+  "paymentTermsDays": number or null - payment terms in days. Look for "Net 30", "Net 60", "payment within 90 days". Must be one of 30, 45, 60, 90. Default to null if not mentioned
 }
 
 Rules:
@@ -109,7 +111,9 @@ Rules:
 6. For rate/budget/cost: extract the numeric value and its unit separately
 7. For client/engagement details: look for company names, "full-time", "contract", "part-time", "payroll" keywords
 8. For budget range: look for "budget", "salary range", "CTC range". Convert to LPA if in other units
-9. For coreSkill: identify the primary technology, framework, or domain that is central to this role. Pick the single most defining skill from mustHaveSkills. Use title case (e.g. "React", "Java", "DevOps", "Data Engineering")`;
+9. For coreSkill: identify the primary technology, framework, or domain that is central to this role. Pick the single most defining skill from mustHaveSkills. Use title case (e.g. "React", "Java", "DevOps", "Data Engineering")
+10. For contract duration: look for "X month contract", "X year engagement", contract period mentions. Convert to months (e.g. "1 year" = 12, "6 months" = 6)
+11. For payment terms: look for "Net X days", "payment terms X days", "payment cycle". Normalize to the closest of 30, 45, 60, or 90`;
 
 // Prompt cache with TTL
 const promptCache = new Map<string, { content: string; fetchedAt: number }>();

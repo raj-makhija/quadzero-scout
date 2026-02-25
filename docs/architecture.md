@@ -16,6 +16,7 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │  │  - Edit Profile │  │  - Results      │  │  - JWE Sessions             │  │
 │  │                 │  │  - Requirements │  │                             │  │
 │  │                 │  │  - Shortlists   │  │                             │  │
+│  │                 │  │  - Clients      │  │                             │  │
 │  └─────────────────┘  └─────────────────┘  └─────────────────────────────┘  │
 │                                                                             │
 │  ┌─────────────────┐                                                        │
@@ -59,6 +60,8 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │  └──────────────────────┘  │  - calculatePricing                         │ │
 │                            │  - shortlist / deleteShortlist              │ │
 │                            │  - getShortlistedCandidates                 │ │
+│                            │  - saveClient / listClients                 │ │
+│                            │  - getClientDefaults / updateClient         │ │
 │                            └──────────────────────────────────────────────┘ │
 │  ┌──────────────────────┐                                                   │
 │  │  Worker Lambdas      │                                                   │
@@ -88,6 +91,7 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │  - Requirements │  │                 │  │                                 │
 │  - Shortlists   │  │                 │  │                                 │
 │  - PricingConfig│  │                 │  │                                 │
+│  - Clients      │  │                 │  │                                 │
 └─────────────────┘  └─────────────────┘  └─────────────────────────────────┘
 ```
 
@@ -490,7 +494,7 @@ External recruiters go through an approval process before accessing the platform
 | Authentication | NextAuth.js v4 (JWE sessions) |
 | API Gateway | AWS HTTP API (API Gateway v2) |
 | Compute | AWS Lambda (Node.js 20, arm64) |
-| Database | AWS DynamoDB (8 tables) |
+| Database | AWS DynamoDB (9 tables) |
 | Storage | AWS S3 |
 | Text Extraction | pdf-parse (PDF), mammoth (DOCX) |
 | PDF Generation | puppeteer-core + @sparticuz/chromium |
@@ -513,10 +517,13 @@ The pricing engine is a deterministic module that generates recommended billing 
 │  ┌────────────────────────────────────────────────────────────────┐  │
 │  │  Phase 1: Internal Pricing                                     │  │
 │  │                                                                │  │
-│  │  Inputs: CTC (LPA), Experience Years, Payment Terms            │  │
+│  │  Inputs: CTC (LPA), Experience Years, Payment Terms,           │  │
+│  │          Contract Duration, Engagement Model                   │  │
 │  │                                                                │  │
 │  │  1. Map experience → band (junior/mid/senior/architect)        │  │
 │  │  2. Look up platform fee + variable markup % for band          │  │
+│  │  2b. Apply contract duration discount to platform fee          │  │
+│  │      (only for contract engagements, tiered by duration)       │  │
 │  │  3. Calculate working capital cost from payment terms           │  │
 │  │  4. Auto-adjust variable % if contribution < minimum floor     │  │
 │  │  5. Compute quoted billing (ideal + negotiation buffer)        │  │
@@ -559,6 +566,7 @@ The pricing engine is a deterministic module that generates recommended billing 
 
 - **Pure functions**: No database calls, no side effects. Config is loaded by the handler and passed in.
 - **Versioned config**: PricingConfig table stores versioned configurations with 5-minute cache. Admin changes create new versions.
+- **Contract duration discount**: Platform fee is reduced for longer contract engagements (tiered: 0%/5%/10%/15%). Only applies to contract models, not `full_time_regular`. Thresholds are admin-configurable via `contractDurationDiscount` in PricingConfig.
 - **Audit flags**: `marginUplifted`, `marginConstrained`, `contributionCapped`, `variableMarkupAdjusted` provide transparency into pricing decisions.
 - **4-band experience mapping**: Simplified from the 7-level ATS seniority system. Uses years as the primary discriminator (0-4: junior, 5-8: mid, 9-12: senior, 12+: architect).
 - **INR-centric**: All calculations in INR. CTC input is LPA (Lakhs Per Annum), converted to monthly (÷12). Hourly assumes 160 hours/month.

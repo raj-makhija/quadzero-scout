@@ -513,7 +513,9 @@ Authorization: Bearer <jwe_token>
       "engagementModel": null,
       "payroll": null,
       "budgetMinLpa": 20,
-      "budgetMaxLpa": 30
+      "budgetMaxLpa": 30,
+      "contractDurationMonths": null,
+      "paymentTermsDays": null
     },
     "confidence": 0.95,
     "suggestions": [
@@ -736,6 +738,8 @@ Authorization: Bearer <jwe_token>
   "payroll": "quadzero",
   "budgetMinLpa": 15,
   "budgetMaxLpa": 30,
+  "contractDurationMonths": 12,
+  "paymentTermsDays": 60,
   "jobTitle": "Senior React Developer",
   "jdText": "We are looking for a Senior React Developer with 5+ years...",
   "parsedCriteria": {
@@ -772,6 +776,8 @@ Authorization: Bearer <jwe_token>
 - `payroll`: Required, enum: `quadzero`, `client`
 - `budgetMinLpa`: Optional, number, min 0, max 500
 - `budgetMaxLpa`: Optional, number, min 0, max 500
+- `contractDurationMonths`: Optional, number, min 1, max 60 (only meaningful for contract engagements)
+- `paymentTermsDays`: Optional, number, must be one of: 30, 45, 60, 90
 - `jobTitle`: Optional, string, max 200 (auto-generated on frontend as "Client Name (End Client) - Core Skill")
 - `jdText`: Required, string, min 50, max 10000
 - `parsedCriteria`: Required, LLM JD output schema (includes `coreSkill`)
@@ -977,6 +983,157 @@ Fetch distinct client names and end-client names from the authenticated recruite
 - Results are scoped to the authenticated recruiter's own requirements only
 - Both arrays are sorted alphabetically
 - If the recruiter has no prior requirements, both arrays will be empty
+
+---
+
+## Client Master Endpoints
+
+### POST /recruiter/clients
+
+Create a new client with default settings.
+
+**Auth:** Requires `recruiter` role.
+
+**Request Body:**
+```json
+{
+  "clientName": "Acme Corp",
+  "defaultPaymentTermsDays": 60,
+  "defaultEngagementModel": "full_time_contract",
+  "defaultPayroll": "quadzero",
+  "notes": "Preferred vendor"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "clientId": "c1a2b3c4-d5e6-7890-abcd-ef1234567890",
+    "clientName": "Acme Corp",
+    "defaultPaymentTermsDays": 60,
+    "defaultEngagementModel": "full_time_contract",
+    "defaultPayroll": "quadzero",
+    "notes": "Preferred vendor",
+    "createdAt": "2024-01-15T10:30:00Z",
+    "lastUpdated": "2024-01-15T10:30:00Z"
+  }
+}
+```
+
+**Validation Rules:**
+- `clientName`: Required, string, min 1, max 200
+- `defaultPaymentTermsDays`: Optional, number, must be one of: 30, 45, 60, 90
+- `defaultEngagementModel`: Optional, string
+- `defaultPayroll`: Optional, string
+- `notes`: Optional, string, max 1000
+
+**Notes:**
+- Returns 409 if a client with the same name already exists (case-insensitive)
+
+---
+
+### GET /recruiter/clients
+
+List all clients.
+
+**Auth:** Requires `recruiter` role.
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "clients": [
+      {
+        "clientId": "c1a2b3c4",
+        "clientName": "Acme Corp",
+        "defaultPaymentTermsDays": 60,
+        "defaultEngagementModel": "full_time_contract",
+        "defaultPayroll": "quadzero",
+        "notes": "Preferred vendor",
+        "createdAt": "2024-01-15T10:30:00Z",
+        "lastUpdated": "2024-01-15T10:30:00Z"
+      }
+    ]
+  }
+}
+```
+
+---
+
+### GET /recruiter/client-defaults?clientName=X
+
+Look up client defaults by name.
+
+**Auth:** Requires `recruiter` role.
+
+**Query Parameters:**
+- `clientName`: Required, the client name to look up (case-insensitive)
+
+**Response (200 OK - found):**
+```json
+{
+  "success": true,
+  "data": {
+    "found": true,
+    "clientId": "c1a2b3c4",
+    "clientName": "Acme Corp",
+    "defaultPaymentTermsDays": 60,
+    "defaultEngagementModel": "full_time_contract",
+    "defaultPayroll": "quadzero"
+  }
+}
+```
+
+**Response (200 OK - not found):**
+```json
+{
+  "success": true,
+  "data": {
+    "found": false
+  }
+}
+```
+
+---
+
+### PUT /recruiter/clients/{clientId}
+
+Update a client's default settings.
+
+**Auth:** Requires `recruiter` role.
+
+**Path Parameters:**
+- `clientId`: The unique client identifier
+
+**Request Body:**
+```json
+{
+  "defaultPaymentTermsDays": 90,
+  "defaultEngagementModel": "full_time_regular",
+  "defaultPayroll": "client",
+  "notes": "Updated terms"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "clientId": "c1a2b3c4",
+    "clientName": "Acme Corp",
+    "defaultPaymentTermsDays": 90,
+    "defaultEngagementModel": "full_time_regular",
+    "defaultPayroll": "client",
+    "notes": "Updated terms",
+    "createdAt": "2024-01-15T10:30:00Z",
+    "lastUpdated": "2024-02-15T10:30:00Z"
+  }
+}
+```
 
 ---
 
@@ -1441,6 +1598,7 @@ Authorization: Bearer <jwe_token>
   "candidateExperienceYears": 6,
   "contractDurationMonths": 12,
   "paymentTermsDays": 90,
+  "engagementModel": "full_time_contract",
   "clientBudgetMinHourly": 700,
   "clientBudgetMaxHourly": 1000
 }
@@ -1453,7 +1611,9 @@ Authorization: Bearer <jwe_token>
   "data": {
     "experienceBand": "mid",
     "monthlyCtcInr": 83333.33,
-    "platformFee": 25000,
+    "platformFee": 22500,
+    "originalPlatformFee": 25000,
+    "contractDurationDiscountPct": 0.10,
     "variableMarkupPct": 0.10,
     "variableMarkupAmount": 8333.33,
     "workingCapitalBlocked": 250000,
@@ -1498,6 +1658,7 @@ Authorization: Bearer <jwe_token>
 - `candidateExperienceYears`: Required, number, min 0, max 50
 - `contractDurationMonths`: Required, number, min 1, max 60
 - `paymentTermsDays`: Required, number, must be one of: 30, 45, 60, 90
+- `engagementModel`: Optional, string, one of: `full_time_regular`, `full_time_contract`, `part_time_contract`. When provided, enables contract duration discounts for contract engagements.
 - `clientBudgetMinHourly`: Optional, number, min 0 (must be provided with `clientBudgetMaxHourly`)
 - `clientBudgetMaxHourly`: Optional, number, min 0 (must be provided with `clientBudgetMinHourly`)
 

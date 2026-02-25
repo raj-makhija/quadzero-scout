@@ -3,6 +3,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api, PricingOutput } from '@/lib/api';
 
+interface RequirementContext {
+  contractDurationMonths?: number;
+  paymentTermsDays?: number;
+  engagementModel?: string;
+}
+
 interface PricingPanelProps {
   candidateId?: string;
   candidateExpectedCtcLpa: number | undefined;
@@ -10,6 +16,7 @@ interface PricingPanelProps {
   candidateExperienceYears: number;
   isInternalRecruiter?: boolean;
   onCtcUpdated?: (expectedCtc: number, currentCtc?: number) => void;
+  requirementContext?: RequirementContext;
 }
 
 const formatInr = (value: number): string => {
@@ -33,9 +40,17 @@ export function PricingPanel({
   candidateExperienceYears,
   isInternalRecruiter,
   onCtcUpdated,
+  requirementContext,
 }: PricingPanelProps) {
-  const [contractDuration, setContractDuration] = useState(12);
-  const [paymentTerms, setPaymentTerms] = useState(90);
+  const [contractDuration, setContractDuration] = useState(
+    requirementContext?.contractDurationMonths || 12
+  );
+  const [paymentTerms, setPaymentTerms] = useState(
+    requirementContext?.paymentTermsDays || 90
+  );
+  const [engagementModel, setEngagementModel] = useState(
+    requirementContext?.engagementModel || ''
+  );
   const [budgetMin, setBudgetMin] = useState('');
   const [budgetMax, setBudgetMax] = useState('');
   const [loading, setLoading] = useState(false);
@@ -65,6 +80,10 @@ export function PricingPanel({
         paymentTermsDays: paymentTerms,
       };
 
+      if (engagementModel) {
+        input.engagementModel = engagementModel;
+      }
+
       if (budgetMin && budgetMax) {
         input.clientBudgetMinHourly = parseFloat(budgetMin);
         input.clientBudgetMaxHourly = parseFloat(budgetMax);
@@ -77,7 +96,7 @@ export function PricingPanel({
     } finally {
       setLoading(false);
     }
-  }, [effectiveExpectedCtc, candidateExperienceYears, contractDuration, paymentTerms, budgetMin, budgetMax]);
+  }, [effectiveExpectedCtc, candidateExperienceYears, contractDuration, paymentTerms, engagementModel, budgetMin, budgetMax]);
 
   // Auto-calculate after CTC is saved
   const [autoCalcPending, setAutoCalcPending] = useState(false);
@@ -186,6 +205,19 @@ export function PricingPanel({
 
       {/* Input Form */}
       <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="col-span-2">
+          <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Engagement Model</label>
+          <select
+            value={engagementModel}
+            onChange={(e) => setEngagementModel(e.target.value)}
+            className="w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+          >
+            <option value="">Not specified</option>
+            <option value="full_time_regular">Full-Time Regular</option>
+            <option value="full_time_contract">Full-Time Contract</option>
+            <option value="part_time_contract">Part-Time Contract</option>
+          </select>
+        </div>
         <div>
           <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Contract Duration</label>
           <div className="flex items-center gap-1">
@@ -257,6 +289,25 @@ export function PricingPanel({
             Experience Band: <span className="font-medium text-gray-700 dark:text-gray-300 capitalize">{result.experienceBand}</span>
             {' | '}Monthly CTC: <span className="font-medium text-gray-700 dark:text-gray-300">{formatInr(result.monthlyCtcInr)}</span>
           </div>
+
+          {/* Contract Duration Discount */}
+          {result.contractDurationDiscountPct > 0 && (
+            <div className="p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+              <div className="text-xs font-medium text-purple-800 dark:text-purple-300 mb-1">Contract Duration Discount</div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600 dark:text-gray-400">Original Platform Fee</span>
+                <span className="font-medium text-gray-900 dark:text-gray-100">{formatInr(result.originalPlatformFee)}/mo</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600 dark:text-gray-400">Discount</span>
+                <span className="font-medium text-purple-700 dark:text-purple-300">-{(result.contractDurationDiscountPct * 100).toFixed(0)}%</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600 dark:text-gray-400">Discounted Platform Fee</span>
+                <span className="font-medium text-green-600 dark:text-green-400">{formatInr(result.platformFee)}/mo</span>
+              </div>
+            </div>
+          )}
 
           {/* Final Recommended Rate */}
           <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">

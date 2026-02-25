@@ -359,6 +359,8 @@ Stores job requirements created by recruiters with parsed JD criteria.
 | payroll | String | Yes | quadzero or client |
 | budget_min_lpa | Number | No | Minimum budget in LPA |
 | budget_max_lpa | Number | No | Maximum budget in LPA |
+| contract_duration_months | Number | No | Contract duration in months (1-60). Only meaningful for contract engagements |
+| payment_terms_days | Number | No | Payment terms in days (30, 45, 60, or 90) |
 | job_title | String | No | Job title (auto-generated on frontend as "Client Name (End Client) - Core Skill") |
 | jd_text | String | Yes | Raw job description text |
 | parsed_criteria | Map | Yes | LLM-parsed search criteria |
@@ -396,10 +398,12 @@ Stores job requirements created by recruiters with parsed JD criteria.
   "client_name": "Acme Corp",
   "client_name_lower": "acme corp",
   "end_client": "TechStartup Inc",
-  "engagement_model": "full_time_regular",
+  "engagement_model": "full_time_contract",
   "payroll": "quadzero",
   "budget_min_lpa": 15,
   "budget_max_lpa": 30,
+  "contract_duration_months": 12,
+  "payment_terms_days": 60,
   "job_title": "Senior React Developer",
   "jd_text": "We are looking for a Senior React Developer...",
   "parsed_criteria": {
@@ -561,6 +565,18 @@ Stores versioned pricing configuration parameters managed via the admin interfac
 | maxCostMultiplierThreshold | Number | Max allowed billing/CTC multiplier | 1.75 |
 | maxContributionCapPerMonth | Number | Max contribution cap (INR/month) | 70000 |
 | budgetCeilingBufferPct | Number | Buffer below budget ceiling as decimal | 0.02 |
+| contractDurationDiscount.thresholds | List\<Map\> | Tiered platform fee discounts for contract engagements | See below |
+
+**Contract Duration Discount Thresholds (default):**
+
+| Min Months | Max Months | Discount % |
+|------------|------------|------------|
+| 1 | 5 | 0% |
+| 6 | 11 | 5% |
+| 12 | 23 | 10% |
+| 24 | 60 | 15% |
+
+*Discount applies to platform fee only, for contract engagements only (`full_time_contract`, `part_time_contract`). Does not apply to `full_time_regular`.*
 
 **Example Item:**
 ```json
@@ -577,7 +593,15 @@ Stores versioned pricing configuration parameters managed via the admin interfac
     "annualRecruiterCost": 600000,
     "maxCostMultiplierThreshold": 1.75,
     "maxContributionCapPerMonth": 70000,
-    "budgetCeilingBufferPct": 0.02
+    "budgetCeilingBufferPct": 0.02,
+    "contractDurationDiscount": {
+      "thresholds": [
+        { "minMonths": 1, "maxMonths": 5, "discountPct": 0 },
+        { "minMonths": 6, "maxMonths": 11, "discountPct": 0.05 },
+        { "minMonths": 12, "maxMonths": 23, "discountPct": 0.10 },
+        { "minMonths": 24, "maxMonths": 60, "discountPct": 0.15 }
+      ]
+    }
   },
   "is_active": true,
   "created_at": "2024-02-15T10:30:00Z",
@@ -605,6 +629,72 @@ Stores versioned pricing configuration parameters managed via the admin interfac
 | architect | 12+ years | Architect level |
 
 *Note: These 4 pricing bands are distinct from the 7-level ATS seniority system (intern/junior/mid/senior/lead/principal/executive). Pricing bands use years of experience as the primary discriminator.*
+
+---
+
+### 9. Clients
+
+Stores per-client default settings (payment terms, engagement model, payroll). Created inline when posting requirements, managed via a simple list page.
+
+**Table Configuration:**
+- Table Name: `Clients-{stage}`
+- Billing Mode: PAY_PER_REQUEST
+
+**Primary Key:**
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| client_id | String (S) | Partition Key - UUID |
+
+**Attributes:**
+
+| Attribute | Type | Required | Description |
+|-----------|------|----------|-------------|
+| client_id | String | Yes | Unique identifier (PK) |
+| client_name | String | Yes | Display name |
+| client_name_lower | String | Yes | Lowercase normalized name (for GSI lookup) |
+| default_payment_terms_days | Number | No | Default payment terms: 30, 45, 60, or 90 |
+| default_engagement_model | String | No | Default engagement model |
+| default_payroll | String | No | Default payroll: quadzero or client |
+| notes | String | No | Free-text notes |
+| created_by | String | Yes | User ID of recruiter who created |
+| created_at | String | Yes | ISO 8601 timestamp |
+| last_updated | String | Yes | ISO 8601 timestamp |
+
+**Example Item:**
+```json
+{
+  "client_id": "c1a2b3c4-d5e6-7890-abcd-ef1234567890",
+  "client_name": "Acme Corp",
+  "client_name_lower": "acme corp",
+  "default_payment_terms_days": 60,
+  "default_engagement_model": "full_time_contract",
+  "default_payroll": "quadzero",
+  "notes": "Preferred vendor, fast approvals",
+  "created_by": "user_r1e2c3",
+  "created_at": "2024-01-10T08:00:00Z",
+  "last_updated": "2024-02-15T10:30:00Z"
+}
+```
+
+**Global Secondary Indexes:**
+
+#### GSI: ClientNameLowerIndex
+For looking up client defaults by normalized name.
+
+| Attribute | Key Type |
+|-----------|----------|
+| client_name_lower | Partition Key |
+
+*Projection: ALL*
+
+**Access Patterns:**
+
+| Operation | Access Pattern | Index |
+|-----------|---------------|-------|
+| Get client by ID | GetItem by client_id | Primary |
+| Lookup by name | Query by client_name_lower | ClientNameLowerIndex |
+| List all clients | Scan | Table Scan |
+| Update client defaults | UpdateItem by client_id | Primary |
 
 ---
 
@@ -830,6 +920,8 @@ export const LLMJDOutputSchema = z.object({
   payroll: z.string().nullable().optional().default(null),
   budgetMinLpa: z.number().nullable().optional().default(null),
   budgetMaxLpa: z.number().nullable().optional().default(null),
+  contractDurationMonths: z.number().nullable().optional().default(null),
+  paymentTermsDays: z.number().nullable().optional().default(null),
 });
 ```
 
@@ -842,6 +934,8 @@ export const SaveRequirementRequestSchema = z.object({
   payroll: z.enum(['quadzero', 'client']),
   budgetMinLpa: z.number().min(0).max(500).optional(),
   budgetMaxLpa: z.number().min(0).max(500).optional(),
+  contractDurationMonths: z.number().min(1).max(60).optional(),
+  paymentTermsDays: z.number().refine(v => [30, 45, 60, 90].includes(v)).optional(),
   jobTitle: z.string().max(200).optional(),
   jdText: z.string().min(50).max(10000),
   parsedCriteria: LLMJDOutputSchema,
@@ -1009,3 +1103,11 @@ See `backend/src/data/skills_ontology.json` for the full list of mappings, categ
 | Get latest version | Query config_key='default', desc, limit 1 | Primary |
 | Save new version | Put with incremented version | Primary |
 | Deactivate old version | Update is_active on previous | Primary |
+
+### Client Master Operations
+| Operation | Access Pattern | Index |
+|-----------|---------------|-------|
+| Get client by ID | GetItem by client_id | Primary |
+| Lookup by name | Query by client_name_lower | ClientNameLowerIndex |
+| List all clients | Scan | Table Scan |
+| Update client defaults | UpdateItem by client_id | Primary |

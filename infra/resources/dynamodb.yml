@@ -234,6 +234,35 @@ Resources:
         - Key: Project
           Value: quadzero-scout
 
+  # Clients Table (Client Master)
+  ClientsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: ${self:custom.clientsTable}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: client_id
+          AttributeType: S
+        - AttributeName: client_name_lower
+          AttributeType: S
+      KeySchema:
+        - AttributeName: client_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: ClientNameLowerIndex
+          KeySchema:
+            - AttributeName: client_name_lower
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Project
+          Value: quadzero-scout
+
   # PricingConfig Table
   PricingConfigTable:
     Type: AWS::DynamoDB::Table
@@ -300,6 +329,12 @@ Outputs:
     Value: !GetAtt ShortlistsTable.Arn
     Export:
       Name: ${self:provider.stage}-ShortlistsTableArn
+
+  ClientsTableArn:
+    Description: Clients table ARN
+    Value: !GetAtt ClientsTable.Arn
+    Export:
+      Name: ${self:provider.stage}-ClientsTableArn
 
   PricingConfigTableArn:
     Description: PricingConfig table ARN

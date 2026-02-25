@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Header } from '@/components/Header';
-import { api, ParsedCriteria, DuplicateMatch, EngagementModel, Payroll, ConsolidateResponse } from '@/lib/api';
+import { api, ParsedCriteria, DuplicateMatch, EngagementModel, Payroll, ConsolidateResponse, ClientDefaultsResponse } from '@/lib/api';
 import { ENGAGEMENT_MODEL_OPTIONS, PAYROLL_OPTIONS, formatEngagementModel } from '@/lib/utils';
 
 type Step = 'jd_input' | 'details' | 'duplicate_check' | 'confirmation';
@@ -34,7 +34,14 @@ export default function PostRequirementPage() {
   const [payroll, setPayroll] = useState<Payroll | ''>('');
   const [budgetMinLpa, setBudgetMinLpa] = useState<string>('');
   const [budgetMaxLpa, setBudgetMaxLpa] = useState<string>('');
+  const [contractDurationMonths, setContractDurationMonths] = useState<string>('');
+  const [paymentTermsDays, setPaymentTermsDays] = useState<string>('');
   const [coreSkill, setCoreSkill] = useState('');
+
+  // Client defaults
+  const [clientDefaults, setClientDefaults] = useState<ClientDefaultsResponse | null>(null);
+  const [saveClientDefaults, setSaveClientDefaults] = useState(false);
+  const clientLookupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Step 3: Duplicate check
   const [duplicates, setDuplicates] = useState<DuplicateMatch[]>([]);
@@ -44,6 +51,45 @@ export default function PostRequirementPage() {
   const [savedRequirementId, setSavedRequirementId] = useState<string | null>(null);
   const [consolidated, setConsolidated] = useState(false);
   const [consolidateResult, setConsolidateResult] = useState<ConsolidateResponse | null>(null);
+
+  // Debounced client defaults lookup
+  const lookupClientDefaults = useCallback((name: string) => {
+    if (clientLookupTimer.current) clearTimeout(clientLookupTimer.current);
+    if (!name.trim()) {
+      setClientDefaults(null);
+      setSaveClientDefaults(false);
+      return;
+    }
+    clientLookupTimer.current = setTimeout(async () => {
+      try {
+        const result = await api.getClientDefaults(name.trim());
+        setClientDefaults(result);
+        if (result.found) {
+          setSaveClientDefaults(false);
+          // Auto-fill from client defaults
+          if (result.defaultPaymentTermsDays && !paymentTermsDays) {
+            setPaymentTermsDays(result.defaultPaymentTermsDays.toString());
+          }
+          if (result.defaultEngagementModel && !engagementModel) {
+            const em = result.defaultEngagementModel;
+            if (['full_time_regular', 'full_time_contract', 'part_time_contract'].includes(em)) {
+              setEngagementModel(em as EngagementModel);
+            }
+          }
+          if (result.defaultPayroll && !payroll) {
+            const p = result.defaultPayroll;
+            if (['quadzero', 'client'].includes(p)) {
+              setPayroll(p as Payroll);
+            }
+          }
+        }
+      } catch {
+        setClientDefaults(null);
+      }
+    }, 500);
+  }, [paymentTermsDays, engagementModel, payroll]);
+
+  const isContractEngagement = engagementModel === 'full_time_contract' || engagementModel === 'part_time_contract';
 
   const generateJobTitle = (client: string, end: string, skill: string): string => {
     const parts: string[] = [];
@@ -96,6 +142,17 @@ export default function PostRequirementPage() {
       }
       if (response.parsedCriteria.coreSkill) {
         setCoreSkill(response.parsedCriteria.coreSkill);
+      }
+      if (response.parsedCriteria.contractDurationMonths != null) {
+        setContractDurationMonths(response.parsedCriteria.contractDurationMonths.toString());
+      }
+      if (response.parsedCriteria.paymentTermsDays != null) {
+        setPaymentTermsDays(response.parsedCriteria.paymentTermsDays.toString());
+      }
+
+      // Trigger client defaults lookup if client name was extracted
+      if (response.parsedCriteria.clientName) {
+        lookupClientDefaults(response.parsedCriteria.clientName);
       }
 
       setStep('details');
@@ -157,12 +214,28 @@ export default function PostRequirementPage() {
         payroll: payroll as Payroll,
         budgetMinLpa: budgetMinLpa ? parseFloat(budgetMinLpa) : undefined,
         budgetMaxLpa: budgetMaxLpa ? parseFloat(budgetMaxLpa) : undefined,
+        contractDurationMonths: contractDurationMonths ? parseInt(contractDurationMonths) : undefined,
+        paymentTermsDays: paymentTermsDays ? parseInt(paymentTermsDays) : undefined,
         jobTitle: generatedTitle || undefined,
         jdText: jobDescription,
         parsedCriteria,
         status: duplicateOf ? 'duplicate' : 'active',
         duplicateOf,
       });
+
+      // Save client defaults if toggle is on and no existing match
+      if (saveClientDefaults && clientName.trim() && (!clientDefaults || !clientDefaults.found)) {
+        try {
+          await api.saveClient({
+            clientName: clientName.trim(),
+            defaultPaymentTermsDays: paymentTermsDays ? parseInt(paymentTermsDays) : undefined,
+            defaultEngagementModel: engagementModel || undefined,
+            defaultPayroll: payroll || undefined,
+          });
+        } catch {
+          // Non-fatal: requirement was saved, client defaults save failed silently
+        }
+      }
 
       setSavedRequirementId(response.requirementId);
       setStep('confirmation');
@@ -294,7 +367,10 @@ export default function PostRequirementPage() {
                   <input
                     type="text"
                     value={clientName}
-                    onChange={(e) => setClientName(e.target.value)}
+                    onChange={(e) => {
+                      setClientName(e.target.value);
+                      lookupClientDefaults(e.target.value);
+                    }}
                     placeholder="Who shared this requirement?"
                     className="input mt-1"
                     required
@@ -375,6 +451,41 @@ export default function PostRequirementPage() {
                   </div>
                 </div>
 
+                {/* Contract Duration — shown only for contract engagements */}
+                {isContractEngagement && (
+                  <div>
+                    <label className="label">Contract Duration (months)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={60}
+                      value={contractDurationMonths}
+                      onChange={(e) => setContractDurationMonths(e.target.value)}
+                      placeholder="e.g., 6, 12"
+                      className="input mt-1"
+                    />
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Longer contracts may qualify for platform fee discounts.
+                    </p>
+                  </div>
+                )}
+
+                {/* Payment Terms */}
+                <div>
+                  <label className="label">Payment Terms</label>
+                  <select
+                    value={paymentTermsDays}
+                    onChange={(e) => setPaymentTermsDays(e.target.value)}
+                    className="input mt-1"
+                  >
+                    <option value="">Select payment terms</option>
+                    <option value="30">Net 30 days</option>
+                    <option value="45">Net 45 days</option>
+                    <option value="60">Net 60 days</option>
+                    <option value="90">Net 90 days</option>
+                  </select>
+                </div>
+
                 {/* Core Skill */}
                 <div>
                   <label className="label">Core Skill</label>
@@ -390,6 +501,33 @@ export default function PostRequirementPage() {
                   </p>
                 </div>
               </div>
+
+              {/* Client Defaults Notice */}
+              {clientDefaults?.found && (
+                <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <p className="text-sm text-blue-700 dark:text-blue-300">
+                    Defaults loaded from client: <strong>{clientDefaults.clientName}</strong>
+                  </p>
+                </div>
+              )}
+              {clientName.trim() && clientDefaults && !clientDefaults.found && (
+                <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={saveClientDefaults}
+                      onChange={(e) => setSaveClientDefaults(e.target.checked)}
+                      className="rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
+                    />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">
+                      Save these settings as defaults for <strong>{clientName.trim()}</strong>
+                    </span>
+                  </label>
+                  <p className="mt-1 ml-6 text-xs text-gray-500 dark:text-gray-400">
+                    Payment terms, engagement model, and payroll will be auto-populated for future requirements from this client.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Parsed Criteria Summary */}
@@ -603,6 +741,10 @@ export default function PostRequirementPage() {
                   setPayroll('');
                   setBudgetMinLpa('');
                   setBudgetMaxLpa('');
+                  setContractDurationMonths('');
+                  setPaymentTermsDays('');
+                  setClientDefaults(null);
+                  setSaveClientDefaults(false);
                   setDuplicates([]);
                   setSavedRequirementId(null);
                   setConsolidated(false);

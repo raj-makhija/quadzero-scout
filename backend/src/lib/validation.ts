@@ -110,6 +110,10 @@ export const SaveRequirementRequestSchema = z.object({
   payroll: z.enum(['quadzero', 'client']),
   budgetMinLpa: z.number().min(0).max(500).optional(),
   budgetMaxLpa: z.number().min(0).max(500).optional(),
+  contractDurationMonths: z.number().min(1).max(60).optional(),
+  paymentTermsDays: z.number().refine(v => [30, 45, 60, 90].includes(v), {
+    message: 'paymentTermsDays must be 30, 45, 60, or 90',
+  }).optional(),
   jobTitle: z.string().max(200).optional(),
   jdText: z.string().min(50).max(10000),
   parsedCriteria: LLMJDOutputSchema,
@@ -158,6 +162,7 @@ export const CalculatePricingRequestSchema = z.object({
   }),
   clientBudgetMinHourly: z.number().min(0).optional(),
   clientBudgetMaxHourly: z.number().min(0).optional(),
+  engagementModel: z.enum(['full_time_regular', 'full_time_contract', 'part_time_contract']).optional(),
 }).refine(
   data => {
     const hasMin = data.clientBudgetMinHourly !== undefined;
@@ -196,6 +201,27 @@ export const MatchRequirementsRequestSchema = z.object({
 export const ShortlistCandidateRequestSchema = z.object({
   requirementId: z.string().min(1),
   candidateId: z.string().min(1),
+  notes: z.string().max(1000).optional(),
+});
+
+// Save Client Request Validation
+export const SaveClientRequestSchema = z.object({
+  clientName: z.string().min(1).max(200),
+  defaultPaymentTermsDays: z.number().refine(v => [30, 45, 60, 90].includes(v), {
+    message: 'defaultPaymentTermsDays must be 30, 45, 60, or 90',
+  }).optional(),
+  defaultEngagementModel: z.enum(['full_time_regular', 'full_time_contract', 'part_time_contract']).optional(),
+  defaultPayroll: z.enum(['quadzero', 'client']).optional(),
+  notes: z.string().max(1000).optional(),
+});
+
+// Update Client Request Validation
+export const UpdateClientRequestSchema = z.object({
+  defaultPaymentTermsDays: z.number().refine(v => [30, 45, 60, 90].includes(v), {
+    message: 'defaultPaymentTermsDays must be 30, 45, 60, or 90',
+  }).optional(),
+  defaultEngagementModel: z.enum(['full_time_regular', 'full_time_contract', 'part_time_contract']).optional(),
+  defaultPayroll: z.enum(['quadzero', 'client']).optional(),
   notes: z.string().max(1000).optional(),
 });
 
