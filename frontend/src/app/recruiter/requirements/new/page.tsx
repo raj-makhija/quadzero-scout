@@ -40,7 +40,6 @@ export default function PostRequirementPage() {
 
   // Client defaults
   const [clientDefaults, setClientDefaults] = useState<ClientDefaultsResponse | null>(null);
-  const [saveClientDefaults, setSaveClientDefaults] = useState(false);
   const clientLookupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Step 3: Duplicate check
@@ -57,7 +56,6 @@ export default function PostRequirementPage() {
     if (clientLookupTimer.current) clearTimeout(clientLookupTimer.current);
     if (!name.trim()) {
       setClientDefaults(null);
-      setSaveClientDefaults(false);
       return;
     }
     clientLookupTimer.current = setTimeout(async () => {
@@ -65,11 +63,6 @@ export default function PostRequirementPage() {
         const result = await api.getClientDefaults(name.trim());
         setClientDefaults(result);
         if (result.found) {
-          setSaveClientDefaults(false);
-          // Auto-fill from client defaults
-          if (result.defaultPaymentTermsDays && !paymentTermsDays) {
-            setPaymentTermsDays(result.defaultPaymentTermsDays.toString());
-          }
           if (result.defaultEngagementModel && !engagementModel) {
             const em = result.defaultEngagementModel;
             if (['full_time_regular', 'full_time_contract', 'part_time_contract'].includes(em)) {
@@ -87,9 +80,7 @@ export default function PostRequirementPage() {
         setClientDefaults(null);
       }
     }, 500);
-  }, [paymentTermsDays, engagementModel, payroll]);
-
-  const isContractEngagement = engagementModel === 'full_time_contract' || engagementModel === 'part_time_contract';
+  }, [engagementModel, payroll]);
 
   const generateJobTitle = (client: string, end: string, skill: string): string => {
     const parts: string[] = [];
@@ -206,6 +197,11 @@ export default function PostRequirementPage() {
       setLoading(true);
       setError(null);
 
+      // Resolve payment terms: from client defaults or recruiter input
+      const resolvedPaymentTerms = clientDefaults?.found && clientDefaults.defaultPaymentTermsDays
+        ? clientDefaults.defaultPaymentTermsDays
+        : paymentTermsDays ? parseInt(paymentTermsDays) : undefined;
+
       const generatedTitle = generateJobTitle(clientName, endClient, coreSkill);
       const response = await api.saveRequirement({
         clientName: clientName.trim(),
@@ -215,7 +211,7 @@ export default function PostRequirementPage() {
         budgetMinLpa: budgetMinLpa ? parseFloat(budgetMinLpa) : undefined,
         budgetMaxLpa: budgetMaxLpa ? parseFloat(budgetMaxLpa) : undefined,
         contractDurationMonths: contractDurationMonths ? parseInt(contractDurationMonths) : undefined,
-        paymentTermsDays: paymentTermsDays ? parseInt(paymentTermsDays) : undefined,
+        paymentTermsDays: resolvedPaymentTerms,
         jobTitle: generatedTitle || undefined,
         jdText: jobDescription,
         parsedCriteria,
@@ -223,17 +219,23 @@ export default function PostRequirementPage() {
         duplicateOf,
       });
 
-      // Save client defaults if toggle is on and no existing match
-      if (saveClientDefaults && clientName.trim() && (!clientDefaults || !clientDefaults.found)) {
+      // Persist payment terms to client if recruiter entered them
+      if (paymentTermsDays && clientName.trim()) {
         try {
-          await api.saveClient({
-            clientName: clientName.trim(),
-            defaultPaymentTermsDays: paymentTermsDays ? parseInt(paymentTermsDays) : undefined,
-            defaultEngagementModel: engagementModel || undefined,
-            defaultPayroll: payroll || undefined,
-          });
+          if (clientDefaults?.found && clientDefaults.clientId) {
+            await api.updateClient(clientDefaults.clientId, {
+              defaultPaymentTermsDays: parseInt(paymentTermsDays),
+            });
+          } else if (!clientDefaults?.found) {
+            await api.saveClient({
+              clientName: clientName.trim(),
+              defaultPaymentTermsDays: parseInt(paymentTermsDays),
+              defaultEngagementModel: engagementModel || undefined,
+              defaultPayroll: payroll || undefined,
+            });
+          }
         } catch {
-          // Non-fatal: requirement was saved, client defaults save failed silently
+          // Non-fatal: requirement was saved, client update failed silently
         }
       }
 
@@ -451,39 +453,21 @@ export default function PostRequirementPage() {
                   </div>
                 </div>
 
-                {/* Contract Duration — shown only for contract engagements */}
-                {isContractEngagement && (
-                  <div>
-                    <label className="label">Contract Duration (months)</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={60}
-                      value={contractDurationMonths}
-                      onChange={(e) => setContractDurationMonths(e.target.value)}
-                      placeholder="e.g., 6, 12"
-                      className="input mt-1"
-                    />
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      Longer contracts may qualify for platform fee discounts.
-                    </p>
-                  </div>
-                )}
-
-                {/* Payment Terms */}
+                {/* Contract Duration */}
                 <div>
-                  <label className="label">Payment Terms</label>
-                  <select
-                    value={paymentTermsDays}
-                    onChange={(e) => setPaymentTermsDays(e.target.value)}
+                  <label className="label">Contract Duration (months)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={contractDurationMonths}
+                    onChange={(e) => setContractDurationMonths(e.target.value)}
+                    placeholder="e.g., 6, 12"
                     className="input mt-1"
-                  >
-                    <option value="">Select payment terms</option>
-                    <option value="30">Net 30 days</option>
-                    <option value="45">Net 45 days</option>
-                    <option value="60">Net 60 days</option>
-                    <option value="90">Net 90 days</option>
-                  </select>
+                  />
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Longer contracts may qualify for platform fee discounts.
+                  </p>
                 </div>
 
                 {/* Core Skill */}
@@ -502,32 +486,31 @@ export default function PostRequirementPage() {
                 </div>
               </div>
 
-              {/* Client Defaults Notice */}
-              {clientDefaults?.found && (
+              {/* Payment Terms — from Client MSA */}
+              {clientName.trim() && clientDefaults?.found && clientDefaults.defaultPaymentTermsDays ? (
                 <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                   <p className="text-sm text-blue-700 dark:text-blue-300">
-                    Defaults loaded from client: <strong>{clientDefaults.clientName}</strong>
+                    Payment terms: <strong>Net {clientDefaults.defaultPaymentTermsDays} days</strong> (from <strong>{clientDefaults.clientName}</strong> MSA)
                   </p>
                 </div>
-              )}
-              {clientName.trim() && clientDefaults && !clientDefaults.found && (
-                <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={saveClientDefaults}
-                      onChange={(e) => setSaveClientDefaults(e.target.checked)}
-                      className="rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
-                    />
-                    <span className="text-sm text-gray-700 dark:text-gray-300">
-                      Save these settings as defaults for <strong>{clientName.trim()}</strong>
-                    </span>
+              ) : clientName.trim() ? (
+                <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                  <label className="block text-sm font-medium text-amber-800 dark:text-amber-300 mb-2">
+                    No payment terms on file for <strong>{clientName.trim()}</strong>. Please select:
                   </label>
-                  <p className="mt-1 ml-6 text-xs text-gray-500 dark:text-gray-400">
-                    Payment terms, engagement model, and payroll will be auto-populated for future requirements from this client.
-                  </p>
+                  <select
+                    value={paymentTermsDays}
+                    onChange={(e) => setPaymentTermsDays(e.target.value)}
+                    className="input w-48"
+                  >
+                    <option value="">Select payment terms</option>
+                    <option value="30">Net 30 days</option>
+                    <option value="45">Net 45 days</option>
+                    <option value="60">Net 60 days</option>
+                    <option value="90">Net 90 days</option>
+                  </select>
                 </div>
-              )}
+              ) : null}
             </div>
 
             {/* Parsed Criteria Summary */}
@@ -744,7 +727,6 @@ export default function PostRequirementPage() {
                   setContractDurationMonths('');
                   setPaymentTermsDays('');
                   setClientDefaults(null);
-                  setSaveClientDefaults(false);
                   setDuplicates([]);
                   setSavedRequirementId(null);
                   setConsolidated(false);
