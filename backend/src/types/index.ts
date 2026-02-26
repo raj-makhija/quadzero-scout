@@ -246,6 +246,7 @@ export interface CandidateSearchResult {
     experienceMatch: boolean;
     seniorityMatch: boolean;
     ctcMatch: boolean;
+    locationMatch: 'full' | 'partial' | 'none';
   };
   lastUpdated: string;
 }
@@ -634,6 +635,7 @@ export interface MatchedRequirement {
     experienceMatch: boolean;
     seniorityMatch: boolean;
     budgetFit: boolean;
+    locationMatch: 'full' | 'partial' | 'none';
   };
   isShortlisted: boolean;
   createdAt: string;

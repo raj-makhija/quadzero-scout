@@ -3,7 +3,7 @@ import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, SearchRequestSchema } from '../../lib/validation.js';
 import { searchCandidates } from '../../lib/dynamodb.js';
 import { normalizeSkills } from '../../lib/skillNormalizer.js';
-import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO } from '../../lib/matchScoring.js';
+import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, parseSearchLocations } from '../../lib/matchScoring.js';
 import { withOptionalAuth, type OptionalAuthEvent } from '../../lib/auth.js';
 import type { CandidateSearchResult, SearchResponse, SearchCriteria } from '../../types/index.js';
 
@@ -52,6 +52,9 @@ async function handleRequest(
     const normalizedMustHave = normalizeSkills(criteria.mustHaveSkills || []);
     const normalizedGoodToHave = normalizeSkills(criteria.goodToHaveSkills || []);
 
+    // Parse location into individual locations for OR matching
+    const searchLocations = parseSearchLocations(criteria.location);
+
     // Build search criteria with defaults
     const searchCriteria: SearchCriteria = {
       mustHaveSkills: criteria.mustHaveSkills || [],
@@ -79,7 +82,8 @@ async function handleRequest(
           criteria.minExperience,
           criteria.maxExperience,
           criteria.seniority,
-          criteria.maxBudgetLpa
+          criteria.maxBudgetLpa,
+          searchLocations
         );
 
         return {
@@ -164,6 +168,7 @@ async function handleRequest(
             experienceMatch: candidate.matchDetails.experienceMatch,
             seniorityMatch: candidate.matchDetails.seniorityMatch,
             ctcMatch: candidate.matchDetails.ctcMatch,
+            locationMatch: candidate.matchDetails.locationMatch,
           },
           lastUpdated: candidate.lastUpdated,
         }));

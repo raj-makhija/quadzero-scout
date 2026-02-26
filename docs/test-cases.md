@@ -829,13 +829,13 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | **Request** | `{"criteria": {...}, "pagination": {"limit": 101}}` |
 | **Expected Result** | HTTP 400; `VALIDATION_ERROR` (max 100) |
 
-### TC-SEARCH-013: Search by location filter
+### TC-SEARCH-013: Search by location — soft scoring (not hard filter)
 | Field | Value |
 |-------|-------|
 | **ID** | TC-SEARCH-013 |
 | **Priority** | P1 |
 | **Request** | `{"criteria": {"location": "Bangalore"}}` |
-| **Expected Result** | Only candidates whose location contains "bangalore" (case-insensitive) returned |
+| **Expected Result** | All candidates returned; those in Bangalore have `locationMatch: "full"` and higher score (+10pts); those with no location have `locationMatch: "partial"` (+5pts); others have `locationMatch: "none"` (+0pts) and rank lower |
 
 ### TC-SEARCH-014: Filter candidates with zero must-have matches
 | Field | Value |
@@ -851,7 +851,7 @@ All functional and non-functional aspects of Quadzero Scout covering:
 |-------|-------|
 | **ID** | TC-SEARCH-015 |
 | **Priority** | P1 |
-| **Expected Result** | Each candidate result includes `matchDetails` with fields: `mustHaveMatched` (array), `mustHaveMissing` (array), `goodToHaveMatched` (array), `experienceMatch` (boolean), `seniorityMatch` (boolean) |
+| **Expected Result** | Each candidate result includes `matchDetails` with fields: `mustHaveMatched` (array), `mustHaveMissing` (array), `goodToHaveMatched` (array), `experienceMatch` (boolean), `seniorityMatch` (boolean), `ctcMatch` (boolean), `locationMatch` ("full" / "partial" / "none") |
 
 ### TC-SEARCH-016: Search with minExperience > maxExperience
 | Field | Value |
@@ -951,6 +951,48 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | **Priority** | P1 |
 | **Steps** | Modify search criteria, re-search, then navigate away and back to requirement detail |
 | **Expected Result** | Requirement detail page shows original parsed criteria (modifications not persisted unless explicitly saved) |
+
+### TC-SEARCH-028: Multi-location OR matching
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-028 |
+| **Priority** | P0 |
+| **Precondition** | Candidates exist in Bangalore, Chennai, and Mumbai |
+| **Request** | `{"criteria": {"location": "Bangalore, Chennai"}}` |
+| **Expected Result** | Bangalore and Chennai candidates have `locationMatch: "full"` (+10pts); Mumbai candidate has `locationMatch: "none"` (+0pts); all candidates appear in results |
+
+### TC-SEARCH-029: Location scoring — blank/unknown location
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-029 |
+| **Priority** | P1 |
+| **Precondition** | Candidate exists with empty/null location |
+| **Request** | `{"criteria": {"location": "Bangalore"}}` |
+| **Expected Result** | Candidate returned with `locationMatch: "partial"` (+5pts); ranks between full-match and no-match candidates |
+
+### TC-SEARCH-030: No location criteria — full points for all
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-030 |
+| **Priority** | P1 |
+| **Request** | `{"criteria": {"mustHaveSkills": ["react"]}}` (no location) |
+| **Expected Result** | All candidates receive full location score (+10pts); `locationMatch: "full"` for all |
+
+### TC-SEARCH-031: Location tag UI — add and remove
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-031 |
+| **Priority** | P1 |
+| **Steps** | In criteria view, type "Pune" and press Enter or click "+"; then click "x" on an existing location tag |
+| **Expected Result** | Location added as tag badge; clicking "x" removes tag; underlying `searchCriteria.location` updated as comma-separated string |
+
+### TC-SEARCH-032: Location mismatch callout in results
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-032 |
+| **Priority** | P1 |
+| **Steps** | Search with location "Bangalore"; view results including a candidate in Mumbai |
+| **Expected Result** | Candidate card shows "(different location)" label next to location; drawer Match Analysis shows red "Location mismatch: Mumbai (looking for Bangalore)" |
 
 ---
 

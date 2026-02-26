@@ -52,6 +52,7 @@ export default function RecruiterSearchPage() {
   const [goodToHaveSkillInput, setGoodToHaveSkillInput] = useState('');
   const [savingCriteria, setSavingCriteria] = useState(false);
   const [criteriaSaveSuccess, setCriteriaSaveSuccess] = useState(false);
+  const [locationInput, setLocationInput] = useState('');
 
   // Requirement details state
   const [clientName, setClientName] = useState('');
@@ -471,6 +472,27 @@ export default function RecruiterSearchPage() {
       }
       setGoodToHaveSkillInput('');
     }
+  };
+
+  // Parse current location string into individual location tags
+  const locationTags = (searchCriteria.location || '')
+    .split(/[,;]/)
+    .map(l => l.trim())
+    .filter(l => l.length > 0);
+
+  const addLocation = (loc: string) => {
+    const trimmed = loc.trim();
+    if (!trimmed) return;
+    const current = locationTags;
+    if (!current.some(l => l.toLowerCase() === trimmed.toLowerCase())) {
+      updateCriteria('location', [...current, trimmed].join(', '));
+    }
+    setLocationInput('');
+  };
+
+  const removeLocation = (loc: string) => {
+    const updated = locationTags.filter(l => l !== loc);
+    updateCriteria('location', updated.length > 0 ? updated.join(', ') : undefined);
   };
 
   // Derive the original search criteria from parsedCriteria for comparison
@@ -1001,14 +1023,41 @@ export default function RecruiterSearchPage() {
 
                 {/* Location */}
                 <div>
-                  <label className="label">Location</label>
-                  <input
-                    type="text"
-                    value={searchCriteria.location || ''}
-                    onChange={(e) => updateCriteria('location', e.target.value || undefined)}
-                    placeholder="e.g., Bangalore"
-                    className="input mt-2"
-                  />
+                  <label className="label">Locations</label>
+                  {locationTags.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {locationTags.map((loc) => (
+                        <span key={loc} className="badge bg-primary-100 text-primary-800 border border-primary-300 dark:bg-primary-900/30 dark:text-primary-300 dark:border-primary-600 flex items-center gap-1">
+                          {loc}
+                          <button onClick={() => removeLocation(loc)} className="ml-1 hover:text-red-500" title="Remove">
+                            &times;
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      type="text"
+                      value={locationInput}
+                      onChange={(e) => setLocationInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addLocation(locationInput);
+                        }
+                      }}
+                      placeholder="e.g., Bangalore"
+                      className="input flex-1"
+                    />
+                    <button
+                      onClick={() => addLocation(locationInput)}
+                      disabled={!locationInput.trim()}
+                      className="btn-secondary text-sm px-3"
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
 
                 {/* Notice Period */}
@@ -1141,7 +1190,17 @@ export default function RecruiterSearchPage() {
                       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-gray-400">
                         <span>{candidate.totalExperience} years exp</span>
                         <span>{formatSeniority(candidate.seniority)}</span>
-                        {isAuthenticated && candidate.location && <span>{candidate.location}</span>}
+                        {isAuthenticated && candidate.location && (
+                          <span className="flex items-center gap-1">
+                            {candidate.location}
+                            {searchCriteria.location && candidate.matchDetails.locationMatch === 'none' && (
+                              <span className="text-xs text-amber-600 dark:text-amber-400">(different location)</span>
+                            )}
+                          </span>
+                        )}
+                        {isAuthenticated && !candidate.location && searchCriteria.location && (
+                          <span className="text-xs text-amber-600 dark:text-amber-400">Location unknown</span>
+                        )}
                         <span>{formatAvailability(candidate.availability)}</span>
                         {isAuthenticated && candidate.expectedCtc && (
                           <span>{candidate.expectedCtc} LPA expected</span>
@@ -1403,6 +1462,35 @@ export default function RecruiterSearchPage() {
                           </svg>
                         )}
                         {selectedCandidate.matchDetails.ctcMatch ? 'Within budget' : 'Over budget'}
+                      </div>
+                    )}
+                    {searchCriteria.location && (
+                      <div className={`flex items-center ${
+                        selectedCandidate.matchDetails.locationMatch === 'full'
+                          ? 'text-green-600 dark:text-green-400'
+                          : selectedCandidate.matchDetails.locationMatch === 'partial'
+                            ? 'text-amber-600 dark:text-amber-400'
+                            : 'text-red-600 dark:text-red-400'
+                      }`}>
+                        {selectedCandidate.matchDetails.locationMatch === 'full' ? (
+                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : selectedCandidate.matchDetails.locationMatch === 'partial' ? (
+                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        )}
+                        {selectedCandidate.matchDetails.locationMatch === 'full'
+                          ? `Location match: ${selectedCandidate.location || 'Unknown'}`
+                          : selectedCandidate.matchDetails.locationMatch === 'partial'
+                            ? 'Location not specified'
+                            : `Location mismatch: ${selectedCandidate.location || 'Unknown'} (looking for ${searchCriteria.location})`
+                        }
                       </div>
                     )}
                   </div>

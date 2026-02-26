@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { CandidateItem } from '../../types/index.js';
-import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, RELATED_MATCH_WEIGHT } from '../../lib/matchScoring.js';
+import { calculateMatchScore, parseSearchLocations, MIN_MUST_HAVE_MATCH_RATIO, RELATED_MATCH_WEIGHT } from '../../lib/matchScoring.js';
 
 // ---------------------------------------------------------------------------
 // TC-SCORE-001 through TC-SCORE-018: Match Scoring Algorithm
@@ -67,9 +67,10 @@ describe('Match Scoring Algorithm', () => {
     );
     // 1 out of 4 must-have = 50 * 0.25 = 12.5 → 13 (rounded)
     // good-to-have: none specified → full 20
-    // experience: no filter → 15
-    // seniority: no filter → 15
-    // Total: 13 + 20 + 15 + 15 = 63
+    // experience: no filter → 10
+    // seniority: no filter → 10
+    // location: no filter → 10
+    // Total: 13 + 20 + 10 + 10 + 10 = 63
     expect(result.details.mustHaveMatched).toContain('react');
     expect(result.details.mustHaveMatched).not.toContain('golang');
     expect(result.score).toBeLessThan(100);
@@ -88,9 +89,10 @@ describe('Match Scoring Algorithm', () => {
     );
     // must-have: none specified → 50
     // good-to-have: 1/2 exact = (1 + 0) / 2 * 20 = 10
-    // experience: no filter → 15
-    // seniority: no filter → 15
-    // Total: 50 + 10 + 15 + 15 = 90
+    // experience: no filter → 10
+    // seniority: no filter → 10
+    // location: no filter → 10
+    // Total: 50 + 10 + 10 + 10 + 10 = 90
     expect(result.score).toBe(90);
   });
 
@@ -106,8 +108,8 @@ describe('Match Scoring Algorithm', () => {
     const candidate = makeCandidate({ total_experience: 2 });
     const result = calculateMatchScore(candidate, [], [], 5);
     expect(result.details.experienceMatch).toBe(false);
-    // 50 + 20 + 0 + 15 = 85
-    expect(result.score).toBe(85);
+    // 50 + 20 + 0 + 10 + 10 = 90
+    expect(result.score).toBe(90);
   });
 
   // TC-SCORE-006
@@ -115,7 +117,8 @@ describe('Match Scoring Algorithm', () => {
     const candidate = makeCandidate({ total_experience: 12 });
     const result = calculateMatchScore(candidate, [], [], undefined, 8);
     expect(result.details.experienceMatch).toBe(false);
-    expect(result.score).toBe(85);
+    // 50 + 20 + 0 + 10 + 10 = 90
+    expect(result.score).toBe(90);
   });
 
   // TC-SCORE-007
@@ -130,8 +133,8 @@ describe('Match Scoring Algorithm', () => {
     const candidate = makeCandidate({ seniority: 'junior' });
     const result = calculateMatchScore(candidate, [], [], undefined, undefined, ['senior', 'lead']);
     expect(result.details.seniorityMatch).toBe(false);
-    // 50 + 20 + 15 + 0 = 85
-    expect(result.score).toBe(85);
+    // 50 + 20 + 10 + 0 + 10 = 90
+    expect(result.score).toBe(90);
   });
 
   // TC-SCORE-009
@@ -148,7 +151,7 @@ describe('Match Scoring Algorithm', () => {
       secondary_skills: [],
     });
     // 1 of 3 must-have = 50 * (1/3) = 16.666...
-    // + 20 + 15 + 15 = 66.666 → 67
+    // + 20 + 10 + 10 + 10 = 66.666 → 67
     const result = calculateMatchScore(
       candidate,
       ['react', 'nodejs', 'typescript'],
@@ -187,14 +190,14 @@ describe('Match Scoring Algorithm', () => {
   it('empty must-have skills results in full 50 points', () => {
     const candidate = makeCandidate();
     const result = calculateMatchScore(candidate, [], ['typescript']);
-    // must-have: 50 (no required), good-to-have: 20 (1/1 exact), exp: 15, seniority: 15
+    // must-have: 50 (no required), good-to-have: 20 (1/1 exact), exp: 10, seniority: 10, location: 10
     expect(result.score).toBe(100);
   });
 
   it('empty good-to-have skills results in full 20 points', () => {
     const candidate = makeCandidate();
     const result = calculateMatchScore(candidate, ['react'], []);
-    // must-have: 50 (1/1), good-to-have: 20 (no required), exp: 15, seniority: 15
+    // must-have: 50 (1/1), good-to-have: 20 (no required), exp: 10, seniority: 10, location: 10
     expect(result.score).toBe(100);
   });
 
@@ -209,7 +212,7 @@ describe('Match Scoring Algorithm', () => {
     expect(result.details.mustHaveMatched).not.toContain('react');
     expect(result.details.mustHaveRelated).toContain('react'); // shown as related for display
     expect(result.details.mustHaveMissing).toEqual([]);
-    // Score: 0/1 must-have = 0 * 50 = 0 + 20 + 15 + 15 = 50
+    // Score: 0/1 must-have = 0 * 50 = 0 + 20 + 10 + 10 + 10 = 50
     expect(result.score).toBe(50);
   });
 
@@ -223,7 +226,7 @@ describe('Match Scoring Algorithm', () => {
     // vue is related to react (both frontend), so related match
     expect(result.details.goodToHaveMatched).toEqual([]);
     expect(result.details.goodToHaveRelated).toContain('react');
-    // Score: 50 (no must-have) + (0 + 1*0.3)/1 * 20 = 6 + 15 + 15 = 86
+    // Score: 50 (no must-have) + (0 + 1*0.3)/1 * 20 = 6 + 10 + 10 + 10 = 86
     expect(result.score).toBe(86);
   });
 
@@ -297,5 +300,56 @@ describe('Match Scoring Algorithm', () => {
 
   it('MIN_MUST_HAVE_MATCH_RATIO is 0.3', () => {
     expect(MIN_MUST_HAVE_MATCH_RATIO).toBe(0.3);
+  });
+
+  // TC-SCORE-019: Location full match gives +10
+  it('location full match gives +10 points', () => {
+    const candidate = makeCandidate({ location: 'Bangalore, India' });
+    const result = calculateMatchScore(candidate, [], [], undefined, undefined, undefined, undefined, ['bangalore']);
+    expect(result.details.locationMatch).toBe('full');
+    expect(result.score).toBe(100);
+  });
+
+  // TC-SCORE-020: Location none match gives +0
+  it('location mismatch gives 0 location points', () => {
+    const candidate = makeCandidate({ location: 'Mumbai, India' });
+    const result = calculateMatchScore(candidate, [], [], undefined, undefined, undefined, undefined, ['bangalore']);
+    expect(result.details.locationMatch).toBe('none');
+    // 50 + 20 + 10 + 10 + 0 = 90
+    expect(result.score).toBe(90);
+  });
+
+  // TC-SCORE-021: Blank location gives partial (+5)
+  it('blank location gives partial match (+5 points)', () => {
+    const candidate = makeCandidate({ location: undefined });
+    const result = calculateMatchScore(candidate, [], [], undefined, undefined, undefined, undefined, ['bangalore']);
+    expect(result.details.locationMatch).toBe('partial');
+    // 50 + 20 + 10 + 10 + 5 = 95
+    expect(result.score).toBe(95);
+  });
+
+  // TC-SCORE-022: No location criteria gives full points to all
+  it('no location criteria gives full location points', () => {
+    const candidate = makeCandidate({ location: 'Mumbai, India' });
+    const result = calculateMatchScore(candidate, [], [], undefined, undefined, undefined, undefined, []);
+    expect(result.details.locationMatch).toBe('full');
+    expect(result.score).toBe(100);
+  });
+
+  // TC-SCORE-023: Multi-location OR matching
+  it('multi-location OR matching — any match is full', () => {
+    const candidate = makeCandidate({ location: 'Chennai, India' });
+    const locations = parseSearchLocations('Bangalore, Chennai, Pune');
+    const result = calculateMatchScore(candidate, [], [], undefined, undefined, undefined, undefined, locations);
+    expect(result.details.locationMatch).toBe('full');
+    expect(result.score).toBe(100);
+  });
+
+  // TC-SCORE-024: parseSearchLocations splits correctly
+  it('parseSearchLocations splits comma/semicolon-separated locations', () => {
+    expect(parseSearchLocations('Bangalore, Chennai; Pune')).toEqual(['bangalore', 'chennai', 'pune']);
+    expect(parseSearchLocations('')).toEqual([]);
+    expect(parseSearchLocations(undefined)).toEqual([]);
+    expect(parseSearchLocations('  ')).toEqual([]);
   });
 });

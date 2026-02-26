@@ -16,6 +16,37 @@ export interface MatchScoreResult {
   details: MatchDetails;
 }
 
+/**
+ * Check if a candidate's location matches any of the desired search locations.
+ * Returns 'full' if match found, 'partial' if candidate has no location, 'none' otherwise.
+ */
+function matchLocation(
+  candidateLocation: string | undefined | null,
+  searchLocations: string[]
+): 'full' | 'partial' | 'none' {
+  if (searchLocations.length === 0) return 'full';
+
+  if (!candidateLocation || !candidateLocation.trim()) return 'partial';
+
+  const candidateLower = candidateLocation.toLowerCase();
+  for (const loc of searchLocations) {
+    if (candidateLower.includes(loc)) return 'full';
+  }
+  return 'none';
+}
+
+/**
+ * Parse a comma/semicolon-separated location string into an array of
+ * trimmed, lowercased individual locations.
+ */
+export function parseSearchLocations(location?: string): string[] {
+  if (!location || !location.trim()) return [];
+  return location
+    .split(/[,;]/)
+    .map(l => l.trim().toLowerCase())
+    .filter(l => l.length > 0);
+}
+
 export function calculateMatchScore(
   candidate: CandidateItem,
   mustHaveSkills: string[],
@@ -23,7 +54,8 @@ export function calculateMatchScore(
   minExp?: number,
   maxExp?: number,
   seniority?: string[],
-  maxBudgetLpa?: number
+  maxBudgetLpa?: number,
+  searchLocations?: string[]
 ): MatchScoreResult {
   let score = 0;
 
@@ -51,7 +83,7 @@ export function calculateMatchScore(
     : 1;
   score += goodToHaveEffective * 20;
 
-  // Experience match (15% of score)
+  // Experience match (10% of score)
   const experience = candidate.total_experience;
   let experienceMatch = true;
   if (minExp !== undefined && experience < minExp) {
@@ -61,17 +93,27 @@ export function calculateMatchScore(
     experienceMatch = false;
   }
   if (experienceMatch) {
-    score += 15;
+    score += 10;
   }
 
-  // Seniority match (15% of score)
+  // Seniority match (10% of score)
   let seniorityMatch = true;
   if (seniority && seniority.length > 0) {
     seniorityMatch = seniority.includes(candidate.seniority);
   }
   if (seniorityMatch) {
-    score += 15;
+    score += 10;
   }
+
+  // Location match (10% of score)
+  const locations = searchLocations || [];
+  const locationMatch = matchLocation(candidate.location, locations);
+  if (locationMatch === 'full') {
+    score += 10;
+  } else if (locationMatch === 'partial') {
+    score += 5;
+  }
+  // 'none' = 0 points
 
   // CTC budget check
   const ctcMatch = isCandidateWithinBudget(candidate.expected_ctc, maxBudgetLpa);
@@ -87,6 +129,7 @@ export function calculateMatchScore(
       experienceMatch,
       seniorityMatch,
       ctcMatch,
+      locationMatch,
     },
   };
 }

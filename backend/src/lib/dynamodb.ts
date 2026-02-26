@@ -109,11 +109,8 @@ export async function searchCandidates(
     });
   }
 
-  if (criteria.location) {
-    filterExpressions.push('contains(#loc, :location)');
-    expressionAttributeNames['#loc'] = 'location';
-    expressionAttributeValues[':location'] = criteria.location.toLowerCase();
-  }
+  // Location is no longer a hard filter — it is handled as a scoring factor
+  // in matchScoring.ts so that non-matching candidates still appear in results.
 
   const PAGE_SIZE = 100;
   const MAX_ITEMS = 500;

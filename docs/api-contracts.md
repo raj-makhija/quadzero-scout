@@ -450,7 +450,8 @@ Content-Type: application/json
           "goodToHaveMatched": ["nodejs"],
           "experienceMatch": true,
           "seniorityMatch": true,
-          "budgetFit": true
+          "budgetFit": true,
+          "locationMatch": "full"
         },
         "isShortlisted": false,
         "createdAt": "2024-01-15T10:30:00Z"
@@ -592,7 +593,8 @@ Authorization: Bearer <jwe_token> (optional)
           "goodToHaveMatched": ["typescript", "aws"],
           "experienceMatch": true,
           "seniorityMatch": true,
-          "ctcMatch": true
+          "ctcMatch": true,
+          "locationMatch": "full"
         },
         "lastUpdated": "2024-01-15T10:30:00Z"
       }
@@ -628,7 +630,8 @@ Authorization: Bearer <jwe_token> (optional)
           "goodToHaveMatched": [],
           "experienceMatch": true,
           "seniorityMatch": true,
-          "ctcMatch": true
+          "ctcMatch": true,
+          "locationMatch": "full"
         },
         "lastUpdated": "2024-01-15T10:30:00Z"
       }
@@ -656,6 +659,8 @@ Authorization: Bearer <jwe_token> (optional)
 - Candidates exceeding `maxBudgetLpa` are filtered out
 - Skills are normalized using the skill normalizer before matching (supports CRM, marketing, design, and HR/finance skills in addition to engineering skills)
 - Search paginates through all candidates in the database (up to 500) to ensure comprehensive results
+- Location is a **soft scoring factor** (not a hard filter). Multiple locations (comma/semicolon-separated) use OR matching. `locationMatch` values: `"full"` (candidate matches any search location, +10pts), `"partial"` (candidate has no location info, +5pts), `"none"` (candidate in a different location, +0pts)
+- Match score weights: must-have skills (50%), good-to-have skills (20%), experience (10%), seniority (10%), location (10%)
 
 ---
 

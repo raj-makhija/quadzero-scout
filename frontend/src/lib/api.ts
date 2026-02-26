@@ -521,6 +521,7 @@ export interface CandidateSearchResult {
     experienceMatch: boolean;
     seniorityMatch: boolean;
     ctcMatch: boolean;
+    locationMatch: 'full' | 'partial' | 'none';
   };
   lastUpdated: string;
 }
