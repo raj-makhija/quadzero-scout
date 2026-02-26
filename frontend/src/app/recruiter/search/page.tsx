@@ -387,6 +387,11 @@ export default function RecruiterSearchPage() {
         }
       }
 
+      // Sync budget from requirement details into search criteria
+      if (budgetMaxLpa) {
+        setSearchCriteria(prev => ({ ...prev, maxBudgetLpa: parseFloat(budgetMaxLpa) }));
+      }
+
       setRequirementSaved(true);
       setConsolidated(false);
       setShowDuplicateModal(false);
@@ -408,6 +413,9 @@ export default function RecruiterSearchPage() {
         parsedCriteria,
         similarityScore: match.similarityScore,
       });
+      if (budgetMaxLpa) {
+        setSearchCriteria(prev => ({ ...prev, maxBudgetLpa: parseFloat(budgetMaxLpa) }));
+      }
       setConsolidated(true);
       setConsolidateResult(result);
       setRequirementSaved(true);
@@ -421,6 +429,10 @@ export default function RecruiterSearchPage() {
   };
 
   const handleSkipSave = () => {
+    // Sync budget from requirement details into search criteria
+    if (budgetMaxLpa) {
+      setSearchCriteria(prev => ({ ...prev, maxBudgetLpa: parseFloat(budgetMaxLpa) }));
+    }
     setViewMode('criteria');
   };
 
