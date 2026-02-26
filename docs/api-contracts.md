@@ -322,6 +322,7 @@ Authorization: Bearer <jwe_token>
     "totalExperience": 6,
     "seniority": "senior",
     "availability": "immediate",
+    "engagementModel": "either",
     "industries": ["fintech", "e-commerce"],
     "roles": ["Full Stack Developer", "Frontend Lead"],
     "currentCtc": 18.5,
@@ -350,6 +351,7 @@ Authorization: Bearer <jwe_token>
 - `profile.totalExperience`: Required, number, min 0, max 50
 - `profile.seniority`: Required, enum: `intern`, `junior`, `mid`, `senior`, `lead`, `principal`, `executive`
 - `profile.availability`: Required, enum: `immediate`, `1_week`, `2_weeks`, `1_month`, `2_months`, `3_months`, `negotiable`
+- `profile.engagementModel`: Optional, enum: `contract`, `full_time`, `either` (default: `either`)
 - `profile.currentCtc`: Optional, number, min 0, max 500 (in LPA)
 - `profile.expectedCtc`: Optional, number, min 0, max 500 (in LPA)
 - `resumeS3Key`: Required, string, min 1, max 500
@@ -390,6 +392,7 @@ Authorization: Bearer <jwe_token>
     "totalExperience": 6,
     "seniority": "senior",
     "availability": "immediate",
+    "engagementModel": "either",
     "industries": ["fintech", "e-commerce"],
     "roles": ["Full Stack Developer", "Frontend Lead"],
     "currentCtc": 18.5,
@@ -445,9 +448,11 @@ Content-Type: application/json
           "mustHaveMatched": ["react", "typescript"],
           "mustHaveMissing": [],
           "goodToHaveMatched": ["nodejs"],
-          "experienceMatch": true,
+          "experienceMatch": "full",
           "seniorityMatch": true,
-          "budgetFit": true
+          "budgetFit": true,
+          "locationMatch": "full",
+          "availabilityMatch": "full"
         },
         "isShortlisted": false,
         "createdAt": "2024-01-15T10:30:00Z"
@@ -510,7 +515,9 @@ Authorization: Bearer <jwe_token>
       "engagementModel": null,
       "payroll": null,
       "budgetMinLpa": 20,
-      "budgetMaxLpa": 30
+      "budgetMaxLpa": 30,
+      "contractDurationMonths": null,
+      "paymentTermsDays": null
     },
     "confidence": 0.95,
     "suggestions": [
@@ -577,6 +584,7 @@ Authorization: Bearer <jwe_token> (optional)
         "totalExperience": 6,
         "seniority": "senior",
         "availability": "immediate",
+        "engagementModel": "either",
         "currentCtc": 18.5,
         "expectedCtc": 25.0,
         "matchScore": 92,
@@ -584,9 +592,11 @@ Authorization: Bearer <jwe_token> (optional)
           "mustHaveMatched": ["react", "nodejs"],
           "mustHaveMissing": [],
           "goodToHaveMatched": ["typescript", "aws"],
-          "experienceMatch": true,
+          "experienceMatch": "full",
           "seniorityMatch": true,
-          "ctcMatch": true
+          "ctcMatch": true,
+          "locationMatch": "full",
+          "availabilityMatch": "full"
         },
         "lastUpdated": "2024-01-15T10:30:00Z"
       }
@@ -614,14 +624,17 @@ Authorization: Bearer <jwe_token> (optional)
         "totalExperience": 6,
         "seniority": "senior",
         "availability": "immediate",
+        "engagementModel": "either",
         "matchScore": 92,
         "matchDetails": {
           "mustHaveMatched": [],
           "mustHaveMissing": [],
           "goodToHaveMatched": [],
-          "experienceMatch": true,
+          "experienceMatch": "full",
           "seniorityMatch": true,
-          "ctcMatch": true
+          "ctcMatch": true,
+          "locationMatch": "full",
+          "availabilityMatch": "full"
         },
         "lastUpdated": "2024-01-15T10:30:00Z"
       }
@@ -649,6 +662,11 @@ Authorization: Bearer <jwe_token> (optional)
 - Candidates exceeding `maxBudgetLpa` are filtered out
 - Skills are normalized using the skill normalizer before matching (supports CRM, marketing, design, and HR/finance skills in addition to engineering skills)
 - Search paginates through all candidates in the database (up to 500) to ensure comprehensive results
+- **Location** is a soft scoring factor (not a hard filter). Multiple locations (comma/semicolon-separated) use OR matching. `locationMatch` values: `"full"` (+10pts), `"partial"` (no location info, +5pts), `"none"` (+0pts)
+- **Experience** is a soft scoring factor. `experienceMatch` values: `"full"` (within range, +8pts), `"partial"` (within 2 years of boundary, +4pts), `"none"` (way outside, +0pts)
+- **Availability** is a soft scoring factor. `availabilityMatch` values: `"full"` (matches or available earlier, +7pts), `"partial"` (1–2 steps later, +3pts), `"none"` (3+ steps later, +0pts)
+- **Seniority** is a soft scoring factor (not a hard filter). Matched candidates get +5pts
+- Match score weights: must-have skills (50%), good-to-have skills (20%), experience (8%), seniority (5%), location (10%), availability (7%)
 
 ---
 
@@ -731,6 +749,8 @@ Authorization: Bearer <jwe_token>
   "payroll": "quadzero",
   "budgetMinLpa": 15,
   "budgetMaxLpa": 30,
+  "contractDurationMonths": 12,
+  "paymentTermsDays": 60,
   "jobTitle": "Senior React Developer",
   "jdText": "We are looking for a Senior React Developer with 5+ years...",
   "parsedCriteria": {
@@ -767,6 +787,8 @@ Authorization: Bearer <jwe_token>
 - `payroll`: Required, enum: `quadzero`, `client`
 - `budgetMinLpa`: Optional, number, min 0, max 500
 - `budgetMaxLpa`: Optional, number, min 0, max 500
+- `contractDurationMonths`: Optional, number, min 1, max 60 (only meaningful for contract engagements)
+- `paymentTermsDays`: Optional, number, must be one of: 30, 45, 60, 90
 - `jobTitle`: Optional, string, max 200 (auto-generated on frontend as "Client Name (End Client) - Core Skill")
 - `jdText`: Required, string, min 50, max 10000
 - `parsedCriteria`: Required, LLM JD output schema (includes `coreSkill`)
@@ -951,6 +973,65 @@ Authorization: Bearer <jwe_token>
 - Adds the current recruiter to `contributing_recruiters` (if not already present)
 - Recomputes `demand_score`
 
+### PUT /recruiter/requirements/{requirementId}/criteria
+
+Update the parsed search criteria and optional budget for an existing requirement. Used when a recruiter refines search criteria after getting few or no results and wants to persist the changes back to the requirement.
+
+**Auth:** Requires `recruiter` role. Recruiter must own the requirement.
+
+**Path Parameters:**
+- `requirementId`: The ID of the requirement to update
+
+**Request Headers:**
+```
+Content-Type: application/json
+Authorization: Bearer <jwe_token>
+```
+
+**Request Body:**
+```json
+{
+  "parsedCriteria": {
+    "mustHaveSkills": ["react", "typescript", "javascript"],
+    "goodToHaveSkills": ["nodejs", "aws", "docker"],
+    "minExperience": 3,
+    "maxExperience": 10,
+    "seniority": ["mid", "senior"],
+    "availability": [],
+    "location": null,
+    "remote": false,
+    "industries": [],
+    "roles": ["React Developer"],
+    "coreSkill": "React"
+  },
+  "maxBudgetLpa": 30
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "requirementId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "lastUpdated": "2024-02-10T14:00:00Z"
+  }
+}
+```
+
+**Validation Rules:**
+- `parsedCriteria`: Required, LLM JD output schema
+- `maxBudgetLpa`: Optional, number, 0-500
+- Requirement must exist (ConditionExpression check)
+- Recruiter must be the owner of the requirement (403 otherwise)
+
+**Side Effects:**
+- Updates `parsed_criteria` field on the requirement
+- Updates `budget_max_lpa` if provided
+- Updates `last_updated` timestamp
+
+---
+
 ### GET /recruiter/client-names
 
 Fetch distinct client names and end-client names from the authenticated recruiter's requirements. Used for autocomplete/type-ahead on requirement forms.
@@ -972,6 +1053,157 @@ Fetch distinct client names and end-client names from the authenticated recruite
 - Results are scoped to the authenticated recruiter's own requirements only
 - Both arrays are sorted alphabetically
 - If the recruiter has no prior requirements, both arrays will be empty
+
+---
+
+## Client Master Endpoints
+
+### POST /recruiter/clients
+
+Create a new client with default settings.
+
+**Auth:** Requires `recruiter` role.
+
+**Request Body:**
+```json
+{
+  "clientName": "Acme Corp",
+  "defaultPaymentTermsDays": 60,
+  "defaultEngagementModel": "full_time_contract",
+  "defaultPayroll": "quadzero",
+  "notes": "Preferred vendor"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "clientId": "c1a2b3c4-d5e6-7890-abcd-ef1234567890",
+    "clientName": "Acme Corp",
+    "defaultPaymentTermsDays": 60,
+    "defaultEngagementModel": "full_time_contract",
+    "defaultPayroll": "quadzero",
+    "notes": "Preferred vendor",
+    "createdAt": "2024-01-15T10:30:00Z",
+    "lastUpdated": "2024-01-15T10:30:00Z"
+  }
+}
+```
+
+**Validation Rules:**
+- `clientName`: Required, string, min 1, max 200
+- `defaultPaymentTermsDays`: Optional, number, must be one of: 30, 45, 60, 90
+- `defaultEngagementModel`: Optional, string
+- `defaultPayroll`: Optional, string
+- `notes`: Optional, string, max 1000
+
+**Notes:**
+- Returns 409 if a client with the same name already exists (case-insensitive)
+
+---
+
+### GET /recruiter/clients
+
+List all clients.
+
+**Auth:** Requires `recruiter` role.
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "clients": [
+      {
+        "clientId": "c1a2b3c4",
+        "clientName": "Acme Corp",
+        "defaultPaymentTermsDays": 60,
+        "defaultEngagementModel": "full_time_contract",
+        "defaultPayroll": "quadzero",
+        "notes": "Preferred vendor",
+        "createdAt": "2024-01-15T10:30:00Z",
+        "lastUpdated": "2024-01-15T10:30:00Z"
+      }
+    ]
+  }
+}
+```
+
+---
+
+### GET /recruiter/client-defaults?clientName=X
+
+Look up client defaults by name.
+
+**Auth:** Requires `recruiter` role.
+
+**Query Parameters:**
+- `clientName`: Required, the client name to look up (case-insensitive)
+
+**Response (200 OK - found):**
+```json
+{
+  "success": true,
+  "data": {
+    "found": true,
+    "clientId": "c1a2b3c4",
+    "clientName": "Acme Corp",
+    "defaultPaymentTermsDays": 60,
+    "defaultEngagementModel": "full_time_contract",
+    "defaultPayroll": "quadzero"
+  }
+}
+```
+
+**Response (200 OK - not found):**
+```json
+{
+  "success": true,
+  "data": {
+    "found": false
+  }
+}
+```
+
+---
+
+### PUT /recruiter/clients/{clientId}
+
+Update a client's default settings.
+
+**Auth:** Requires `recruiter` role.
+
+**Path Parameters:**
+- `clientId`: The unique client identifier
+
+**Request Body:**
+```json
+{
+  "defaultPaymentTermsDays": 90,
+  "defaultEngagementModel": "full_time_regular",
+  "defaultPayroll": "client",
+  "notes": "Updated terms"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "clientId": "c1a2b3c4",
+    "clientName": "Acme Corp",
+    "defaultPaymentTermsDays": 90,
+    "defaultEngagementModel": "full_time_regular",
+    "defaultPayroll": "client",
+    "notes": "Updated terms",
+    "createdAt": "2024-01-15T10:30:00Z",
+    "lastUpdated": "2024-02-15T10:30:00Z"
+  }
+}
+```
 
 ---
 
@@ -1436,6 +1668,7 @@ Authorization: Bearer <jwe_token>
   "candidateExperienceYears": 6,
   "contractDurationMonths": 12,
   "paymentTermsDays": 90,
+  "engagementModel": "full_time_contract",
   "clientBudgetMinHourly": 700,
   "clientBudgetMaxHourly": 1000
 }
@@ -1448,7 +1681,9 @@ Authorization: Bearer <jwe_token>
   "data": {
     "experienceBand": "mid",
     "monthlyCtcInr": 83333.33,
-    "platformFee": 25000,
+    "platformFee": 22500,
+    "originalPlatformFee": 25000,
+    "contractDurationDiscountPct": 0.10,
     "variableMarkupPct": 0.10,
     "variableMarkupAmount": 8333.33,
     "workingCapitalBlocked": 250000,
@@ -1493,6 +1728,7 @@ Authorization: Bearer <jwe_token>
 - `candidateExperienceYears`: Required, number, min 0, max 50
 - `contractDurationMonths`: Required, number, min 1, max 60
 - `paymentTermsDays`: Required, number, must be one of: 30, 45, 60, 90
+- `engagementModel`: Optional, string, one of: `full_time_regular`, `full_time_contract`, `part_time_contract`. When provided, enables contract duration discounts for contract engagements.
 - `clientBudgetMinHourly`: Optional, number, min 0 (must be provided with `clientBudgetMaxHourly`)
 - `clientBudgetMaxHourly`: Optional, number, min 0 (must be provided with `clientBudgetMinHourly`)
 

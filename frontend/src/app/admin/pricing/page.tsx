@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { api, PricingConfig } from '@/lib/api';
+import { api, PricingConfig, ContractDurationThreshold } from '@/lib/api';
 
 const BAND_LABELS = {
   junior: 'Junior (0–4 yrs)',
@@ -243,6 +243,88 @@ export default function AdminPricingPage() {
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
               />
             </div>
+          </div>
+        </section>
+
+        {/* Contract Duration Discount */}
+        <section className="card p-6">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Contract Duration Discounts</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            Platform fee discounts for longer contract engagements. Does not apply to full-time regular.
+          </p>
+          <div className="space-y-3">
+            {(config.contractDurationDiscount?.thresholds || []).map((tier, idx) => (
+              <div key={idx} className="grid grid-cols-4 gap-3 items-end">
+                <div>
+                  <label className="text-xs text-gray-600 dark:text-gray-400 block mb-1">Min Months</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={tier.minMonths}
+                    onChange={(e) => {
+                      const thresholds = [...(config.contractDurationDiscount?.thresholds || [])];
+                      thresholds[idx] = { ...thresholds[idx], minMonths: parseInt(e.target.value) || 1 };
+                      setConfig({ ...config, contractDurationDiscount: { thresholds } });
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600 dark:text-gray-400 block mb-1">Max Months</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={tier.maxMonths}
+                    onChange={(e) => {
+                      const thresholds = [...(config.contractDurationDiscount?.thresholds || [])];
+                      thresholds[idx] = { ...thresholds[idx], maxMonths: parseInt(e.target.value) || 1 };
+                      setConfig({ ...config, contractDurationDiscount: { thresholds } });
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600 dark:text-gray-400 block mb-1">Discount (%)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.5}
+                    value={Math.round(tier.discountPct * 100 * 10) / 10}
+                    onChange={(e) => {
+                      const thresholds = [...(config.contractDurationDiscount?.thresholds || [])];
+                      thresholds[idx] = { ...thresholds[idx], discountPct: (parseFloat(e.target.value) || 0) / 100 };
+                      setConfig({ ...config, contractDurationDiscount: { thresholds } });
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                  />
+                </div>
+                <div>
+                  <button
+                    onClick={() => {
+                      const thresholds = (config.contractDurationDiscount?.thresholds || []).filter((_, i) => i !== idx);
+                      setConfig({ ...config, contractDurationDiscount: { thresholds } });
+                    }}
+                    className="px-3 py-2 text-sm text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 border border-red-300 dark:border-red-600 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ))}
+            <button
+              onClick={() => {
+                const thresholds = [...(config.contractDurationDiscount?.thresholds || [])];
+                const lastMax = thresholds.length > 0 ? thresholds[thresholds.length - 1].maxMonths + 1 : 1;
+                thresholds.push({ minMonths: lastMax, maxMonths: lastMax + 11, discountPct: 0 });
+                setConfig({ ...config, contractDurationDiscount: { thresholds } });
+              }}
+              className="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 font-medium"
+            >
+              + Add Tier
+            </button>
           </div>
         </section>
 

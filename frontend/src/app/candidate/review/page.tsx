@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Header } from '@/components/Header';
 import { api, ExtractedProfile } from '@/lib/api';
-import { formatSeniority, formatAvailability, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS } from '@/lib/utils';
+import { formatSeniority, formatAvailability, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS, CANDIDATE_ENGAGEMENT_OPTIONS } from '@/lib/utils';
 
 export default function ReviewPage() {
   const router = useRouter();
@@ -90,6 +90,7 @@ export default function ReviewPage() {
       const profileToSave = {
         ...profile,
         availability: profile.availability || 'negotiable',
+        engagementModel: profile.engagementModel || 'either',
         seniority: profile.seniority || 'mid',
         location: profile.location || undefined,
         currentCtc: profile.currentCtc || undefined,
@@ -193,7 +194,7 @@ export default function ReviewPage() {
           {/* Experience */}
           <div className="card p-6">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Experience</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <label className="label">Total Experience (Years) <span className="text-red-500">*</span></label>
                 <input
@@ -218,13 +219,25 @@ export default function ReviewPage() {
                 </select>
               </div>
               <div>
-                <label className="label">Availability <span className="text-red-500">*</span></label>
+                <label className="label">Notice Period <span className="text-red-500">*</span></label>
                 <select
                   value={profile.availability || 'negotiable'}
                   onChange={(e) => updateProfile({ availability: e.target.value })}
                   className="input mt-1"
                 >
                   {AVAILABILITY_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="label">Engagement Model</label>
+                <select
+                  value={profile.engagementModel || 'either'}
+                  onChange={(e) => updateProfile({ engagementModel: e.target.value })}
+                  className="input mt-1"
+                >
+                  {CANDIDATE_ENGAGEMENT_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
                 </select>

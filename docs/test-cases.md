@@ -829,13 +829,13 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | **Request** | `{"criteria": {...}, "pagination": {"limit": 101}}` |
 | **Expected Result** | HTTP 400; `VALIDATION_ERROR` (max 100) |
 
-### TC-SEARCH-013: Search by location filter
+### TC-SEARCH-013: Search by location — soft scoring (not hard filter)
 | Field | Value |
 |-------|-------|
 | **ID** | TC-SEARCH-013 |
 | **Priority** | P1 |
 | **Request** | `{"criteria": {"location": "Bangalore"}}` |
-| **Expected Result** | Only candidates whose location contains "bangalore" (case-insensitive) returned |
+| **Expected Result** | All candidates returned; those in Bangalore have `locationMatch: "full"` and higher score (+10pts); those with no location have `locationMatch: "partial"` (+5pts); others have `locationMatch: "none"` (+0pts) and rank lower |
 
 ### TC-SEARCH-014: Filter candidates with zero must-have matches
 | Field | Value |
@@ -851,7 +851,7 @@ All functional and non-functional aspects of Quadzero Scout covering:
 |-------|-------|
 | **ID** | TC-SEARCH-015 |
 | **Priority** | P1 |
-| **Expected Result** | Each candidate result includes `matchDetails` with fields: `mustHaveMatched` (array), `mustHaveMissing` (array), `goodToHaveMatched` (array), `experienceMatch` (boolean), `seniorityMatch` (boolean) |
+| **Expected Result** | Each candidate result includes `matchDetails` with fields: `mustHaveMatched` (array), `mustHaveMissing` (array), `goodToHaveMatched` (array), `experienceMatch` ("full" / "partial" / "none"), `seniorityMatch` (boolean), `ctcMatch` (boolean), `locationMatch` ("full" / "partial" / "none"), `availabilityMatch` ("full" / "partial" / "none") |
 
 ### TC-SEARCH-016: Search with minExperience > maxExperience
 | Field | Value |
@@ -876,6 +876,185 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | **Priority** | P1 |
 | **Steps** | Execute search from `/recruiter/search` page |
 | **Expected Result** | Candidate cards shown with: name, location, skills, experience, seniority, availability, match score badge (color-coded) |
+
+### TC-SEARCH-019: Add skill to must-have list
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-019 |
+| **Priority** | P1 |
+| **Steps** | On criteria view, type a skill in the must-have input and press Enter |
+| **Expected Result** | Skill badge appears in must-have list, lowercased; input field is cleared; duplicate skill is silently ignored |
+
+### TC-SEARCH-020: Add skill to good-to-have list
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-020 |
+| **Priority** | P1 |
+| **Steps** | On criteria view, type a skill in the good-to-have input and click the "+" button |
+| **Expected Result** | Skill badge appears in good-to-have list, lowercased; input field is cleared |
+
+### TC-SEARCH-021: Modified indicator and reset
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-021 |
+| **Priority** | P1 |
+| **Steps** | Parse a JD, modify any criteria field (e.g., change experience range), verify "Modified" badge and "Reset to Original" link appear, click reset |
+| **Expected Result** | "Modified" badge appears when criteria differ from original. After reset, criteria revert to original parsed values and "Modified" badge disappears |
+
+### TC-SEARCH-022: Empty results shows refine button
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-022 |
+| **Priority** | P1 |
+| **Steps** | Execute search that returns 0 results |
+| **Expected Result** | Empty state shows search icon, descriptive text with suggestions, and a "Modify Search Criteria" button that navigates to criteria view |
+
+### TC-SEARCH-023: Low results banner
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-023 |
+| **Priority** | P2 |
+| **Steps** | Execute search that returns 1-4 results |
+| **Expected Result** | Amber banner appears above results: "Only N candidate(s) matched. Consider broadening your criteria." with "Refine Criteria" button |
+
+### TC-SEARCH-024: Save modified criteria to requirement
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-024 |
+| **Priority** | P1 |
+| **Endpoint** | `PUT /recruiter/requirements/{requirementId}/criteria` |
+| **Steps** | Navigate from requirement detail → search, modify criteria, click "Save to Requirement" |
+| **Expected Result** | HTTP 200; requirement's `parsed_criteria` and `budget_max_lpa` updated in DB; "Saved!" confirmation shown; "Modified" badge disappears (new baseline set) |
+
+### TC-SEARCH-025: Save criteria - unauthorized recruiter
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-025 |
+| **Priority** | P1 |
+| **Endpoint** | `PUT /recruiter/requirements/{requirementId}/criteria` |
+| **Precondition** | Recruiter does not own the requirement |
+| **Expected Result** | HTTP 403; `FORBIDDEN` error; requirement unchanged |
+
+### TC-SEARCH-026: Save criteria - requirement not found
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-026 |
+| **Priority** | P2 |
+| **Endpoint** | `PUT /recruiter/requirements/{requirementId}/criteria` |
+| **Request** | Use non-existent requirementId |
+| **Expected Result** | HTTP 404; `NOT_FOUND` error |
+
+### TC-SEARCH-027: Modified criteria are ephemeral by default
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-027 |
+| **Priority** | P1 |
+| **Steps** | Modify search criteria, re-search, then navigate away and back to requirement detail |
+| **Expected Result** | Requirement detail page shows original parsed criteria (modifications not persisted unless explicitly saved) |
+
+### TC-SEARCH-028: Multi-location OR matching
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-028 |
+| **Priority** | P0 |
+| **Precondition** | Candidates exist in Bangalore, Chennai, and Mumbai |
+| **Request** | `{"criteria": {"location": "Bangalore, Chennai"}}` |
+| **Expected Result** | Bangalore and Chennai candidates have `locationMatch: "full"` (+10pts); Mumbai candidate has `locationMatch: "none"` (+0pts); all candidates appear in results |
+
+### TC-SEARCH-029: Location scoring — blank/unknown location
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-029 |
+| **Priority** | P1 |
+| **Precondition** | Candidate exists with empty/null location |
+| **Request** | `{"criteria": {"location": "Bangalore"}}` |
+| **Expected Result** | Candidate returned with `locationMatch: "partial"` (+5pts); ranks between full-match and no-match candidates |
+
+### TC-SEARCH-030: No location criteria — full points for all
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-030 |
+| **Priority** | P1 |
+| **Request** | `{"criteria": {"mustHaveSkills": ["react"]}}` (no location) |
+| **Expected Result** | All candidates receive full location score (+10pts); `locationMatch: "full"` for all |
+
+### TC-SEARCH-031: Location tag UI — add and remove
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-031 |
+| **Priority** | P1 |
+| **Steps** | In criteria view, type "Pune" and press Enter or click "+"; then click "x" on an existing location tag |
+| **Expected Result** | Location added as tag badge; clicking "x" removes tag; underlying `searchCriteria.location` updated as comma-separated string |
+
+### TC-SEARCH-032: Location mismatch callout in results
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-032 |
+| **Priority** | P1 |
+| **Steps** | Search with location "Bangalore"; view results including a candidate in Mumbai |
+| **Expected Result** | Candidate card shows "(different location)" label next to location; drawer Match Analysis shows red "Location mismatch: Mumbai (looking for Bangalore)" |
+
+### TC-SEARCH-033: Experience soft scoring — slightly below min
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-033 |
+| **Priority** | P0 |
+| **Precondition** | Candidate has 4 years experience |
+| **Request** | `{"criteria": {"mustHaveSkills": ["react"], "minExperience": 5}}` |
+| **Expected Result** | Candidate returned with `experienceMatch: "partial"` (+4pts); ranks below in-range candidates but still in results; card shows "(close to range)" label |
+
+### TC-SEARCH-034: Experience soft scoring — way below min
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-034 |
+| **Priority** | P1 |
+| **Precondition** | Candidate has 1 year experience |
+| **Request** | `{"criteria": {"mustHaveSkills": ["react"], "minExperience": 5}}` |
+| **Expected Result** | Candidate returned with `experienceMatch: "none"` (+0pts); card shows "(outside range)" label in red; still appears if skills match |
+
+### TC-SEARCH-035: Experience within range — full match
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-035 |
+| **Priority** | P1 |
+| **Precondition** | Candidate has 6 years experience |
+| **Request** | `{"criteria": {"minExperience": 3, "maxExperience": 10}}` |
+| **Expected Result** | Candidate has `experienceMatch: "full"` (+8pts); no experience mismatch indicators shown |
+
+### TC-SEARCH-036: Availability soft scoring — candidate available later than desired
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-036 |
+| **Priority** | P0 |
+| **Precondition** | Candidate has availability "1_month" |
+| **Request** | `{"criteria": {"mustHaveSkills": ["react"], "availability": ["immediate"]}}` |
+| **Expected Result** | Candidate returned with `availabilityMatch: "none"` (+0pts); card shows "(longer than desired)" in red; still in results if skills match |
+
+### TC-SEARCH-037: Availability soft scoring — slightly later
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-037 |
+| **Priority** | P1 |
+| **Precondition** | Candidate has availability "1_month" |
+| **Request** | `{"criteria": {"availability": ["2_weeks"]}}` |
+| **Expected Result** | Candidate returned with `availabilityMatch: "partial"` (+3pts); card shows "(slightly longer)" amber label |
+
+### TC-SEARCH-038: Availability soft scoring — candidate available earlier
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-038 |
+| **Priority** | P1 |
+| **Precondition** | Candidate has availability "immediate" |
+| **Request** | `{"criteria": {"availability": ["1_month"]}}` |
+| **Expected Result** | Candidate has `availabilityMatch: "full"` (+7pts); available earlier is always a full match |
+
+### TC-SEARCH-039: No experience or availability criteria — full points for all
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-039 |
+| **Priority** | P1 |
+| **Request** | `{"criteria": {"mustHaveSkills": ["react"]}}` (no experience or availability) |
+| **Expected Result** | All candidates get full experience (+8pts) and availability (+7pts) scores; no mismatch indicators shown |
 
 ---
 

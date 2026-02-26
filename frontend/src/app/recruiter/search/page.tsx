@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Header } from '@/components/Header';
 import { PricingPanel } from '@/components/PricingPanel';
 import { ComboboxInput } from '@/components/ui/combobox-input';
-import { api, ParsedCriteria, SearchCriteria, CandidateSearchResult, EngagementModel, Payroll, DuplicateMatch, ConsolidateResponse } from '@/lib/api';
-import { formatSeniority, formatAvailability, getMatchScoreColor, getMatchScoreBgColor, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS, ENGAGEMENT_MODEL_OPTIONS, PAYROLL_OPTIONS, formatEngagementModel } from '@/lib/utils';
+import { api, ParsedCriteria, SearchCriteria, CandidateSearchResult, EngagementModel, Payroll, DuplicateMatch, ConsolidateResponse, ClientDefaultsResponse } from '@/lib/api';
+import { formatSeniority, formatAvailability, formatCandidateEngagement, getMatchScoreColor, getMatchScoreBgColor, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS, ENGAGEMENT_MODEL_OPTIONS, PAYROLL_OPTIONS, formatEngagementModel } from '@/lib/utils';
 
 type ViewMode = 'input' | 'requirement_details' | 'criteria' | 'results';
 
@@ -47,6 +47,13 @@ export default function RecruiterSearchPage() {
   const [formattingCandidateId, setFormattingCandidateId] = useState<string | null>(null);
   const [sourceRequirementId, setSourceRequirementId] = useState<string | null>(prefilled?.requirementId || null);
 
+  // Skill input state for adding skills
+  const [mustHaveSkillInput, setMustHaveSkillInput] = useState('');
+  const [goodToHaveSkillInput, setGoodToHaveSkillInput] = useState('');
+  const [savingCriteria, setSavingCriteria] = useState(false);
+  const [criteriaSaveSuccess, setCriteriaSaveSuccess] = useState(false);
+  const [locationInput, setLocationInput] = useState('');
+
   // Requirement details state
   const [clientName, setClientName] = useState('');
   const [endClient, setEndClient] = useState('');
@@ -60,8 +67,43 @@ export default function RecruiterSearchPage() {
   const [requirementSaved, setRequirementSaved] = useState(false);
   const [consolidated, setConsolidated] = useState(false);
   const [consolidateResult, setConsolidateResult] = useState<ConsolidateResponse | null>(null);
+  const [contractDurationMonths, setContractDurationMonths] = useState('');
+  const [paymentTermsDays, setPaymentTermsDays] = useState('');
+  const [clientDefaults, setClientDefaults] = useState<ClientDefaultsResponse | null>(null);
+  const clientLookupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [clientNameOptions, setClientNameOptions] = useState<string[]>([]);
   const [endClientOptions, setEndClientOptions] = useState<string[]>([]);
+
+  // Debounced client defaults lookup
+  const lookupClientDefaults = useCallback((name: string) => {
+    if (clientLookupTimer.current) clearTimeout(clientLookupTimer.current);
+    if (!name.trim()) {
+      setClientDefaults(null);
+      return;
+    }
+    clientLookupTimer.current = setTimeout(async () => {
+      try {
+        const result = await api.getClientDefaults(name.trim());
+        setClientDefaults(result);
+        if (result.found) {
+          if (result.defaultEngagementModel && !engagementModel) {
+            const em = result.defaultEngagementModel;
+            if (['full_time_regular', 'full_time_contract', 'part_time_contract'].includes(em)) {
+              setEngagementModel(em as EngagementModel);
+            }
+          }
+          if (result.defaultPayroll && !payroll) {
+            const p = result.defaultPayroll;
+            if (['quadzero', 'client'].includes(p)) {
+              setPayroll(p as Payroll);
+            }
+          }
+        }
+      } catch {
+        setClientDefaults(null);
+      }
+    }, 500);
+  }, [engagementModel, payroll]);
 
   const generateJobTitle = (client: string, end: string, skill: string): string => {
     const parts: string[] = [];
@@ -179,6 +221,14 @@ export default function RecruiterSearchPage() {
       if (response.parsedCriteria.budgetMinLpa != null) setBudgetMinLpa(response.parsedCriteria.budgetMinLpa.toString());
       if (response.parsedCriteria.budgetMaxLpa != null) setBudgetMaxLpa(response.parsedCriteria.budgetMaxLpa.toString());
       if (response.parsedCriteria.coreSkill) setCoreSkill(response.parsedCriteria.coreSkill);
+      if (response.parsedCriteria.contractDurationMonths != null) {
+        setContractDurationMonths(response.parsedCriteria.contractDurationMonths.toString());
+      }
+
+      // Trigger client defaults lookup if client name was extracted
+      if (response.parsedCriteria.clientName) {
+        lookupClientDefaults(response.parsedCriteria.clientName);
+      }
 
       // Authenticated recruiters go through requirement details; others go straight to criteria
       if (isAuthenticated) {
@@ -301,6 +351,11 @@ export default function RecruiterSearchPage() {
       setSavingRequirement(true);
       setError(null);
 
+      // Resolve payment terms: from client defaults or recruiter input
+      const resolvedPaymentTerms = clientDefaults?.found && clientDefaults.defaultPaymentTermsDays
+        ? clientDefaults.defaultPaymentTermsDays
+        : paymentTermsDays ? parseInt(paymentTermsDays) : undefined;
+
       const generatedTitle = generateJobTitle(clientName, endClient, coreSkill);
       await api.saveRequirement({
         clientName: clientName.trim(),
@@ -309,11 +364,40 @@ export default function RecruiterSearchPage() {
         payroll: payroll as Payroll,
         budgetMinLpa: budgetMinLpa ? parseFloat(budgetMinLpa) : undefined,
         budgetMaxLpa: budgetMaxLpa ? parseFloat(budgetMaxLpa) : undefined,
+        contractDurationMonths: contractDurationMonths ? parseInt(contractDurationMonths) : undefined,
+        paymentTermsDays: resolvedPaymentTerms,
         jobTitle: generatedTitle || undefined,
         jdText: jobDescription,
         parsedCriteria,
         status: 'active',
       });
+
+      // Persist payment terms to client if recruiter entered them for a client without terms
+      if (paymentTermsDays && clientName.trim()) {
+        try {
+          if (clientDefaults?.found && clientDefaults.clientId) {
+            // Client exists but has no payment terms — update
+            await api.updateClient(clientDefaults.clientId, {
+              defaultPaymentTermsDays: parseInt(paymentTermsDays),
+            });
+          } else if (!clientDefaults?.found) {
+            // Client doesn't exist — create with payment terms
+            await api.saveClient({
+              clientName: clientName.trim(),
+              defaultPaymentTermsDays: parseInt(paymentTermsDays),
+              defaultEngagementModel: engagementModel || undefined,
+              defaultPayroll: payroll || undefined,
+            });
+          }
+        } catch {
+          // Non-fatal: requirement was saved, client update failed silently
+        }
+      }
+
+      // Sync budget from requirement details into search criteria
+      if (budgetMaxLpa) {
+        setSearchCriteria(prev => ({ ...prev, maxBudgetLpa: parseFloat(budgetMaxLpa) }));
+      }
 
       setRequirementSaved(true);
       setConsolidated(false);
@@ -336,6 +420,9 @@ export default function RecruiterSearchPage() {
         parsedCriteria,
         similarityScore: match.similarityScore,
       });
+      if (budgetMaxLpa) {
+        setSearchCriteria(prev => ({ ...prev, maxBudgetLpa: parseFloat(budgetMaxLpa) }));
+      }
       setConsolidated(true);
       setConsolidateResult(result);
       setRequirementSaved(true);
@@ -349,6 +436,10 @@ export default function RecruiterSearchPage() {
   };
 
   const handleSkipSave = () => {
+    // Sync budget from requirement details into search criteria
+    if (budgetMaxLpa) {
+      setSearchCriteria(prev => ({ ...prev, maxBudgetLpa: parseFloat(budgetMaxLpa) }));
+    }
     setViewMode('criteria');
   };
 
@@ -361,6 +452,96 @@ export default function RecruiterSearchPage() {
       updateCriteria('mustHaveSkills', (searchCriteria.mustHaveSkills || []).filter(s => s !== skill));
     } else {
       updateCriteria('goodToHaveSkills', (searchCriteria.goodToHaveSkills || []).filter(s => s !== skill));
+    }
+  };
+
+  const addSkill = (skill: string, type: 'mustHave' | 'goodToHave') => {
+    const trimmed = skill.trim().toLowerCase();
+    if (!trimmed) return;
+
+    if (type === 'mustHave') {
+      const current = searchCriteria.mustHaveSkills || [];
+      if (!current.includes(trimmed)) {
+        updateCriteria('mustHaveSkills', [...current, trimmed]);
+      }
+      setMustHaveSkillInput('');
+    } else {
+      const current = searchCriteria.goodToHaveSkills || [];
+      if (!current.includes(trimmed)) {
+        updateCriteria('goodToHaveSkills', [...current, trimmed]);
+      }
+      setGoodToHaveSkillInput('');
+    }
+  };
+
+  // Parse current location string into individual location tags
+  const locationTags = (searchCriteria.location || '')
+    .split(/[,;]/)
+    .map(l => l.trim())
+    .filter(l => l.length > 0);
+
+  const addLocation = (loc: string) => {
+    const trimmed = loc.trim();
+    if (!trimmed) return;
+    const current = locationTags;
+    if (!current.some(l => l.toLowerCase() === trimmed.toLowerCase())) {
+      updateCriteria('location', [...current, trimmed].join(', '));
+    }
+    setLocationInput('');
+  };
+
+  const removeLocation = (loc: string) => {
+    const updated = locationTags.filter(l => l !== loc);
+    updateCriteria('location', updated.length > 0 ? updated.join(', ') : undefined);
+  };
+
+  // Derive the original search criteria from parsedCriteria for comparison
+  const deriveSearchCriteria = (pc: ParsedCriteria): SearchCriteria => ({
+    mustHaveSkills: pc.mustHaveSkills,
+    goodToHaveSkills: pc.goodToHaveSkills,
+    minExperience: pc.minExperience || undefined,
+    maxExperience: pc.maxExperience || undefined,
+    seniority: pc.seniority,
+    availability: pc.availability,
+    location: pc.location || undefined,
+    maxBudgetLpa: (budgetMaxLpa ? parseFloat(budgetMaxLpa) : undefined) || pc.rateLpa || undefined,
+  });
+
+  const originalCriteria = parsedCriteria ? deriveSearchCriteria(parsedCriteria) : null;
+  const criteriaModified = originalCriteria
+    ? JSON.stringify(searchCriteria) !== JSON.stringify(originalCriteria)
+    : false;
+
+  const handleResetCriteria = () => {
+    if (originalCriteria) {
+      setSearchCriteria(originalCriteria);
+      setCriteriaSaveSuccess(false);
+    }
+  };
+
+  const handleSaveCriteriaToRequirement = async () => {
+    if (!sourceRequirementId || !parsedCriteria) return;
+    try {
+      setSavingCriteria(true);
+      setError(null);
+      const updatedParsedCriteria: ParsedCriteria = {
+        ...parsedCriteria,
+        mustHaveSkills: searchCriteria.mustHaveSkills || [],
+        goodToHaveSkills: searchCriteria.goodToHaveSkills || [],
+        minExperience: searchCriteria.minExperience ?? null,
+        maxExperience: searchCriteria.maxExperience ?? null,
+        seniority: searchCriteria.seniority || [],
+        availability: searchCriteria.availability || [],
+        location: searchCriteria.location || null,
+      };
+      await api.updateRequirementCriteria(sourceRequirementId, updatedParsedCriteria, searchCriteria.maxBudgetLpa);
+      setParsedCriteria(updatedParsedCriteria);
+      setCriteriaSaveSuccess(true);
+      setTimeout(() => setCriteriaSaveSuccess(false), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save criteria to requirement');
+    } finally {
+      setSavingCriteria(false);
     }
   };
 
@@ -461,7 +642,7 @@ export default function RecruiterSearchPage() {
                   <label className="label">Client Name <span className="text-red-500">*</span></label>
                   <ComboboxInput
                     value={clientName}
-                    onChange={setClientName}
+                    onChange={(val) => { setClientName(val); lookupClientDefaults(val); }}
                     options={clientNameOptions}
                     placeholder="Who shared this requirement?"
                     className="mt-1"
@@ -526,7 +707,48 @@ export default function RecruiterSearchPage() {
                     Auto-detected from JD. Used to generate the requirement title.
                   </p>
                 </div>
+                <div>
+                  <label className="label">Contract Duration (months)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={contractDurationMonths}
+                    onChange={(e) => setContractDurationMonths(e.target.value)}
+                    placeholder="e.g., 6, 12"
+                    className="input mt-1"
+                  />
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Longer contracts may qualify for platform fee discounts.
+                  </p>
+                </div>
               </div>
+
+              {/* Payment Terms — from Client MSA */}
+              {clientName.trim() && clientDefaults?.found && clientDefaults.defaultPaymentTermsDays ? (
+                <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <p className="text-sm text-blue-700 dark:text-blue-300">
+                    Payment terms: <strong>Net {clientDefaults.defaultPaymentTermsDays} days</strong> (from <strong>{clientDefaults.clientName}</strong> MSA)
+                  </p>
+                </div>
+              ) : clientName.trim() ? (
+                <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                  <label className="block text-sm font-medium text-amber-800 dark:text-amber-300 mb-2">
+                    No payment terms on file for <strong>{clientName.trim()}</strong>. Please select:
+                  </label>
+                  <select
+                    value={paymentTermsDays}
+                    onChange={(e) => setPaymentTermsDays(e.target.value)}
+                    className="input w-48"
+                  >
+                    <option value="">Select payment terms</option>
+                    <option value="30">Net 30 days</option>
+                    <option value="45">Net 45 days</option>
+                    <option value="60">Net 60 days</option>
+                    <option value="90">Net 90 days</option>
+                  </select>
+                </div>
+              ) : null}
             </div>
 
             {/* Duplicate Modal */}
@@ -630,7 +852,21 @@ export default function RecruiterSearchPage() {
             )}
 
             <div className="card p-6">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-6">Search Criteria</h2>
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Search Criteria</h2>
+                  {criteriaModified && (
+                    <span className="badge bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 text-xs">
+                      Modified
+                    </span>
+                  )}
+                </div>
+                {criteriaModified && (
+                  <button onClick={handleResetCriteria} className="text-sm text-primary-600 dark:text-primary-400 hover:underline">
+                    Reset to Original
+                  </button>
+                )}
+              </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Must-Have Skills */}
@@ -648,6 +884,31 @@ export default function RecruiterSearchPage() {
                       </span>
                     ))}
                   </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={mustHaveSkillInput}
+                      onChange={(e) => setMustHaveSkillInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addSkill(mustHaveSkillInput, 'mustHave');
+                        }
+                      }}
+                      placeholder="Add a skill and press Enter"
+                      className="input flex-1"
+                    />
+                    <button
+                      onClick={() => addSkill(mustHaveSkillInput, 'mustHave')}
+                      disabled={!mustHaveSkillInput.trim()}
+                      className="btn-secondary px-3 py-2 disabled:opacity-50"
+                      type="button"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Good-to-Have Skills */}
@@ -664,6 +925,31 @@ export default function RecruiterSearchPage() {
                         </button>
                       </span>
                     ))}
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={goodToHaveSkillInput}
+                      onChange={(e) => setGoodToHaveSkillInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addSkill(goodToHaveSkillInput, 'goodToHave');
+                        }
+                      }}
+                      placeholder="Add a skill and press Enter"
+                      className="input flex-1"
+                    />
+                    <button
+                      onClick={() => addSkill(goodToHaveSkillInput, 'goodToHave')}
+                      disabled={!goodToHaveSkillInput.trim()}
+                      className="btn-secondary px-3 py-2 disabled:opacity-50"
+                      type="button"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
 
@@ -737,19 +1023,46 @@ export default function RecruiterSearchPage() {
 
                 {/* Location */}
                 <div>
-                  <label className="label">Location</label>
-                  <input
-                    type="text"
-                    value={searchCriteria.location || ''}
-                    onChange={(e) => updateCriteria('location', e.target.value || undefined)}
-                    placeholder="e.g., Bangalore"
-                    className="input mt-2"
-                  />
+                  <label className="label">Locations</label>
+                  {locationTags.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {locationTags.map((loc) => (
+                        <span key={loc} className="badge bg-primary-100 text-primary-800 border border-primary-300 dark:bg-primary-900/30 dark:text-primary-300 dark:border-primary-600 flex items-center gap-1">
+                          {loc}
+                          <button onClick={() => removeLocation(loc)} className="ml-1 hover:text-red-500" title="Remove">
+                            &times;
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      type="text"
+                      value={locationInput}
+                      onChange={(e) => setLocationInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addLocation(locationInput);
+                        }
+                      }}
+                      placeholder="e.g., Bangalore"
+                      className="input flex-1"
+                    />
+                    <button
+                      onClick={() => addLocation(locationInput)}
+                      disabled={!locationInput.trim()}
+                      className="btn-secondary text-sm px-3"
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
 
-                {/* Availability */}
+                {/* Notice Period */}
                 <div>
-                  <label className="label">Availability</label>
+                  <label className="label">Notice Period</label>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {AVAILABILITY_OPTIONS.slice(0, 4).map((opt) => (
                       <button
@@ -779,9 +1092,23 @@ export default function RecruiterSearchPage() {
                 <button onClick={() => setViewMode('input')} className="btn-secondary">
                   Back to JD
                 </button>
-                <button onClick={handleSearch} disabled={loading} className="btn-primary px-8">
-                  {loading ? 'Searching...' : 'Search Candidates'}
-                </button>
+                <div className="flex items-center gap-3">
+                  {sourceRequirementId && criteriaModified && (
+                    <button
+                      onClick={handleSaveCriteriaToRequirement}
+                      disabled={savingCriteria}
+                      className="btn-secondary text-sm"
+                    >
+                      {savingCriteria ? 'Saving...' : 'Save to Requirement'}
+                    </button>
+                  )}
+                  {criteriaSaveSuccess && (
+                    <span className="text-sm text-green-600 dark:text-green-400">Saved!</span>
+                  )}
+                  <button onClick={handleSearch} disabled={loading} className="btn-primary px-8">
+                    {loading ? 'Searching...' : 'Search Candidates'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -830,6 +1157,18 @@ export default function RecruiterSearchPage() {
               </div>
             )}
 
+            {/* Low results banner */}
+            {totalMatches > 0 && totalMatches < 5 && (
+              <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <p className="text-sm text-amber-700 dark:text-amber-300">
+                  Only {totalMatches} candidate{totalMatches === 1 ? '' : 's'} matched. Consider broadening your criteria for more results.
+                </p>
+                <button onClick={() => setViewMode('criteria')} className="btn-secondary text-sm whitespace-nowrap self-start">
+                  Refine Criteria
+                </button>
+              </div>
+            )}
+
             <div className="space-y-4">
               {results.map((candidate, index) => (
                 <div
@@ -849,10 +1188,36 @@ export default function RecruiterSearchPage() {
                       </div>
 
                       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-gray-400">
-                        <span>{candidate.totalExperience} years exp</span>
+                        <span className="flex items-center gap-1">
+                          {candidate.totalExperience} years exp
+                          {(searchCriteria.minExperience != null || searchCriteria.maxExperience != null) && candidate.matchDetails.experienceMatch === 'partial' && (
+                            <span className="text-xs text-amber-600 dark:text-amber-400">(close to range)</span>
+                          )}
+                          {(searchCriteria.minExperience != null || searchCriteria.maxExperience != null) && candidate.matchDetails.experienceMatch === 'none' && (
+                            <span className="text-xs text-red-500 dark:text-red-400">(outside range)</span>
+                          )}
+                        </span>
                         <span>{formatSeniority(candidate.seniority)}</span>
-                        {isAuthenticated && candidate.location && <span>{candidate.location}</span>}
-                        <span>{formatAvailability(candidate.availability)}</span>
+                        {isAuthenticated && candidate.location && (
+                          <span className="flex items-center gap-1">
+                            {candidate.location}
+                            {searchCriteria.location && candidate.matchDetails.locationMatch === 'none' && (
+                              <span className="text-xs text-amber-600 dark:text-amber-400">(different location)</span>
+                            )}
+                          </span>
+                        )}
+                        {isAuthenticated && !candidate.location && searchCriteria.location && (
+                          <span className="text-xs text-amber-600 dark:text-amber-400">Location unknown</span>
+                        )}
+                        <span className="flex items-center gap-1">
+                          {formatAvailability(candidate.availability)}
+                          {searchCriteria.availability && searchCriteria.availability.length > 0 && candidate.matchDetails.availabilityMatch === 'partial' && (
+                            <span className="text-xs text-amber-600 dark:text-amber-400">(slightly longer)</span>
+                          )}
+                          {searchCriteria.availability && searchCriteria.availability.length > 0 && candidate.matchDetails.availabilityMatch === 'none' && (
+                            <span className="text-xs text-red-500 dark:text-red-400">(longer than desired)</span>
+                          )}
+                        </span>
                         {isAuthenticated && candidate.expectedCtc && (
                           <span>{candidate.expectedCtc} LPA expected</span>
                         )}
@@ -934,10 +1299,18 @@ export default function RecruiterSearchPage() {
               {results.length === 0 && (
                 <div className="card p-12 text-center">
                   <svg className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
                   <h3 className="mt-4 text-lg font-medium text-gray-900 dark:text-gray-100">No candidates found</h3>
-                  <p className="mt-2 text-gray-500 dark:text-gray-400">Try adjusting your search criteria</p>
+                  <p className="mt-2 text-gray-500 dark:text-gray-400 max-w-md mx-auto">
+                    Try widening your search: increase the experience range, raise the max budget,
+                    add alternative skills, or relax seniority requirements.
+                  </p>
+                  <div className="mt-6">
+                    <button onClick={() => setViewMode('criteria')} className="btn-primary">
+                      Modify Search Criteria
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -1015,8 +1388,12 @@ export default function RecruiterSearchPage() {
                     <p className="font-medium">{selectedCandidate.location || 'Not specified'}</p>
                   </div>
                   <div>
-                    <label className="text-sm text-gray-500 dark:text-gray-400">Availability</label>
+                    <label className="text-sm text-gray-500 dark:text-gray-400">Notice Period</label>
                     <p className="font-medium">{formatAvailability(selectedCandidate.availability)}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-500 dark:text-gray-400">Engagement Preference</label>
+                    <p className="font-medium">{formatCandidateEngagement(selectedCandidate.engagementModel || 'either')}</p>
                   </div>
                   <div>
                     <label className="text-sm text-gray-500 dark:text-gray-400">Current CTC</label>
@@ -1101,6 +1478,93 @@ export default function RecruiterSearchPage() {
                           </svg>
                         )}
                         {selectedCandidate.matchDetails.ctcMatch ? 'Within budget' : 'Over budget'}
+                      </div>
+                    )}
+                    {searchCriteria.location && (
+                      <div className={`flex items-center ${
+                        selectedCandidate.matchDetails.locationMatch === 'full'
+                          ? 'text-green-600 dark:text-green-400'
+                          : selectedCandidate.matchDetails.locationMatch === 'partial'
+                            ? 'text-amber-600 dark:text-amber-400'
+                            : 'text-red-600 dark:text-red-400'
+                      }`}>
+                        {selectedCandidate.matchDetails.locationMatch === 'full' ? (
+                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : selectedCandidate.matchDetails.locationMatch === 'partial' ? (
+                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        )}
+                        {selectedCandidate.matchDetails.locationMatch === 'full'
+                          ? `Location match: ${selectedCandidate.location || 'Unknown'}`
+                          : selectedCandidate.matchDetails.locationMatch === 'partial'
+                            ? 'Location not specified'
+                            : `Location mismatch: ${selectedCandidate.location || 'Unknown'} (looking for ${searchCriteria.location})`
+                        }
+                      </div>
+                    )}
+                    {(searchCriteria.minExperience != null || searchCriteria.maxExperience != null) && (
+                      <div className={`flex items-center ${
+                        selectedCandidate.matchDetails.experienceMatch === 'full'
+                          ? 'text-green-600 dark:text-green-400'
+                          : selectedCandidate.matchDetails.experienceMatch === 'partial'
+                            ? 'text-amber-600 dark:text-amber-400'
+                            : 'text-red-600 dark:text-red-400'
+                      }`}>
+                        {selectedCandidate.matchDetails.experienceMatch === 'full' ? (
+                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : selectedCandidate.matchDetails.experienceMatch === 'partial' ? (
+                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        )}
+                        {selectedCandidate.matchDetails.experienceMatch === 'full'
+                          ? `Experience in range: ${selectedCandidate.totalExperience} yrs`
+                          : selectedCandidate.matchDetails.experienceMatch === 'partial'
+                            ? `Experience close to range: ${selectedCandidate.totalExperience} yrs (looking for ${searchCriteria.minExperience ?? 0}–${searchCriteria.maxExperience ?? '∞'} yrs)`
+                            : `Experience outside range: ${selectedCandidate.totalExperience} yrs (looking for ${searchCriteria.minExperience ?? 0}–${searchCriteria.maxExperience ?? '∞'} yrs)`
+                        }
+                      </div>
+                    )}
+                    {searchCriteria.availability && searchCriteria.availability.length > 0 && (
+                      <div className={`flex items-center ${
+                        selectedCandidate.matchDetails.availabilityMatch === 'full'
+                          ? 'text-green-600 dark:text-green-400'
+                          : selectedCandidate.matchDetails.availabilityMatch === 'partial'
+                            ? 'text-amber-600 dark:text-amber-400'
+                            : 'text-red-600 dark:text-red-400'
+                      }`}>
+                        {selectedCandidate.matchDetails.availabilityMatch === 'full' ? (
+                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : selectedCandidate.matchDetails.availabilityMatch === 'partial' ? (
+                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        )}
+                        {selectedCandidate.matchDetails.availabilityMatch === 'full'
+                          ? `Availability matches: ${formatAvailability(selectedCandidate.availability)}`
+                          : selectedCandidate.matchDetails.availabilityMatch === 'partial'
+                            ? `Available slightly later: ${formatAvailability(selectedCandidate.availability)} (looking for ${searchCriteria.availability.map(a => formatAvailability(a)).join(', ')})`
+                            : `Availability mismatch: ${formatAvailability(selectedCandidate.availability)} (looking for ${searchCriteria.availability.map(a => formatAvailability(a)).join(', ')})`
+                        }
                       </div>
                     )}
                   </div>

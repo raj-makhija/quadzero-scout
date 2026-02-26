@@ -25,6 +25,8 @@ dynamoDbPolicy:
     - !GetAtt PricingConfigTable.Arn
     - !GetAtt ShortlistsTable.Arn
     - !Sub '${ShortlistsTable.Arn}/index/*'
+    - !GetAtt ClientsTable.Arn
+    - !Sub '${ClientsTable.Arn}/index/*'
 
 # S3 Policy
 s3Policy:

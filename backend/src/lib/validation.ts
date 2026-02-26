@@ -29,6 +29,7 @@ export const SaveProfileRequestSchema = z.object({
     totalExperience: z.number().min(0).max(50),
     seniority: z.enum(['intern', 'junior', 'mid', 'senior', 'lead', 'principal', 'executive']),
     availability: z.enum(['immediate', '1_week', '2_weeks', '1_month', '2_months', '3_months', 'negotiable']),
+    engagementModel: z.enum(['contract', 'full_time', 'either']).optional().default('either'),
     industries: z.array(z.string()).max(10).optional(),
     roles: z.array(z.string()).max(10).optional(),
     education: z.array(z.object({
@@ -109,6 +110,10 @@ export const SaveRequirementRequestSchema = z.object({
   payroll: z.enum(['quadzero', 'client']),
   budgetMinLpa: z.number().min(0).max(500).optional(),
   budgetMaxLpa: z.number().min(0).max(500).optional(),
+  contractDurationMonths: z.number().min(1).max(60).optional(),
+  paymentTermsDays: z.number().refine(v => [30, 45, 60, 90].includes(v), {
+    message: 'paymentTermsDays must be 30, 45, 60, or 90',
+  }).optional(),
   jobTitle: z.string().max(200).optional(),
   jdText: z.string().min(50).max(10000),
   parsedCriteria: LLMJDOutputSchema,
@@ -138,6 +143,12 @@ export const ConsolidateRequirementRequestSchema = z.object({
   notes: z.string().max(500).optional(),
 });
 
+// Update Requirement Criteria Request Validation
+export const UpdateRequirementCriteriaRequestSchema = z.object({
+  parsedCriteria: LLMJDOutputSchema,
+  maxBudgetLpa: z.number().min(0).max(500).optional(),
+});
+
 // Validate function with proper error handling
 export function validate<T>(schema: z.ZodSchema<T>, data: unknown): { success: true; data: T } | { success: false; errors: z.ZodError } {
   const result = schema.safeParse(data);
@@ -157,6 +168,7 @@ export const CalculatePricingRequestSchema = z.object({
   }),
   clientBudgetMinHourly: z.number().min(0).optional(),
   clientBudgetMaxHourly: z.number().min(0).optional(),
+  engagementModel: z.enum(['full_time_regular', 'full_time_contract', 'part_time_contract']).optional(),
 }).refine(
   data => {
     const hasMin = data.clientBudgetMinHourly !== undefined;
@@ -195,6 +207,27 @@ export const MatchRequirementsRequestSchema = z.object({
 export const ShortlistCandidateRequestSchema = z.object({
   requirementId: z.string().min(1),
   candidateId: z.string().min(1),
+  notes: z.string().max(1000).optional(),
+});
+
+// Save Client Request Validation
+export const SaveClientRequestSchema = z.object({
+  clientName: z.string().min(1).max(200),
+  defaultPaymentTermsDays: z.number().refine(v => [30, 45, 60, 90].includes(v), {
+    message: 'defaultPaymentTermsDays must be 30, 45, 60, or 90',
+  }).optional(),
+  defaultEngagementModel: z.enum(['full_time_regular', 'full_time_contract', 'part_time_contract']).optional(),
+  defaultPayroll: z.enum(['quadzero', 'client']).optional(),
+  notes: z.string().max(1000).optional(),
+});
+
+// Update Client Request Validation
+export const UpdateClientRequestSchema = z.object({
+  defaultPaymentTermsDays: z.number().refine(v => [30, 45, 60, 90].includes(v), {
+    message: 'defaultPaymentTermsDays must be 30, 45, 60, or 90',
+  }).optional(),
+  defaultEngagementModel: z.enum(['full_time_regular', 'full_time_contract', 'part_time_contract']).optional(),
+  defaultPayroll: z.enum(['quadzero', 'client']).optional(),
   notes: z.string().max(1000).optional(),
 });
 
