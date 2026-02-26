@@ -9,7 +9,7 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { config } from './config.js';
-import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, PricingConfig, PricingConfigItem, ShortlistItem } from '../types/index.js';
+import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, PricingConfig, PricingConfigItem, ShortlistItem, ClientItem } from '../types/index.js';
 
 const client = new DynamoDBClient({ region: config.region });
 const docClient = DynamoDBDocumentClient.from(client, {
@@ -74,46 +74,16 @@ export async function saveCandidateProfile(candidate: CandidateItem): Promise<vo
 }
 
 export async function searchCandidates(
-  criteria: SearchCriteria,
+  _criteria: SearchCriteria,
   _limit?: number,
   lastEvaluatedKey?: Record<string, unknown>
 ): Promise<{ items: CandidateItem[]; lastKey?: Record<string, unknown> }> {
+  // Experience, seniority, availability, and location are no longer hard filters —
+  // they are handled as scoring factors in matchScoring.ts so that non-matching
+  // candidates still appear in results (ranked lower with mismatches called out).
   const filterExpressions: string[] = [];
   const expressionAttributeNames: Record<string, string> = {};
   const expressionAttributeValues: Record<string, unknown> = {};
-
-  // Build filter expressions based on criteria
-  if (criteria.minExperience !== undefined) {
-    filterExpressions.push('total_experience >= :minExp');
-    expressionAttributeValues[':minExp'] = criteria.minExperience;
-  }
-
-  if (criteria.maxExperience !== undefined) {
-    filterExpressions.push('total_experience <= :maxExp');
-    expressionAttributeValues[':maxExp'] = criteria.maxExperience;
-  }
-
-  if (criteria.seniority && criteria.seniority.length > 0) {
-    const seniorityConditions = criteria.seniority.map((_, i) => `:sen${i}`);
-    filterExpressions.push(`seniority IN (${seniorityConditions.join(', ')})`);
-    criteria.seniority.forEach((s, i) => {
-      expressionAttributeValues[`:sen${i}`] = s;
-    });
-  }
-
-  if (criteria.availability && criteria.availability.length > 0) {
-    const availConditions = criteria.availability.map((_, i) => `:avail${i}`);
-    filterExpressions.push(`availability IN (${availConditions.join(', ')})`);
-    criteria.availability.forEach((a, i) => {
-      expressionAttributeValues[`:avail${i}`] = a;
-    });
-  }
-
-  if (criteria.location) {
-    filterExpressions.push('contains(#loc, :location)');
-    expressionAttributeNames['#loc'] = 'location';
-    expressionAttributeValues[':location'] = criteria.location.toLowerCase();
-  }
 
   const PAGE_SIZE = 100;
   const MAX_ITEMS = 500;
@@ -768,6 +738,34 @@ export async function consolidateRequirement(
   );
 }
 
+export async function updateRequirementCriteria(
+  requirementId: string,
+  parsedCriteria: Record<string, unknown>,
+  budgetMaxLpa: number | undefined,
+  now: string
+): Promise<void> {
+  let updateExpression = 'SET parsed_criteria = :criteria, last_updated = :now';
+  const expressionAttributeValues: Record<string, unknown> = {
+    ':criteria': parsedCriteria,
+    ':now': now,
+  };
+
+  if (budgetMaxLpa !== undefined) {
+    updateExpression += ', budget_max_lpa = :budget';
+    expressionAttributeValues[':budget'] = budgetMaxLpa;
+  }
+
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.requirementsTable,
+      Key: { requirement_id: requirementId },
+      UpdateExpression: updateExpression,
+      ExpressionAttributeValues: expressionAttributeValues,
+      ConditionExpression: 'attribute_exists(requirement_id)',
+    })
+  );
+}
+
 // ─── Pricing Config Operations ──────────────────────────────────────────────
 
 const DEFAULT_PRICING_CONFIG: PricingConfig = {
@@ -781,6 +779,14 @@ const DEFAULT_PRICING_CONFIG: PricingConfig = {
   maxCostMultiplierThreshold: 1.75,
   maxContributionCapPerMonth: 70000,
   budgetCeilingBufferPct: 0.02,
+  contractDurationDiscount: {
+    thresholds: [
+      { minMonths: 1, maxMonths: 5, discountPct: 0 },
+      { minMonths: 6, maxMonths: 11, discountPct: 0.05 },
+      { minMonths: 12, maxMonths: 23, discountPct: 0.10 },
+      { minMonths: 24, maxMonths: 60, discountPct: 0.15 },
+    ],
+  },
 };
 
 let pricingConfigCache: { config: PricingConfig; fetchedAt: number } | null = null;
@@ -999,6 +1005,97 @@ export async function deleteShortlist(requirementId: string, candidateId: string
     new DeleteCommand({
       TableName: config.dynamodb.shortlistsTable,
       Key: { requirement_id: requirementId, candidate_id: candidateId },
+    })
+  );
+}
+
+// ─── Client Master Operations ───────────────────────────────────────────────
+
+export async function saveClient(item: ClientItem): Promise<void> {
+  await docClient.send(
+    new PutCommand({
+      TableName: config.dynamodb.clientsTable,
+      Item: item,
+    })
+  );
+}
+
+export async function getClientByName(clientNameLower: string): Promise<ClientItem | null> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: config.dynamodb.clientsTable,
+      IndexName: 'ClientNameLowerIndex',
+      KeyConditionExpression: 'client_name_lower = :name',
+      ExpressionAttributeValues: { ':name': clientNameLower },
+      Limit: 1,
+    })
+  );
+  return (result.Items?.[0] as ClientItem) || null;
+}
+
+export async function listClients(): Promise<ClientItem[]> {
+  const allItems: ClientItem[] = [];
+  let currentKey: Record<string, unknown> | undefined;
+
+  do {
+    const params: {
+      TableName: string;
+      Limit: number;
+      ExclusiveStartKey?: Record<string, unknown>;
+    } = {
+      TableName: config.dynamodb.clientsTable,
+      Limit: 100,
+    };
+
+    if (currentKey) {
+      params.ExclusiveStartKey = currentKey;
+    }
+
+    const result = await docClient.send(new ScanCommand(params));
+    allItems.push(...((result.Items || []) as ClientItem[]));
+    currentKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (currentKey);
+
+  allItems.sort((a, b) => a.client_name.localeCompare(b.client_name));
+  return allItems;
+}
+
+export async function updateClient(
+  clientId: string,
+  updates: {
+    defaultPaymentTermsDays?: number;
+    defaultEngagementModel?: string;
+    defaultPayroll?: string;
+    notes?: string;
+  }
+): Promise<void> {
+  const expressionParts: string[] = ['last_updated = :now'];
+  const values: Record<string, unknown> = { ':now': new Date().toISOString() };
+
+  if (updates.defaultPaymentTermsDays !== undefined) {
+    expressionParts.push('default_payment_terms_days = :dptd');
+    values[':dptd'] = updates.defaultPaymentTermsDays;
+  }
+  if (updates.defaultEngagementModel !== undefined) {
+    expressionParts.push('default_engagement_model = :dem');
+    values[':dem'] = updates.defaultEngagementModel;
+  }
+  if (updates.defaultPayroll !== undefined) {
+    expressionParts.push('default_payroll = :dp');
+    values[':dp'] = updates.defaultPayroll;
+  }
+  if (updates.notes !== undefined) {
+    expressionParts.push('notes = :notes');
+    values[':notes'] = updates.notes;
+  }
+
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.clientsTable,
+      Key: { client_id: clientId },
+      UpdateExpression: `SET ${expressionParts.join(', ')}`,
+      ExpressionAttributeValues: values,
+      ConditionExpression: 'attribute_exists(client_id)',
     })
   );
 }

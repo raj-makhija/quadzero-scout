@@ -93,6 +93,8 @@ export async function handler(
           experienceMatch: details.experienceMatch,
           seniorityMatch: details.seniorityMatch,
           budgetFit,
+          locationMatch: details.locationMatch,
+          availabilityMatch: details.availabilityMatch,
         },
         isShortlisted: shortlistedRequirementIds.has(req.requirement_id),
         createdAt: req.created_at,

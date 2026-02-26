@@ -34,6 +34,7 @@ export async function handler(
       totalExperience: candidate.total_experience,
       seniority: candidate.seniority,
       availability: candidate.availability,
+      engagementModel: candidate.engagement_model || 'either',
       industries: candidate.industries,
       roles: candidate.roles,
       education: candidate.education,

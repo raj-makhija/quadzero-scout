@@ -44,6 +44,7 @@ provider:
     DYNAMODB_TABLE_REQUIREMENTS: ${self:custom.requirementsTable}
     DYNAMODB_TABLE_PRICING_CONFIG: ${self:custom.pricingConfigTable}
     DYNAMODB_TABLE_SHORTLISTS: ${self:custom.shortlistsTable}
+    DYNAMODB_TABLE_CLIENTS: ${self:custom.clientsTable}
 
   httpApi:
     cors:
@@ -91,6 +92,7 @@ custom:
   requirementsTable: Requirements-${self:provider.stage}
   pricingConfigTable: PricingConfig-${self:provider.stage}
   shortlistsTable: Shortlists-${self:provider.stage}
+  clientsTable: Clients-${self:provider.stage}
 
   dotenv:
     include:
@@ -290,12 +292,48 @@ functions:
           path: /recruiter/requirements/{requirementId}/consolidate
           method: PUT
 
+  recruiterUpdateRequirementCriteria:
+    handler: src/handlers/recruiter/updateRequirementCriteria.handler
+    events:
+      - httpApi:
+          path: /recruiter/requirements/{requirementId}/criteria
+          method: PUT
+
   recruiterGetClientNames:
     handler: src/handlers/recruiter/getClientNames.handler
     events:
       - httpApi:
           path: /recruiter/client-names
           method: GET
+
+  # Client Master Endpoints
+  recruiterSaveClient:
+    handler: src/handlers/recruiter/saveClient.handler
+    events:
+      - httpApi:
+          path: /recruiter/clients
+          method: POST
+
+  recruiterListClients:
+    handler: src/handlers/recruiter/listClients.handler
+    events:
+      - httpApi:
+          path: /recruiter/clients
+          method: GET
+
+  recruiterGetClientDefaults:
+    handler: src/handlers/recruiter/getClientDefaults.handler
+    events:
+      - httpApi:
+          path: /recruiter/client-defaults
+          method: GET
+
+  recruiterUpdateClient:
+    handler: src/handlers/recruiter/updateClient.handler
+    events:
+      - httpApi:
+          path: /recruiter/clients/{clientId}
+          method: PUT
 
   # Admin Endpoints
   adminListPendingRecruiters:

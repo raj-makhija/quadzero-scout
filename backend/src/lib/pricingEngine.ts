@@ -4,6 +4,7 @@ import type {
   PricingInput,
   PricingOutput,
   BudgetOptimizationResult,
+  ContractDurationThreshold,
 } from '../types/index.js';
 
 const HOURS_PER_MONTH = 160;
@@ -20,6 +21,24 @@ function roundUpToNearest(value: number, nearest: number): number {
   return Math.ceil(value / nearest) * nearest;
 }
 
+export function getContractDurationDiscount(
+  durationMonths: number,
+  engagementModel: string | undefined,
+  thresholds: ContractDurationThreshold[]
+): number {
+  // Only apply discount to contract engagements
+  if (!engagementModel || engagementModel === 'full_time_regular') {
+    return 0;
+  }
+
+  for (const t of thresholds) {
+    if (durationMonths >= t.minMonths && durationMonths <= t.maxMonths) {
+      return t.discountPct;
+    }
+  }
+  return 0;
+}
+
 export function calculatePricing(
   input: PricingInput,
   config: PricingConfig
@@ -27,7 +46,17 @@ export function calculatePricing(
   // ── Phase 1: Internal Pricing ─────────────────────────────────────────
 
   const band = getExperienceBand(input.candidateExperienceYears);
-  const platformFee = config.platformFees[band];
+  const originalPlatformFee = config.platformFees[band];
+
+  // Apply contract duration discount to platform fee
+  const discountThresholds = config.contractDurationDiscount?.thresholds ?? [];
+  const contractDurationDiscountPct = getContractDurationDiscount(
+    input.contractDurationMonths,
+    input.engagementModel,
+    discountThresholds
+  );
+  const platformFee = originalPlatformFee * (1 - contractDurationDiscountPct);
+
   let variablePct = config.variableMarkupPct[band];
   const originalVariablePct = variablePct;
 
@@ -134,6 +163,8 @@ export function calculatePricing(
     experienceBand: band,
     monthlyCtcInr: monthlyCtc,
     platformFee,
+    originalPlatformFee,
+    contractDurationDiscountPct,
     variableMarkupPct: originalVariablePct,
     variableMarkupAmount,
     workingCapitalBlocked,

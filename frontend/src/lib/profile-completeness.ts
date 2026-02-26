@@ -86,7 +86,7 @@ export function calculateProfileCompleteness(
     },
     {
       field: 'availability',
-      label: 'Availability',
+      label: 'Notice Period',
       weight: 5,
       completed: !!profile.availability,
       href: '#experience',

@@ -47,6 +47,8 @@ async function handleRequest(
       payroll: item.payroll,
       budgetMinLpa: item.budget_min_lpa,
       budgetMaxLpa: item.budget_max_lpa,
+      contractDurationMonths: item.contract_duration_months,
+      paymentTermsDays: item.payment_terms_days,
       jobTitle: item.job_title,
       mustHaveSkills: item.parsed_criteria?.mustHaveSkills || [],
       status: item.status,

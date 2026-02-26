@@ -186,6 +186,18 @@ export default function RequirementDetailPage() {
                       </p>
                     </div>
                   )}
+                  <div>
+                    <label className="text-xs text-gray-500 dark:text-gray-400">Contract Duration</label>
+                    <p className="font-medium text-gray-900 dark:text-gray-100">
+                      {requirement.contractDurationMonths != null ? `${requirement.contractDurationMonths} months` : 'Not specified'}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 dark:text-gray-400">Payment Terms</label>
+                    <p className="font-medium text-gray-900 dark:text-gray-100">
+                      {requirement.paymentTermsDays != null ? `Net ${requirement.paymentTermsDays} days` : 'Not specified'}
+                    </p>
+                  </div>
                 </div>
 
                 {/* Parsed Criteria */}

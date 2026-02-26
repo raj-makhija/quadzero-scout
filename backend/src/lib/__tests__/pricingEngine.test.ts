@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   calculatePricing,
   getExperienceBand,
+  getContractDurationDiscount,
 } from '../pricingEngine.js';
 import type { PricingConfig, PricingInput } from '../../types/index.js';
 
@@ -19,6 +20,14 @@ const DEFAULT_CONFIG: PricingConfig = {
   maxCostMultiplierThreshold: 1.75,
   maxContributionCapPerMonth: 70000,
   budgetCeilingBufferPct: 0.02,
+  contractDurationDiscount: {
+    thresholds: [
+      { minMonths: 1, maxMonths: 5, discountPct: 0 },
+      { minMonths: 6, maxMonths: 11, discountPct: 0.05 },
+      { minMonths: 12, maxMonths: 23, discountPct: 0.10 },
+      { minMonths: 24, maxMonths: 60, discountPct: 0.15 },
+    ],
+  },
 };
 
 const HOURS_PER_MONTH = 160;
@@ -584,6 +593,17 @@ describe('calculatePricing() — Hand-Calculated Verification', () => {
     expect(result.finalQuotedHourly).toBe(result.quotedBillingHourly);
   });
 
+  // TC-PRICE-050b — Verify originalPlatformFee and contractDurationDiscountPct output
+  it('includes originalPlatformFee and contractDurationDiscountPct in output', () => {
+    const input = makeInput();
+    const result = calculatePricing(input, DEFAULT_CONFIG);
+
+    // No engagementModel → no discount
+    expect(result.originalPlatformFee).toBe(25000);
+    expect(result.contractDurationDiscountPct).toBe(0);
+    expect(result.platformFee).toBe(result.originalPlatformFee);
+  });
+
   // TC-PRICE-051 — Hand-calculated with budget (Case B)
   it('matches hand-calculated values for 10 LPA mid, 90-day, with budget Case B', () => {
     const input = makeInput({
@@ -613,5 +633,151 @@ describe('calculatePricing() — Hand-Calculated Verification', () => {
 
     expect(result.budgetOptimization.applied).toBe(true);
     expect(result.budgetOptimization.marginConstrained).toBe(false);
+  });
+});
+
+// ===========================================================================
+// TC-PRICE-060 through TC-PRICE-069: Contract Duration Discount
+// ===========================================================================
+describe('getContractDurationDiscount()', () => {
+  const thresholds = DEFAULT_CONFIG.contractDurationDiscount.thresholds;
+
+  // TC-PRICE-060 — No discount for full_time_regular
+  it('returns 0 for full_time_regular regardless of duration', () => {
+    expect(getContractDurationDiscount(12, 'full_time_regular', thresholds)).toBe(0);
+    expect(getContractDurationDiscount(24, 'full_time_regular', thresholds)).toBe(0);
+  });
+
+  // TC-PRICE-061 — No discount for undefined engagementModel
+  it('returns 0 when engagementModel is undefined', () => {
+    expect(getContractDurationDiscount(12, undefined, thresholds)).toBe(0);
+  });
+
+  // TC-PRICE-062 — Tier 1: 1-5 months = 0%
+  it('returns 0% for 1-5 months (contract)', () => {
+    expect(getContractDurationDiscount(1, 'full_time_contract', thresholds)).toBe(0);
+    expect(getContractDurationDiscount(3, 'full_time_contract', thresholds)).toBe(0);
+    expect(getContractDurationDiscount(5, 'full_time_contract', thresholds)).toBe(0);
+  });
+
+  // TC-PRICE-063 — Tier 2: 6-11 months = 5%
+  it('returns 5% for 6-11 months (contract)', () => {
+    expect(getContractDurationDiscount(6, 'full_time_contract', thresholds)).toBe(0.05);
+    expect(getContractDurationDiscount(9, 'part_time_contract', thresholds)).toBe(0.05);
+    expect(getContractDurationDiscount(11, 'full_time_contract', thresholds)).toBe(0.05);
+  });
+
+  // TC-PRICE-064 — Tier 3: 12-23 months = 10%
+  it('returns 10% for 12-23 months (contract)', () => {
+    expect(getContractDurationDiscount(12, 'full_time_contract', thresholds)).toBe(0.10);
+    expect(getContractDurationDiscount(18, 'part_time_contract', thresholds)).toBe(0.10);
+    expect(getContractDurationDiscount(23, 'full_time_contract', thresholds)).toBe(0.10);
+  });
+
+  // TC-PRICE-065 — Tier 4: 24-60 months = 15%
+  it('returns 15% for 24-60 months (contract)', () => {
+    expect(getContractDurationDiscount(24, 'full_time_contract', thresholds)).toBe(0.15);
+    expect(getContractDurationDiscount(36, 'part_time_contract', thresholds)).toBe(0.15);
+    expect(getContractDurationDiscount(60, 'full_time_contract', thresholds)).toBe(0.15);
+  });
+
+  // TC-PRICE-066 — Boundary: month 5 → 6 transition
+  it('handles boundary between tier 1 and tier 2', () => {
+    expect(getContractDurationDiscount(5, 'full_time_contract', thresholds)).toBe(0);
+    expect(getContractDurationDiscount(6, 'full_time_contract', thresholds)).toBe(0.05);
+  });
+
+  // TC-PRICE-067 — Boundary: month 11 → 12 transition
+  it('handles boundary between tier 2 and tier 3', () => {
+    expect(getContractDurationDiscount(11, 'full_time_contract', thresholds)).toBe(0.05);
+    expect(getContractDurationDiscount(12, 'full_time_contract', thresholds)).toBe(0.10);
+  });
+
+  // TC-PRICE-068 — Boundary: month 23 → 24 transition
+  it('handles boundary between tier 3 and tier 4', () => {
+    expect(getContractDurationDiscount(23, 'full_time_contract', thresholds)).toBe(0.10);
+    expect(getContractDurationDiscount(24, 'full_time_contract', thresholds)).toBe(0.15);
+  });
+
+  // TC-PRICE-069 — Empty thresholds = no discount
+  it('returns 0 when thresholds array is empty', () => {
+    expect(getContractDurationDiscount(12, 'full_time_contract', [])).toBe(0);
+  });
+});
+
+describe('calculatePricing() — Contract Duration Discount Integration', () => {
+  // TC-PRICE-070 — Discount applied to platform fee for contract engagement
+  it('applies contract duration discount to platform fee for contract engagement', () => {
+    const input = makeInput({
+      candidateExpectedCtcLpa: 10,
+      candidateExperienceYears: 6,
+      contractDurationMonths: 12,
+      paymentTermsDays: 90,
+      engagementModel: 'full_time_contract',
+    });
+    const result = calculatePricing(input, DEFAULT_CONFIG);
+
+    // Mid band, originalPlatformFee = 25000
+    expect(result.originalPlatformFee).toBe(25000);
+    // 12 months → 10% discount
+    expect(result.contractDurationDiscountPct).toBe(0.10);
+    // Discounted fee = 25000 * 0.90 = 22500
+    expect(result.platformFee).toBe(22500);
+  });
+
+  // TC-PRICE-071 — No discount for full_time_regular even with 24-month duration
+  it('does not apply discount for full_time_regular engagement', () => {
+    const input = makeInput({
+      contractDurationMonths: 24,
+      engagementModel: 'full_time_regular',
+    });
+    const result = calculatePricing(input, DEFAULT_CONFIG);
+
+    expect(result.contractDurationDiscountPct).toBe(0);
+    expect(result.platformFee).toBe(result.originalPlatformFee);
+  });
+
+  // TC-PRICE-072 — Discount reduces quoted billing vs no discount
+  it('produces lower quoted billing with longer contract duration', () => {
+    const base = {
+      candidateExpectedCtcLpa: 10,
+      candidateExperienceYears: 6,
+      paymentTermsDays: 60,
+      engagementModel: 'full_time_contract' as const,
+    };
+
+    const result3mo = calculatePricing(makeInput({ ...base, contractDurationMonths: 3 }), DEFAULT_CONFIG);
+    const result12mo = calculatePricing(makeInput({ ...base, contractDurationMonths: 12 }), DEFAULT_CONFIG);
+    const result24mo = calculatePricing(makeInput({ ...base, contractDurationMonths: 24 }), DEFAULT_CONFIG);
+
+    // 3mo: 0% discount, 12mo: 10%, 24mo: 15%
+    expect(result3mo.contractDurationDiscountPct).toBe(0);
+    expect(result12mo.contractDurationDiscountPct).toBe(0.10);
+    expect(result24mo.contractDurationDiscountPct).toBe(0.15);
+
+    // Quoted billing should decrease with longer duration
+    expect(result12mo.quotedBillingMonthly).toBeLessThanOrEqual(result3mo.quotedBillingMonthly);
+    expect(result24mo.quotedBillingMonthly).toBeLessThanOrEqual(result12mo.quotedBillingMonthly);
+  });
+
+  // TC-PRICE-073 — Backward compatibility: no engagementModel = no discount
+  it('applies no discount when engagementModel is not provided', () => {
+    const input = makeInput({ contractDurationMonths: 24 });
+    const result = calculatePricing(input, DEFAULT_CONFIG);
+
+    expect(result.contractDurationDiscountPct).toBe(0);
+    expect(result.platformFee).toBe(result.originalPlatformFee);
+  });
+
+  // TC-PRICE-074 — Part-time contract also gets discount
+  it('applies discount for part_time_contract engagement', () => {
+    const input = makeInput({
+      contractDurationMonths: 12,
+      engagementModel: 'part_time_contract',
+    });
+    const result = calculatePricing(input, DEFAULT_CONFIG);
+
+    expect(result.contractDurationDiscountPct).toBe(0.10);
+    expect(result.platformFee).toBeLessThan(result.originalPlatformFee);
   });
 });

@@ -23,6 +23,9 @@ export const AvailabilityEnum = z.enum([
 ]);
 export type Availability = z.infer<typeof AvailabilityEnum>;
 
+export const CandidateEngagementModelEnum = z.enum(['contract', 'full_time', 'either']);
+export type CandidateEngagementModel = z.infer<typeof CandidateEngagementModelEnum>;
+
 export const UserRoleEnum = z.enum(['candidate', 'recruiter', 'admin']);
 export type UserRole = z.infer<typeof UserRoleEnum>;
 
@@ -63,6 +66,7 @@ export const CandidateProfileSchema = z.object({
   totalExperience: z.number().min(0).max(50),
   seniority: SeniorityEnum,
   availability: AvailabilityEnum,
+  engagementModel: CandidateEngagementModelEnum.optional().default('either'),
   industries: z.array(z.string()).max(10).optional().default([]),
   roles: z.array(z.string()).max(10).optional().default([]),
   education: z.array(EducationSchema).optional().default([]),
@@ -87,6 +91,7 @@ export interface CandidateItem {
   total_experience: number;
   seniority: string;
   availability: string;
+  engagement_model: string;
   industries: string[];
   roles: string[];
   education?: Education[];
@@ -129,6 +134,7 @@ export const LLMResumeOutputSchema = z.object({
   totalExperience: z.number().nullable().optional().transform(v => v ?? 0),
   seniority: z.string().nullable().optional().transform(v => v ?? 'mid'),
   availability: z.string().nullable().optional().transform(v => v ?? 'negotiable'),
+  engagementModel: z.string().nullable().optional().transform(v => v ?? 'either'),
   industries: z.array(z.string()).nullable().optional().transform(v => v ?? []),
   roles: z.array(z.string()).nullable().optional().transform(v => v ?? []),
   education: z.array(EducationSchema).nullable().optional().transform(v => v ?? []),
@@ -161,6 +167,8 @@ export const LLMJDOutputSchema = z.object({
   budgetMinLpa: z.number().nullable().optional().default(null),
   budgetMaxLpa: z.number().nullable().optional().default(null),
   coreSkill: z.string().nullable().optional().default(null),
+  contractDurationMonths: z.number().nullable().optional().default(null),
+  paymentTermsDays: z.number().nullable().optional().default(null),
 });
 export type LLMJDOutput = z.infer<typeof LLMJDOutputSchema>;
 
@@ -225,6 +233,7 @@ export interface CandidateSearchResult {
   totalExperience: number;
   seniority: string;
   availability: string;
+  engagementModel: string;
   currentCtc?: number;
   expectedCtc?: number;
   matchScore: number;
@@ -234,9 +243,11 @@ export interface CandidateSearchResult {
     mustHaveMissing: string[];
     goodToHaveMatched: string[];
     goodToHaveRelated: string[];
-    experienceMatch: boolean;
+    experienceMatch: 'full' | 'partial' | 'none';
     seniorityMatch: boolean;
     ctcMatch: boolean;
+    locationMatch: 'full' | 'partial' | 'none';
+    availabilityMatch: 'full' | 'partial' | 'none';
   };
   lastUpdated: string;
 }
@@ -351,6 +362,8 @@ export interface RequirementItem {
   payroll: string;
   budget_min_lpa?: number;
   budget_max_lpa?: number;
+  contract_duration_months?: number;
+  payment_terms_days?: number;
   job_title?: string;
   jd_text: string;
   parsed_criteria: LLMJDOutput;
@@ -373,6 +386,8 @@ export interface SaveRequirementRequest {
   payroll: string;
   budgetMinLpa?: number;
   budgetMaxLpa?: number;
+  contractDurationMonths?: number;
+  paymentTermsDays?: number;
   jobTitle?: string;
   jdText: string;
   parsedCriteria: LLMJDOutput;
@@ -421,6 +436,8 @@ export interface RequirementSummary {
   payroll: string;
   budgetMinLpa?: number;
   budgetMaxLpa?: number;
+  contractDurationMonths?: number;
+  paymentTermsDays?: number;
   jobTitle?: string;
   mustHaveSkills: string[];
   status: string;
@@ -477,8 +494,28 @@ export const PricingConfigSchema = z.object({
   maxCostMultiplierThreshold: z.number().min(1),
   maxContributionCapPerMonth: z.number().min(0),
   budgetCeilingBufferPct: z.number().min(0).max(1),
+  contractDurationDiscount: z.object({
+    thresholds: z.array(z.object({
+      minMonths: z.number().min(1),
+      maxMonths: z.number().min(1),
+      discountPct: z.number().min(0).max(1),
+    })),
+  }).optional().default({
+    thresholds: [
+      { minMonths: 1, maxMonths: 5, discountPct: 0 },
+      { minMonths: 6, maxMonths: 11, discountPct: 0.05 },
+      { minMonths: 12, maxMonths: 23, discountPct: 0.10 },
+      { minMonths: 24, maxMonths: 60, discountPct: 0.15 },
+    ],
+  }),
 });
 export type PricingConfig = z.infer<typeof PricingConfigSchema>;
+
+export interface ContractDurationThreshold {
+  minMonths: number;
+  maxMonths: number;
+  discountPct: number;
+}
 
 export interface PricingConfigItem {
   config_key: string;
@@ -497,6 +534,7 @@ export interface PricingInput {
   paymentTermsDays: number;
   clientBudgetMinHourly?: number;
   clientBudgetMaxHourly?: number;
+  engagementModel?: string;
 }
 
 export interface BudgetOptimizationResult {
@@ -519,6 +557,8 @@ export interface PricingOutput {
   experienceBand: PricingExperienceBand;
   monthlyCtcInr: number;
   platformFee: number;
+  originalPlatformFee: number;
+  contractDurationDiscountPct: number;
   variableMarkupPct: number;
   variableMarkupAmount: number;
   workingCapitalBlocked: number;
@@ -593,9 +633,11 @@ export interface MatchedRequirement {
     mustHaveMissing: string[];
     goodToHaveMatched: string[];
     goodToHaveRelated: string[];
-    experienceMatch: boolean;
+    experienceMatch: 'full' | 'partial' | 'none';
     seniorityMatch: boolean;
     budgetFit: boolean;
+    locationMatch: 'full' | 'partial' | 'none';
+    availabilityMatch: 'full' | 'partial' | 'none';
   };
   isShortlisted: boolean;
   createdAt: string;
@@ -619,4 +661,57 @@ export interface ShortlistedCandidate {
 
 export interface ShortlistedCandidatesResponse {
   candidates: ShortlistedCandidate[];
+}
+
+// ─── Client Master Types ────────────────────────────────────────────────────
+
+export interface ClientItem {
+  client_id: string;
+  client_name: string;
+  client_name_lower: string;
+  default_payment_terms_days?: number;
+  default_engagement_model?: string;
+  default_payroll?: string;
+  notes?: string;
+  created_by: string;
+  created_at: string;
+  last_updated: string;
+}
+
+export interface SaveClientRequest {
+  clientName: string;
+  defaultPaymentTermsDays?: number;
+  defaultEngagementModel?: string;
+  defaultPayroll?: string;
+  notes?: string;
+}
+
+export interface UpdateClientRequest {
+  defaultPaymentTermsDays?: number;
+  defaultEngagementModel?: string;
+  defaultPayroll?: string;
+  notes?: string;
+}
+
+export interface ClientDefaultsResponse {
+  found: boolean;
+  clientId?: string;
+  clientName?: string;
+  defaultPaymentTermsDays?: number;
+  defaultEngagementModel?: string;
+  defaultPayroll?: string;
+}
+
+export interface ClientSummary {
+  clientId: string;
+  clientName: string;
+  defaultPaymentTermsDays?: number;
+  defaultEngagementModel?: string;
+  defaultPayroll?: string;
+  createdAt: string;
+  lastUpdated: string;
+}
+
+export interface ListClientsResponse {
+  clients: ClientSummary[];
 }

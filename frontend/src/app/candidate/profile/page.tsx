@@ -8,6 +8,7 @@ import { api, CandidateProfile, MatchedRequirement, RequirementDetail } from '@/
 import {
   formatSeniority,
   formatAvailability,
+  formatCandidateEngagement,
   formatDate,
   formatEngagementModel,
   formatPayroll,
@@ -223,7 +224,11 @@ export default function ProfilePage() {
               </div>
               <div className="text-center p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
                 <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{formatAvailability(profile.availability || 'negotiable')}</p>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Availability</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Notice Period</p>
+              </div>
+              <div className="text-center p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{formatCandidateEngagement(profile.engagementModel || 'either')}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Engagement Model</p>
               </div>
               {profile.currentCtc != null && (
                 <div className="text-center p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">

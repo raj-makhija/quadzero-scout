@@ -45,6 +45,8 @@ async function handleRequest(
       payroll: data.payroll,
       budget_min_lpa: data.budgetMinLpa,
       budget_max_lpa: data.budgetMaxLpa,
+      contract_duration_months: data.contractDurationMonths,
+      payment_terms_days: data.paymentTermsDays,
       job_title: data.jobTitle,
       jd_text: data.jdText,
       parsed_criteria: data.parsedCriteria as LLMJDOutput,

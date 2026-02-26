@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Header } from '@/components/Header';
-import { api, ParsedCriteria, DuplicateMatch, EngagementModel, Payroll, ConsolidateResponse } from '@/lib/api';
+import { api, ParsedCriteria, DuplicateMatch, EngagementModel, Payroll, ConsolidateResponse, ClientDefaultsResponse } from '@/lib/api';
 import { ENGAGEMENT_MODEL_OPTIONS, PAYROLL_OPTIONS, formatEngagementModel } from '@/lib/utils';
 
 type Step = 'jd_input' | 'details' | 'duplicate_check' | 'confirmation';
@@ -34,7 +34,13 @@ export default function PostRequirementPage() {
   const [payroll, setPayroll] = useState<Payroll | ''>('');
   const [budgetMinLpa, setBudgetMinLpa] = useState<string>('');
   const [budgetMaxLpa, setBudgetMaxLpa] = useState<string>('');
+  const [contractDurationMonths, setContractDurationMonths] = useState<string>('');
+  const [paymentTermsDays, setPaymentTermsDays] = useState<string>('');
   const [coreSkill, setCoreSkill] = useState('');
+
+  // Client defaults
+  const [clientDefaults, setClientDefaults] = useState<ClientDefaultsResponse | null>(null);
+  const clientLookupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Step 3: Duplicate check
   const [duplicates, setDuplicates] = useState<DuplicateMatch[]>([]);
@@ -44,6 +50,37 @@ export default function PostRequirementPage() {
   const [savedRequirementId, setSavedRequirementId] = useState<string | null>(null);
   const [consolidated, setConsolidated] = useState(false);
   const [consolidateResult, setConsolidateResult] = useState<ConsolidateResponse | null>(null);
+
+  // Debounced client defaults lookup
+  const lookupClientDefaults = useCallback((name: string) => {
+    if (clientLookupTimer.current) clearTimeout(clientLookupTimer.current);
+    if (!name.trim()) {
+      setClientDefaults(null);
+      return;
+    }
+    clientLookupTimer.current = setTimeout(async () => {
+      try {
+        const result = await api.getClientDefaults(name.trim());
+        setClientDefaults(result);
+        if (result.found) {
+          if (result.defaultEngagementModel && !engagementModel) {
+            const em = result.defaultEngagementModel;
+            if (['full_time_regular', 'full_time_contract', 'part_time_contract'].includes(em)) {
+              setEngagementModel(em as EngagementModel);
+            }
+          }
+          if (result.defaultPayroll && !payroll) {
+            const p = result.defaultPayroll;
+            if (['quadzero', 'client'].includes(p)) {
+              setPayroll(p as Payroll);
+            }
+          }
+        }
+      } catch {
+        setClientDefaults(null);
+      }
+    }, 500);
+  }, [engagementModel, payroll]);
 
   const generateJobTitle = (client: string, end: string, skill: string): string => {
     const parts: string[] = [];
@@ -97,6 +134,17 @@ export default function PostRequirementPage() {
       if (response.parsedCriteria.coreSkill) {
         setCoreSkill(response.parsedCriteria.coreSkill);
       }
+      if (response.parsedCriteria.contractDurationMonths != null) {
+        setContractDurationMonths(response.parsedCriteria.contractDurationMonths.toString());
+      }
+      if (response.parsedCriteria.paymentTermsDays != null) {
+        setPaymentTermsDays(response.parsedCriteria.paymentTermsDays.toString());
+      }
+
+      // Trigger client defaults lookup if client name was extracted
+      if (response.parsedCriteria.clientName) {
+        lookupClientDefaults(response.parsedCriteria.clientName);
+      }
 
       setStep('details');
     } catch (err) {
@@ -149,6 +197,11 @@ export default function PostRequirementPage() {
       setLoading(true);
       setError(null);
 
+      // Resolve payment terms: from client defaults or recruiter input
+      const resolvedPaymentTerms = clientDefaults?.found && clientDefaults.defaultPaymentTermsDays
+        ? clientDefaults.defaultPaymentTermsDays
+        : paymentTermsDays ? parseInt(paymentTermsDays) : undefined;
+
       const generatedTitle = generateJobTitle(clientName, endClient, coreSkill);
       const response = await api.saveRequirement({
         clientName: clientName.trim(),
@@ -157,12 +210,34 @@ export default function PostRequirementPage() {
         payroll: payroll as Payroll,
         budgetMinLpa: budgetMinLpa ? parseFloat(budgetMinLpa) : undefined,
         budgetMaxLpa: budgetMaxLpa ? parseFloat(budgetMaxLpa) : undefined,
+        contractDurationMonths: contractDurationMonths ? parseInt(contractDurationMonths) : undefined,
+        paymentTermsDays: resolvedPaymentTerms,
         jobTitle: generatedTitle || undefined,
         jdText: jobDescription,
         parsedCriteria,
         status: duplicateOf ? 'duplicate' : 'active',
         duplicateOf,
       });
+
+      // Persist payment terms to client if recruiter entered them
+      if (paymentTermsDays && clientName.trim()) {
+        try {
+          if (clientDefaults?.found && clientDefaults.clientId) {
+            await api.updateClient(clientDefaults.clientId, {
+              defaultPaymentTermsDays: parseInt(paymentTermsDays),
+            });
+          } else if (!clientDefaults?.found) {
+            await api.saveClient({
+              clientName: clientName.trim(),
+              defaultPaymentTermsDays: parseInt(paymentTermsDays),
+              defaultEngagementModel: engagementModel || undefined,
+              defaultPayroll: payroll || undefined,
+            });
+          }
+        } catch {
+          // Non-fatal: requirement was saved, client update failed silently
+        }
+      }
 
       setSavedRequirementId(response.requirementId);
       setStep('confirmation');
@@ -294,7 +369,10 @@ export default function PostRequirementPage() {
                   <input
                     type="text"
                     value={clientName}
-                    onChange={(e) => setClientName(e.target.value)}
+                    onChange={(e) => {
+                      setClientName(e.target.value);
+                      lookupClientDefaults(e.target.value);
+                    }}
                     placeholder="Who shared this requirement?"
                     className="input mt-1"
                     required
@@ -375,6 +453,23 @@ export default function PostRequirementPage() {
                   </div>
                 </div>
 
+                {/* Contract Duration */}
+                <div>
+                  <label className="label">Contract Duration (months)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={contractDurationMonths}
+                    onChange={(e) => setContractDurationMonths(e.target.value)}
+                    placeholder="e.g., 6, 12"
+                    className="input mt-1"
+                  />
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Longer contracts may qualify for platform fee discounts.
+                  </p>
+                </div>
+
                 {/* Core Skill */}
                 <div>
                   <label className="label">Core Skill</label>
@@ -390,6 +485,32 @@ export default function PostRequirementPage() {
                   </p>
                 </div>
               </div>
+
+              {/* Payment Terms — from Client MSA */}
+              {clientName.trim() && clientDefaults?.found && clientDefaults.defaultPaymentTermsDays ? (
+                <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <p className="text-sm text-blue-700 dark:text-blue-300">
+                    Payment terms: <strong>Net {clientDefaults.defaultPaymentTermsDays} days</strong> (from <strong>{clientDefaults.clientName}</strong> MSA)
+                  </p>
+                </div>
+              ) : clientName.trim() ? (
+                <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                  <label className="block text-sm font-medium text-amber-800 dark:text-amber-300 mb-2">
+                    No payment terms on file for <strong>{clientName.trim()}</strong>. Please select:
+                  </label>
+                  <select
+                    value={paymentTermsDays}
+                    onChange={(e) => setPaymentTermsDays(e.target.value)}
+                    className="input w-48"
+                  >
+                    <option value="">Select payment terms</option>
+                    <option value="30">Net 30 days</option>
+                    <option value="45">Net 45 days</option>
+                    <option value="60">Net 60 days</option>
+                    <option value="90">Net 90 days</option>
+                  </select>
+                </div>
+              ) : null}
             </div>
 
             {/* Parsed Criteria Summary */}
@@ -603,6 +724,9 @@ export default function PostRequirementPage() {
                   setPayroll('');
                   setBudgetMinLpa('');
                   setBudgetMaxLpa('');
+                  setContractDurationMonths('');
+                  setPaymentTermsDays('');
+                  setClientDefaults(null);
                   setDuplicates([]);
                   setSavedRequirementId(null);
                   setConsolidated(false);
