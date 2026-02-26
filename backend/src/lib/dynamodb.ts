@@ -74,43 +74,16 @@ export async function saveCandidateProfile(candidate: CandidateItem): Promise<vo
 }
 
 export async function searchCandidates(
-  criteria: SearchCriteria,
+  _criteria: SearchCriteria,
   _limit?: number,
   lastEvaluatedKey?: Record<string, unknown>
 ): Promise<{ items: CandidateItem[]; lastKey?: Record<string, unknown> }> {
+  // Experience, seniority, availability, and location are no longer hard filters —
+  // they are handled as scoring factors in matchScoring.ts so that non-matching
+  // candidates still appear in results (ranked lower with mismatches called out).
   const filterExpressions: string[] = [];
   const expressionAttributeNames: Record<string, string> = {};
   const expressionAttributeValues: Record<string, unknown> = {};
-
-  // Build filter expressions based on criteria
-  if (criteria.minExperience !== undefined) {
-    filterExpressions.push('total_experience >= :minExp');
-    expressionAttributeValues[':minExp'] = criteria.minExperience;
-  }
-
-  if (criteria.maxExperience !== undefined) {
-    filterExpressions.push('total_experience <= :maxExp');
-    expressionAttributeValues[':maxExp'] = criteria.maxExperience;
-  }
-
-  if (criteria.seniority && criteria.seniority.length > 0) {
-    const seniorityConditions = criteria.seniority.map((_, i) => `:sen${i}`);
-    filterExpressions.push(`seniority IN (${seniorityConditions.join(', ')})`);
-    criteria.seniority.forEach((s, i) => {
-      expressionAttributeValues[`:sen${i}`] = s;
-    });
-  }
-
-  if (criteria.availability && criteria.availability.length > 0) {
-    const availConditions = criteria.availability.map((_, i) => `:avail${i}`);
-    filterExpressions.push(`availability IN (${availConditions.join(', ')})`);
-    criteria.availability.forEach((a, i) => {
-      expressionAttributeValues[`:avail${i}`] = a;
-    });
-  }
-
-  // Location is no longer a hard filter — it is handled as a scoring factor
-  // in matchScoring.ts so that non-matching candidates still appear in results.
 
   const PAGE_SIZE = 100;
   const MAX_ITEMS = 500;

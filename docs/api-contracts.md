@@ -448,10 +448,11 @@ Content-Type: application/json
           "mustHaveMatched": ["react", "typescript"],
           "mustHaveMissing": [],
           "goodToHaveMatched": ["nodejs"],
-          "experienceMatch": true,
+          "experienceMatch": "full",
           "seniorityMatch": true,
           "budgetFit": true,
-          "locationMatch": "full"
+          "locationMatch": "full",
+          "availabilityMatch": "full"
         },
         "isShortlisted": false,
         "createdAt": "2024-01-15T10:30:00Z"
@@ -591,10 +592,11 @@ Authorization: Bearer <jwe_token> (optional)
           "mustHaveMatched": ["react", "nodejs"],
           "mustHaveMissing": [],
           "goodToHaveMatched": ["typescript", "aws"],
-          "experienceMatch": true,
+          "experienceMatch": "full",
           "seniorityMatch": true,
           "ctcMatch": true,
-          "locationMatch": "full"
+          "locationMatch": "full",
+          "availabilityMatch": "full"
         },
         "lastUpdated": "2024-01-15T10:30:00Z"
       }
@@ -628,10 +630,11 @@ Authorization: Bearer <jwe_token> (optional)
           "mustHaveMatched": [],
           "mustHaveMissing": [],
           "goodToHaveMatched": [],
-          "experienceMatch": true,
+          "experienceMatch": "full",
           "seniorityMatch": true,
           "ctcMatch": true,
-          "locationMatch": "full"
+          "locationMatch": "full",
+          "availabilityMatch": "full"
         },
         "lastUpdated": "2024-01-15T10:30:00Z"
       }
@@ -659,8 +662,11 @@ Authorization: Bearer <jwe_token> (optional)
 - Candidates exceeding `maxBudgetLpa` are filtered out
 - Skills are normalized using the skill normalizer before matching (supports CRM, marketing, design, and HR/finance skills in addition to engineering skills)
 - Search paginates through all candidates in the database (up to 500) to ensure comprehensive results
-- Location is a **soft scoring factor** (not a hard filter). Multiple locations (comma/semicolon-separated) use OR matching. `locationMatch` values: `"full"` (candidate matches any search location, +10pts), `"partial"` (candidate has no location info, +5pts), `"none"` (candidate in a different location, +0pts)
-- Match score weights: must-have skills (50%), good-to-have skills (20%), experience (10%), seniority (10%), location (10%)
+- **Location** is a soft scoring factor (not a hard filter). Multiple locations (comma/semicolon-separated) use OR matching. `locationMatch` values: `"full"` (+10pts), `"partial"` (no location info, +5pts), `"none"` (+0pts)
+- **Experience** is a soft scoring factor. `experienceMatch` values: `"full"` (within range, +8pts), `"partial"` (within 2 years of boundary, +4pts), `"none"` (way outside, +0pts)
+- **Availability** is a soft scoring factor. `availabilityMatch` values: `"full"` (matches or available earlier, +7pts), `"partial"` (1–2 steps later, +3pts), `"none"` (3+ steps later, +0pts)
+- **Seniority** is a soft scoring factor (not a hard filter). Matched candidates get +5pts
+- Match score weights: must-have skills (50%), good-to-have skills (20%), experience (8%), seniority (5%), location (10%), availability (7%)
 
 ---
 

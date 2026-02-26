@@ -1188,7 +1188,15 @@ export default function RecruiterSearchPage() {
                       </div>
 
                       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-gray-400">
-                        <span>{candidate.totalExperience} years exp</span>
+                        <span className="flex items-center gap-1">
+                          {candidate.totalExperience} years exp
+                          {(searchCriteria.minExperience != null || searchCriteria.maxExperience != null) && candidate.matchDetails.experienceMatch === 'partial' && (
+                            <span className="text-xs text-amber-600 dark:text-amber-400">(close to range)</span>
+                          )}
+                          {(searchCriteria.minExperience != null || searchCriteria.maxExperience != null) && candidate.matchDetails.experienceMatch === 'none' && (
+                            <span className="text-xs text-red-500 dark:text-red-400">(outside range)</span>
+                          )}
+                        </span>
                         <span>{formatSeniority(candidate.seniority)}</span>
                         {isAuthenticated && candidate.location && (
                           <span className="flex items-center gap-1">
@@ -1201,7 +1209,15 @@ export default function RecruiterSearchPage() {
                         {isAuthenticated && !candidate.location && searchCriteria.location && (
                           <span className="text-xs text-amber-600 dark:text-amber-400">Location unknown</span>
                         )}
-                        <span>{formatAvailability(candidate.availability)}</span>
+                        <span className="flex items-center gap-1">
+                          {formatAvailability(candidate.availability)}
+                          {searchCriteria.availability && searchCriteria.availability.length > 0 && candidate.matchDetails.availabilityMatch === 'partial' && (
+                            <span className="text-xs text-amber-600 dark:text-amber-400">(slightly longer)</span>
+                          )}
+                          {searchCriteria.availability && searchCriteria.availability.length > 0 && candidate.matchDetails.availabilityMatch === 'none' && (
+                            <span className="text-xs text-red-500 dark:text-red-400">(longer than desired)</span>
+                          )}
+                        </span>
                         {isAuthenticated && candidate.expectedCtc && (
                           <span>{candidate.expectedCtc} LPA expected</span>
                         )}
@@ -1490,6 +1506,64 @@ export default function RecruiterSearchPage() {
                           : selectedCandidate.matchDetails.locationMatch === 'partial'
                             ? 'Location not specified'
                             : `Location mismatch: ${selectedCandidate.location || 'Unknown'} (looking for ${searchCriteria.location})`
+                        }
+                      </div>
+                    )}
+                    {(searchCriteria.minExperience != null || searchCriteria.maxExperience != null) && (
+                      <div className={`flex items-center ${
+                        selectedCandidate.matchDetails.experienceMatch === 'full'
+                          ? 'text-green-600 dark:text-green-400'
+                          : selectedCandidate.matchDetails.experienceMatch === 'partial'
+                            ? 'text-amber-600 dark:text-amber-400'
+                            : 'text-red-600 dark:text-red-400'
+                      }`}>
+                        {selectedCandidate.matchDetails.experienceMatch === 'full' ? (
+                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : selectedCandidate.matchDetails.experienceMatch === 'partial' ? (
+                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        )}
+                        {selectedCandidate.matchDetails.experienceMatch === 'full'
+                          ? `Experience in range: ${selectedCandidate.totalExperience} yrs`
+                          : selectedCandidate.matchDetails.experienceMatch === 'partial'
+                            ? `Experience close to range: ${selectedCandidate.totalExperience} yrs (looking for ${searchCriteria.minExperience ?? 0}–${searchCriteria.maxExperience ?? '∞'} yrs)`
+                            : `Experience outside range: ${selectedCandidate.totalExperience} yrs (looking for ${searchCriteria.minExperience ?? 0}–${searchCriteria.maxExperience ?? '∞'} yrs)`
+                        }
+                      </div>
+                    )}
+                    {searchCriteria.availability && searchCriteria.availability.length > 0 && (
+                      <div className={`flex items-center ${
+                        selectedCandidate.matchDetails.availabilityMatch === 'full'
+                          ? 'text-green-600 dark:text-green-400'
+                          : selectedCandidate.matchDetails.availabilityMatch === 'partial'
+                            ? 'text-amber-600 dark:text-amber-400'
+                            : 'text-red-600 dark:text-red-400'
+                      }`}>
+                        {selectedCandidate.matchDetails.availabilityMatch === 'full' ? (
+                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : selectedCandidate.matchDetails.availabilityMatch === 'partial' ? (
+                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        )}
+                        {selectedCandidate.matchDetails.availabilityMatch === 'full'
+                          ? `Availability matches: ${formatAvailability(selectedCandidate.availability)}`
+                          : selectedCandidate.matchDetails.availabilityMatch === 'partial'
+                            ? `Available slightly later: ${formatAvailability(selectedCandidate.availability)} (looking for ${searchCriteria.availability.map(a => formatAvailability(a)).join(', ')})`
+                            : `Availability mismatch: ${formatAvailability(selectedCandidate.availability)} (looking for ${searchCriteria.availability.map(a => formatAvailability(a)).join(', ')})`
                         }
                       </div>
                     )}

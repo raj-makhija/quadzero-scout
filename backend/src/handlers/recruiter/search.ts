@@ -83,7 +83,8 @@ async function handleRequest(
           criteria.maxExperience,
           criteria.seniority,
           criteria.maxBudgetLpa,
-          searchLocations
+          searchLocations,
+          criteria.availability
         );
 
         return {
@@ -169,6 +170,7 @@ async function handleRequest(
             seniorityMatch: candidate.matchDetails.seniorityMatch,
             ctcMatch: candidate.matchDetails.ctcMatch,
             locationMatch: candidate.matchDetails.locationMatch,
+            availabilityMatch: candidate.matchDetails.availabilityMatch,
           },
           lastUpdated: candidate.lastUpdated,
         }));

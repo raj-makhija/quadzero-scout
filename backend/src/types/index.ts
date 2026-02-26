@@ -243,10 +243,11 @@ export interface CandidateSearchResult {
     mustHaveMissing: string[];
     goodToHaveMatched: string[];
     goodToHaveRelated: string[];
-    experienceMatch: boolean;
+    experienceMatch: 'full' | 'partial' | 'none';
     seniorityMatch: boolean;
     ctcMatch: boolean;
     locationMatch: 'full' | 'partial' | 'none';
+    availabilityMatch: 'full' | 'partial' | 'none';
   };
   lastUpdated: string;
 }
@@ -632,10 +633,11 @@ export interface MatchedRequirement {
     mustHaveMissing: string[];
     goodToHaveMatched: string[];
     goodToHaveRelated: string[];
-    experienceMatch: boolean;
+    experienceMatch: 'full' | 'partial' | 'none';
     seniorityMatch: boolean;
     budgetFit: boolean;
     locationMatch: 'full' | 'partial' | 'none';
+    availabilityMatch: 'full' | 'partial' | 'none';
   };
   isShortlisted: boolean;
   createdAt: string;

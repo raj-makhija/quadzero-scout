@@ -518,10 +518,11 @@ export interface CandidateSearchResult {
     mustHaveMissing: string[];
     goodToHaveMatched: string[];
     goodToHaveRelated: string[];
-    experienceMatch: boolean;
+    experienceMatch: 'full' | 'partial' | 'none';
     seniorityMatch: boolean;
     ctcMatch: boolean;
     locationMatch: 'full' | 'partial' | 'none';
+    availabilityMatch: 'full' | 'partial' | 'none';
   };
   lastUpdated: string;
 }

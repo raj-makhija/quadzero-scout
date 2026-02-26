@@ -11,6 +11,14 @@ export const MIN_MUST_HAVE_MATCH_RATIO = 0.3;
 /** Weight applied to related (category-based) good-to-have skill matches. */
 export const RELATED_MATCH_WEIGHT = 0.3;
 
+/** Tolerance (in years) for partial experience match outside the specified range. */
+const EXPERIENCE_PARTIAL_TOLERANCE = 2;
+
+/** Availability values in order from shortest to longest notice period. */
+const AVAILABILITY_ORDER: string[] = [
+  'immediate', '1_week', '2_weeks', '1_month', '2_months', '3_months', 'negotiable',
+];
+
 export interface MatchScoreResult {
   score: number;
   details: MatchDetails;
@@ -47,6 +55,73 @@ export function parseSearchLocations(location?: string): string[] {
     .filter(l => l.length > 0);
 }
 
+/**
+ * Graduated experience matching.
+ * - No criteria → full
+ * - Within range → full
+ * - Within EXPERIENCE_PARTIAL_TOLERANCE years of boundary → partial
+ * - Further outside → none
+ */
+function matchExperience(
+  candidateExp: number,
+  minExp?: number,
+  maxExp?: number,
+): 'full' | 'partial' | 'none' {
+  if (minExp === undefined && maxExp === undefined) return 'full';
+
+  const belowMin = minExp !== undefined && candidateExp < minExp;
+  const aboveMax = maxExp !== undefined && candidateExp > maxExp;
+
+  if (!belowMin && !aboveMax) return 'full';
+
+  // Check if within tolerance
+  if (belowMin && (minExp! - candidateExp) <= EXPERIENCE_PARTIAL_TOLERANCE) return 'partial';
+  if (aboveMax && (candidateExp - maxExp!) <= EXPERIENCE_PARTIAL_TOLERANCE) return 'partial';
+
+  return 'none';
+}
+
+/**
+ * Availability matching.
+ * - No criteria → full
+ * - Candidate matches any desired value → full
+ * - Candidate available earlier than any desired → full (sooner is always fine)
+ * - Candidate 1–2 steps later than the latest desired → partial
+ * - Candidate 3+ steps later → none
+ */
+function matchAvailability(
+  candidateAvailability: string | undefined | null,
+  searchAvailability: string[]
+): 'full' | 'partial' | 'none' {
+  if (!searchAvailability || searchAvailability.length === 0) return 'full';
+  if (!candidateAvailability) return 'partial';
+
+  const candidateIdx = AVAILABILITY_ORDER.indexOf(candidateAvailability);
+  if (candidateIdx === -1) return 'partial'; // unknown availability
+
+  // Exact match
+  if (searchAvailability.includes(candidateAvailability)) return 'full';
+
+  // Find the indices of all desired availability values
+  const desiredIndices = searchAvailability
+    .map(a => AVAILABILITY_ORDER.indexOf(a))
+    .filter(i => i !== -1);
+
+  if (desiredIndices.length === 0) return 'full';
+
+  const latestDesired = Math.max(...desiredIndices);
+  const earliestDesired = Math.min(...desiredIndices);
+
+  // Candidate available earlier than any desired → full (they can start sooner)
+  if (candidateIdx < earliestDesired) return 'full';
+
+  // Distance from the latest desired value
+  const stepsLater = candidateIdx - latestDesired;
+
+  if (stepsLater <= 2) return 'partial';
+  return 'none';
+}
+
 export function calculateMatchScore(
   candidate: CandidateItem,
   mustHaveSkills: string[],
@@ -55,7 +130,8 @@ export function calculateMatchScore(
   maxExp?: number,
   seniority?: string[],
   maxBudgetLpa?: number,
-  searchLocations?: string[]
+  searchLocations?: string[],
+  searchAvailability?: string[]
 ): MatchScoreResult {
   let score = 0;
 
@@ -83,26 +159,21 @@ export function calculateMatchScore(
     : 1;
   score += goodToHaveEffective * 20;
 
-  // Experience match (10% of score)
-  const experience = candidate.total_experience;
-  let experienceMatch = true;
-  if (minExp !== undefined && experience < minExp) {
-    experienceMatch = false;
-  }
-  if (maxExp !== undefined && experience > maxExp) {
-    experienceMatch = false;
-  }
-  if (experienceMatch) {
-    score += 10;
+  // Experience match (8% of score) — graduated
+  const experienceMatch = matchExperience(candidate.total_experience, minExp, maxExp);
+  if (experienceMatch === 'full') {
+    score += 8;
+  } else if (experienceMatch === 'partial') {
+    score += 4;
   }
 
-  // Seniority match (10% of score)
+  // Seniority match (5% of score)
   let seniorityMatch = true;
   if (seniority && seniority.length > 0) {
     seniorityMatch = seniority.includes(candidate.seniority);
   }
   if (seniorityMatch) {
-    score += 10;
+    score += 5;
   }
 
   // Location match (10% of score)
@@ -114,6 +185,14 @@ export function calculateMatchScore(
     score += 5;
   }
   // 'none' = 0 points
+
+  // Availability match (7% of score)
+  const availabilityMatch = matchAvailability(candidate.availability, searchAvailability || []);
+  if (availabilityMatch === 'full') {
+    score += 7;
+  } else if (availabilityMatch === 'partial') {
+    score += 3;
+  }
 
   // CTC budget check
   const ctcMatch = isCandidateWithinBudget(candidate.expected_ctc, maxBudgetLpa);
@@ -130,6 +209,7 @@ export function calculateMatchScore(
       seniorityMatch,
       ctcMatch,
       locationMatch,
+      availabilityMatch,
     },
   };
 }

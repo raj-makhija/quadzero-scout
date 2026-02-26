@@ -3,7 +3,9 @@ import type { CandidateItem } from '../../types/index.js';
 import { calculateMatchScore, parseSearchLocations, MIN_MUST_HAVE_MATCH_RATIO, RELATED_MATCH_WEIGHT } from '../../lib/matchScoring.js';
 
 // ---------------------------------------------------------------------------
-// TC-SCORE-001 through TC-SCORE-018: Match Scoring Algorithm
+// Match Scoring Algorithm Tests
+// Weights: must-have 50, good-to-have 20, experience 8, seniority 5,
+//          location 10, availability 7 = 100
 // ---------------------------------------------------------------------------
 
 // Test fixture
@@ -46,7 +48,7 @@ describe('Match Scoring Algorithm', () => {
     expect(result.details.mustHaveMatched).toContain('nodejs');
     expect(result.details.mustHaveRelated).toEqual([]);
     expect(result.details.mustHaveMissing).toEqual([]);
-    expect(result.details.experienceMatch).toBe(true);
+    expect(result.details.experienceMatch).toBe('full');
     expect(result.details.seniorityMatch).toBe(true);
   });
 
@@ -67,10 +69,8 @@ describe('Match Scoring Algorithm', () => {
     );
     // 1 out of 4 must-have = 50 * 0.25 = 12.5 → 13 (rounded)
     // good-to-have: none specified → full 20
-    // experience: no filter → 10
-    // seniority: no filter → 10
-    // location: no filter → 10
-    // Total: 13 + 20 + 10 + 10 + 10 = 63
+    // experience: no filter → 8, seniority: no filter → 5, location: no filter → 10, availability: no filter → 7
+    // Total: 13 + 20 + 8 + 5 + 10 + 7 = 63
     expect(result.details.mustHaveMatched).toContain('react');
     expect(result.details.mustHaveMatched).not.toContain('golang');
     expect(result.score).toBeLessThan(100);
@@ -89,40 +89,38 @@ describe('Match Scoring Algorithm', () => {
     );
     // must-have: none specified → 50
     // good-to-have: 1/2 exact = (1 + 0) / 2 * 20 = 10
-    // experience: no filter → 10
-    // seniority: no filter → 10
-    // location: no filter → 10
-    // Total: 50 + 10 + 10 + 10 + 10 = 90
+    // experience: 8, seniority: 5, location: 10, availability: 7
+    // Total: 50 + 10 + 8 + 5 + 10 + 7 = 90
     expect(result.score).toBe(90);
   });
 
   // TC-SCORE-004
-  it('experience in range contributes 15 points', () => {
+  it('experience in range gives full experience points', () => {
     const candidate = makeCandidate({ total_experience: 5 });
     const result = calculateMatchScore(candidate, [], [], 3, 10);
-    expect(result.details.experienceMatch).toBe(true);
+    expect(result.details.experienceMatch).toBe('full');
   });
 
   // TC-SCORE-005
-  it('experience below minimum gives 0 experience points', () => {
+  it('experience way below minimum gives 0 experience points', () => {
     const candidate = makeCandidate({ total_experience: 2 });
     const result = calculateMatchScore(candidate, [], [], 5);
-    expect(result.details.experienceMatch).toBe(false);
-    // 50 + 20 + 0 + 10 + 10 = 90
-    expect(result.score).toBe(90);
+    expect(result.details.experienceMatch).toBe('none');
+    // 50 + 20 + 0 + 5 + 10 + 7 = 92
+    expect(result.score).toBe(92);
   });
 
   // TC-SCORE-006
-  it('experience above maximum gives 0 experience points', () => {
+  it('experience way above maximum gives 0 experience points', () => {
     const candidate = makeCandidate({ total_experience: 12 });
     const result = calculateMatchScore(candidate, [], [], undefined, 8);
-    expect(result.details.experienceMatch).toBe(false);
-    // 50 + 20 + 0 + 10 + 10 = 90
-    expect(result.score).toBe(90);
+    expect(result.details.experienceMatch).toBe('none');
+    // 50 + 20 + 0 + 5 + 10 + 7 = 92
+    expect(result.score).toBe(92);
   });
 
   // TC-SCORE-007
-  it('seniority match contributes 15 points', () => {
+  it('seniority match contributes 5 points', () => {
     const candidate = makeCandidate({ seniority: 'senior' });
     const result = calculateMatchScore(candidate, [], [], undefined, undefined, ['senior', 'lead']);
     expect(result.details.seniorityMatch).toBe(true);
@@ -133,8 +131,8 @@ describe('Match Scoring Algorithm', () => {
     const candidate = makeCandidate({ seniority: 'junior' });
     const result = calculateMatchScore(candidate, [], [], undefined, undefined, ['senior', 'lead']);
     expect(result.details.seniorityMatch).toBe(false);
-    // 50 + 20 + 10 + 0 + 10 = 90
-    expect(result.score).toBe(90);
+    // 50 + 20 + 8 + 0 + 10 + 7 = 95
+    expect(result.score).toBe(95);
   });
 
   // TC-SCORE-009
@@ -151,7 +149,7 @@ describe('Match Scoring Algorithm', () => {
       secondary_skills: [],
     });
     // 1 of 3 must-have = 50 * (1/3) = 16.666...
-    // + 20 + 10 + 10 + 10 = 66.666 → 67
+    // + 20 + 8 + 5 + 10 + 7 = 66.666 → 67
     const result = calculateMatchScore(
       candidate,
       ['react', 'nodejs', 'typescript'],
@@ -180,24 +178,24 @@ describe('Match Scoring Algorithm', () => {
 
     // Exact boundary: min = 5, candidate = 5 → match
     const result1 = calculateMatchScore(candidate, [], [], 5, 10);
-    expect(result1.details.experienceMatch).toBe(true);
+    expect(result1.details.experienceMatch).toBe('full');
 
     // Exact boundary: max = 5, candidate = 5 → match
     const result2 = calculateMatchScore(candidate, [], [], 0, 5);
-    expect(result2.details.experienceMatch).toBe(true);
+    expect(result2.details.experienceMatch).toBe('full');
   });
 
   it('empty must-have skills results in full 50 points', () => {
     const candidate = makeCandidate();
     const result = calculateMatchScore(candidate, [], ['typescript']);
-    // must-have: 50 (no required), good-to-have: 20 (1/1 exact), exp: 10, seniority: 10, location: 10
+    // must-have: 50, good-to-have: 20, exp: 8, seniority: 5, location: 10, availability: 7
     expect(result.score).toBe(100);
   });
 
   it('empty good-to-have skills results in full 20 points', () => {
     const candidate = makeCandidate();
     const result = calculateMatchScore(candidate, ['react'], []);
-    // must-have: 50 (1/1), good-to-have: 20 (no required), exp: 10, seniority: 10, location: 10
+    // must-have: 50 (1/1), good-to-have: 20, exp: 8, seniority: 5, location: 10, availability: 7
     expect(result.score).toBe(100);
   });
 
@@ -208,11 +206,10 @@ describe('Match Scoring Algorithm', () => {
       secondary_skills: [],
     });
     const result = calculateMatchScore(candidate, ['react'], []);
-    // Before this fix, vue would match react. Now it should not count for scoring.
     expect(result.details.mustHaveMatched).not.toContain('react');
     expect(result.details.mustHaveRelated).toContain('react'); // shown as related for display
     expect(result.details.mustHaveMissing).toEqual([]);
-    // Score: 0/1 must-have = 0 * 50 = 0 + 20 + 10 + 10 + 10 = 50
+    // Score: 0/1 must-have = 0 + 20 + 8 + 5 + 10 + 7 = 50
     expect(result.score).toBe(50);
   });
 
@@ -223,10 +220,9 @@ describe('Match Scoring Algorithm', () => {
       secondary_skills: [],
     });
     const result = calculateMatchScore(candidate, [], ['react']); // react is good-to-have
-    // vue is related to react (both frontend), so related match
     expect(result.details.goodToHaveMatched).toEqual([]);
     expect(result.details.goodToHaveRelated).toContain('react');
-    // Score: 50 (no must-have) + (0 + 1*0.3)/1 * 20 = 6 + 10 + 10 + 10 = 86
+    // Score: 50 + (0 + 1*0.3)/1 * 20 = 6 + 8 + 5 + 10 + 7 = 86
     expect(result.score).toBe(86);
   });
 
@@ -237,7 +233,6 @@ describe('Match Scoring Algorithm', () => {
       secondary_skills: [],
     });
     const result = calculateMatchScore(candidate, ['salesforce'], []);
-    // After category split: salesforce is in "salesforce", servicenow is in "erp"
     expect(result.details.mustHaveMatched).toEqual([]);
     expect(result.details.mustHaveRelated).toEqual([]); // different categories
     expect(result.details.mustHaveMissing).toContain('salesforce');
@@ -288,7 +283,6 @@ describe('Match Scoring Algorithm', () => {
       secondary_skills: [],
     });
     const result = calculateMatchScore(candidate, ['mysql'], []);
-    // postgresql and mysql are both in sql_databases
     expect(result.details.mustHaveMatched).toEqual([]); // no exact match
     expect(result.details.mustHaveRelated).toContain('mysql'); // related for display
     expect(result.details.mustHaveMissing).toEqual([]); // not truly missing
@@ -301,6 +295,8 @@ describe('Match Scoring Algorithm', () => {
   it('MIN_MUST_HAVE_MATCH_RATIO is 0.3', () => {
     expect(MIN_MUST_HAVE_MATCH_RATIO).toBe(0.3);
   });
+
+  // --- Location Tests ---
 
   // TC-SCORE-019: Location full match gives +10
   it('location full match gives +10 points', () => {
@@ -315,7 +311,7 @@ describe('Match Scoring Algorithm', () => {
     const candidate = makeCandidate({ location: 'Mumbai, India' });
     const result = calculateMatchScore(candidate, [], [], undefined, undefined, undefined, undefined, ['bangalore']);
     expect(result.details.locationMatch).toBe('none');
-    // 50 + 20 + 10 + 10 + 0 = 90
+    // 50 + 20 + 8 + 5 + 0 + 7 = 90
     expect(result.score).toBe(90);
   });
 
@@ -324,7 +320,7 @@ describe('Match Scoring Algorithm', () => {
     const candidate = makeCandidate({ location: undefined });
     const result = calculateMatchScore(candidate, [], [], undefined, undefined, undefined, undefined, ['bangalore']);
     expect(result.details.locationMatch).toBe('partial');
-    // 50 + 20 + 10 + 10 + 5 = 95
+    // 50 + 20 + 8 + 5 + 5 + 7 = 95
     expect(result.score).toBe(95);
   });
 
@@ -351,5 +347,93 @@ describe('Match Scoring Algorithm', () => {
     expect(parseSearchLocations('')).toEqual([]);
     expect(parseSearchLocations(undefined)).toEqual([]);
     expect(parseSearchLocations('  ')).toEqual([]);
+  });
+
+  // --- Experience Graduated Scoring Tests ---
+
+  // TC-SCORE-025: Experience slightly below min → partial
+  it('experience slightly below min gives partial match (+4)', () => {
+    const candidate = makeCandidate({ total_experience: 4 });
+    // min = 5, candidate = 4, diff = 1 ≤ 2 → partial
+    const result = calculateMatchScore(candidate, [], [], 5);
+    expect(result.details.experienceMatch).toBe('partial');
+    // 50 + 20 + 4 + 5 + 10 + 7 = 96
+    expect(result.score).toBe(96);
+  });
+
+  // TC-SCORE-026: Experience way below min → none
+  it('experience way below min gives none (+0)', () => {
+    const candidate = makeCandidate({ total_experience: 1 });
+    // min = 5, candidate = 1, diff = 4 > 2 → none
+    const result = calculateMatchScore(candidate, [], [], 5);
+    expect(result.details.experienceMatch).toBe('none');
+    // 50 + 20 + 0 + 5 + 10 + 7 = 92
+    expect(result.score).toBe(92);
+  });
+
+  // TC-SCORE-027: Experience slightly above max → partial
+  it('experience slightly above max gives partial match (+4)', () => {
+    const candidate = makeCandidate({ total_experience: 9 });
+    // max = 8, candidate = 9, diff = 1 ≤ 2 → partial
+    const result = calculateMatchScore(candidate, [], [], undefined, 8);
+    expect(result.details.experienceMatch).toBe('partial');
+    // 50 + 20 + 4 + 5 + 10 + 7 = 96
+    expect(result.score).toBe(96);
+  });
+
+  // --- Availability Scoring Tests ---
+
+  // TC-SCORE-028: Availability exact match → full
+  it('availability exact match gives full points (+7)', () => {
+    const candidate = makeCandidate({ availability: 'immediate' });
+    const result = calculateMatchScore(candidate, [], [], undefined, undefined, undefined, undefined, [], ['immediate']);
+    expect(result.details.availabilityMatch).toBe('full');
+    expect(result.score).toBe(100);
+  });
+
+  // TC-SCORE-029: Candidate available earlier than desired → full
+  it('candidate available earlier than desired gives full points', () => {
+    const candidate = makeCandidate({ availability: 'immediate' });
+    const result = calculateMatchScore(candidate, [], [], undefined, undefined, undefined, undefined, [], ['1_month']);
+    expect(result.details.availabilityMatch).toBe('full');
+    expect(result.score).toBe(100);
+  });
+
+  // TC-SCORE-030: Availability 1-2 steps later → partial
+  it('availability 1-2 steps later gives partial (+3)', () => {
+    const candidate = makeCandidate({ availability: '1_month' });
+    // Looking for immediate (idx 0), candidate is 1_month (idx 3), diff = 3 but 1_month is 2 steps from 2_weeks...
+    // Actually: latest desired is immediate (idx 0), candidate idx is 3, steps later = 3. That's >2 so 'none'.
+    // Let me use a closer example: looking for 2_weeks (idx 2), candidate is 1_month (idx 3), diff = 1 → partial
+    const result = calculateMatchScore(candidate, [], [], undefined, undefined, undefined, undefined, [], ['2_weeks']);
+    expect(result.details.availabilityMatch).toBe('partial');
+    // 50 + 20 + 8 + 5 + 10 + 3 = 96
+    expect(result.score).toBe(96);
+  });
+
+  // TC-SCORE-031: Availability 3+ steps later → none
+  it('availability 3+ steps later gives none (+0)', () => {
+    const candidate = makeCandidate({ availability: '3_months' });
+    // Looking for immediate (idx 0), candidate is 3_months (idx 5), diff = 5 > 2 → none
+    const result = calculateMatchScore(candidate, [], [], undefined, undefined, undefined, undefined, [], ['immediate']);
+    expect(result.details.availabilityMatch).toBe('none');
+    // 50 + 20 + 8 + 5 + 10 + 0 = 93
+    expect(result.score).toBe(93);
+  });
+
+  // TC-SCORE-032: No availability criteria → full for all
+  it('no availability criteria gives full availability points', () => {
+    const candidate = makeCandidate({ availability: '3_months' });
+    const result = calculateMatchScore(candidate, [], [], undefined, undefined, undefined, undefined, [], []);
+    expect(result.details.availabilityMatch).toBe('full');
+    expect(result.score).toBe(100);
+  });
+
+  // TC-SCORE-033: Multi-availability OR — any match is full
+  it('availability matches any of the desired values → full', () => {
+    const candidate = makeCandidate({ availability: '2_weeks' });
+    const result = calculateMatchScore(candidate, [], [], undefined, undefined, undefined, undefined, [], ['immediate', '2_weeks']);
+    expect(result.details.availabilityMatch).toBe('full');
+    expect(result.score).toBe(100);
   });
 });
