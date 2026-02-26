@@ -768,6 +768,34 @@ export async function consolidateRequirement(
   );
 }
 
+export async function updateRequirementCriteria(
+  requirementId: string,
+  parsedCriteria: Record<string, unknown>,
+  budgetMaxLpa: number | undefined,
+  now: string
+): Promise<void> {
+  let updateExpression = 'SET parsed_criteria = :criteria, last_updated = :now';
+  const expressionAttributeValues: Record<string, unknown> = {
+    ':criteria': parsedCriteria,
+    ':now': now,
+  };
+
+  if (budgetMaxLpa !== undefined) {
+    updateExpression += ', budget_max_lpa = :budget';
+    expressionAttributeValues[':budget'] = budgetMaxLpa;
+  }
+
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.requirementsTable,
+      Key: { requirement_id: requirementId },
+      UpdateExpression: updateExpression,
+      ExpressionAttributeValues: expressionAttributeValues,
+      ConditionExpression: 'attribute_exists(requirement_id)',
+    })
+  );
+}
+
 // ─── Pricing Config Operations ──────────────────────────────────────────────
 
 const DEFAULT_PRICING_CONFIG: PricingConfig = {

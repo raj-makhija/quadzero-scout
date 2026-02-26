@@ -57,7 +57,8 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │  │  - bulkImportResume  │  │  - saveSearch / getSearches / deleteSearch   │ │
 │  │  - getPricingConfig  │  │  - saveRequirement / listRequirements       │ │
 │  │  - updatePricingCfg  │  │  - getRequirement / checkDuplicate          │ │
-│  └──────────────────────┘  │  - calculatePricing                         │ │
+│  └──────────────────────┘  │  - updateRequirementCriteria                │ │
+│                            │  - calculatePricing                         │ │
 │                            │  - shortlist / deleteShortlist              │ │
 │                            │  - getShortlistedCandidates                 │ │
 │                            │  - saveClient / listClients                 │ │

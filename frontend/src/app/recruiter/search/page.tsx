@@ -47,6 +47,12 @@ export default function RecruiterSearchPage() {
   const [formattingCandidateId, setFormattingCandidateId] = useState<string | null>(null);
   const [sourceRequirementId, setSourceRequirementId] = useState<string | null>(prefilled?.requirementId || null);
 
+  // Skill input state for adding skills
+  const [mustHaveSkillInput, setMustHaveSkillInput] = useState('');
+  const [goodToHaveSkillInput, setGoodToHaveSkillInput] = useState('');
+  const [savingCriteria, setSavingCriteria] = useState(false);
+  const [criteriaSaveSuccess, setCriteriaSaveSuccess] = useState(false);
+
   // Requirement details state
   const [clientName, setClientName] = useState('');
   const [endClient, setEndClient] = useState('');
@@ -448,6 +454,75 @@ export default function RecruiterSearchPage() {
     }
   };
 
+  const addSkill = (skill: string, type: 'mustHave' | 'goodToHave') => {
+    const trimmed = skill.trim().toLowerCase();
+    if (!trimmed) return;
+
+    if (type === 'mustHave') {
+      const current = searchCriteria.mustHaveSkills || [];
+      if (!current.includes(trimmed)) {
+        updateCriteria('mustHaveSkills', [...current, trimmed]);
+      }
+      setMustHaveSkillInput('');
+    } else {
+      const current = searchCriteria.goodToHaveSkills || [];
+      if (!current.includes(trimmed)) {
+        updateCriteria('goodToHaveSkills', [...current, trimmed]);
+      }
+      setGoodToHaveSkillInput('');
+    }
+  };
+
+  // Derive the original search criteria from parsedCriteria for comparison
+  const deriveSearchCriteria = (pc: ParsedCriteria): SearchCriteria => ({
+    mustHaveSkills: pc.mustHaveSkills,
+    goodToHaveSkills: pc.goodToHaveSkills,
+    minExperience: pc.minExperience || undefined,
+    maxExperience: pc.maxExperience || undefined,
+    seniority: pc.seniority,
+    availability: pc.availability,
+    location: pc.location || undefined,
+    maxBudgetLpa: (budgetMaxLpa ? parseFloat(budgetMaxLpa) : undefined) || pc.rateLpa || undefined,
+  });
+
+  const originalCriteria = parsedCriteria ? deriveSearchCriteria(parsedCriteria) : null;
+  const criteriaModified = originalCriteria
+    ? JSON.stringify(searchCriteria) !== JSON.stringify(originalCriteria)
+    : false;
+
+  const handleResetCriteria = () => {
+    if (originalCriteria) {
+      setSearchCriteria(originalCriteria);
+      setCriteriaSaveSuccess(false);
+    }
+  };
+
+  const handleSaveCriteriaToRequirement = async () => {
+    if (!sourceRequirementId || !parsedCriteria) return;
+    try {
+      setSavingCriteria(true);
+      setError(null);
+      const updatedParsedCriteria: ParsedCriteria = {
+        ...parsedCriteria,
+        mustHaveSkills: searchCriteria.mustHaveSkills || [],
+        goodToHaveSkills: searchCriteria.goodToHaveSkills || [],
+        minExperience: searchCriteria.minExperience ?? null,
+        maxExperience: searchCriteria.maxExperience ?? null,
+        seniority: searchCriteria.seniority || [],
+        availability: searchCriteria.availability || [],
+        location: searchCriteria.location || null,
+      };
+      await api.updateRequirementCriteria(sourceRequirementId, updatedParsedCriteria, searchCriteria.maxBudgetLpa);
+      setParsedCriteria(updatedParsedCriteria);
+      setCriteriaSaveSuccess(true);
+      setTimeout(() => setCriteriaSaveSuccess(false), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save criteria to requirement');
+    } finally {
+      setSavingCriteria(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Header */}
@@ -755,7 +830,21 @@ export default function RecruiterSearchPage() {
             )}
 
             <div className="card p-6">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-6">Search Criteria</h2>
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Search Criteria</h2>
+                  {criteriaModified && (
+                    <span className="badge bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 text-xs">
+                      Modified
+                    </span>
+                  )}
+                </div>
+                {criteriaModified && (
+                  <button onClick={handleResetCriteria} className="text-sm text-primary-600 dark:text-primary-400 hover:underline">
+                    Reset to Original
+                  </button>
+                )}
+              </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Must-Have Skills */}
@@ -773,6 +862,31 @@ export default function RecruiterSearchPage() {
                       </span>
                     ))}
                   </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={mustHaveSkillInput}
+                      onChange={(e) => setMustHaveSkillInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addSkill(mustHaveSkillInput, 'mustHave');
+                        }
+                      }}
+                      placeholder="Add a skill and press Enter"
+                      className="input flex-1"
+                    />
+                    <button
+                      onClick={() => addSkill(mustHaveSkillInput, 'mustHave')}
+                      disabled={!mustHaveSkillInput.trim()}
+                      className="btn-secondary px-3 py-2 disabled:opacity-50"
+                      type="button"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Good-to-Have Skills */}
@@ -789,6 +903,31 @@ export default function RecruiterSearchPage() {
                         </button>
                       </span>
                     ))}
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={goodToHaveSkillInput}
+                      onChange={(e) => setGoodToHaveSkillInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addSkill(goodToHaveSkillInput, 'goodToHave');
+                        }
+                      }}
+                      placeholder="Add a skill and press Enter"
+                      className="input flex-1"
+                    />
+                    <button
+                      onClick={() => addSkill(goodToHaveSkillInput, 'goodToHave')}
+                      disabled={!goodToHaveSkillInput.trim()}
+                      className="btn-secondary px-3 py-2 disabled:opacity-50"
+                      type="button"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
 
@@ -904,9 +1043,23 @@ export default function RecruiterSearchPage() {
                 <button onClick={() => setViewMode('input')} className="btn-secondary">
                   Back to JD
                 </button>
-                <button onClick={handleSearch} disabled={loading} className="btn-primary px-8">
-                  {loading ? 'Searching...' : 'Search Candidates'}
-                </button>
+                <div className="flex items-center gap-3">
+                  {sourceRequirementId && criteriaModified && (
+                    <button
+                      onClick={handleSaveCriteriaToRequirement}
+                      disabled={savingCriteria}
+                      className="btn-secondary text-sm"
+                    >
+                      {savingCriteria ? 'Saving...' : 'Save to Requirement'}
+                    </button>
+                  )}
+                  {criteriaSaveSuccess && (
+                    <span className="text-sm text-green-600 dark:text-green-400">Saved!</span>
+                  )}
+                  <button onClick={handleSearch} disabled={loading} className="btn-primary px-8">
+                    {loading ? 'Searching...' : 'Search Candidates'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -951,6 +1104,18 @@ export default function RecruiterSearchPage() {
                 </div>
                 <button onClick={handleLoginRequired} className="btn-primary whitespace-nowrap self-start sm:self-auto">
                   Sign In
+                </button>
+              </div>
+            )}
+
+            {/* Low results banner */}
+            {totalMatches > 0 && totalMatches < 5 && (
+              <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <p className="text-sm text-amber-700 dark:text-amber-300">
+                  Only {totalMatches} candidate{totalMatches === 1 ? '' : 's'} matched. Consider broadening your criteria for more results.
+                </p>
+                <button onClick={() => setViewMode('criteria')} className="btn-secondary text-sm whitespace-nowrap self-start">
+                  Refine Criteria
                 </button>
               </div>
             )}
@@ -1059,10 +1224,18 @@ export default function RecruiterSearchPage() {
               {results.length === 0 && (
                 <div className="card p-12 text-center">
                   <svg className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
                   <h3 className="mt-4 text-lg font-medium text-gray-900 dark:text-gray-100">No candidates found</h3>
-                  <p className="mt-2 text-gray-500 dark:text-gray-400">Try adjusting your search criteria</p>
+                  <p className="mt-2 text-gray-500 dark:text-gray-400 max-w-md mx-auto">
+                    Try widening your search: increase the experience range, raise the max budget,
+                    add alternative skills, or relax seniority requirements.
+                  </p>
+                  <div className="mt-6">
+                    <button onClick={() => setViewMode('criteria')} className="btn-primary">
+                      Modify Search Criteria
+                    </button>
+                  </div>
                 </div>
               )}
 

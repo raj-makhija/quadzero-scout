@@ -292,6 +292,13 @@ functions:
           path: /recruiter/requirements/{requirementId}/consolidate
           method: PUT
 
+  recruiterUpdateRequirementCriteria:
+    handler: src/handlers/recruiter/updateRequirementCriteria.handler
+    events:
+      - httpApi:
+          path: /recruiter/requirements/{requirementId}/criteria
+          method: PUT
+
   recruiterGetClientNames:
     handler: src/handlers/recruiter/getClientNames.handler
     events:

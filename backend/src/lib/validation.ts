@@ -143,6 +143,12 @@ export const ConsolidateRequirementRequestSchema = z.object({
   notes: z.string().max(500).optional(),
 });
 
+// Update Requirement Criteria Request Validation
+export const UpdateRequirementCriteriaRequestSchema = z.object({
+  parsedCriteria: LLMJDOutputSchema,
+  maxBudgetLpa: z.number().min(0).max(500).optional(),
+});
+
 // Validate function with proper error handling
 export function validate<T>(schema: z.ZodSchema<T>, data: unknown): { success: true; data: T } | { success: false; errors: z.ZodError } {
   const result = schema.safeParse(data);

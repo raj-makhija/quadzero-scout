@@ -877,6 +877,81 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | **Steps** | Execute search from `/recruiter/search` page |
 | **Expected Result** | Candidate cards shown with: name, location, skills, experience, seniority, availability, match score badge (color-coded) |
 
+### TC-SEARCH-019: Add skill to must-have list
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-019 |
+| **Priority** | P1 |
+| **Steps** | On criteria view, type a skill in the must-have input and press Enter |
+| **Expected Result** | Skill badge appears in must-have list, lowercased; input field is cleared; duplicate skill is silently ignored |
+
+### TC-SEARCH-020: Add skill to good-to-have list
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-020 |
+| **Priority** | P1 |
+| **Steps** | On criteria view, type a skill in the good-to-have input and click the "+" button |
+| **Expected Result** | Skill badge appears in good-to-have list, lowercased; input field is cleared |
+
+### TC-SEARCH-021: Modified indicator and reset
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-021 |
+| **Priority** | P1 |
+| **Steps** | Parse a JD, modify any criteria field (e.g., change experience range), verify "Modified" badge and "Reset to Original" link appear, click reset |
+| **Expected Result** | "Modified" badge appears when criteria differ from original. After reset, criteria revert to original parsed values and "Modified" badge disappears |
+
+### TC-SEARCH-022: Empty results shows refine button
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-022 |
+| **Priority** | P1 |
+| **Steps** | Execute search that returns 0 results |
+| **Expected Result** | Empty state shows search icon, descriptive text with suggestions, and a "Modify Search Criteria" button that navigates to criteria view |
+
+### TC-SEARCH-023: Low results banner
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-023 |
+| **Priority** | P2 |
+| **Steps** | Execute search that returns 1-4 results |
+| **Expected Result** | Amber banner appears above results: "Only N candidate(s) matched. Consider broadening your criteria." with "Refine Criteria" button |
+
+### TC-SEARCH-024: Save modified criteria to requirement
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-024 |
+| **Priority** | P1 |
+| **Endpoint** | `PUT /recruiter/requirements/{requirementId}/criteria` |
+| **Steps** | Navigate from requirement detail → search, modify criteria, click "Save to Requirement" |
+| **Expected Result** | HTTP 200; requirement's `parsed_criteria` and `budget_max_lpa` updated in DB; "Saved!" confirmation shown; "Modified" badge disappears (new baseline set) |
+
+### TC-SEARCH-025: Save criteria - unauthorized recruiter
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-025 |
+| **Priority** | P1 |
+| **Endpoint** | `PUT /recruiter/requirements/{requirementId}/criteria` |
+| **Precondition** | Recruiter does not own the requirement |
+| **Expected Result** | HTTP 403; `FORBIDDEN` error; requirement unchanged |
+
+### TC-SEARCH-026: Save criteria - requirement not found
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-026 |
+| **Priority** | P2 |
+| **Endpoint** | `PUT /recruiter/requirements/{requirementId}/criteria` |
+| **Request** | Use non-existent requirementId |
+| **Expected Result** | HTTP 404; `NOT_FOUND` error |
+
+### TC-SEARCH-027: Modified criteria are ephemeral by default
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SEARCH-027 |
+| **Priority** | P1 |
+| **Steps** | Modify search criteria, re-search, then navigate away and back to requirement detail |
+| **Expected Result** | Requirement detail page shows original parsed criteria (modifications not persisted unless explicitly saved) |
+
 ---
 
 ## 8. Module 7: Recruiter - Resume Download

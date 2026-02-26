@@ -264,6 +264,20 @@ class ApiClient {
     );
   }
 
+  async updateRequirementCriteria(
+    requirementId: string,
+    parsedCriteria: ParsedCriteria,
+    maxBudgetLpa?: number
+  ) {
+    return this.request<{ requirementId: string; lastUpdated: string }>(
+      `/recruiter/requirements/${requirementId}/criteria`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ parsedCriteria, maxBudgetLpa }),
+      }
+    );
+  }
+
   // Admin endpoints
   async listPendingRecruiters() {
     return this.request<{

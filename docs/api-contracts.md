@@ -962,6 +962,65 @@ Authorization: Bearer <jwe_token>
 - Adds the current recruiter to `contributing_recruiters` (if not already present)
 - Recomputes `demand_score`
 
+### PUT /recruiter/requirements/{requirementId}/criteria
+
+Update the parsed search criteria and optional budget for an existing requirement. Used when a recruiter refines search criteria after getting few or no results and wants to persist the changes back to the requirement.
+
+**Auth:** Requires `recruiter` role. Recruiter must own the requirement.
+
+**Path Parameters:**
+- `requirementId`: The ID of the requirement to update
+
+**Request Headers:**
+```
+Content-Type: application/json
+Authorization: Bearer <jwe_token>
+```
+
+**Request Body:**
+```json
+{
+  "parsedCriteria": {
+    "mustHaveSkills": ["react", "typescript", "javascript"],
+    "goodToHaveSkills": ["nodejs", "aws", "docker"],
+    "minExperience": 3,
+    "maxExperience": 10,
+    "seniority": ["mid", "senior"],
+    "availability": [],
+    "location": null,
+    "remote": false,
+    "industries": [],
+    "roles": ["React Developer"],
+    "coreSkill": "React"
+  },
+  "maxBudgetLpa": 30
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "requirementId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "lastUpdated": "2024-02-10T14:00:00Z"
+  }
+}
+```
+
+**Validation Rules:**
+- `parsedCriteria`: Required, LLM JD output schema
+- `maxBudgetLpa`: Optional, number, 0-500
+- Requirement must exist (ConditionExpression check)
+- Recruiter must be the owner of the requirement (403 otherwise)
+
+**Side Effects:**
+- Updates `parsed_criteria` field on the requirement
+- Updates `budget_max_lpa` if provided
+- Updates `last_updated` timestamp
+
+---
+
 ### GET /recruiter/client-names
 
 Fetch distinct client names and end-client names from the authenticated recruiter's requirements. Used for autocomplete/type-ahead on requirement forms.
