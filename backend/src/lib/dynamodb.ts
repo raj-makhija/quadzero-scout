@@ -1161,11 +1161,12 @@ export async function updateCandidateProfileFields(
   screenedBy: string
 ): Promise<void> {
   const now = new Date().toISOString();
-  const expressionParts: string[] = [
+  const setParts: string[] = [
     'last_updated = :now',
     'last_screened_at = :now',
     'last_screened_by = :screenedBy',
   ];
+  const removeParts: string[] = [];
   const values: Record<string, unknown> = {
     ':now': now,
     ':screenedBy': screenedBy,
@@ -1173,17 +1174,27 @@ export async function updateCandidateProfileFields(
 
   let paramIndex = 0;
   for (const [key, value] of Object.entries(fields)) {
-    const placeholder = `:f${paramIndex}`;
-    expressionParts.push(`${key} = ${placeholder}`);
-    values[placeholder] = value;
-    paramIndex++;
+    if (value === null || value === undefined) {
+      // DynamoDB cannot SET a value to null; use REMOVE instead
+      removeParts.push(key);
+    } else {
+      const placeholder = `:f${paramIndex}`;
+      setParts.push(`${key} = ${placeholder}`);
+      values[placeholder] = value;
+      paramIndex++;
+    }
+  }
+
+  let updateExpression = `SET ${setParts.join(', ')}`;
+  if (removeParts.length > 0) {
+    updateExpression += ` REMOVE ${removeParts.join(', ')}`;
   }
 
   await docClient.send(
     new UpdateCommand({
       TableName: config.dynamodb.talentProfilesTable,
       Key: { candidate_id: candidateId },
-      UpdateExpression: `SET ${expressionParts.join(', ')}`,
+      UpdateExpression: updateExpression,
       ExpressionAttributeValues: values,
       ConditionExpression: 'attribute_exists(candidate_id)',
     })

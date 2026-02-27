@@ -148,7 +148,13 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
       await api.screenCandidate(resolvedCandidateId, updatedValues, notes || undefined);
       onScreeningComplete(resolvedCandidateId);
     } catch (err) {
-      setErrorMessage((err as Error).message || 'Failed to save screening');
+      let msg = (err as Error).message || 'Failed to save screening';
+      // Include backend details if available (e.g., DynamoDB error specifics)
+      const details = (err as any)?.details;
+      if (details?.message && details.message !== msg) {
+        msg += `: ${details.message}`;
+      }
+      setErrorMessage(msg);
     } finally {
       setLoading(false);
     }
