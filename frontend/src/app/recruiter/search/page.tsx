@@ -7,7 +7,8 @@ import { Header } from '@/components/Header';
 import { PricingPanel } from '@/components/PricingPanel';
 import { ComboboxInput } from '@/components/ui/combobox-input';
 import { api, ParsedCriteria, SearchCriteria, CandidateSearchResult, EngagementModel, Payroll, DuplicateMatch, ConsolidateResponse, ClientDefaultsResponse } from '@/lib/api';
-import { formatSeniority, formatAvailability, formatCandidateEngagement, getMatchScoreColor, getMatchScoreBgColor, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS, ENGAGEMENT_MODEL_OPTIONS, PAYROLL_OPTIONS, formatEngagementModel } from '@/lib/utils';
+import { formatSeniority, formatAvailability, formatCandidateEngagement, getMatchScoreColor, getMatchScoreBgColor, formatRelativeTime, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS, ENGAGEMENT_MODEL_OPTIONS, PAYROLL_OPTIONS, formatEngagementModel } from '@/lib/utils';
+import { ScreeningModal, getScreeningStatus, isScreeningExpired } from '@/components/screening-modal';
 
 type ViewMode = 'input' | 'requirement_details' | 'criteria' | 'results';
 
@@ -46,6 +47,8 @@ export default function RecruiterSearchPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [formattingCandidateId, setFormattingCandidateId] = useState<string | null>(null);
   const [sourceRequirementId, setSourceRequirementId] = useState<string | null>(prefilled?.requirementId || null);
+  const [sortBy, setSortBy] = useState<'matchScore' | 'experience' | 'lastUpdated'>('lastUpdated');
+  const [screeningCandidate, setScreeningCandidate] = useState<CandidateSearchResult | null>(null);
 
   // Skill input state for adding skills
   const [mustHaveSkillInput, setMustHaveSkillInput] = useState('');
@@ -117,12 +120,12 @@ export default function RecruiterSearchPage() {
   };
 
   // Search helper — reusable for both button click and state restore
-  const runSearch = useCallback(async (criteria: SearchCriteria, lastEvaluatedKey?: string) => {
+  const runSearch = useCallback(async (criteria: SearchCriteria, lastEvaluatedKey?: string, sort?: 'matchScore' | 'experience' | 'lastUpdated') => {
     try {
       setLoading(true);
       setError(null);
       const pagination = lastEvaluatedKey ? { lastEvaluatedKey } : undefined;
-      const response = await api.searchCandidates(criteria, pagination);
+      const response = await api.searchCandidates(criteria, pagination, sort || sortBy);
       setResults(response.candidates);
       setTotalMatches(response.totalMatches);
       setPaginationKey(response.pagination.lastEvaluatedKey);
@@ -133,7 +136,7 @@ export default function RecruiterSearchPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [sortBy]);
 
   // Run auto-search and clean up sessionStorage for prefilled state
   useEffect(() => {
@@ -314,6 +317,29 @@ export default function RecruiterSearchPage() {
       setError(err instanceof Error ? err.message : 'Failed to get original resume');
     }
   };
+
+  const handleSortChange = useCallback((newSort: 'matchScore' | 'experience' | 'lastUpdated') => {
+    setSortBy(newSort);
+    if (results.length > 0) {
+      runSearch(searchCriteria, undefined, newSort);
+    }
+  }, [results.length, searchCriteria, runSearch]);
+
+  const handleScreeningComplete = useCallback((candidateId: string) => {
+    setScreeningCandidate(null);
+    // Update the candidate's lastScreenedAt in the local results
+    const now = new Date().toISOString();
+    setResults(prev => prev.map(c =>
+      c.candidateId === candidateId ? { ...c, lastScreenedAt: now } : c
+    ));
+    if (selectedCandidate?.candidateId === candidateId) {
+      setSelectedCandidate(prev => prev ? { ...prev, lastScreenedAt: now } : prev);
+    }
+  }, [selectedCandidate]);
+
+  const handleScreenCandidate = useCallback((candidate: CandidateSearchResult) => {
+    setScreeningCandidate(candidate);
+  }, []);
 
   const handleSaveAndContinue = async () => {
     if (!clientName.trim()) { setError('Client name is required'); return; }
@@ -1130,6 +1156,15 @@ export default function RecruiterSearchPage() {
                 <p className="text-gray-600 dark:text-gray-400">{totalMatches} candidates found</p>
               </div>
               <div className="flex items-center gap-3 self-start sm:self-auto">
+                <select
+                  value={sortBy}
+                  onChange={(e) => handleSortChange(e.target.value as 'matchScore' | 'experience' | 'lastUpdated')}
+                  className="input text-sm py-1.5 px-2"
+                >
+                  <option value="lastUpdated">Sort: Last Updated</option>
+                  <option value="matchScore">Sort: Match Score</option>
+                  <option value="experience">Sort: Experience</option>
+                </select>
                 {sourceRequirementId && (
                   <button
                     onClick={() => router.push(`/recruiter/requirements/${sourceRequirementId}`)}
@@ -1185,6 +1220,14 @@ export default function RecruiterSearchPage() {
                         <span className={`badge ${getMatchScoreBgColor(candidate.matchScore)} ${getMatchScoreColor(candidate.matchScore)}`}>
                           {candidate.matchScore}% Match
                         </span>
+                        {isAuthenticated && (() => {
+                          const status = getScreeningStatus(candidate.lastScreenedAt);
+                          return (
+                            <span className={`badge text-xs ${status.className}`}>
+                              {status.label}
+                            </span>
+                          );
+                        })()}
                       </div>
 
                       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-gray-400">
@@ -1274,6 +1317,15 @@ export default function RecruiterSearchPage() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
+                            handleScreenCandidate(candidate);
+                          }}
+                          className="btn-secondary text-sm whitespace-nowrap"
+                        >
+                          {isScreeningExpired(candidate.lastScreenedAt) ? 'Screen' : 'Re-screen'}
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
                             handleDownloadResume(candidate.candidateId);
                           }}
                           disabled={formattingCandidateId === candidate.candidateId}
@@ -1290,6 +1342,9 @@ export default function RecruiterSearchPage() {
                         >
                           Download Original
                         </button>
+                        <span className="text-xs text-gray-400 dark:text-gray-500">
+                          Updated {formatRelativeTime(candidate.lastUpdated)}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -1346,6 +1401,15 @@ export default function RecruiterSearchPage() {
           </div>
         )}
       </main>
+
+      {/* Screening Modal */}
+      {screeningCandidate && (
+        <ScreeningModal
+          candidate={screeningCandidate}
+          onClose={() => setScreeningCandidate(null)}
+          onScreeningComplete={handleScreeningComplete}
+        />
+      )}
 
       {/* Candidate Detail Drawer — only accessible when authenticated */}
       {drawerOpen && selectedCandidate && (
@@ -1582,6 +1646,23 @@ export default function RecruiterSearchPage() {
                       setSelectedCandidate(prev => prev ? { ...prev, expectedCtc, currentCtc } : prev);
                     }}
                   />
+                </div>
+
+                {/* Screening */}
+                <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-medium">Screening Status</h3>
+                    {(() => {
+                      const status = getScreeningStatus(selectedCandidate.lastScreenedAt);
+                      return <span className={`badge text-xs ${status.className}`}>{status.label}</span>;
+                    })()}
+                  </div>
+                  <button
+                    onClick={() => handleScreenCandidate(selectedCandidate)}
+                    className="btn-secondary w-full"
+                  >
+                    {isScreeningExpired(selectedCandidate.lastScreenedAt) ? 'Screen Candidate' : 'Re-screen Candidate'}
+                  </button>
                 </div>
 
                 {/* Actions */}

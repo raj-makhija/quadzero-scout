@@ -46,6 +46,8 @@ Stores candidate profile data extracted from resumes and edited by candidates.
 | summary | String | No | Profile summary |
 | current_ctc | Number | No | Current CTC in LPA (Lakhs Per Annum) |
 | expected_ctc | Number | No | Expected CTC in LPA |
+| last_screened_at | String | No | ISO 8601 timestamp of last screening |
+| last_screened_by | String | No | User ID of recruiter who last screened |
 | experience_bucket | String | Yes | Bucketed experience for GSI (e.g., "0-2", "3-5") |
 | resume_s3_key | String | Yes | S3 object key for original resume |
 | formatted_resume_s3_key | String | No | S3 key for LLM-formatted resume |
@@ -87,6 +89,8 @@ Stores candidate profile data extracted from resumes and edited by candidates.
   "summary": "Experienced full-stack developer specializing in React and Node.js",
   "current_ctc": 18.5,
   "expected_ctc": 25.0,
+  "last_screened_at": "2024-01-14T09:00:00Z",
+  "last_screened_by": "user_r1e2c3",
   "experience_bucket": "6-10",
   "resume_s3_key": "resumes/2024/01/a1b2c3d4-resume.pdf",
   "formatted_resume_s3_key": "formatted-resumes/a1b2c3d4.pdf",
@@ -373,6 +377,7 @@ Stores job requirements created by recruiters with parsed JD criteria.
 | contributing_recruiters | List\<String\> | No | Deduplicated list of recruiter IDs who submitted this requirement |
 | demand_score | Number | No | Computed demand score 0-100 based on request frequency, recency, and distinct recruiters |
 | request_history | List\<Map\> | No | Array of repeat request entries (see below) |
+| status_history | List\<Map\> | No | Array of status change audit entries |
 
 **Request History Entry Schema:**
 
@@ -383,6 +388,16 @@ Stores job requirements created by recruiters with parsed JD criteria.
 | similarity_score | Number | LLM similarity score at time of consolidation (0-100) |
 | jd_text | String | The JD text of the repeat submission (optional) |
 | notes | String | Optional recruiter notes (optional) |
+
+**Status History Entry Schema:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| changed_at | String (ISO 8601) | Timestamp of the status change |
+| changed_by | String | User ID of the internal recruiter who made the change |
+| from_status | String | Previous status value |
+| to_status | String | New status value |
+| reason | String (optional) | Optional reason for the change (max 500 chars) |
 
 **Demand Score Computation:**
 - Count score: `min(requestCount * 15, 60)` -- max 60 points from request frequency
@@ -698,6 +713,66 @@ For looking up client defaults by normalized name.
 
 ---
 
+### 10. CandidateScreenings
+
+Stores audit records of recruiter screening actions on candidate profiles. Each screening captures the before/after values for changed fields, enabling a full history of profile verification and updates.
+
+**Table Configuration:**
+- Table Name: `CandidateScreenings-{stage}`
+- Billing Mode: PAY_PER_REQUEST
+
+**Primary Key:**
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| candidate_id | String (S) | Partition Key - Candidate ID |
+| screened_at | String (S) | Sort Key - ISO 8601 timestamp |
+
+**Attributes:**
+
+| Attribute | Type | Required | Description |
+|-----------|------|----------|-------------|
+| candidate_id | String | Yes | Candidate ID (PK) |
+| screened_at | String | Yes | ISO 8601 timestamp of screening (SK) |
+| screened_by | String | Yes | User ID of recruiter who performed screening |
+| screener_email | String | Yes | Email of the screener |
+| previous_values | Map | Yes | Field values before screening |
+| updated_values | Map | Yes | Field values after screening |
+| fields_updated | List\<String\> | Yes | List of field names that were changed |
+| notes | String | No | Optional screening notes (max 2000 chars) |
+
+**Example Item:**
+```json
+{
+  "candidate_id": "cand_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "screened_at": "2024-01-14T09:00:00Z",
+  "screened_by": "user_r1e2c3",
+  "screener_email": "recruiter@quadzero.com",
+  "previous_values": {
+    "totalExperience": 5,
+    "seniority": "mid",
+    "availability": "negotiable"
+  },
+  "updated_values": {
+    "totalExperience": 6,
+    "seniority": "senior",
+    "availability": "immediate"
+  },
+  "fields_updated": ["totalExperience", "seniority", "availability"],
+  "notes": "Verified experience via phone screening, candidate confirmed immediate availability"
+}
+```
+
+**Global Secondary Indexes:** None
+
+**Access Patterns:**
+
+| Operation | Access Pattern | Index |
+|-----------|---------------|-------|
+| Get screening history for candidate | Query by candidate_id (sorted by screened_at desc) | Primary |
+| Get single screening record | GetItem with candidate_id + screened_at | Primary |
+
+---
+
 ## S3 Storage Structure
 
 ### Bucket: quadzero-scout-resumes-{stage}
@@ -810,7 +885,7 @@ type Payroll = 'quadzero' | 'client';
 
 ### Requirement Status
 ```typescript
-type RequirementStatus = 'active' | 'duplicate';
+type RequirementStatus = 'active' | 'duplicate' | 'closed_on_hold';
 ```
 
 ### Shortlist Status
@@ -1111,3 +1186,9 @@ See `backend/src/data/skills_ontology.json` for the full list of mappings, categ
 | Lookup by name | Query by client_name_lower | ClientNameLowerIndex |
 | List all clients | Scan | Table Scan |
 | Update client defaults | UpdateItem by client_id | Primary |
+
+### Candidate Screening Operations
+| Operation | Access Pattern | Index |
+|-----------|---------------|-------|
+| Get screening history for candidate | Query by candidate_id (desc) | Primary |
+| Get single screening record | GetItem with candidate_id + screened_at | Primary |

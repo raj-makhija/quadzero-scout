@@ -61,6 +61,7 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │                            │  - calculatePricing                         │ │
 │                            │  - shortlist / deleteShortlist              │ │
 │                            │  - getShortlistedCandidates                 │ │
+│                            │  - screenCandidate / screeningHistory       │ │
 │                            │  - saveClient / listClients                 │ │
 │                            │  - getClientDefaults / updateClient         │ │
 │                            └──────────────────────────────────────────────┘ │
@@ -93,6 +94,8 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │  - Shortlists   │  │                 │  │                                 │
 │  - PricingConfig│  │                 │  │                                 │
 │  - Clients      │  │                 │  │                                 │
+│  - Candidate   │  │                 │  │                                 │
+│    Screenings  │  │                 │  │                                 │
 └─────────────────┘  └─────────────────┘  └─────────────────────────────────┘
 ```
 
@@ -307,6 +310,76 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
      │                │                │                │
 ```
 
+### Recruiter Candidate Screening Flow
+
+```
+┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
+│Recruiter │     │ Frontend │     │  Lambda  │     │ DynamoDB │
+└────┬─────┘     └────┬─────┘     └────┬─────┘     └────┬─────┘
+     │                │                │                │
+     │ 1. Open        │                │                │
+     │    Screening   │                │                │
+     │    Modal from  │                │                │
+     │    Search      │                │                │
+     │    Results     │                │                │
+     │───────────────>│                │                │
+     │                │                │                │
+     │ 2. Fill in /   │                │                │
+     │    Verify      │                │                │
+     │    Profile     │                │                │
+     │    Fields      │                │                │
+     │───────────────>│                │                │
+     │                │                │                │
+     │                │ 3. POST        │                │
+     │                │ /recruiter/    │                │
+     │                │ screen-        │                │
+     │                │ candidate      │                │
+     │                │───────────────>│                │
+     │                │                │                │
+     │                │                │ 4. Fetch       │
+     │                │                │    current     │
+     │                │                │    profile     │
+     │                │                │───────────────>│
+     │                │                │<───────────────│
+     │                │                │                │
+     │                │                │ 5. Diff values │
+     │                │                │    (previous   │
+     │                │                │    vs updated) │
+     │                │                │                │
+     │                │                │ 6. Save audit  │
+     │                │                │    record to   │
+     │                │                │    Candidate   │
+     │                │                │    Screenings  │
+     │                │                │───────────────>│
+     │                │                │<───────────────│
+     │                │                │                │
+     │                │                │ 7. Update      │
+     │                │                │    candidate   │
+     │                │                │    profile +   │
+     │                │                │    set         │
+     │                │                │    last_       │
+     │                │                │    screened_at │
+     │                │                │───────────────>│
+     │                │                │<───────────────│
+     │                │                │                │
+     │                │<───────────────│                │
+     │<───────────────│                │                │
+     │                │                │                │
+     │ 8. Candidate   │                │                │
+     │    can now be   │                │                │
+     │    shortlisted  │                │                │
+     │    (screening   │                │                │
+     │    valid for    │                │                │
+     │    15 days)     │                │                │
+     │                │                │                │
+```
+
+**Screening Rules:**
+- A candidate must be screened before they can be shortlisted for any requirement
+- Screening expires after 15 days; re-screening is required after expiry
+- The 15-day expiry check is enforced on the backend in the `POST /recruiter/shortlist` handler
+- Screening records are immutable audit entries; each screening creates a new record
+
 **Key Implementation Details:**
 
 - **Shared scoring module**: The `calculateMatchScore()` function is extracted into `backend/src/lib/matchScoring.ts`, shared by both the recruiter search handler and the candidate match-requirements handler.
@@ -370,7 +443,7 @@ The active provider is configured via the `LLM_PROVIDER` environment variable.
 
 | Component | Technology | Responsibility |
 |-----------|------------|----------------|
-| Profile Storage | DynamoDB | Candidate data, users, prompts, requirements, shortlists |
+| Profile Storage | DynamoDB | Candidate data, users, prompts, requirements, shortlists, screening history |
 | File Storage | S3 | Resume documents (original + formatted) |
 | Text Extraction | pdf-parse / mammoth | In-Lambda PDF and DOCX parsing |
 
@@ -495,7 +568,7 @@ External recruiters go through an approval process before accessing the platform
 | Authentication | NextAuth.js v4 (JWE sessions) |
 | API Gateway | AWS HTTP API (API Gateway v2) |
 | Compute | AWS Lambda (Node.js 20, arm64) |
-| Database | AWS DynamoDB (9 tables) |
+| Database | AWS DynamoDB (10 tables) |
 | Storage | AWS S3 |
 | Text Extraction | pdf-parse (PDF), mammoth (DOCX) |
 | PDF Generation | puppeteer-core + @sparticuz/chromium |
@@ -504,6 +577,17 @@ External recruiters go through an approval process before accessing the platform
 | Bundler | esbuild (via serverless-esbuild) |
 | Testing | Vitest |
 | Region | ap-south-1 (Mumbai) |
+
+## Operational Scripts
+
+Located in `backend/scripts/`, these are developer-run CLI utilities:
+
+| Script | Purpose | Run Command |
+|--------|---------|-------------|
+| `createAdmin.ts` | Promote a user to admin | `npx tsx scripts/createAdmin.ts <email>` |
+| `migrateUserStatus.ts` | Add status field to existing users | `npx tsx scripts/migrateUserStatus.ts` |
+| `seedPrompts.ts` | Seed initial LLM prompts | `npx tsx scripts/seedPrompts.ts` |
+| `cloneProdToDev.ts` | Clone all prod data (DynamoDB + S3) to dev | `npx tsx scripts/cloneProdToDev.ts` |
 
 ## Pricing Engine
 

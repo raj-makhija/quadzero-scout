@@ -101,6 +101,7 @@ async function handleRequest(
           matchScore: score,
           matchDetails: details,
           lastUpdated: candidate.last_updated,
+          lastScreenedAt: candidate.last_screened_at,
         };
       })
       // Filter out candidates below minimum must-have match ratio
@@ -173,6 +174,7 @@ async function handleRequest(
             availabilityMatch: candidate.matchDetails.availabilityMatch,
           },
           lastUpdated: candidate.lastUpdated,
+          lastScreenedAt: undefined, // Hide screening info
         }));
 
     const response: SearchResponse = {

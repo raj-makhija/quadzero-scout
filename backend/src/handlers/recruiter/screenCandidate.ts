@@ -1,0 +1,143 @@
+import type { APIGatewayProxyResultV2 } from 'aws-lambda';
+import { success, error, ErrorCodes } from '../../lib/response.js';
+import { validate, formatZodErrors, ScreenCandidateRequestSchema } from '../../lib/validation.js';
+import { getCandidateById, saveScreening, updateCandidateProfileFields } from '../../lib/dynamodb.js';
+import { getExperienceBucket } from '../../lib/dynamodb.js';
+import { normalizeSkills } from '../../lib/skillNormalizer.js';
+import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import type { ScreeningItem, ScreeningProfileData } from '../../types/index.js';
+
+// Map camelCase request fields to snake_case DynamoDB fields
+const FIELD_MAP: Record<string, string> = {
+  fullName: 'full_name',
+  email: 'email',
+  phone: 'phone',
+  location: 'location',
+  primarySkills: 'primary_skills',
+  primarySkillYears: 'primary_skill_years',
+  secondarySkills: 'secondary_skills',
+  totalExperience: 'total_experience',
+  seniority: 'seniority',
+  availability: 'availability',
+  engagementModel: 'engagement_model',
+  industries: 'industries',
+  roles: 'roles',
+  education: 'education',
+  certifications: 'certifications',
+  summary: 'summary',
+  currentCtc: 'current_ctc',
+  expectedCtc: 'expected_ctc',
+};
+
+async function handleRequest(
+  event: AuthenticatedEvent
+): Promise<APIGatewayProxyResultV2> {
+  try {
+    if (!event.body) {
+      return error(ErrorCodes.VALIDATION_ERROR, 'Request body is required', 400);
+    }
+
+    let body: unknown;
+    try {
+      body = JSON.parse(event.body);
+    } catch {
+      return error(ErrorCodes.VALIDATION_ERROR, 'Invalid JSON in request body', 400);
+    }
+
+    const validation = validate(ScreenCandidateRequestSchema, body);
+    if (!validation.success) {
+      return error(ErrorCodes.VALIDATION_ERROR, formatZodErrors(validation.errors), 400);
+    }
+
+    const { candidateId, updatedValues, notes } = validation.data;
+
+    // Fetch current candidate profile
+    const candidate = await getCandidateById(candidateId);
+    if (!candidate) {
+      return error(ErrorCodes.NOT_FOUND, 'Candidate not found', 404);
+    }
+
+    // Build previous values snapshot and DB update fields
+    const previousValues: ScreeningProfileData = {};
+    const dbFields: Record<string, unknown> = {};
+    const fieldsUpdated: string[] = [];
+
+    for (const [camelKey, value] of Object.entries(updatedValues)) {
+      if (value === undefined) continue;
+
+      const snakeKey = FIELD_MAP[camelKey];
+      if (!snakeKey) continue;
+
+      const currentValue = candidate[snakeKey as keyof typeof candidate];
+
+      // Record the previous value for audit
+      (previousValues as Record<string, unknown>)[snakeKey] = currentValue;
+
+      // Normalize skills if applicable
+      let processedValue = value;
+      if (camelKey === 'primarySkills' && Array.isArray(value)) {
+        processedValue = normalizeSkills(value as string[]);
+      }
+
+      dbFields[snakeKey] = processedValue;
+      fieldsUpdated.push(snakeKey);
+    }
+
+    // If totalExperience changed, also update experience_bucket
+    if (dbFields['total_experience'] !== undefined) {
+      const newBucket = getExperienceBucket(dbFields['total_experience'] as number);
+      dbFields['experience_bucket'] = newBucket;
+    }
+
+    // Build updated values snapshot for audit
+    const updatedValuesSnapshot: ScreeningProfileData = {};
+    for (const [snakeKey, value] of Object.entries(dbFields)) {
+      if (snakeKey === 'experience_bucket') continue; // Don't include derived field in audit
+      (updatedValuesSnapshot as Record<string, unknown>)[snakeKey] = value;
+    }
+
+    const now = new Date().toISOString();
+
+    // Save screening record
+    const screeningItem: ScreeningItem = {
+      candidate_id: candidateId,
+      screened_at: now,
+      screened_by: event.auth.userId,
+      screener_email: event.auth.email,
+      previous_values: previousValues,
+      updated_values: updatedValuesSnapshot,
+      fields_updated: fieldsUpdated,
+      notes,
+    };
+
+    // Save screening record and update candidate profile in parallel
+    await Promise.all([
+      saveScreening(screeningItem),
+      Object.keys(dbFields).length > 0
+        ? updateCandidateProfileFields(candidateId, dbFields, event.auth.userId)
+        : Promise.resolve(),
+    ]);
+
+    // If no fields were changed but we still want to record the screening
+    // (e.g., recruiter just verified everything is correct), update screening timestamps
+    if (Object.keys(dbFields).length === 0) {
+      await updateCandidateProfileFields(candidateId, {}, event.auth.userId);
+    }
+
+    return success({
+      candidateId,
+      screenedAt: now,
+      fieldsUpdated,
+    });
+  } catch (err) {
+    console.error('Error screening candidate:', err);
+    return error(
+      ErrorCodes.DYNAMODB_ERROR,
+      'Failed to screen candidate',
+      500,
+      { message: (err as Error).message }
+    );
+  }
+}
+
+export const handler = withAuth(['recruiter'], handleRequest);

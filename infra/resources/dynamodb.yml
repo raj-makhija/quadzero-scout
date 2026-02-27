@@ -287,6 +287,30 @@ Resources:
         - Key: Project
           Value: quadzero-scout
 
+  # CandidateScreenings Table
+  CandidateScreeningsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: ${self:custom.candidateScreeningsTable}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: candidate_id
+          AttributeType: S
+        - AttributeName: screened_at
+          AttributeType: S
+      KeySchema:
+        - AttributeName: candidate_id
+          KeyType: HASH
+        - AttributeName: screened_at
+          KeyType: RANGE
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Project
+          Value: quadzero-scout
+
 Outputs:
   TalentProfilesTableArn:
     Description: TalentProfiles table ARN
@@ -341,3 +365,9 @@ Outputs:
     Value: !GetAtt PricingConfigTable.Arn
     Export:
       Name: ${self:provider.stage}-PricingConfigTableArn
+
+  CandidateScreeningsTableArn:
+    Description: CandidateScreenings table ARN
+    Value: !GetAtt CandidateScreeningsTable.Arn
+    Export:
+      Name: ${self:provider.stage}-CandidateScreeningsTableArn

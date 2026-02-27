@@ -10,6 +10,18 @@ interface ApiResponse<T> {
   };
 }
 
+export class ApiError extends Error {
+  code: string;
+  details?: unknown;
+
+  constructor(code: string, message: string, details?: unknown) {
+    super(message);
+    this.name = 'ApiError';
+    this.code = code;
+    this.details = details;
+  }
+}
+
 class ApiClient {
   private baseUrl: string;
   private token: string | null = null;
@@ -75,7 +87,11 @@ class ApiClient {
     const data: ApiResponse<T> = await response.json();
 
     if (!data.success) {
-      throw new Error(data.error?.message || 'API request failed');
+      throw new ApiError(
+        data.error?.code || 'UNKNOWN_ERROR',
+        data.error?.message || 'API request failed',
+        data.error?.details
+      );
     }
 
     return data.data as T;
@@ -164,10 +180,10 @@ class ApiClient {
     });
   }
 
-  async searchCandidates(criteria: SearchCriteria, pagination?: PaginationOptions) {
+  async searchCandidates(criteria: SearchCriteria, pagination?: PaginationOptions, sortBy?: 'matchScore' | 'experience' | 'lastUpdated') {
     return this.request<SearchResponse>('/recruiter/search', {
       method: 'POST',
-      body: JSON.stringify({ criteria, pagination }),
+      body: JSON.stringify({ criteria, pagination, sortBy }),
     });
   }
 
@@ -228,6 +244,7 @@ class ApiClient {
     if (filters?.clientName) params.set('clientName', filters.clientName);
     if (filters?.dateFrom) params.set('dateFrom', filters.dateFrom);
     if (filters?.dateTo) params.set('dateTo', filters.dateTo);
+    if (filters?.status) params.set('status', filters.status);
     if (filters?.limit) params.set('limit', filters.limit.toString());
     if (filters?.lastEvaluatedKey) params.set('lastEvaluatedKey', filters.lastEvaluatedKey);
     const qs = params.toString();
@@ -274,6 +291,24 @@ class ApiClient {
       {
         method: 'PUT',
         body: JSON.stringify({ parsedCriteria, maxBudgetLpa }),
+      }
+    );
+  }
+
+  async updateRequirementStatus(
+    requirementId: string,
+    status: 'active' | 'closed_on_hold',
+    reason?: string
+  ) {
+    return this.request<{
+      requirementId: string;
+      status: string;
+      lastUpdated: string;
+    }>(
+      `/recruiter/requirements/${requirementId}/status`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ status, reason }),
       }
     );
   }
@@ -395,6 +430,18 @@ class ApiClient {
 
   async getShortlistedCandidates(requirementId: string) {
     return this.request<ShortlistedCandidatesResponse>(`/recruiter/requirements/${requirementId}/shortlisted`);
+  }
+
+  // Screening endpoints
+  async screenCandidate(candidateId: string, updatedValues: ScreeningUpdatedValues, notes?: string) {
+    return this.request<ScreenCandidateResponse>('/recruiter/screen-candidate', {
+      method: 'POST',
+      body: JSON.stringify({ candidateId, updatedValues, notes }),
+    });
+  }
+
+  async getScreeningHistory(candidateId: string) {
+    return this.request<ScreeningHistoryResponse>(`/recruiter/screening-history/${candidateId}`);
   }
 
   // Client Master endpoints
@@ -525,6 +572,7 @@ export interface CandidateSearchResult {
     availabilityMatch: 'full' | 'partial' | 'none';
   };
   lastUpdated: string;
+  lastScreenedAt?: string;
 }
 
 export interface SearchResponse {
@@ -643,6 +691,14 @@ export interface RequestHistoryEntry {
   notes?: string;
 }
 
+export interface StatusHistoryEntry {
+  changedAt: string;
+  changedBy: string;
+  fromStatus: string;
+  toStatus: string;
+  reason?: string;
+}
+
 export interface ContributingRecruiter {
   id: string;
   name: string;
@@ -656,6 +712,7 @@ export interface RequirementDetail extends RequirementSummary {
   duplicateOf?: string;
   lastUpdated: string;
   requestHistory?: RequestHistoryEntry[];
+  statusHistory?: StatusHistoryEntry[];
   lastRequestedAt?: string;
   contributingRecruiters?: ContributingRecruiter[];
 }
@@ -677,6 +734,7 @@ export interface RequirementFilters {
   clientName?: string;
   dateFrom?: string;
   dateTo?: string;
+  status?: string;
   limit?: number;
   lastEvaluatedKey?: string;
 }
@@ -869,4 +927,68 @@ export interface ClientDefaultsResponse {
 
 export interface ListClientsResponse {
   clients: ClientSummary[];
+}
+
+// Screening types
+export interface ScreeningUpdatedValues {
+  fullName?: string;
+  email?: string;
+  phone?: string;
+  location?: string | null;
+  primarySkills?: string[];
+  primarySkillYears?: Record<string, number>;
+  secondarySkills?: string[];
+  totalExperience?: number;
+  seniority?: string;
+  availability?: string;
+  engagementModel?: string;
+  industries?: string[];
+  roles?: string[];
+  education?: Array<{ degree: string; institution: string; year?: number }>;
+  certifications?: string[];
+  summary?: string;
+  currentCtc?: number | null;
+  expectedCtc?: number | null;
+}
+
+export interface ScreenCandidateResponse {
+  candidateId: string;
+  screenedAt: string;
+  fieldsUpdated: string[];
+}
+
+export interface ScreeningProfileData {
+  full_name?: string;
+  email?: string;
+  phone?: string;
+  location?: string;
+  primary_skills?: string[];
+  primary_skill_years?: Record<string, number>;
+  secondary_skills?: string[];
+  total_experience?: number;
+  seniority?: string;
+  availability?: string;
+  engagement_model?: string;
+  industries?: string[];
+  roles?: string[];
+  education?: Array<{ degree: string; institution: string; year?: number }>;
+  certifications?: string[];
+  summary?: string;
+  current_ctc?: number;
+  expected_ctc?: number;
+}
+
+export interface ScreeningHistoryEntry {
+  screenedAt: string;
+  screenedBy: string;
+  screenerEmail: string;
+  previousValues: ScreeningProfileData;
+  updatedValues: ScreeningProfileData;
+  fieldsUpdated: string[];
+  notes?: string;
+}
+
+export interface ScreeningHistoryResponse {
+  candidateId: string;
+  screenings: ScreeningHistoryEntry[];
 }

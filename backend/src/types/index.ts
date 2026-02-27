@@ -103,6 +103,8 @@ export interface CandidateItem {
   resume_s3_key: string;
   formatted_resume_s3_key?: string;
   formatted_at?: string;
+  last_screened_at?: string;
+  last_screened_by?: string;
   created_at: string;
   last_updated: string;
 }
@@ -250,6 +252,7 @@ export interface CandidateSearchResult {
     availabilityMatch: 'full' | 'partial' | 'none';
   };
   lastUpdated: string;
+  lastScreenedAt?: string;
 }
 
 export interface SearchResponse {
@@ -351,6 +354,15 @@ export interface RequirementRequestEntry {
   notes?: string;
 }
 
+// Requirement status history entry (tracks each status change)
+export interface StatusHistoryEntry {
+  changed_at: string;
+  changed_by: string;
+  from_status: string;
+  to_status: string;
+  reason?: string;
+}
+
 // Requirement Item (DynamoDB Requirements table, snake_case)
 export interface RequirementItem {
   requirement_id: string;
@@ -376,6 +388,7 @@ export interface RequirementItem {
   last_requested_at?: string;
   contributing_recruiters?: string[];
   demand_score?: number;
+  status_history?: StatusHistoryEntry[];
 }
 
 // Requirement API types
@@ -714,4 +727,84 @@ export interface ClientSummary {
 
 export interface ListClientsResponse {
   clients: ClientSummary[];
+}
+
+// ─── Candidate Screening Types ──────────────────────────────────────────────
+
+export interface ScreeningProfileData {
+  full_name?: string;
+  email?: string;
+  phone?: string;
+  location?: string;
+  primary_skills?: string[];
+  primary_skill_years?: Record<string, number>;
+  secondary_skills?: string[];
+  total_experience?: number;
+  seniority?: string;
+  availability?: string;
+  engagement_model?: string;
+  industries?: string[];
+  roles?: string[];
+  education?: Education[];
+  certifications?: string[];
+  summary?: string;
+  current_ctc?: number;
+  expected_ctc?: number;
+}
+
+export interface ScreeningItem {
+  candidate_id: string;
+  screened_at: string;
+  screened_by: string;
+  screener_email: string;
+  previous_values: ScreeningProfileData;
+  updated_values: ScreeningProfileData;
+  fields_updated: string[];
+  notes?: string;
+}
+
+export interface ScreenCandidateRequest {
+  candidateId: string;
+  updatedValues: {
+    fullName?: string;
+    email?: string;
+    phone?: string;
+    location?: string;
+    primarySkills?: string[];
+    primarySkillYears?: Record<string, number>;
+    secondarySkills?: string[];
+    totalExperience?: number;
+    seniority?: string;
+    availability?: string;
+    engagementModel?: string;
+    industries?: string[];
+    roles?: string[];
+    education?: Education[];
+    certifications?: string[];
+    summary?: string;
+    currentCtc?: number;
+    expectedCtc?: number;
+  };
+  notes?: string;
+}
+
+export interface ScreenCandidateResponse {
+  candidateId: string;
+  screenedAt: string;
+  fieldsUpdated: string[];
+}
+
+export interface ScreeningHistoryEntry {
+  screenedAt: string;
+  screenedBy: string;
+  screenerEmail: string;
+  previousValues: ScreeningProfileData;
+  updatedValues: ScreeningProfileData;
+  fieldsUpdated: string[];
+  notes?: string;
+}
+
+export interface ScreeningHistoryResponse {
+  candidateId: string;
+  screenings: ScreeningHistoryEntry[];
 }

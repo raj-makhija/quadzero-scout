@@ -26,6 +26,7 @@
 16. [Module 15: Infrastructure & Configuration](#16-module-15-infrastructure--configuration)
 17. [Module 16: End-to-End Workflows](#17-module-16-end-to-end-workflows)
 18. [Module 17: Non-Functional Requirements](#18-module-17-non-functional-requirements)
+19. [Module 18: Requirement Status Management](#19-module-18-requirement-status-management)
 
 ---
 
@@ -2137,6 +2138,28 @@ All functional and non-functional aspects of Quadzero Scout covering:
 
 ---
 
+## 19. Module 18: Requirement Status Management
+
+| ID | Test Case | Expected Result |
+|----|-----------|-----------------|
+| RS-001 | Internal recruiter marks active requirement as Closed/On-hold | Status changes to `closed_on_hold`, `status_history` entry created with `changed_by`, `from_status: active`, `to_status: closed_on_hold` |
+| RS-002 | Internal recruiter re-opens a Closed/On-hold requirement | Status changes to `active`, new `status_history` entry appended |
+| RS-003 | Internal recruiter provides reason when closing | `status_history` entry includes the reason text |
+| RS-004 | External recruiter attempts to change requirement status | 403 FORBIDDEN response |
+| RS-005 | Attempt to change status of a duplicate requirement | 400 VALIDATION_ERROR: "Cannot change status of a duplicate requirement" |
+| RS-006 | No-op when status is already the requested value | 200 response with existing `lastUpdated`, no new history entry appended |
+| RS-007 | Candidate match excludes Closed/On-hold requirements | `POST /candidate/match-requirements` returns only active requirements |
+| RS-008 | Duplicate check excludes Closed/On-hold requirements | `POST /recruiter/requirements/check-duplicate` ignores Closed/On-hold requirements |
+| RS-009 | Consolidation rejected for Closed/On-hold requirement | 400 error (existing guard: `status !== 'active'`) |
+| RS-010 | List requirements with status filter = active | Only active requirements returned |
+| RS-011 | List requirements with status filter = closed_on_hold | Only Closed/On-hold requirements returned |
+| RS-012 | List requirements without status filter | All requirements (active + closed_on_hold + duplicate) returned |
+| RS-013 | Status badge on detail page shows "Closed / On-hold" for closed_on_hold requirements | Gray badge with correct text displayed |
+| RS-014 | Close/Re-open button visible only to internal recruiters | Non-internal session does not see the toggle button |
+| RS-015 | Status filter dropdown on requirements list page filters correctly | Dropdown options: All, Active, Closed/On-hold |
+
+---
+
 ## Traceability Matrix Summary
 
 | Module | Test Count | P0 | P1 | P2 | P3 |
@@ -2158,4 +2181,5 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | Infrastructure | 10 | 0 | 4 | 4 | 2 |
 | E2E Workflows | 10 | 4 | 4 | 2 | 0 |
 | Non-Functional | 15 | 4 | 4 | 5 | 2 |
-| **Total** | **227** | **39** | **81** | **78** | **29** |
+| Requirement Status Management | 15 | 3 | 6 | 4 | 2 |
+| **Total** | **242** | **42** | **87** | **82** | **31** |

@@ -12,6 +12,7 @@ async function handleRequest(
     const clientName = params.clientName;
     const dateFrom = params.dateFrom;
     const dateTo = params.dateTo;
+    const statusFilter = params.status;
     const limit = params.limit ? parseInt(params.limit, 10) : 20;
     const lastEvaluatedKey = params.lastEvaluatedKey
       ? JSON.parse(Buffer.from(params.lastEvaluatedKey, 'base64').toString())
@@ -26,14 +27,16 @@ async function handleRequest(
         dateFrom,
         dateTo,
         limit,
-        lastEvaluatedKey
+        lastEvaluatedKey,
+        statusFilter
       );
       items = result.items;
       lastKey = result.lastKey;
     } else {
       const result = await getAllRequirementsPaginated(
         limit,
-        lastEvaluatedKey
+        lastEvaluatedKey,
+        statusFilter
       );
       items = result.items;
       lastKey = result.lastKey;

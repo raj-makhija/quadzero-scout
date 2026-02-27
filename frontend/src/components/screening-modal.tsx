@@ -1,0 +1,538 @@
+'use client';
+
+import { useState, useCallback, useEffect } from 'react';
+import { X, AlertCircle, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { api } from '@/lib/api';
+import type { CandidateSearchResult, ScreeningUpdatedValues } from '@/lib/api';
+import { FormField, FormInput, FormSelect, FormTextarea } from '@/components/ui/form-field';
+import {
+  SENIORITY_OPTIONS,
+  AVAILABILITY_OPTIONS,
+  CANDIDATE_ENGAGEMENT_OPTIONS,
+  formatDate,
+} from '@/lib/utils';
+
+interface ScreeningModalProps {
+  candidate?: CandidateSearchResult;
+  candidateId?: string;
+  candidateName?: string;
+  onClose: () => void;
+  onScreeningComplete: (candidateId: string) => void;
+}
+
+export function ScreeningModal({ candidate, candidateId: candidateIdProp, candidateName: candidateNameProp, onClose, onScreeningComplete }: ScreeningModalProps) {
+  const resolvedCandidateId = candidate?.candidateId || candidateIdProp || '';
+  const resolvedCandidateName = candidate?.fullName || candidateNameProp || 'Candidate';
+  const [loading, setLoading] = useState(false);
+  const [fetchingProfile, setFetchingProfile] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Core fields
+  const [phone, setPhone] = useState('');
+  const [location, setLocation] = useState('');
+  const [currentCtc, setCurrentCtc] = useState('');
+  const [expectedCtc, setExpectedCtc] = useState('');
+  const [availability, setAvailability] = useState('');
+  const [engagementModel, setEngagementModel] = useState('');
+  const [totalExperience, setTotalExperience] = useState('');
+  const [seniority, setSeniority] = useState('');
+
+  // Advanced fields
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [primarySkillsText, setPrimarySkillsText] = useState('');
+  const [secondarySkillsText, setSecondarySkillsText] = useState('');
+  const [industries, setIndustries] = useState('');
+  const [roles, setRoles] = useState('');
+  const [certifications, setCertifications] = useState('');
+  const [summary, setSummary] = useState('');
+
+  // Screening notes
+  const [notes, setNotes] = useState('');
+
+  // Track which fields are empty/missing for highlighting
+  const [emptyFields, setEmptyFields] = useState<Set<string>>(new Set());
+
+  // Fetch full profile data on mount
+  useEffect(() => {
+    async function fetchProfile() {
+      try {
+        const profile = await api.getProfile(resolvedCandidateId);
+        setFullName(profile.fullName || '');
+        setEmail(profile.email || '');
+        setPhone(profile.phone || '');
+        setLocation(profile.location || '');
+        setCurrentCtc(profile.currentCtc != null ? String(profile.currentCtc) : '');
+        setExpectedCtc(profile.expectedCtc != null ? String(profile.expectedCtc) : '');
+        setAvailability(profile.availability || '');
+        setEngagementModel(profile.engagementModel || 'either');
+        setTotalExperience(profile.totalExperience != null ? String(profile.totalExperience) : '');
+        setSeniority(profile.seniority || '');
+        setPrimarySkillsText((profile.primarySkills || []).join(', '));
+        setSecondarySkillsText((profile.secondarySkills || []).join(', '));
+        setIndustries((profile.industries || []).join(', '));
+        setRoles((profile.roles || []).join(', '));
+        setCertifications((profile.certifications || []).join(', '));
+        setSummary(profile.summary || '');
+
+        // Identify empty fields
+        const empty = new Set<string>();
+        if (!profile.phone) empty.add('phone');
+        if (!profile.location) empty.add('location');
+        if (profile.currentCtc == null) empty.add('currentCtc');
+        if (profile.expectedCtc == null) empty.add('expectedCtc');
+        if (!profile.availability) empty.add('availability');
+        setEmptyFields(empty);
+      } catch {
+        // Fall back to search result data if available
+        if (candidate) {
+          setFullName(resolvedCandidateName || '');
+          setLocation(candidate.location || '');
+          setCurrentCtc(candidate.currentCtc != null ? String(candidate.currentCtc) : '');
+          setExpectedCtc(candidate.expectedCtc != null ? String(candidate.expectedCtc) : '');
+          setAvailability(candidate.availability || '');
+          setEngagementModel(candidate.engagementModel || 'either');
+          setTotalExperience(String(candidate.totalExperience || ''));
+          setSeniority(candidate.seniority || '');
+          setPrimarySkillsText((candidate.primarySkills || []).join(', '));
+        } else {
+          setFullName(resolvedCandidateName || '');
+        }
+      } finally {
+        setFetchingProfile(false);
+      }
+    }
+    fetchProfile();
+  }, [resolvedCandidateId]);
+
+  const handleSubmit = useCallback(async () => {
+    setLoading(true);
+    setErrorMessage('');
+
+    try {
+      const updatedValues: ScreeningUpdatedValues = {};
+
+      // Only include fields that have values
+      if (fullName) updatedValues.fullName = fullName;
+      if (email) updatedValues.email = email;
+      if (phone) updatedValues.phone = phone;
+      updatedValues.location = location || null;
+      if (currentCtc !== '') updatedValues.currentCtc = parseFloat(currentCtc);
+      else updatedValues.currentCtc = null;
+      if (expectedCtc !== '') updatedValues.expectedCtc = parseFloat(expectedCtc);
+      else updatedValues.expectedCtc = null;
+      if (availability) updatedValues.availability = availability;
+      if (engagementModel) updatedValues.engagementModel = engagementModel;
+      if (totalExperience !== '') updatedValues.totalExperience = parseFloat(totalExperience);
+      if (seniority) updatedValues.seniority = seniority;
+
+      // Parse comma-separated fields
+      if (primarySkillsText) {
+        updatedValues.primarySkills = primarySkillsText.split(',').map(s => s.trim()).filter(Boolean);
+      }
+      if (secondarySkillsText) {
+        updatedValues.secondarySkills = secondarySkillsText.split(',').map(s => s.trim()).filter(Boolean);
+      }
+      if (industries) {
+        updatedValues.industries = industries.split(',').map(s => s.trim()).filter(Boolean);
+      }
+      if (roles) {
+        updatedValues.roles = roles.split(',').map(s => s.trim()).filter(Boolean);
+      }
+      if (certifications) {
+        updatedValues.certifications = certifications.split(',').map(s => s.trim()).filter(Boolean);
+      }
+      if (summary) updatedValues.summary = summary;
+
+      await api.screenCandidate(resolvedCandidateId, updatedValues, notes || undefined);
+      onScreeningComplete(resolvedCandidateId);
+    } catch (err) {
+      setErrorMessage((err as Error).message || 'Failed to save screening');
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    resolvedCandidateId, fullName, email, phone, location,
+    currentCtc, expectedCtc, availability, engagementModel,
+    totalExperience, seniority, primarySkillsText, secondarySkillsText,
+    industries, roles, certifications, summary, notes, onScreeningComplete,
+  ]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black bg-opacity-50" onClick={onClose} />
+
+      {/* Modal */}
+      <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col mx-4">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Screen Candidate
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              {resolvedCandidateName}
+              {candidate?.lastScreenedAt && (
+                <span className="ml-2">
+                  &middot; Last screened: {formatDate(candidate.lastScreenedAt)}
+                </span>
+              )}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+          {fetchingProfile ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-primary-600" />
+              <span className="ml-2 text-gray-500">Loading profile...</span>
+            </div>
+          ) : (
+            <>
+              {/* Error message */}
+              {errorMessage && (
+                <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
+                  <p className="text-sm text-red-700 dark:text-red-300">{errorMessage}</p>
+                </div>
+              )}
+
+              {emptyFields.size > 0 && (
+                <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                  <p className="text-sm text-amber-700 dark:text-amber-300">
+                    Some fields are missing information. Fields highlighted in yellow need attention.
+                  </p>
+                </div>
+              )}
+
+              {/* Section: Compensation */}
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                  Compensation
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    label="Current CTC (LPA)"
+                    htmlFor="currentCtc"
+                    className={emptyFields.has('currentCtc') && !currentCtc ? 'bg-amber-50 dark:bg-amber-900/10 p-2 rounded' : ''}
+                  >
+                    <FormInput
+                      id="currentCtc"
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="500"
+                      value={currentCtc}
+                      onChange={(e) => setCurrentCtc(e.target.value)}
+                      placeholder="e.g. 12.5"
+                    />
+                  </FormField>
+                  <FormField
+                    label="Expected CTC (LPA)"
+                    htmlFor="expectedCtc"
+                    className={emptyFields.has('expectedCtc') && !expectedCtc ? 'bg-amber-50 dark:bg-amber-900/10 p-2 rounded' : ''}
+                  >
+                    <FormInput
+                      id="expectedCtc"
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="500"
+                      value={expectedCtc}
+                      onChange={(e) => setExpectedCtc(e.target.value)}
+                      placeholder="e.g. 15.0"
+                    />
+                  </FormField>
+                </div>
+              </div>
+
+              {/* Section: Availability */}
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                  Availability
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    label="Notice Period"
+                    htmlFor="availability"
+                    className={emptyFields.has('availability') && !availability ? 'bg-amber-50 dark:bg-amber-900/10 p-2 rounded' : ''}
+                  >
+                    <FormSelect
+                      id="availability"
+                      value={availability}
+                      onChange={(e) => setAvailability(e.target.value)}
+                      options={AVAILABILITY_OPTIONS}
+                      placeholder="Select notice period"
+                    />
+                  </FormField>
+                  <FormField label="Engagement Preference" htmlFor="engagementModel">
+                    <FormSelect
+                      id="engagementModel"
+                      value={engagementModel}
+                      onChange={(e) => setEngagementModel(e.target.value)}
+                      options={CANDIDATE_ENGAGEMENT_OPTIONS}
+                      placeholder="Select preference"
+                    />
+                  </FormField>
+                </div>
+              </div>
+
+              {/* Section: Contact & Location */}
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                  Contact & Location
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    label="Phone"
+                    htmlFor="phone"
+                    className={emptyFields.has('phone') && !phone ? 'bg-amber-50 dark:bg-amber-900/10 p-2 rounded' : ''}
+                  >
+                    <FormInput
+                      id="phone"
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="e.g. +91 98765 43210"
+                    />
+                  </FormField>
+                  <FormField
+                    label="Location"
+                    htmlFor="location"
+                    className={emptyFields.has('location') && !location ? 'bg-amber-50 dark:bg-amber-900/10 p-2 rounded' : ''}
+                  >
+                    <FormInput
+                      id="location"
+                      value={location}
+                      onChange={(e) => setLocation(e.target.value)}
+                      placeholder="e.g. Bangalore, India"
+                    />
+                  </FormField>
+                </div>
+              </div>
+
+              {/* Section: Experience */}
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                  Experience
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField label="Total Experience (years)" htmlFor="totalExperience">
+                    <FormInput
+                      id="totalExperience"
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      max="50"
+                      value={totalExperience}
+                      onChange={(e) => setTotalExperience(e.target.value)}
+                    />
+                  </FormField>
+                  <FormField label="Seniority" htmlFor="seniority">
+                    <FormSelect
+                      id="seniority"
+                      value={seniority}
+                      onChange={(e) => setSeniority(e.target.value)}
+                      options={SENIORITY_OPTIONS}
+                      placeholder="Select seniority"
+                    />
+                  </FormField>
+                </div>
+              </div>
+
+              {/* Section: Skills */}
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                  Skills
+                </h3>
+                <div className="space-y-3">
+                  <FormField
+                    label="Primary Skills"
+                    htmlFor="primarySkills"
+                    hint="Comma-separated list"
+                  >
+                    <FormInput
+                      id="primarySkills"
+                      value={primarySkillsText}
+                      onChange={(e) => setPrimarySkillsText(e.target.value)}
+                      placeholder="e.g. React, Node.js, TypeScript"
+                    />
+                  </FormField>
+                  <FormField
+                    label="Secondary Skills"
+                    htmlFor="secondarySkills"
+                    hint="Comma-separated list"
+                  >
+                    <FormInput
+                      id="secondarySkills"
+                      value={secondarySkillsText}
+                      onChange={(e) => setSecondarySkillsText(e.target.value)}
+                      placeholder="e.g. Docker, AWS, PostgreSQL"
+                    />
+                  </FormField>
+                </div>
+              </div>
+
+              {/* Advanced section (collapsible) */}
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                  className="flex items-center gap-1 text-sm font-medium text-primary-600 dark:text-primary-400 hover:underline"
+                >
+                  {showAdvanced ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  {showAdvanced ? 'Hide' : 'Show'} additional fields
+                </button>
+
+                {showAdvanced && (
+                  <div className="mt-3 space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField label="Full Name" htmlFor="fullName">
+                        <FormInput
+                          id="fullName"
+                          value={fullName}
+                          onChange={(e) => setFullName(e.target.value)}
+                        />
+                      </FormField>
+                      <FormField label="Email" htmlFor="email">
+                        <FormInput
+                          id="email"
+                          type="email"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                        />
+                      </FormField>
+                    </div>
+                    <FormField
+                      label="Industries"
+                      htmlFor="industries"
+                      hint="Comma-separated"
+                    >
+                      <FormInput
+                        id="industries"
+                        value={industries}
+                        onChange={(e) => setIndustries(e.target.value)}
+                        placeholder="e.g. Fintech, E-commerce"
+                      />
+                    </FormField>
+                    <FormField
+                      label="Roles"
+                      htmlFor="roles"
+                      hint="Comma-separated"
+                    >
+                      <FormInput
+                        id="roles"
+                        value={roles}
+                        onChange={(e) => setRoles(e.target.value)}
+                        placeholder="e.g. Full Stack Developer, Tech Lead"
+                      />
+                    </FormField>
+                    <FormField
+                      label="Certifications"
+                      htmlFor="certifications"
+                      hint="Comma-separated"
+                    >
+                      <FormInput
+                        id="certifications"
+                        value={certifications}
+                        onChange={(e) => setCertifications(e.target.value)}
+                        placeholder="e.g. AWS Solutions Architect"
+                      />
+                    </FormField>
+                    <FormField label="Summary" htmlFor="summary">
+                      <FormTextarea
+                        id="summary"
+                        value={summary}
+                        onChange={(e) => setSummary(e.target.value)}
+                        placeholder="Brief profile summary..."
+                        rows={3}
+                      />
+                    </FormField>
+                  </div>
+                )}
+              </div>
+
+              {/* Screening Notes */}
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                  Screening Notes
+                </h3>
+                <FormField
+                  label="Notes from the screening call"
+                  htmlFor="screeningNotes"
+                  hint="Observations, concerns, or other relevant notes"
+                >
+                  <FormTextarea
+                    id="screeningNotes"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="e.g. Candidate confirmed 30-day notice, willing to negotiate on CTC..."
+                    rows={3}
+                  />
+                </FormField>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 dark:border-gray-700">
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="btn-secondary"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={loading || fetchingProfile}
+            className="btn-primary flex items-center gap-2"
+          >
+            {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+            {loading ? 'Saving...' : 'Save Screening'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Helper to check if screening is expired (>15 days)
+export function isScreeningExpired(lastScreenedAt?: string): boolean {
+  if (!lastScreenedAt) return true;
+  const daysSince = (Date.now() - new Date(lastScreenedAt).getTime()) / (1000 * 60 * 60 * 24);
+  return daysSince > 15;
+}
+
+// Helper to get screening status badge info
+export function getScreeningStatus(lastScreenedAt?: string): {
+  label: string;
+  className: string;
+} {
+  if (!lastScreenedAt) {
+    return {
+      label: 'Not Screened',
+      className: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
+    };
+  }
+  if (isScreeningExpired(lastScreenedAt)) {
+    return {
+      label: 'Screening Expired',
+      className: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+    };
+  }
+  return {
+    label: 'Screened',
+    className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+  };
+}

@@ -143,6 +143,12 @@ export const ConsolidateRequirementRequestSchema = z.object({
   notes: z.string().max(500).optional(),
 });
 
+// Update Requirement Status Request Validation
+export const UpdateRequirementStatusRequestSchema = z.object({
+  status: z.enum(['active', 'closed_on_hold']),
+  reason: z.string().max(500).optional(),
+});
+
 // Update Requirement Criteria Request Validation
 export const UpdateRequirementCriteriaRequestSchema = z.object({
   parsedCriteria: LLMJDOutputSchema,
@@ -229,6 +235,36 @@ export const UpdateClientRequestSchema = z.object({
   defaultEngagementModel: z.enum(['full_time_regular', 'full_time_contract', 'part_time_contract']).optional(),
   defaultPayroll: z.enum(['quadzero', 'client']).optional(),
   notes: z.string().max(1000).optional(),
+});
+
+// Screen Candidate Request Validation
+export const ScreenCandidateRequestSchema = z.object({
+  candidateId: z.string().min(1),
+  updatedValues: z.object({
+    fullName: z.string().min(2).max(100).optional(),
+    email: z.string().email().optional(),
+    phone: z.string().optional(),
+    location: z.string().max(200).nullable().optional(),
+    primarySkills: z.array(z.string().min(1)).min(1).max(20).optional(),
+    primarySkillYears: z.record(z.string(), z.number().min(0).max(50)).optional(),
+    secondarySkills: z.array(z.string()).max(50).optional(),
+    totalExperience: z.number().min(0).max(50).optional(),
+    seniority: z.enum(['intern', 'junior', 'mid', 'senior', 'lead', 'principal', 'executive']).optional(),
+    availability: z.enum(['immediate', '1_week', '2_weeks', '1_month', '2_months', '3_months', 'negotiable']).optional(),
+    engagementModel: z.enum(['contract', 'full_time', 'either']).optional(),
+    industries: z.array(z.string()).max(10).optional(),
+    roles: z.array(z.string()).max(10).optional(),
+    education: z.array(z.object({
+      degree: z.string(),
+      institution: z.string(),
+      year: z.number().optional(),
+    })).optional(),
+    certifications: z.array(z.string()).max(20).optional(),
+    summary: z.string().max(2000).optional(),
+    currentCtc: z.number().min(0).max(500).nullable().optional(),
+    expectedCtc: z.number().min(0).max(500).nullable().optional(),
+  }),
+  notes: z.string().max(2000).optional(),
 });
 
 // Format Zod errors for API response

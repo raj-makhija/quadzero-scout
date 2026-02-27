@@ -2,7 +2,7 @@ import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { getRequirementById, getUserById } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
-import type { RequirementRequestEntry } from '../../types/index.js';
+import type { RequirementRequestEntry, StatusHistoryEntry } from '../../types/index.js';
 
 async function handleRequest(
   event: AuthenticatedEvent
@@ -25,6 +25,15 @@ async function handleRequest(
       similarityScore: entry.similarity_score,
       jdText: entry.jd_text,
       notes: entry.notes,
+    }));
+
+    // Transform status_history from snake_case to camelCase
+    const statusHistory = (item.status_history || []).map((entry: StatusHistoryEntry) => ({
+      changedAt: entry.changed_at,
+      changedBy: entry.changed_by,
+      fromStatus: entry.from_status,
+      toStatus: entry.to_status,
+      reason: entry.reason,
     }));
 
     // Resolve contributing recruiter IDs to names
@@ -59,6 +68,7 @@ async function handleRequest(
       createdAt: item.created_at,
       lastUpdated: item.last_updated,
       requestHistory,
+      statusHistory,
       requestCount: item.request_count || 1,
       lastRequestedAt: item.last_requested_at || item.created_at,
       contributingRecruiters: recruiters,

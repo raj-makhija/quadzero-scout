@@ -9,7 +9,7 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { config } from './config.js';
-import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, PricingConfig, PricingConfigItem, ShortlistItem, ClientItem } from '../types/index.js';
+import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, StatusHistoryEntry, PricingConfig, PricingConfigItem, ShortlistItem, ClientItem, ScreeningItem } from '../types/index.js';
 
 const client = new DynamoDBClient({ region: config.region });
 const docClient = DynamoDBDocumentClient.from(client, {
@@ -537,10 +537,12 @@ export async function getRequirementsByClient(
   dateFrom?: string,
   dateTo?: string,
   limit: number = 20,
-  lastEvaluatedKey?: Record<string, unknown>
+  lastEvaluatedKey?: Record<string, unknown>,
+  statusFilter?: string
 ): Promise<{ items: RequirementItem[]; lastKey?: Record<string, unknown> }> {
   let keyCondition = 'client_name_lower = :client';
   const expressionValues: Record<string, unknown> = { ':client': clientNameLower };
+  const expressionAttributeNames: Record<string, string> = {};
 
   if (dateFrom && dateTo) {
     keyCondition += ' AND created_at BETWEEN :from AND :to';
@@ -559,6 +561,8 @@ export async function getRequirementsByClient(
     IndexName: string;
     KeyConditionExpression: string;
     ExpressionAttributeValues: Record<string, unknown>;
+    ExpressionAttributeNames?: Record<string, string>;
+    FilterExpression?: string;
     Limit: number;
     ScanIndexForward: boolean;
     ExclusiveStartKey?: Record<string, unknown>;
@@ -570,6 +574,13 @@ export async function getRequirementsByClient(
     Limit: limit,
     ScanIndexForward: false,
   };
+
+  if (statusFilter) {
+    expressionAttributeNames['#status'] = 'status';
+    expressionValues[':statusVal'] = statusFilter;
+    params.FilterExpression = '#status = :statusVal';
+    params.ExpressionAttributeNames = expressionAttributeNames;
+  }
 
   if (lastEvaluatedKey) {
     params.ExclusiveStartKey = lastEvaluatedKey;
@@ -680,6 +691,7 @@ export async function getDistinctClientNames(
 export async function updateRequirementStatus(
   requirementId: string,
   status: string,
+  statusHistoryEntry?: StatusHistoryEntry,
   duplicateOf?: string
 ): Promise<void> {
   let updateExpression = 'SET #status = :status, last_updated = :now';
@@ -692,6 +704,12 @@ export async function updateRequirementStatus(
   if (duplicateOf) {
     updateExpression += ', duplicate_of = :dupOf';
     expressionAttributeValues[':dupOf'] = duplicateOf;
+  }
+
+  if (statusHistoryEntry) {
+    updateExpression += ', status_history = list_append(if_not_exists(status_history, :emptyList), :newStatusEntry)';
+    expressionAttributeValues[':newStatusEntry'] = [statusHistoryEntry];
+    expressionAttributeValues[':emptyList'] = [];
   }
 
   await docClient.send(
@@ -890,16 +908,26 @@ export async function savePricingConfig(
 
 export async function getAllRequirementsPaginated(
   limit: number = 20,
-  lastEvaluatedKey?: Record<string, unknown>
+  lastEvaluatedKey?: Record<string, unknown>,
+  statusFilter?: string
 ): Promise<{ items: RequirementItem[]; lastKey?: Record<string, unknown> }> {
   const params: {
     TableName: string;
     Limit: number;
     ExclusiveStartKey?: Record<string, unknown>;
+    FilterExpression?: string;
+    ExpressionAttributeNames?: Record<string, string>;
+    ExpressionAttributeValues?: Record<string, unknown>;
   } = {
     TableName: config.dynamodb.requirementsTable,
     Limit: limit,
   };
+
+  if (statusFilter) {
+    params.FilterExpression = '#status = :statusVal';
+    params.ExpressionAttributeNames = { '#status': 'status' };
+    params.ExpressionAttributeValues = { ':statusVal': statusFilter };
+  }
 
   if (lastEvaluatedKey) {
     params.ExclusiveStartKey = lastEvaluatedKey;
@@ -1096,6 +1124,68 @@ export async function updateClient(
       UpdateExpression: `SET ${expressionParts.join(', ')}`,
       ExpressionAttributeValues: values,
       ConditionExpression: 'attribute_exists(client_id)',
+    })
+  );
+}
+
+// ─── Candidate Screening Operations ─────────────────────────────────────────
+
+export async function saveScreening(item: ScreeningItem): Promise<void> {
+  await docClient.send(
+    new PutCommand({
+      TableName: config.dynamodb.candidateScreeningsTable,
+      Item: item,
+    })
+  );
+}
+
+export async function getScreeningHistory(
+  candidateId: string,
+  limit: number = 20
+): Promise<ScreeningItem[]> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: config.dynamodb.candidateScreeningsTable,
+      KeyConditionExpression: 'candidate_id = :cid',
+      ExpressionAttributeValues: { ':cid': candidateId },
+      ScanIndexForward: false, // Latest first
+      Limit: limit,
+    })
+  );
+  return (result.Items || []) as ScreeningItem[];
+}
+
+export async function updateCandidateProfileFields(
+  candidateId: string,
+  fields: Record<string, unknown>,
+  screenedBy: string
+): Promise<void> {
+  const now = new Date().toISOString();
+  const expressionParts: string[] = [
+    'last_updated = :now',
+    'last_screened_at = :now',
+    'last_screened_by = :screenedBy',
+  ];
+  const values: Record<string, unknown> = {
+    ':now': now,
+    ':screenedBy': screenedBy,
+  };
+
+  let paramIndex = 0;
+  for (const [key, value] of Object.entries(fields)) {
+    const placeholder = `:f${paramIndex}`;
+    expressionParts.push(`${key} = ${placeholder}`);
+    values[placeholder] = value;
+    paramIndex++;
+  }
+
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.talentProfilesTable,
+      Key: { candidate_id: candidateId },
+      UpdateExpression: `SET ${expressionParts.join(', ')}`,
+      ExpressionAttributeValues: values,
+      ConditionExpression: 'attribute_exists(candidate_id)',
     })
   );
 }
