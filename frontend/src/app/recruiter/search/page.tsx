@@ -6,9 +6,10 @@ import { useSession } from 'next-auth/react';
 import { Header } from '@/components/Header';
 import { PricingPanel } from '@/components/PricingPanel';
 import { ComboboxInput } from '@/components/ui/combobox-input';
-import { api, ParsedCriteria, SearchCriteria, CandidateSearchResult, EngagementModel, Payroll, DuplicateMatch, ConsolidateResponse, ClientDefaultsResponse } from '@/lib/api';
+import { api, ApiError, ParsedCriteria, SearchCriteria, CandidateSearchResult, EngagementModel, Payroll, DuplicateMatch, ConsolidateResponse, ClientDefaultsResponse } from '@/lib/api';
 import { formatSeniority, formatAvailability, formatCandidateEngagement, getMatchScoreColor, getMatchScoreBgColor, formatRelativeTime, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS, ENGAGEMENT_MODEL_OPTIONS, PAYROLL_OPTIONS, formatEngagementModel } from '@/lib/utils';
 import { ScreeningModal, getScreeningStatus, isScreeningExpired } from '@/components/screening-modal';
+import { toast } from '@/hooks/use-toast';
 
 type ViewMode = 'input' | 'requirement_details' | 'criteria' | 'results';
 
@@ -49,6 +50,26 @@ export default function RecruiterSearchPage() {
   const [sourceRequirementId, setSourceRequirementId] = useState<string | null>(prefilled?.requirementId || null);
   const [sortBy, setSortBy] = useState<'matchScore' | 'experience' | 'lastUpdated'>('lastUpdated');
   const [screeningCandidate, setScreeningCandidate] = useState<CandidateSearchResult | null>(null);
+
+  // Shortlisting state
+  const [shortlistingCandidateId, setShortlistingCandidateId] = useState<string | null>(null);
+  const [shortlistNotes, setShortlistNotes] = useState('');
+  const [showShortlistNotes, setShowShortlistNotes] = useState(false);
+  const [requirementContext, setRequirementContext] = useState<{
+    requirementId: string;
+    clientName: string;
+    jobTitle?: string;
+    engagementModel: string;
+    contractDurationMonths?: number;
+    paymentTermsDays?: number;
+    budgetMinLpa?: number;
+    budgetMaxLpa?: number;
+  } | null>(() => {
+    if (prefilled?.requirementId && prefilled?.requirementMeta) {
+      return { requirementId: prefilled.requirementId, ...prefilled.requirementMeta };
+    }
+    return null;
+  });
 
   // Skill input state for adding skills
   const [mustHaveSkillInput, setMustHaveSkillInput] = useState('');
@@ -167,6 +188,31 @@ export default function RecruiterSearchPage() {
     return () => { cancelled = true; };
   }, [isAuthenticated]);
 
+  // Fetch requirement context when sourceRequirementId exists but context is missing
+  useEffect(() => {
+    if (!sourceRequirementId || !isAuthenticated || requirementContext) return;
+    let cancelled = false;
+
+    api.getRequirement(sourceRequirementId)
+      .then((req) => {
+        if (!cancelled) {
+          setRequirementContext({
+            requirementId: req.requirementId,
+            clientName: req.clientName,
+            jobTitle: req.jobTitle,
+            engagementModel: req.engagementModel,
+            contractDurationMonths: req.contractDurationMonths,
+            paymentTermsDays: req.paymentTermsDays,
+            budgetMinLpa: req.budgetMinLpa,
+            budgetMaxLpa: req.budgetMaxLpa,
+          });
+        }
+      })
+      .catch(() => { /* non-fatal — pricing will work without context */ });
+
+    return () => { cancelled = true; };
+  }, [sourceRequirementId, isAuthenticated, requirementContext]);
+
   // Persist state and redirect to sign-in
   const handleLoginRequired = () => {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
@@ -269,6 +315,8 @@ export default function RecruiterSearchPage() {
   const openCandidateDrawer = (candidate: CandidateSearchResult) => {
     setSelectedCandidate(candidate);
     setDrawerOpen(true);
+    setShortlistNotes('');
+    setShowShortlistNotes(false);
   };
 
   const handleDownloadResume = async (candidateId: string) => {
@@ -335,11 +383,69 @@ export default function RecruiterSearchPage() {
     if (selectedCandidate?.candidateId === candidateId) {
       setSelectedCandidate(prev => prev ? { ...prev, lastScreenedAt: now } : prev);
     }
-  }, [selectedCandidate]);
+    // Guide the recruiter to shortlist when in requirement context
+    if (sourceRequirementId) {
+      toast({ variant: 'success', title: 'Screening Complete', description: 'You can now shortlist this candidate.' });
+    }
+  }, [selectedCandidate, sourceRequirementId]);
 
   const handleScreenCandidate = useCallback((candidate: CandidateSearchResult) => {
     setScreeningCandidate(candidate);
   }, []);
+
+  const handleShortlistCandidate = useCallback(async (candidateId: string, notes?: string) => {
+    if (!sourceRequirementId) return;
+
+    setShortlistingCandidateId(candidateId);
+    try {
+      await api.shortlistCandidate(sourceRequirementId, candidateId, notes);
+
+      // Update local state to reflect shortlisted status
+      setResults(prev => prev.map(c =>
+        c.candidateId === candidateId ? { ...c, isShortlisted: true } : c
+      ));
+      if (selectedCandidate?.candidateId === candidateId) {
+        setSelectedCandidate(prev => prev ? { ...prev, isShortlisted: true } : prev);
+      }
+
+      setShowShortlistNotes(false);
+      setShortlistNotes('');
+
+      toast({
+        variant: 'success',
+        title: 'Candidate Shortlisted',
+        description: `${selectedCandidate?.fullName || 'Candidate'} has been shortlisted for ${requirementContext?.clientName || 'the requirement'}.`,
+      });
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.code === 'SCREENING_REQUIRED') {
+          // Prompt the user to screen first
+          const candidate = results.find(c => c.candidateId === candidateId);
+          if (candidate) handleScreenCandidate(candidate);
+          toast({
+            variant: 'warning',
+            title: 'Screening Required',
+            description: err.message || 'Please screen the candidate before shortlisting.',
+          });
+        } else if (err.message?.includes('already shortlisted')) {
+          // Mark as shortlisted locally
+          setResults(prev => prev.map(c =>
+            c.candidateId === candidateId ? { ...c, isShortlisted: true } : c
+          ));
+          if (selectedCandidate?.candidateId === candidateId) {
+            setSelectedCandidate(prev => prev ? { ...prev, isShortlisted: true } : prev);
+          }
+          toast({ variant: 'info', title: 'Already Shortlisted', description: 'This candidate is already on the shortlist for this requirement.' });
+        } else {
+          toast({ variant: 'error', title: 'Shortlisting Failed', description: err.message || 'An unexpected error occurred.' });
+        }
+      } else {
+        toast({ variant: 'error', title: 'Shortlisting Failed', description: (err as Error).message || 'An unexpected error occurred.' });
+      }
+    } finally {
+      setShortlistingCandidateId(null);
+    }
+  }, [sourceRequirementId, selectedCandidate, requirementContext, results, handleScreenCandidate]);
 
   const handleSaveAndContinue = async () => {
     if (!clientName.trim()) { setError('Client name is required'); return; }
@@ -383,7 +489,7 @@ export default function RecruiterSearchPage() {
         : paymentTermsDays ? parseInt(paymentTermsDays) : undefined;
 
       const generatedTitle = generateJobTitle(clientName, endClient, coreSkill);
-      await api.saveRequirement({
+      const saveResult = await api.saveRequirement({
         clientName: clientName.trim(),
         endClient: endClient.trim() || undefined,
         engagementModel: engagementModel as EngagementModel,
@@ -396,6 +502,19 @@ export default function RecruiterSearchPage() {
         jdText: jobDescription,
         parsedCriteria,
         status: 'active',
+      });
+
+      // Capture requirement ID so shortlisting is available from search results
+      setSourceRequirementId(saveResult.requirementId);
+      setRequirementContext({
+        requirementId: saveResult.requirementId,
+        clientName: clientName.trim(),
+        jobTitle: generatedTitle || undefined,
+        engagementModel: engagementModel as string,
+        contractDurationMonths: contractDurationMonths ? parseInt(contractDurationMonths) : undefined,
+        paymentTermsDays: resolvedPaymentTerms,
+        budgetMinLpa: budgetMinLpa ? parseFloat(budgetMinLpa) : undefined,
+        budgetMaxLpa: budgetMaxLpa ? parseFloat(budgetMaxLpa) : undefined,
       });
 
       // Persist payment terms to client if recruiter entered them for a client without terms
@@ -449,6 +568,22 @@ export default function RecruiterSearchPage() {
       if (budgetMaxLpa) {
         setSearchCriteria(prev => ({ ...prev, maxBudgetLpa: parseFloat(budgetMaxLpa) }));
       }
+
+      // Capture consolidated requirement ID for shortlisting
+      setSourceRequirementId(match.requirementId);
+      setRequirementContext({
+        requirementId: match.requirementId,
+        clientName: clientName.trim(),
+        jobTitle: generateJobTitle(clientName, endClient, coreSkill) || undefined,
+        engagementModel: engagementModel as string,
+        contractDurationMonths: contractDurationMonths ? parseInt(contractDurationMonths) : undefined,
+        paymentTermsDays: clientDefaults?.found && clientDefaults.defaultPaymentTermsDays
+          ? clientDefaults.defaultPaymentTermsDays
+          : paymentTermsDays ? parseInt(paymentTermsDays) : undefined,
+        budgetMinLpa: budgetMinLpa ? parseFloat(budgetMinLpa) : undefined,
+        budgetMaxLpa: budgetMaxLpa ? parseFloat(budgetMaxLpa) : undefined,
+      });
+
       setConsolidated(true);
       setConsolidateResult(result);
       setRequirementSaved(true);
@@ -1228,6 +1363,11 @@ export default function RecruiterSearchPage() {
                             </span>
                           );
                         })()}
+                        {isAuthenticated && candidate.isShortlisted && (
+                          <span className="badge text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
+                            Shortlisted
+                          </span>
+                        )}
                       </div>
 
                       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-gray-400">
@@ -1408,6 +1548,7 @@ export default function RecruiterSearchPage() {
           candidate={screeningCandidate}
           onClose={() => setScreeningCandidate(null)}
           onScreeningComplete={handleScreeningComplete}
+          isShortlistFlow={!!sourceRequirementId}
         />
       )}
 
@@ -1417,7 +1558,7 @@ export default function RecruiterSearchPage() {
           <div className="absolute inset-0 bg-black bg-opacity-50" onClick={() => setDrawerOpen(false)} />
           <div className="absolute right-0 top-0 h-full w-full max-w-xl bg-white dark:bg-gray-800 shadow-xl overflow-y-auto">
             <div className="p-6">
-              <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">{selectedCandidate.fullName}</h2>
                 <button onClick={() => setDrawerOpen(false)} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">
                   <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1425,6 +1566,40 @@ export default function RecruiterSearchPage() {
                   </svg>
                 </button>
               </div>
+
+              {/* Pipeline Progress — only when sourced from a requirement */}
+              {sourceRequirementId && (
+                <div className="flex items-center gap-1 text-xs mb-6 flex-wrap">
+                  {[
+                    { label: 'Search', done: true, active: false },
+                    { label: 'Screen', done: !isScreeningExpired(selectedCandidate.lastScreenedAt), active: isScreeningExpired(selectedCandidate.lastScreenedAt) },
+                    { label: 'Price', done: !isScreeningExpired(selectedCandidate.lastScreenedAt), active: false },
+                    { label: 'Shortlist', done: selectedCandidate.isShortlisted === true, active: !isScreeningExpired(selectedCandidate.lastScreenedAt) && !selectedCandidate.isShortlisted },
+                  ].map((step, i, arr) => (
+                    <div key={step.label} className="flex items-center">
+                      <div className={`flex items-center gap-1 px-2 py-1 rounded-full ${
+                        step.done
+                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                          : step.active
+                            ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 font-medium'
+                            : 'bg-gray-100 text-gray-400 dark:bg-gray-700 dark:text-gray-500'
+                      }`}>
+                        {step.done && (
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                        {step.label}
+                      </div>
+                      {i < arr.length - 1 && (
+                        <svg className="w-4 h-4 text-gray-300 dark:text-gray-600 mx-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
 
               <div className="space-y-6">
                 {/* Match Score */}
@@ -1634,6 +1809,40 @@ export default function RecruiterSearchPage() {
                   </div>
                 </div>
 
+                {/* Screening */}
+                <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-medium">Screening Status</h3>
+                    {(() => {
+                      const status = getScreeningStatus(selectedCandidate.lastScreenedAt);
+                      return <span className={`badge text-xs ${status.className}`}>{status.label}</span>;
+                    })()}
+                  </div>
+
+                  {/* Show screening prompt when it's the blocking step */}
+                  {isScreeningExpired(selectedCandidate.lastScreenedAt) && sourceRequirementId && (
+                    <div className="p-3 mb-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                      <p className="text-sm text-amber-700 dark:text-amber-300">
+                        Screening is required before this candidate can be shortlisted.
+                        {selectedCandidate.lastScreenedAt
+                          ? ' The previous screening has expired (>15 days).'
+                          : ' This candidate has not been screened yet.'}
+                      </p>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={() => handleScreenCandidate(selectedCandidate)}
+                    className={`w-full ${
+                      isScreeningExpired(selectedCandidate.lastScreenedAt) && sourceRequirementId
+                        ? 'btn-primary'
+                        : 'btn-secondary'
+                    }`}
+                  >
+                    {isScreeningExpired(selectedCandidate.lastScreenedAt) ? 'Screen Candidate' : 'Re-screen Candidate'}
+                  </button>
+                </div>
+
                 {/* Pricing Calculator */}
                 <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
                   <PricingPanel
@@ -1645,36 +1854,120 @@ export default function RecruiterSearchPage() {
                     onCtcUpdated={(expectedCtc, currentCtc) => {
                       setSelectedCandidate(prev => prev ? { ...prev, expectedCtc, currentCtc } : prev);
                     }}
+                    requirementContext={requirementContext ? {
+                      contractDurationMonths: requirementContext.contractDurationMonths,
+                      paymentTermsDays: requirementContext.paymentTermsDays,
+                      engagementModel: requirementContext.engagementModel,
+                    } : undefined}
                   />
                 </div>
 
-                {/* Screening */}
-                <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-medium">Screening Status</h3>
-                    {(() => {
-                      const status = getScreeningStatus(selectedCandidate.lastScreenedAt);
-                      return <span className={`badge text-xs ${status.className}`}>{status.label}</span>;
-                    })()}
-                  </div>
-                  <button
-                    onClick={() => handleScreenCandidate(selectedCandidate)}
-                    className="btn-secondary w-full"
-                  >
-                    {isScreeningExpired(selectedCandidate.lastScreenedAt) ? 'Screen Candidate' : 'Re-screen Candidate'}
-                  </button>
-                </div>
+                {/* Primary Actions */}
+                <div className="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-3">
+                  {/* Shortlist Button — when sourced from a requirement */}
+                  {sourceRequirementId && (
+                    <>
+                      {selectedCandidate.isShortlisted ? (
+                        <div className="flex items-center justify-center gap-2 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                          <svg className="w-5 h-5 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                          <span className="text-sm font-medium text-green-700 dark:text-green-300">
+                            Shortlisted for {requirementContext?.clientName || 'this requirement'}
+                          </span>
+                        </div>
+                      ) : (
+                        <>
+                          {/* Notes toggle */}
+                          {showShortlistNotes && (
+                            <div>
+                              <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">
+                                Shortlist Notes (optional)
+                              </label>
+                              <textarea
+                                value={shortlistNotes}
+                                onChange={(e) => setShortlistNotes(e.target.value)}
+                                placeholder="e.g. Strong React skills, good culture fit..."
+                                className="input w-full text-sm"
+                                rows={2}
+                                maxLength={1000}
+                              />
+                            </div>
+                          )}
 
-                {/* Actions */}
-                <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => {
+                                if (isScreeningExpired(selectedCandidate.lastScreenedAt)) {
+                                  handleScreenCandidate(selectedCandidate);
+                                  toast({
+                                    variant: 'warning',
+                                    title: 'Screening Required',
+                                    description: 'Please screen the candidate first. You can shortlist after screening.',
+                                  });
+                                  return;
+                                }
+                                handleShortlistCandidate(
+                                  selectedCandidate.candidateId,
+                                  shortlistNotes || undefined
+                                );
+                              }}
+                              disabled={shortlistingCandidateId === selectedCandidate.candidateId}
+                              className="btn-primary flex-1 flex items-center justify-center gap-2"
+                            >
+                              {shortlistingCandidateId === selectedCandidate.candidateId ? (
+                                <>
+                                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                  </svg>
+                                  Shortlisting...
+                                </>
+                              ) : (
+                                'Shortlist Candidate'
+                              )}
+                            </button>
+                            {!showShortlistNotes && (
+                              <button
+                                onClick={() => setShowShortlistNotes(true)}
+                                className="btn-secondary px-3"
+                                title="Add notes"
+                              >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </>
+                  )}
+
+                  {/* Save requirement prompt for ad-hoc searches */}
+                  {!sourceRequirementId && isAuthenticated && (
+                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                      <p className="text-sm text-blue-700 dark:text-blue-300 mb-2">
+                        Save this search as a requirement to shortlist candidates.
+                      </p>
+                      <button
+                        onClick={() => { setDrawerOpen(false); setViewMode('requirement_details'); }}
+                        className="btn-secondary text-sm"
+                      >
+                        Save Requirement
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Download Resume */}
                   <button
                     onClick={() => handleDownloadResume(selectedCandidate.candidateId)}
                     disabled={formattingCandidateId === selectedCandidate.candidateId}
-                    className="btn-primary w-full"
+                    className={`w-full ${sourceRequirementId ? 'btn-secondary' : 'btn-primary'}`}
                   >
                     {formattingCandidateId === selectedCandidate.candidateId ? 'Formatting resume...' : 'Download Resume'}
                   </button>
-                  <div className="mt-2 text-center">
+                  <div className="text-center">
                     <button
                       onClick={() => handleDownloadOriginalResume(selectedCandidate.candidateId)}
                       className="text-sm text-primary-600 dark:text-primary-400 hover:underline"

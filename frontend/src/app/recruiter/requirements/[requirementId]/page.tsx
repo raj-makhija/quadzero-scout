@@ -108,6 +108,15 @@ export default function RequirementDetailPage() {
       suggestions: [],
       viewMode: 'results',
       requirementId,
+      requirementMeta: {
+        clientName: requirement.clientName,
+        jobTitle: requirement.jobTitle,
+        engagementModel: requirement.engagementModel,
+        contractDurationMonths: requirement.contractDurationMonths,
+        paymentTermsDays: requirement.paymentTermsDays,
+        budgetMinLpa: requirement.budgetMinLpa,
+        budgetMaxLpa: requirement.budgetMaxLpa,
+      },
     }));
 
     router.push('/recruiter/search');

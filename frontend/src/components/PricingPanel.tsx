@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { api, PricingOutput } from '@/lib/api';
 
 interface RequirementContext {
@@ -106,6 +106,15 @@ export function PricingPanel({
       setAutoCalcPending(false);
     }
   }, [autoCalcPending, savedCtc, handleCalculate]);
+
+  // Auto-calculate on mount when requirement context is provided and CTC is available
+  const autoCalcOnMountDone = useRef(false);
+  useEffect(() => {
+    if (requirementContext && effectiveExpectedCtc != null && !autoCalcOnMountDone.current && !result) {
+      autoCalcOnMountDone.current = true;
+      handleCalculate();
+    }
+  }, [requirementContext, effectiveExpectedCtc, handleCalculate, result]);
 
   const handleSaveCtc = async () => {
     if (!candidateId) return;

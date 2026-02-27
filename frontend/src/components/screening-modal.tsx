@@ -18,14 +18,16 @@ interface ScreeningModalProps {
   candidateName?: string;
   onClose: () => void;
   onScreeningComplete: (candidateId: string) => void;
+  isShortlistFlow?: boolean;
 }
 
-export function ScreeningModal({ candidate, candidateId: candidateIdProp, candidateName: candidateNameProp, onClose, onScreeningComplete }: ScreeningModalProps) {
+export function ScreeningModal({ candidate, candidateId: candidateIdProp, candidateName: candidateNameProp, onClose, onScreeningComplete, isShortlistFlow }: ScreeningModalProps) {
   const resolvedCandidateId = candidate?.candidateId || candidateIdProp || '';
   const resolvedCandidateName = candidate?.fullName || candidateNameProp || 'Candidate';
   const [loading, setLoading] = useState(false);
   const [fetchingProfile, setFetchingProfile] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Core fields
@@ -146,7 +148,16 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
       if (summary) updatedValues.summary = summary;
 
       await api.screenCandidate(resolvedCandidateId, updatedValues, notes || undefined);
-      onScreeningComplete(resolvedCandidateId);
+
+      if (isShortlistFlow) {
+        // Show success message briefly, then close
+        setSuccessMessage('Screening saved. You can now shortlist this candidate.');
+        setTimeout(() => {
+          onScreeningComplete(resolvedCandidateId);
+        }, 1500);
+      } else {
+        onScreeningComplete(resolvedCandidateId);
+      }
     } catch (err) {
       let msg = (err as Error).message || 'Failed to save screening';
       // Include backend details if available (e.g., DynamoDB error specifics)
@@ -163,6 +174,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
     currentCtc, expectedCtc, availability, engagementModel,
     totalExperience, seniority, primarySkillsText, secondarySkillsText,
     industries, roles, certifications, summary, notes, onScreeningComplete,
+    isShortlistFlow,
   ]);
 
   return (
@@ -197,7 +209,16 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
-          {fetchingProfile ? (
+          {successMessage ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="w-12 h-12 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-4">
+                <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <p className="text-lg font-medium text-gray-900 dark:text-gray-100">{successMessage}</p>
+            </div>
+          ) : fetchingProfile ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-6 w-6 animate-spin text-primary-600" />
               <span className="ml-2 text-gray-500">Loading profile...</span>
