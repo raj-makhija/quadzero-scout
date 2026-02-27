@@ -1161,10 +1161,18 @@ export async function updateCandidateProfileFields(
   screenedBy: string
 ): Promise<void> {
   const now = new Date().toISOString();
+
+  // Use ExpressionAttributeNames for ALL fields to avoid DynamoDB reserved keyword issues
+  // (e.g., "location", "status", "name" are all reserved)
+  const names: Record<string, string> = {
+    '#last_updated': 'last_updated',
+    '#last_screened_at': 'last_screened_at',
+    '#last_screened_by': 'last_screened_by',
+  };
   const setParts: string[] = [
-    'last_updated = :now',
-    'last_screened_at = :now',
-    'last_screened_by = :screenedBy',
+    '#last_updated = :now',
+    '#last_screened_at = :now',
+    '#last_screened_by = :screenedBy',
   ];
   const removeParts: string[] = [];
   const values: Record<string, unknown> = {
@@ -1174,15 +1182,18 @@ export async function updateCandidateProfileFields(
 
   let paramIndex = 0;
   for (const [key, value] of Object.entries(fields)) {
+    const nameAlias = `#f${paramIndex}`;
+    names[nameAlias] = key;
+
     if (value === null || value === undefined) {
       // DynamoDB cannot SET a value to null; use REMOVE instead
-      removeParts.push(key);
+      removeParts.push(nameAlias);
     } else {
       const placeholder = `:f${paramIndex}`;
-      setParts.push(`${key} = ${placeholder}`);
+      setParts.push(`${nameAlias} = ${placeholder}`);
       values[placeholder] = value;
-      paramIndex++;
     }
+    paramIndex++;
   }
 
   let updateExpression = `SET ${setParts.join(', ')}`;
@@ -1195,6 +1206,7 @@ export async function updateCandidateProfileFields(
       TableName: config.dynamodb.talentProfilesTable,
       Key: { candidate_id: candidateId },
       UpdateExpression: updateExpression,
+      ExpressionAttributeNames: names,
       ExpressionAttributeValues: values,
       ConditionExpression: 'attribute_exists(candidate_id)',
     })
