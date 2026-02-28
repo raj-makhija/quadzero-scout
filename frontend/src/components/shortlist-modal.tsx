@@ -5,7 +5,7 @@ import { X, AlertCircle, Loader2 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import type { CandidateSearchResult, SearchCriteria } from '@/lib/api';
 import { PricingPanel } from '@/components/PricingPanel';
-import { getScreeningStatus } from '@/components/screening-modal';
+import { getScreeningStatus, isScreeningExpired } from '@/components/screening-modal';
 import {
   formatSeniority,
   formatAvailability,
@@ -27,13 +27,17 @@ interface RequirementContext {
 
 interface ShortlistModalProps {
   candidate: CandidateSearchResult;
-  requirementContext: RequirementContext;
+  requirementContext: RequirementContext | null;
   searchCriteria: SearchCriteria;
   isInternalRecruiter?: boolean;
   onClose: () => void;
   onShortlisted: (candidateId: string) => void;
   onRescreen: (candidate: CandidateSearchResult) => void;
   onCtcUpdated?: (expectedCtc: number, currentCtc?: number) => void;
+  onDownloadResume?: (candidateId: string) => void;
+  onDownloadOriginalResume?: (candidateId: string) => void;
+  formattingCandidateId?: string | null;
+  onSaveRequirement?: () => void;
 }
 
 export function ShortlistModal({
@@ -45,12 +49,19 @@ export function ShortlistModal({
   onShortlisted,
   onRescreen,
   onCtcUpdated,
+  onDownloadResume,
+  onDownloadOriginalResume,
+  formattingCandidateId,
+  onSaveRequirement,
 }: ShortlistModalProps) {
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
+  const isShortlistMode = requirementContext != null;
+
   const handleShortlist = useCallback(async () => {
+    if (!requirementContext) return;
     setLoading(true);
     setErrorMessage('');
     try {
@@ -63,7 +74,6 @@ export function ShortlistModal({
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.code === 'VALIDATION_ERROR' && err.message.includes('already shortlisted')) {
-          // Already shortlisted — sync state
           onShortlisted(candidate.candidateId);
           return;
         }
@@ -74,7 +84,7 @@ export function ShortlistModal({
     } finally {
       setLoading(false);
     }
-  }, [requirementContext.requirementId, candidate.candidateId, notes, onShortlisted]);
+  }, [requirementContext, candidate.candidateId, notes, onShortlisted]);
 
   const screeningStatus = getScreeningStatus(candidate.lastScreenedAt);
 
@@ -89,12 +99,23 @@ export function ShortlistModal({
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
           <div>
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Shortlist for {requirementContext.clientName}
+              {isShortlistMode
+                ? `Shortlist for ${requirementContext.clientName}`
+                : candidate.fullName
+              }
             </h2>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              {candidate.fullName}
-              {requirementContext.jobTitle && (
-                <span className="ml-2">&middot; {requirementContext.jobTitle}</span>
+              {isShortlistMode ? (
+                <>
+                  {candidate.fullName}
+                  {requirementContext.jobTitle && (
+                    <span className="ml-2">&middot; {requirementContext.jobTitle}</span>
+                  )}
+                </>
+              ) : (
+                <>
+                  {candidate.totalExperience} yrs &middot; {candidate.location || 'Location not specified'}
+                </>
               )}
             </p>
           </div>
@@ -307,10 +328,20 @@ export function ShortlistModal({
 
           {/* Screening Status */}
           <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between mb-3">
               <h3 className="font-medium">Screening Status</h3>
               <span className={`badge text-xs ${screeningStatus.className}`}>{screeningStatus.label}</span>
             </div>
+            {isScreeningExpired(candidate.lastScreenedAt) && isShortlistMode && (
+              <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                <p className="text-sm text-amber-700 dark:text-amber-300">
+                  Screening is required before this candidate can be shortlisted.
+                  {candidate.lastScreenedAt
+                    ? ' The previous screening has expired (>15 days).'
+                    : ' This candidate has not been screened yet.'}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Pricing Calculator */}
@@ -322,54 +353,108 @@ export function ShortlistModal({
               candidateExperienceYears={candidate.totalExperience}
               isInternalRecruiter={isInternalRecruiter}
               onCtcUpdated={onCtcUpdated}
-              requirementContext={{
+              requirementContext={requirementContext ? {
                 contractDurationMonths: requirementContext.contractDurationMonths,
                 paymentTermsDays: requirementContext.paymentTermsDays,
                 engagementModel: requirementContext.engagementModel,
-              }}
+              } : undefined}
             />
           </div>
 
-          {/* Shortlist Notes */}
-          <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-            <label className="text-sm text-gray-500 dark:text-gray-400 block mb-1">
-              Shortlist Notes (optional)
-            </label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="e.g. Strong React skills, good culture fit..."
-              className="input w-full text-sm"
-              rows={2}
-              maxLength={1000}
-            />
-          </div>
+          {/* Shortlist Notes — only in shortlist mode */}
+          {isShortlistMode && (
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+              <label className="text-sm text-gray-500 dark:text-gray-400 block mb-1">
+                Shortlist Notes (optional)
+              </label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="e.g. Strong React skills, good culture fit..."
+                className="input w-full text-sm"
+                rows={2}
+                maxLength={1000}
+              />
+            </div>
+          )}
         </div>
 
         {/* Footer */}
         <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 space-y-3">
-          <button
-            onClick={handleShortlist}
-            disabled={loading}
-            className="btn-primary w-full flex items-center justify-center gap-2"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Shortlisting...
-              </>
-            ) : (
-              'Shortlist Candidate'
-            )}
-          </button>
-          <div className="text-center">
+          {/* Shortlist action — only in shortlist mode */}
+          {isShortlistMode && (
+            <>
+              {candidate.isShortlisted ? (
+                <div className="flex items-center justify-center gap-2 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                  <svg className="w-5 h-5 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="text-sm font-medium text-green-700 dark:text-green-300">
+                    Shortlisted for {requirementContext.clientName}
+                  </span>
+                </div>
+              ) : (
+                <button
+                  onClick={handleShortlist}
+                  disabled={loading}
+                  className="btn-primary w-full flex items-center justify-center gap-2"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Shortlisting...
+                    </>
+                  ) : (
+                    'Shortlist Candidate'
+                  )}
+                </button>
+              )}
+              <div className="text-center">
+                <button
+                  onClick={() => onRescreen(candidate)}
+                  className="text-sm text-primary-600 dark:text-primary-400 hover:underline"
+                >
+                  Re-screen Candidate
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* Save requirement prompt — view-only mode */}
+          {!isShortlistMode && onSaveRequirement && (
+            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+              <p className="text-sm text-blue-700 dark:text-blue-300 mb-2">
+                Save this search as a requirement to shortlist candidates.
+              </p>
+              <button
+                onClick={onSaveRequirement}
+                className="btn-secondary text-sm"
+              >
+                Save Requirement
+              </button>
+            </div>
+          )}
+
+          {/* Download Resume — both modes */}
+          {onDownloadResume && (
             <button
-              onClick={() => onRescreen(candidate)}
-              className="text-sm text-primary-600 dark:text-primary-400 hover:underline"
+              onClick={() => onDownloadResume(candidate.candidateId)}
+              disabled={formattingCandidateId === candidate.candidateId}
+              className={`w-full ${isShortlistMode ? 'btn-secondary' : 'btn-primary'}`}
             >
-              Re-screen Candidate
+              {formattingCandidateId === candidate.candidateId ? 'Formatting resume...' : 'Download Resume'}
             </button>
-          </div>
+          )}
+          {onDownloadOriginalResume && (
+            <div className="text-center">
+              <button
+                onClick={() => onDownloadOriginalResume(candidate.candidateId)}
+                className="text-sm text-primary-600 dark:text-primary-400 hover:underline"
+              >
+                Download Original Resume
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

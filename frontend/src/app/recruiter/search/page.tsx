@@ -45,8 +45,6 @@ export default function RecruiterSearchPage() {
   const [paginationKey, setPaginationKey] = useState<string | undefined>(undefined);
   const [hasMore, setHasMore] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectedCandidate, setSelectedCandidate] = useState<CandidateSearchResult | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
   const [formattingCandidateId, setFormattingCandidateId] = useState<string | null>(null);
   const [sourceRequirementId, setSourceRequirementId] = useState<string | null>(prefilled?.requirementId || null);
   const [sortBy, setSortBy] = useState<'matchScore' | 'experience' | 'lastUpdated'>('lastUpdated');
@@ -311,11 +309,6 @@ export default function RecruiterSearchPage() {
     await runSearch(searchCriteria);
   };
 
-  const openCandidateDrawer = (candidate: CandidateSearchResult) => {
-    setSelectedCandidate(candidate);
-    setDrawerOpen(true);
-  };
-
   const handleDownloadResume = async (candidateId: string) => {
     if (!isAuthenticated) {
       handleLoginRequired();
@@ -391,10 +384,7 @@ export default function RecruiterSearchPage() {
       }
       return updated;
     });
-    if (selectedCandidate?.candidateId === candidateId) {
-      setSelectedCandidate(prev => prev ? { ...prev, lastScreenedAt: now } : prev);
-    }
-  }, [selectedCandidate, sourceRequirementId, requirementContext]);
+  }, [sourceRequirementId, requirementContext]);
 
   // Smart routing: conditions met → ShortlistModal; conditions not met → ScreeningModal
   const handleShortlistClick = useCallback((candidate: CandidateSearchResult) => {
@@ -419,16 +409,13 @@ export default function RecruiterSearchPage() {
     setResults(prev => prev.map(r =>
       r.candidateId === candidateId ? { ...r, isShortlisted: true } : r
     ));
-    if (selectedCandidate?.candidateId === candidateId) {
-      setSelectedCandidate(prev => prev ? { ...prev, isShortlisted: true } : prev);
-    }
     setShortlistModalCandidate(null);
     toast({
       variant: 'success',
       title: 'Candidate Shortlisted',
       description: `Shortlisted for ${requirementContext?.clientName || 'this requirement'}`,
     });
-  }, [selectedCandidate, requirementContext]);
+  }, [requirementContext]);
 
   const handleRescreenFromModal = useCallback((candidate: CandidateSearchResult) => {
     setShortlistModalCandidate(null);
@@ -1332,7 +1319,7 @@ export default function RecruiterSearchPage() {
                 <div
                   key={candidate.candidateId}
                   className="card p-6 hover:shadow-md transition-shadow cursor-pointer"
-                  onClick={() => isAuthenticated ? openCandidateDrawer(candidate) : handleLoginRequired()}
+                  onClick={() => isAuthenticated ? setShortlistModalCandidate(candidate) : handleLoginRequired()}
                 >
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                     <div className="flex-1 min-w-0">
@@ -1543,7 +1530,7 @@ export default function RecruiterSearchPage() {
       )}
 
       {/* Shortlist Modal */}
-      {shortlistModalCandidate && requirementContext && (
+      {shortlistModalCandidate && (
         <ShortlistModal
           candidate={shortlistModalCandidate}
           requirementContext={requirementContext}
@@ -1553,341 +1540,16 @@ export default function RecruiterSearchPage() {
           onShortlisted={handleShortlisted}
           onRescreen={handleRescreenFromModal}
           onCtcUpdated={(expectedCtc, currentCtc) => {
-            // Sync CTC updates back to local state
             setShortlistModalCandidate(prev => prev ? { ...prev, expectedCtc, currentCtc } : prev);
             setResults(prev => prev.map(c =>
               c.candidateId === shortlistModalCandidate.candidateId ? { ...c, expectedCtc, currentCtc } : c
             ));
-            if (selectedCandidate?.candidateId === shortlistModalCandidate.candidateId) {
-              setSelectedCandidate(prev => prev ? { ...prev, expectedCtc, currentCtc } : prev);
-            }
           }}
+          onDownloadResume={handleDownloadResume}
+          onDownloadOriginalResume={handleDownloadOriginalResume}
+          formattingCandidateId={formattingCandidateId}
+          onSaveRequirement={() => { setShortlistModalCandidate(null); setViewMode('requirement_details'); }}
         />
-      )}
-
-      {/* Candidate Detail Drawer — only accessible when authenticated */}
-      {drawerOpen && selectedCandidate && (
-        <div className="fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black bg-opacity-50" onClick={() => setDrawerOpen(false)} />
-          <div className="absolute right-0 top-0 h-full w-full max-w-xl bg-white dark:bg-gray-800 shadow-xl overflow-y-auto">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">{selectedCandidate.fullName}</h2>
-                <button onClick={() => setDrawerOpen(false)} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">
-                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-
-              <div className="space-y-6">
-                {/* Match Score */}
-                <div className={`p-4 rounded-lg ${getMatchScoreBgColor(selectedCandidate.matchScore)}`}>
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">Match Score</span>
-                    <span className={`text-2xl font-bold ${getMatchScoreColor(selectedCandidate.matchScore)}`}>
-                      {selectedCandidate.matchScore}%
-                    </span>
-                  </div>
-                </div>
-
-                {/* Details */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm text-gray-500 dark:text-gray-400">Experience</label>
-                    <p className="font-medium">{selectedCandidate.totalExperience} years</p>
-                  </div>
-                  <div>
-                    <label className="text-sm text-gray-500 dark:text-gray-400">Seniority</label>
-                    <p className="font-medium">{formatSeniority(selectedCandidate.seniority)}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm text-gray-500 dark:text-gray-400">Location</label>
-                    <p className="font-medium">{selectedCandidate.location || 'Not specified'}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm text-gray-500 dark:text-gray-400">Notice Period</label>
-                    <p className="font-medium">{formatAvailability(selectedCandidate.availability)}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm text-gray-500 dark:text-gray-400">Engagement Preference</label>
-                    <p className="font-medium">{formatCandidateEngagement(selectedCandidate.engagementModel || 'either')}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm text-gray-500 dark:text-gray-400">Current CTC</label>
-                    <p className="font-medium">{selectedCandidate.currentCtc ? `${selectedCandidate.currentCtc} LPA` : 'Not specified'}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm text-gray-500 dark:text-gray-400">Expected CTC</label>
-                    <p className="font-medium">{selectedCandidate.expectedCtc ? `${selectedCandidate.expectedCtc} LPA` : 'Not specified'}</p>
-                  </div>
-                </div>
-
-                {/* Skills */}
-                <div>
-                  <label className="text-sm text-gray-500 dark:text-gray-400 mb-2 block">Skills</label>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedCandidate.primarySkills.map((skill) => (
-                      <span
-                        key={skill}
-                        className={`badge ${
-                          selectedCandidate.matchDetails.mustHaveMatched.includes(skill)
-                            ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
-                            : selectedCandidate.matchDetails.goodToHaveMatched.includes(skill)
-                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
-                            : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
-                        }`}
-                      >
-                        {skill}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Match Details */}
-                <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-                  <h3 className="font-medium mb-3">Match Analysis</h3>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex items-center text-green-600 dark:text-green-400">
-                      <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                      Must-have matched: {selectedCandidate.matchDetails.mustHaveMatched.join(', ') || 'None'}
-                    </div>
-                    {selectedCandidate.matchDetails.mustHaveRelated?.length > 0 && (
-                      <div className="flex items-center text-yellow-600 dark:text-yellow-400">
-                        <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        Related (not scored): {selectedCandidate.matchDetails.mustHaveRelated.join(', ')}
-                      </div>
-                    )}
-                    {selectedCandidate.matchDetails.mustHaveMissing.length > 0 && (
-                      <div className="flex items-center text-red-600 dark:text-red-400">
-                        <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                        Missing: {selectedCandidate.matchDetails.mustHaveMissing.join(', ')}
-                      </div>
-                    )}
-                    <div className="flex items-center text-blue-600 dark:text-blue-400">
-                      <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                      </svg>
-                      Nice-to-have matched: {selectedCandidate.matchDetails.goodToHaveMatched.join(', ') || 'None'}
-                    </div>
-                    {selectedCandidate.matchDetails.goodToHaveRelated?.length > 0 && (
-                      <div className="flex items-center text-blue-400 dark:text-blue-500">
-                        <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        Nice-to-have related: {selectedCandidate.matchDetails.goodToHaveRelated.join(', ')}
-                      </div>
-                    )}
-                    {searchCriteria.maxBudgetLpa && (
-                      <div className={`flex items-center ${selectedCandidate.matchDetails.ctcMatch ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                        {selectedCandidate.matchDetails.ctcMatch ? (
-                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                        ) : (
-                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        )}
-                        {selectedCandidate.matchDetails.ctcMatch ? 'Within budget' : 'Over budget'}
-                      </div>
-                    )}
-                    {searchCriteria.location && (
-                      <div className={`flex items-center ${
-                        selectedCandidate.matchDetails.locationMatch === 'full'
-                          ? 'text-green-600 dark:text-green-400'
-                          : selectedCandidate.matchDetails.locationMatch === 'partial'
-                            ? 'text-amber-600 dark:text-amber-400'
-                            : 'text-red-600 dark:text-red-400'
-                      }`}>
-                        {selectedCandidate.matchDetails.locationMatch === 'full' ? (
-                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                        ) : selectedCandidate.matchDetails.locationMatch === 'partial' ? (
-                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                        ) : (
-                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        )}
-                        {selectedCandidate.matchDetails.locationMatch === 'full'
-                          ? `Location match: ${selectedCandidate.location || 'Unknown'}`
-                          : selectedCandidate.matchDetails.locationMatch === 'partial'
-                            ? 'Location not specified'
-                            : `Location mismatch: ${selectedCandidate.location || 'Unknown'} (looking for ${searchCriteria.location})`
-                        }
-                      </div>
-                    )}
-                    {(searchCriteria.minExperience != null || searchCriteria.maxExperience != null) && (
-                      <div className={`flex items-center ${
-                        selectedCandidate.matchDetails.experienceMatch === 'full'
-                          ? 'text-green-600 dark:text-green-400'
-                          : selectedCandidate.matchDetails.experienceMatch === 'partial'
-                            ? 'text-amber-600 dark:text-amber-400'
-                            : 'text-red-600 dark:text-red-400'
-                      }`}>
-                        {selectedCandidate.matchDetails.experienceMatch === 'full' ? (
-                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                        ) : selectedCandidate.matchDetails.experienceMatch === 'partial' ? (
-                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                        ) : (
-                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        )}
-                        {selectedCandidate.matchDetails.experienceMatch === 'full'
-                          ? `Experience in range: ${selectedCandidate.totalExperience} yrs`
-                          : selectedCandidate.matchDetails.experienceMatch === 'partial'
-                            ? `Experience close to range: ${selectedCandidate.totalExperience} yrs (looking for ${searchCriteria.minExperience ?? 0}–${searchCriteria.maxExperience ?? '∞'} yrs)`
-                            : `Experience outside range: ${selectedCandidate.totalExperience} yrs (looking for ${searchCriteria.minExperience ?? 0}–${searchCriteria.maxExperience ?? '∞'} yrs)`
-                        }
-                      </div>
-                    )}
-                    {searchCriteria.availability && searchCriteria.availability.length > 0 && (
-                      <div className={`flex items-center ${
-                        selectedCandidate.matchDetails.availabilityMatch === 'full'
-                          ? 'text-green-600 dark:text-green-400'
-                          : selectedCandidate.matchDetails.availabilityMatch === 'partial'
-                            ? 'text-amber-600 dark:text-amber-400'
-                            : 'text-red-600 dark:text-red-400'
-                      }`}>
-                        {selectedCandidate.matchDetails.availabilityMatch === 'full' ? (
-                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                        ) : selectedCandidate.matchDetails.availabilityMatch === 'partial' ? (
-                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                        ) : (
-                          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        )}
-                        {selectedCandidate.matchDetails.availabilityMatch === 'full'
-                          ? `Availability matches: ${formatAvailability(selectedCandidate.availability)}`
-                          : selectedCandidate.matchDetails.availabilityMatch === 'partial'
-                            ? `Available slightly later: ${formatAvailability(selectedCandidate.availability)} (looking for ${searchCriteria.availability.map(a => formatAvailability(a)).join(', ')})`
-                            : `Availability mismatch: ${formatAvailability(selectedCandidate.availability)} (looking for ${searchCriteria.availability.map(a => formatAvailability(a)).join(', ')})`
-                        }
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Screening Status */}
-                <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-medium">Screening Status</h3>
-                    {(() => {
-                      const status = getScreeningStatus(selectedCandidate.lastScreenedAt);
-                      return <span className={`badge text-xs ${status.className}`}>{status.label}</span>;
-                    })()}
-                  </div>
-
-                  {isScreeningExpired(selectedCandidate.lastScreenedAt) && sourceRequirementId && (
-                    <div className="p-3 mb-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-                      <p className="text-sm text-amber-700 dark:text-amber-300">
-                        Screening is required before this candidate can be shortlisted.
-                        {selectedCandidate.lastScreenedAt
-                          ? ' The previous screening has expired (>15 days).'
-                          : ' This candidate has not been screened yet.'}
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Pricing Calculator */}
-                <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-                  <PricingPanel
-                    candidateId={selectedCandidate.candidateId}
-                    candidateExpectedCtcLpa={selectedCandidate.expectedCtc}
-                    candidateCurrentCtcLpa={selectedCandidate.currentCtc}
-                    candidateExperienceYears={selectedCandidate.totalExperience}
-                    isInternalRecruiter={isInternalRecruiter}
-                    onCtcUpdated={(expectedCtc, currentCtc) => {
-                      setSelectedCandidate(prev => prev ? { ...prev, expectedCtc, currentCtc } : prev);
-                    }}
-                    requirementContext={requirementContext ? {
-                      contractDurationMonths: requirementContext.contractDurationMonths,
-                      paymentTermsDays: requirementContext.paymentTermsDays,
-                      engagementModel: requirementContext.engagementModel,
-                    } : undefined}
-                  />
-                </div>
-
-                {/* Primary Actions */}
-                <div className="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-3">
-                  {/* Shortlist Button — when sourced from a requirement */}
-                  {sourceRequirementId && (
-                    selectedCandidate.isShortlisted ? (
-                      <div className="flex items-center justify-center gap-2 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                        <svg className="w-5 h-5 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                        <span className="text-sm font-medium text-green-700 dark:text-green-300">
-                          Shortlisted for {requirementContext?.clientName || 'this requirement'}
-                        </span>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => handleShortlistClick(selectedCandidate)}
-                        className="btn-primary w-full"
-                      >
-                        Shortlist Candidate
-                      </button>
-                    )
-                  )}
-
-                  {/* Save requirement prompt for ad-hoc searches */}
-                  {!sourceRequirementId && isAuthenticated && (
-                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                      <p className="text-sm text-blue-700 dark:text-blue-300 mb-2">
-                        Save this search as a requirement to shortlist candidates.
-                      </p>
-                      <button
-                        onClick={() => { setDrawerOpen(false); setViewMode('requirement_details'); }}
-                        className="btn-secondary text-sm"
-                      >
-                        Save Requirement
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Download Resume */}
-                  <button
-                    onClick={() => handleDownloadResume(selectedCandidate.candidateId)}
-                    disabled={formattingCandidateId === selectedCandidate.candidateId}
-                    className={`w-full ${sourceRequirementId ? 'btn-secondary' : 'btn-primary'}`}
-                  >
-                    {formattingCandidateId === selectedCandidate.candidateId ? 'Formatting resume...' : 'Download Resume'}
-                  </button>
-                  <div className="text-center">
-                    <button
-                      onClick={() => handleDownloadOriginalResume(selectedCandidate.candidateId)}
-                      className="text-sm text-primary-600 dark:text-primary-400 hover:underline"
-                    >
-                      Download Original Resume
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );
