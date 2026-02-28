@@ -47,7 +47,7 @@ export default function RecruiterSearchPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [formattingCandidateId, setFormattingCandidateId] = useState<string | null>(null);
   const [sourceRequirementId, setSourceRequirementId] = useState<string | null>(prefilled?.requirementId || null);
-  const [sortBy, setSortBy] = useState<'matchScore' | 'experience' | 'lastUpdated'>('lastUpdated');
+  const [sortBy, setSortBy] = useState<'matchScore' | 'experience' | 'lastUpdated'>('matchScore');
   const [screeningCandidate, setScreeningCandidate] = useState<CandidateSearchResult | null>(null);
 
   // Shortlisting state

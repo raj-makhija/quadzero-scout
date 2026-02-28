@@ -758,29 +758,29 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | **Request** | `{"criteria": {}}` |
 | **Expected Result** | Returns all candidates; each has matchScore of 100 (all default weights satisfied) |
 
-### TC-SEARCH-004: Sort by matchScore (default)
+### TC-SEARCH-004: Sort by matchScore (default) with composite tiebreakers
 | Field | Value |
 |-------|-------|
 | **ID** | TC-SEARCH-004 |
 | **Priority** | P0 |
 | **Request** | `{"criteria": {"mustHaveSkills": ["react"]}, "sortBy": "matchScore"}` |
-| **Expected Result** | Candidates returned in descending matchScore order |
+| **Expected Result** | Candidates returned in descending matchScore order; ties broken by lastUpdated desc, then totalExperience desc |
 
-### TC-SEARCH-005: Sort by experience
+### TC-SEARCH-005: Sort by experience with composite tiebreakers
 | Field | Value |
 |-------|-------|
 | **ID** | TC-SEARCH-005 |
 | **Priority** | P1 |
 | **Request** | `{"criteria": {...}, "sortBy": "experience"}` |
-| **Expected Result** | Candidates sorted by `totalExperience` descending |
+| **Expected Result** | Candidates sorted by `totalExperience` descending; ties broken by matchScore desc, then lastUpdated desc |
 
-### TC-SEARCH-006: Sort by lastUpdated
+### TC-SEARCH-006: Sort by lastUpdated with composite tiebreakers
 | Field | Value |
 |-------|-------|
 | **ID** | TC-SEARCH-006 |
 | **Priority** | P1 |
 | **Request** | `{"criteria": {...}, "sortBy": "lastUpdated"}` |
-| **Expected Result** | Candidates sorted by `lastUpdated` descending (most recent first) |
+| **Expected Result** | Candidates sorted by `lastUpdated` descending (most recent first); ties broken by matchScore desc, then totalExperience desc |
 
 ### TC-SEARCH-007: Pagination - first page
 | Field | Value |

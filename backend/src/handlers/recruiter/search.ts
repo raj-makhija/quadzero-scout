@@ -118,20 +118,23 @@ async function handleRequest(
         return true;
       });
 
-    // Sort by selected criteria
-    switch (sortBy) {
-      case 'matchScore':
-        scoredCandidates.sort((a, b) => b.matchScore - a.matchScore);
-        break;
-      case 'experience':
-        scoredCandidates.sort((a, b) => b.totalExperience - a.totalExperience);
-        break;
-      case 'lastUpdated':
-        scoredCandidates.sort((a, b) =>
-          new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime()
-        );
-        break;
-    }
+    // Sort by selected criteria with tiebreakers (all descending)
+    scoredCandidates.sort((a, b) => {
+      const dateDiff = new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime();
+      const scoreDiff = b.matchScore - a.matchScore;
+      const expDiff = b.totalExperience - a.totalExperience;
+
+      switch (sortBy) {
+        case 'matchScore':
+          return scoreDiff || dateDiff || expDiff;
+        case 'lastUpdated':
+          return dateDiff || scoreDiff || expDiff;
+        case 'experience':
+          return expDiff || scoreDiff || dateDiff;
+        default:
+          return scoreDiff || dateDiff || expDiff;
+      }
+    });
 
     // Apply pagination limit
     const paginatedCandidates = scoredCandidates.slice(0, limit);

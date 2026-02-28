@@ -656,7 +656,7 @@ Authorization: Bearer <jwe_token> (optional)
 - `criteria.availability`: Optional, array of availability enums
 - `criteria.maxBudgetLpa`: Optional, number, min 0 (in LPA)
 - `pagination.limit`: Optional, number, default 20, max 100
-- `sortBy`: Optional, enum: `matchScore` (default), `experience`, `lastUpdated`
+- `sortBy`: Optional, enum: `matchScore` (default), `experience`, `lastUpdated`. Each option uses composite sorting with tiebreakers (all descending): `matchScore` → lastUpdated → experience; `lastUpdated` → matchScore → experience; `experience` → matchScore → lastUpdated
 
 **Notes:**
 - Unauthenticated users see redacted results (names hidden, skills hidden, CTC hidden)
