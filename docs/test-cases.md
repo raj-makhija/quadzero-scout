@@ -993,7 +993,7 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | **ID** | TC-SEARCH-032 |
 | **Priority** | P1 |
 | **Steps** | Search with location "Bangalore"; view results including a candidate in Mumbai |
-| **Expected Result** | Candidate card shows "(different location)" label next to location; drawer Match Analysis shows red "Location mismatch: Mumbai (looking for Bangalore)" |
+| **Expected Result** | Candidate card shows "(different location)" label next to location; ShortlistModal Match Analysis shows red "Location mismatch: Mumbai (looking for Bangalore)" |
 
 ### TC-SEARCH-033: Experience soft scoring — slightly below min
 | Field | Value |
