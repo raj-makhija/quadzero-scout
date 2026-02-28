@@ -9,6 +9,7 @@ import { ComboboxInput } from '@/components/ui/combobox-input';
 import { api, ApiError, ParsedCriteria, SearchCriteria, CandidateSearchResult, EngagementModel, Payroll, DuplicateMatch, ConsolidateResponse, ClientDefaultsResponse } from '@/lib/api';
 import { formatSeniority, formatAvailability, formatCandidateEngagement, getMatchScoreColor, getMatchScoreBgColor, formatRelativeTime, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS, ENGAGEMENT_MODEL_OPTIONS, PAYROLL_OPTIONS, formatEngagementModel } from '@/lib/utils';
 import { ScreeningModal, getScreeningStatus, isScreeningExpired } from '@/components/screening-modal';
+import { ShortlistModal } from '@/components/shortlist-modal';
 import { toast } from '@/hooks/use-toast';
 
 type ViewMode = 'input' | 'requirement_details' | 'criteria' | 'results';
@@ -52,9 +53,7 @@ export default function RecruiterSearchPage() {
   const [screeningCandidate, setScreeningCandidate] = useState<CandidateSearchResult | null>(null);
 
   // Shortlisting state
-  const [shortlistingCandidateId, setShortlistingCandidateId] = useState<string | null>(null);
-  const [shortlistNotes, setShortlistNotes] = useState('');
-  const [showShortlistNotes, setShowShortlistNotes] = useState(false);
+  const [shortlistModalCandidate, setShortlistModalCandidate] = useState<CandidateSearchResult | null>(null);
   const [requirementContext, setRequirementContext] = useState<{
     requirementId: string;
     clientName: string;
@@ -315,8 +314,6 @@ export default function RecruiterSearchPage() {
   const openCandidateDrawer = (candidate: CandidateSearchResult) => {
     setSelectedCandidate(candidate);
     setDrawerOpen(true);
-    setShortlistNotes('');
-    setShowShortlistNotes(false);
   };
 
   const handleDownloadResume = async (candidateId: string) => {
@@ -373,79 +370,70 @@ export default function RecruiterSearchPage() {
     }
   }, [results.length, searchCriteria, runSearch]);
 
-  const handleScreeningComplete = useCallback((candidateId: string) => {
-    setScreeningCandidate(null);
-    // Update the candidate's lastScreenedAt in the local results
-    const now = new Date().toISOString();
-    setResults(prev => prev.map(c =>
-      c.candidateId === candidateId ? { ...c, lastScreenedAt: now } : c
-    ));
-    if (selectedCandidate?.candidateId === candidateId) {
-      setSelectedCandidate(prev => prev ? { ...prev, lastScreenedAt: now } : prev);
-    }
-    // Guide the recruiter to shortlist when in requirement context
-    if (sourceRequirementId) {
-      toast({ variant: 'success', title: 'Screening Complete', description: 'You can now shortlist this candidate.' });
-    }
-  }, [selectedCandidate, sourceRequirementId]);
-
   const handleScreenCandidate = useCallback((candidate: CandidateSearchResult) => {
     setScreeningCandidate(candidate);
   }, []);
 
-  const handleShortlistCandidate = useCallback(async (candidateId: string, notes?: string) => {
-    if (!sourceRequirementId) return;
-
-    setShortlistingCandidateId(candidateId);
-    try {
-      await api.shortlistCandidate(sourceRequirementId, candidateId, notes);
-
-      // Update local state to reflect shortlisted status
-      setResults(prev => prev.map(c =>
-        c.candidateId === candidateId ? { ...c, isShortlisted: true } : c
-      ));
-      if (selectedCandidate?.candidateId === candidateId) {
-        setSelectedCandidate(prev => prev ? { ...prev, isShortlisted: true } : prev);
-      }
-
-      setShowShortlistNotes(false);
-      setShortlistNotes('');
-
-      toast({
-        variant: 'success',
-        title: 'Candidate Shortlisted',
-        description: `${selectedCandidate?.fullName || 'Candidate'} has been shortlisted for ${requirementContext?.clientName || 'the requirement'}.`,
-      });
-    } catch (err) {
-      if (err instanceof ApiError) {
-        if (err.code === 'SCREENING_REQUIRED') {
-          // Prompt the user to screen first
-          const candidate = results.find(c => c.candidateId === candidateId);
-          if (candidate) handleScreenCandidate(candidate);
-          toast({
-            variant: 'warning',
-            title: 'Screening Required',
-            description: err.message || 'Please screen the candidate before shortlisting.',
-          });
-        } else if (err.message?.includes('already shortlisted')) {
-          // Mark as shortlisted locally
-          setResults(prev => prev.map(c =>
-            c.candidateId === candidateId ? { ...c, isShortlisted: true } : c
-          ));
-          if (selectedCandidate?.candidateId === candidateId) {
-            setSelectedCandidate(prev => prev ? { ...prev, isShortlisted: true } : prev);
-          }
-          toast({ variant: 'info', title: 'Already Shortlisted', description: 'This candidate is already on the shortlist for this requirement.' });
-        } else {
-          toast({ variant: 'error', title: 'Shortlisting Failed', description: err.message || 'An unexpected error occurred.' });
+  const handleScreeningComplete = useCallback((candidateId: string) => {
+    setScreeningCandidate(null);
+    // Update the candidate's lastScreenedAt in the local results
+    const now = new Date().toISOString();
+    setResults(prev => {
+      const updated = prev.map(c =>
+        c.candidateId === candidateId ? { ...c, lastScreenedAt: now } : c
+      );
+      // After screening in shortlist flow, auto-open the shortlist modal
+      if (sourceRequirementId && requirementContext) {
+        const refreshed = updated.find(c => c.candidateId === candidateId);
+        if (refreshed) {
+          setShortlistModalCandidate(refreshed);
         }
-      } else {
-        toast({ variant: 'error', title: 'Shortlisting Failed', description: (err as Error).message || 'An unexpected error occurred.' });
       }
-    } finally {
-      setShortlistingCandidateId(null);
+      return updated;
+    });
+    if (selectedCandidate?.candidateId === candidateId) {
+      setSelectedCandidate(prev => prev ? { ...prev, lastScreenedAt: now } : prev);
     }
-  }, [sourceRequirementId, selectedCandidate, requirementContext, results, handleScreenCandidate]);
+  }, [selectedCandidate, sourceRequirementId, requirementContext]);
+
+  // Smart routing: conditions met → ShortlistModal; conditions not met → ScreeningModal
+  const handleShortlistClick = useCallback((candidate: CandidateSearchResult) => {
+    if (!sourceRequirementId || !requirementContext) {
+      toast({ variant: 'warning', title: 'Requirement Required', description: 'Save this search as a requirement to shortlist candidates.' });
+      return;
+    }
+
+    const screeningValid = !isScreeningExpired(candidate.lastScreenedAt);
+    const ctcAvailable = candidate.expectedCtc != null;
+
+    if (screeningValid && ctcAvailable) {
+      // Conditions met → open ShortlistModal directly
+      setShortlistModalCandidate(candidate);
+    } else {
+      // Conditions not met → open Screening Modal
+      setScreeningCandidate(candidate);
+    }
+  }, [sourceRequirementId, requirementContext]);
+
+  const handleShortlisted = useCallback((candidateId: string) => {
+    setResults(prev => prev.map(r =>
+      r.candidateId === candidateId ? { ...r, isShortlisted: true } : r
+    ));
+    if (selectedCandidate?.candidateId === candidateId) {
+      setSelectedCandidate(prev => prev ? { ...prev, isShortlisted: true } : prev);
+    }
+    setShortlistModalCandidate(null);
+    toast({
+      variant: 'success',
+      title: 'Candidate Shortlisted',
+      description: `Shortlisted for ${requirementContext?.clientName || 'this requirement'}`,
+    });
+  }, [selectedCandidate, requirementContext]);
+
+  const handleRescreenFromModal = useCallback((candidate: CandidateSearchResult) => {
+    setShortlistModalCandidate(null);
+    setScreeningCandidate(candidate);
+  }, []);
 
   const handleSaveAndContinue = async () => {
     if (!clientName.trim()) { setError('Client name is required'); return; }
@@ -1454,15 +1442,17 @@ export default function RecruiterSearchPage() {
 
                     {isAuthenticated && (
                       <div className="flex flex-col items-end gap-1">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleScreenCandidate(candidate);
-                          }}
-                          className="btn-secondary text-sm whitespace-nowrap"
-                        >
-                          {isScreeningExpired(candidate.lastScreenedAt) ? 'Screen' : 'Re-screen'}
-                        </button>
+                        {sourceRequirementId && !candidate.isShortlisted && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleShortlistClick(candidate);
+                            }}
+                            className="btn-primary text-sm whitespace-nowrap"
+                          >
+                            Shortlist
+                          </button>
+                        )}
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1552,6 +1542,29 @@ export default function RecruiterSearchPage() {
         />
       )}
 
+      {/* Shortlist Modal */}
+      {shortlistModalCandidate && requirementContext && (
+        <ShortlistModal
+          candidate={shortlistModalCandidate}
+          requirementContext={requirementContext}
+          searchCriteria={searchCriteria}
+          isInternalRecruiter={isInternalRecruiter}
+          onClose={() => setShortlistModalCandidate(null)}
+          onShortlisted={handleShortlisted}
+          onRescreen={handleRescreenFromModal}
+          onCtcUpdated={(expectedCtc, currentCtc) => {
+            // Sync CTC updates back to local state
+            setShortlistModalCandidate(prev => prev ? { ...prev, expectedCtc, currentCtc } : prev);
+            setResults(prev => prev.map(c =>
+              c.candidateId === shortlistModalCandidate.candidateId ? { ...c, expectedCtc, currentCtc } : c
+            ));
+            if (selectedCandidate?.candidateId === shortlistModalCandidate.candidateId) {
+              setSelectedCandidate(prev => prev ? { ...prev, expectedCtc, currentCtc } : prev);
+            }
+          }}
+        />
+      )}
+
       {/* Candidate Detail Drawer — only accessible when authenticated */}
       {drawerOpen && selectedCandidate && (
         <div className="fixed inset-0 z-50">
@@ -1566,40 +1579,6 @@ export default function RecruiterSearchPage() {
                   </svg>
                 </button>
               </div>
-
-              {/* Pipeline Progress — only when sourced from a requirement */}
-              {sourceRequirementId && (
-                <div className="flex items-center gap-1 text-xs mb-6 flex-wrap">
-                  {[
-                    { label: 'Search', done: true, active: false },
-                    { label: 'Screen', done: !isScreeningExpired(selectedCandidate.lastScreenedAt), active: isScreeningExpired(selectedCandidate.lastScreenedAt) },
-                    { label: 'Price', done: !isScreeningExpired(selectedCandidate.lastScreenedAt), active: false },
-                    { label: 'Shortlist', done: selectedCandidate.isShortlisted === true, active: !isScreeningExpired(selectedCandidate.lastScreenedAt) && !selectedCandidate.isShortlisted },
-                  ].map((step, i, arr) => (
-                    <div key={step.label} className="flex items-center">
-                      <div className={`flex items-center gap-1 px-2 py-1 rounded-full ${
-                        step.done
-                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
-                          : step.active
-                            ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 font-medium'
-                            : 'bg-gray-100 text-gray-400 dark:bg-gray-700 dark:text-gray-500'
-                      }`}>
-                        {step.done && (
-                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                        )}
-                        {step.label}
-                      </div>
-                      {i < arr.length - 1 && (
-                        <svg className="w-4 h-4 text-gray-300 dark:text-gray-600 mx-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
 
               <div className="space-y-6">
                 {/* Match Score */}
@@ -1809,7 +1788,7 @@ export default function RecruiterSearchPage() {
                   </div>
                 </div>
 
-                {/* Screening */}
+                {/* Screening Status */}
                 <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="font-medium">Screening Status</h3>
@@ -1819,7 +1798,6 @@ export default function RecruiterSearchPage() {
                     })()}
                   </div>
 
-                  {/* Show screening prompt when it's the blocking step */}
                   {isScreeningExpired(selectedCandidate.lastScreenedAt) && sourceRequirementId && (
                     <div className="p-3 mb-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
                       <p className="text-sm text-amber-700 dark:text-amber-300">
@@ -1830,17 +1808,6 @@ export default function RecruiterSearchPage() {
                       </p>
                     </div>
                   )}
-
-                  <button
-                    onClick={() => handleScreenCandidate(selectedCandidate)}
-                    className={`w-full ${
-                      isScreeningExpired(selectedCandidate.lastScreenedAt) && sourceRequirementId
-                        ? 'btn-primary'
-                        : 'btn-secondary'
-                    }`}
-                  >
-                    {isScreeningExpired(selectedCandidate.lastScreenedAt) ? 'Screen Candidate' : 'Re-screen Candidate'}
-                  </button>
                 </div>
 
                 {/* Pricing Calculator */}
@@ -1866,82 +1833,23 @@ export default function RecruiterSearchPage() {
                 <div className="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-3">
                   {/* Shortlist Button — when sourced from a requirement */}
                   {sourceRequirementId && (
-                    <>
-                      {selectedCandidate.isShortlisted ? (
-                        <div className="flex items-center justify-center gap-2 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                          <svg className="w-5 h-5 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                          <span className="text-sm font-medium text-green-700 dark:text-green-300">
-                            Shortlisted for {requirementContext?.clientName || 'this requirement'}
-                          </span>
-                        </div>
-                      ) : (
-                        <>
-                          {/* Notes toggle */}
-                          {showShortlistNotes && (
-                            <div>
-                              <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">
-                                Shortlist Notes (optional)
-                              </label>
-                              <textarea
-                                value={shortlistNotes}
-                                onChange={(e) => setShortlistNotes(e.target.value)}
-                                placeholder="e.g. Strong React skills, good culture fit..."
-                                className="input w-full text-sm"
-                                rows={2}
-                                maxLength={1000}
-                              />
-                            </div>
-                          )}
-
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => {
-                                if (isScreeningExpired(selectedCandidate.lastScreenedAt)) {
-                                  handleScreenCandidate(selectedCandidate);
-                                  toast({
-                                    variant: 'warning',
-                                    title: 'Screening Required',
-                                    description: 'Please screen the candidate first. You can shortlist after screening.',
-                                  });
-                                  return;
-                                }
-                                handleShortlistCandidate(
-                                  selectedCandidate.candidateId,
-                                  shortlistNotes || undefined
-                                );
-                              }}
-                              disabled={shortlistingCandidateId === selectedCandidate.candidateId}
-                              className="btn-primary flex-1 flex items-center justify-center gap-2"
-                            >
-                              {shortlistingCandidateId === selectedCandidate.candidateId ? (
-                                <>
-                                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                                  </svg>
-                                  Shortlisting...
-                                </>
-                              ) : (
-                                'Shortlist Candidate'
-                              )}
-                            </button>
-                            {!showShortlistNotes && (
-                              <button
-                                onClick={() => setShowShortlistNotes(true)}
-                                className="btn-secondary px-3"
-                                title="Add notes"
-                              >
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                </svg>
-                              </button>
-                            )}
-                          </div>
-                        </>
-                      )}
-                    </>
+                    selectedCandidate.isShortlisted ? (
+                      <div className="flex items-center justify-center gap-2 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                        <svg className="w-5 h-5 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        <span className="text-sm font-medium text-green-700 dark:text-green-300">
+                          Shortlisted for {requirementContext?.clientName || 'this requirement'}
+                        </span>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => handleShortlistClick(selectedCandidate)}
+                        className="btn-primary w-full"
+                      >
+                        Shortlist Candidate
+                      </button>
+                    )
                   )}
 
                   {/* Save requirement prompt for ad-hoc searches */}
