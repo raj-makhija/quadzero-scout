@@ -1158,7 +1158,8 @@ export async function getScreeningHistory(
 export async function updateCandidateProfileFields(
   candidateId: string,
   fields: Record<string, unknown>,
-  screenedBy: string
+  screenedBy: string,
+  screenerName?: string
 ): Promise<void> {
   const now = new Date().toISOString();
 
@@ -1168,16 +1169,19 @@ export async function updateCandidateProfileFields(
     '#last_updated': 'last_updated',
     '#last_screened_at': 'last_screened_at',
     '#last_screened_by': 'last_screened_by',
+    '#last_screened_by_name': 'last_screened_by_name',
   };
   const setParts: string[] = [
     '#last_updated = :now',
     '#last_screened_at = :now',
     '#last_screened_by = :screenedBy',
+    '#last_screened_by_name = :screenerName',
   ];
   const removeParts: string[] = [];
   const values: Record<string, unknown> = {
     ':now': now,
     ':screenedBy': screenedBy,
+    ':screenerName': screenerName || screenedBy,
   };
 
   let paramIndex = 0;

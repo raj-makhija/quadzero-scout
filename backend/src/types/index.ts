@@ -105,6 +105,7 @@ export interface CandidateItem {
   formatted_at?: string;
   last_screened_at?: string;
   last_screened_by?: string;
+  last_screened_by_name?: string;
   created_at: string;
   last_updated: string;
 }

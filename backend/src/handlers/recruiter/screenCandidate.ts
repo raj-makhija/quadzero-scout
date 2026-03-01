@@ -1,7 +1,7 @@
 import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, ScreenCandidateRequestSchema } from '../../lib/validation.js';
-import { getCandidateById, saveScreening, updateCandidateProfileFields } from '../../lib/dynamodb.js';
+import { getCandidateById, saveScreening, updateCandidateProfileFields, getUserById } from '../../lib/dynamodb.js';
 import { getExperienceBucket } from '../../lib/dynamodb.js';
 import { normalizeSkills } from '../../lib/skillNormalizer.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
@@ -110,18 +110,27 @@ async function handleRequest(
       notes,
     };
 
+    // Look up screener's name for display purposes
+    let screenerName: string | undefined;
+    try {
+      const screenerUser = await getUserById(event.auth.userId);
+      screenerName = screenerUser?.name || undefined;
+    } catch {
+      // Non-critical — proceed without name
+    }
+
     // Save screening record and update candidate profile in parallel
     await Promise.all([
       saveScreening(screeningItem),
       Object.keys(dbFields).length > 0
-        ? updateCandidateProfileFields(candidateId, dbFields, event.auth.userId)
+        ? updateCandidateProfileFields(candidateId, dbFields, event.auth.userId, screenerName)
         : Promise.resolve(),
     ]);
 
     // If no fields were changed but we still want to record the screening
     // (e.g., recruiter just verified everything is correct), update screening timestamps
     if (Object.keys(dbFields).length === 0) {
-      await updateCandidateProfileFields(candidateId, {}, event.auth.userId);
+      await updateCandidateProfileFields(candidateId, {}, event.auth.userId, screenerName);
     }
 
     return success({

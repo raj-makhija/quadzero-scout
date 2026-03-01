@@ -101,7 +101,7 @@ async function handleRequest(
           matchDetails: details,
           lastUpdated: candidate.last_updated,
           lastScreenedAt: candidate.last_screened_at,
-          lastScreenedBy: candidate.last_screened_by,
+          lastScreenedBy: candidate.last_screened_by_name || candidate.last_screened_by,
         };
       })
       // Filter out candidates below minimum must-have match ratio
