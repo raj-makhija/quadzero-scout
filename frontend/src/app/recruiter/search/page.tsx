@@ -1319,7 +1319,15 @@ export default function RecruiterSearchPage() {
                 <div
                   key={candidate.candidateId}
                   className="card p-6 hover:shadow-md transition-shadow cursor-pointer"
-                  onClick={() => isAuthenticated ? setShortlistModalCandidate(candidate) : handleLoginRequired()}
+                  onClick={() => {
+                    if (!isAuthenticated) { handleLoginRequired(); return; }
+                    // Smart routing when requirement exists and candidate not yet shortlisted
+                    if (sourceRequirementId && requirementContext && !candidate.isShortlisted) {
+                      handleShortlistClick(candidate);
+                    } else {
+                      setShortlistModalCandidate(candidate);
+                    }
+                  }}
                 >
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                     <div className="flex-1 min-w-0">
