@@ -336,12 +336,12 @@ Detailed test cases are in [test-cases.md](test-cases.md). Summary below:
 | s3Key | Analyze | 1 | 500 | string | TC-ANALYZE-004, TC-ANALYZE-005 |
 | fullName | SaveProfile | 2 | 100 | string | TC-PROFILE-019 |
 | email | SaveProfile | valid | valid | email | TC-PROFILE-014 |
-| primarySkills | SaveProfile | 1 | 20 | array | TC-PROFILE-013, TC-PROFILE-020 |
+| primarySkills | SaveProfile | 1 | — | array | TC-PROFILE-013, TC-PROFILE-020 |
 | primarySkillYears | SaveProfile | 0 | 50 | number | TC-VALID-010 |
 | totalExperience | SaveProfile | 0 | 50 | number | TC-PROFILE-015, TC-PROFILE-016 |
 | seniority | SaveProfile | enum | enum | enum(7) | TC-PROFILE-017 |
 | availability | SaveProfile | enum | enum | enum(7) | TC-PROFILE-018 |
-| secondarySkills | SaveProfile | 0 | 30 | array | TC-VALID-003 |
+| secondarySkills | SaveProfile | 0 | — | array | TC-VALID-003 |
 | industries | SaveProfile | 0 | 10 | array | TC-VALID-003 |
 | roles | SaveProfile | 0 | 10 | array | TC-VALID-003 |
 | certifications | SaveProfile | 0 | 20 | array | TC-VALID-012 |

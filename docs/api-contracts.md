@@ -347,8 +347,8 @@ Authorization: Bearer <jwe_token>
 **Validation Rules:**
 - `candidateId`: Optional (generated if new), string, uuid format
 - `profile.fullName`: Required, string, min 2, max 100 characters
-- `profile.primarySkills`: Required, array of strings, min 1 item, max 20
-- `profile.secondarySkills`: Optional, array of strings, max 50
+- `profile.primarySkills`: Required, array of strings, min 1 item, no upper limit
+- `profile.secondarySkills`: Optional, array of strings, no upper limit
 - `profile.totalExperience`: Required, number, min 0, max 50
 - `profile.seniority`: Required, enum: `intern`, `junior`, `mid`, `senior`, `lead`, `principal`, `executive`
 - `profile.availability`: Required, enum: `immediate`, `1_week`, `2_weeks`, `1_month`, `2_months`, `3_months`, `negotiable`
@@ -655,7 +655,7 @@ Authorization: Bearer <jwe_token> (optional)
 - `criteria.seniority`: Optional, array of seniority enums
 - `criteria.availability`: Optional, array of availability enums
 - `criteria.maxBudgetLpa`: Optional, number, min 0 (in LPA)
-- `pagination.limit`: Optional, number, default 20, max 100
+- `pagination.lastEvaluatedKey`: Optional, base64-encoded cursor for DynamoDB pagination (only needed when database has >500 candidates)
 - `sortBy`: Optional, enum: `matchScore` (default), `experience`, `lastUpdated`. Each option uses composite sorting with tiebreakers (all descending): `matchScore` → lastUpdated → experience; `lastUpdated` → matchScore → experience; `experience` → matchScore → lastUpdated
 
 **Notes:**
@@ -663,7 +663,8 @@ Authorization: Bearer <jwe_token> (optional)
 - Candidates with 0% match on must-have skills are filtered out
 - Candidates exceeding `maxBudgetLpa` are filtered out
 - Skills are normalized using the skill normalizer before matching (supports CRM, marketing, design, and HR/finance skills in addition to engineering skills)
-- Search paginates through all candidates in the database (up to 500) to ensure comprehensive results
+- The backend returns **all** scored candidates in a single response (up to 500 scanned from DynamoDB). Pagination is handled client-side on the frontend (page size: 20)
+- `hasMore` is true only when DynamoDB has more unscanned records beyond the 500 cap
 - **Location** is a soft scoring factor (not a hard filter). Multiple locations (comma/semicolon-separated) use OR matching. `locationMatch` values: `"full"` (+10pts), `"partial"` (no location info, +5pts), `"none"` (+0pts)
 - **Experience** is a soft scoring factor. `experienceMatch` values: `"full"` (within range, +8pts), `"partial"` (within 2 years of boundary, +4pts), `"none"` (way outside, +0pts)
 - **Availability** is a soft scoring factor. `availabilityMatch` values: `"full"` (matches or available earlier, +7pts), `"partial"` (1–2 steps later, +3pts), `"none"` (3+ steps later, +0pts)
