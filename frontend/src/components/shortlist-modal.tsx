@@ -12,6 +12,7 @@ import {
   formatCandidateEngagement,
   getMatchScoreColor,
   getMatchScoreBgColor,
+  formatDate,
 } from '@/lib/utils';
 
 interface RequirementContext {
@@ -332,6 +333,20 @@ export function ShortlistModal({
               <h3 className="font-medium">Screening Status</h3>
               <span className={`badge text-xs ${screeningStatus.className}`}>{screeningStatus.label}</span>
             </div>
+            {candidate.lastScreenedAt && (
+              <div className="grid grid-cols-2 gap-4 mb-3">
+                <div>
+                  <label className="text-sm text-gray-500 dark:text-gray-400">Screening Date</label>
+                  <p className="font-medium text-sm">{formatDate(candidate.lastScreenedAt)}</p>
+                </div>
+                {candidate.lastScreenedBy && (
+                  <div>
+                    <label className="text-sm text-gray-500 dark:text-gray-400">Screened By</label>
+                    <p className="font-medium text-sm">{candidate.lastScreenedBy}</p>
+                  </div>
+                )}
+              </div>
+            )}
             {isScreeningExpired(candidate.lastScreenedAt) && isShortlistMode && (
               <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
                 <p className="text-sm text-amber-700 dark:text-amber-300">

@@ -573,6 +573,7 @@ export interface CandidateSearchResult {
   };
   lastUpdated: string;
   lastScreenedAt?: string;
+  lastScreenedBy?: string;
   isShortlisted?: boolean;
 }
 

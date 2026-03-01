@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Header } from '@/components/Header';
@@ -15,6 +15,7 @@ import { toast } from '@/hooks/use-toast';
 type ViewMode = 'input' | 'requirement_details' | 'criteria' | 'results';
 
 const STORAGE_KEY = 'scout_recruiter_search';
+const PAGE_SIZE = 20;
 
 export default function RecruiterSearchPage() {
   const router = useRouter();
@@ -38,13 +39,20 @@ export default function RecruiterSearchPage() {
   const [parsedCriteria, setParsedCriteria] = useState<ParsedCriteria | null>(prefilled?.parsedCriteria || null);
   const [searchCriteria, setSearchCriteria] = useState<SearchCriteria>(prefilled?.searchCriteria || {});
   const [suggestions, setSuggestions] = useState<string[]>(prefilled?.suggestions || []);
-  const [results, setResults] = useState<CandidateSearchResult[]>([]);
+  const [allResults, setAllResults] = useState<CandidateSearchResult[]>([]);
   const [totalMatches, setTotalMatches] = useState(0);
   const [loading, setLoading] = useState(prefilled?.viewMode === 'results');
   const [error, setError] = useState<string | null>(null);
   const [paginationKey, setPaginationKey] = useState<string | undefined>(undefined);
   const [hasMore, setHasMore] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+
+  // Derive the current page of results from allResults
+  const totalPages = Math.ceil(allResults.length / PAGE_SIZE);
+  const results = useMemo(
+    () => allResults.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [allResults, currentPage]
+  );
   const [formattingCandidateId, setFormattingCandidateId] = useState<string | null>(null);
   const [sourceRequirementId, setSourceRequirementId] = useState<string | null>(prefilled?.requirementId || null);
   const [sortBy, setSortBy] = useState<'matchScore' | 'experience' | 'lastUpdated'>('matchScore');
@@ -138,14 +146,19 @@ export default function RecruiterSearchPage() {
   };
 
   // Search helper — reusable for both button click and state restore
-  const runSearch = useCallback(async (criteria: SearchCriteria, lastEvaluatedKey?: string, sort?: 'matchScore' | 'experience' | 'lastUpdated') => {
+  const runSearch = useCallback(async (criteria: SearchCriteria, lastEvaluatedKey?: string, sort?: 'matchScore' | 'experience' | 'lastUpdated', append?: boolean) => {
     try {
       setLoading(true);
       setError(null);
       const pagination = lastEvaluatedKey ? { lastEvaluatedKey } : undefined;
       const response = await api.searchCandidates(criteria, pagination, sort || sortBy);
-      setResults(response.candidates);
-      setTotalMatches(response.totalMatches);
+      if (append) {
+        setAllResults(prev => [...prev, ...response.candidates]);
+      } else {
+        setAllResults(response.candidates);
+        setCurrentPage(1);
+      }
+      setTotalMatches(prev => append ? prev + response.totalMatches : response.totalMatches);
       setPaginationKey(response.pagination.lastEvaluatedKey);
       setHasMore(response.pagination.hasMore);
       setViewMode('results');
@@ -291,22 +304,26 @@ export default function RecruiterSearchPage() {
   };
 
   const handleSearch = async () => {
-    setCurrentPage(1);
     await runSearch(searchCriteria);
   };
 
   const handleNextPage = async () => {
-    if (!paginationKey || !hasMore) return;
-    setCurrentPage(prev => prev + 1);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    await runSearch(searchCriteria, paginationKey);
+    if (currentPage < totalPages) {
+      // Navigate to next local page
+      setCurrentPage(prev => prev + 1);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else if (hasMore && paginationKey) {
+      // Fetch more results from server and advance
+      setCurrentPage(prev => prev + 1);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      await runSearch(searchCriteria, paginationKey, undefined, true);
+    }
   };
 
   const handlePreviousPage = async () => {
     if (currentPage <= 1) return;
-    setCurrentPage(1);
+    setCurrentPage(prev => prev - 1);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    await runSearch(searchCriteria);
   };
 
   const handleDownloadResume = async (candidateId: string) => {
@@ -358,10 +375,10 @@ export default function RecruiterSearchPage() {
 
   const handleSortChange = useCallback((newSort: 'matchScore' | 'experience' | 'lastUpdated') => {
     setSortBy(newSort);
-    if (results.length > 0) {
+    if (allResults.length > 0) {
       runSearch(searchCriteria, undefined, newSort);
     }
-  }, [results.length, searchCriteria, runSearch]);
+  }, [allResults.length, searchCriteria, runSearch]);
 
   const handleScreenCandidate = useCallback((candidate: CandidateSearchResult) => {
     setScreeningCandidate(candidate);
@@ -371,7 +388,7 @@ export default function RecruiterSearchPage() {
     setScreeningCandidate(null);
     // Update the candidate's lastScreenedAt in the local results
     const now = new Date().toISOString();
-    setResults(prev => {
+    setAllResults(prev => {
       const updated = prev.map(c =>
         c.candidateId === candidateId ? { ...c, lastScreenedAt: now } : c
       );
@@ -406,7 +423,7 @@ export default function RecruiterSearchPage() {
   }, [sourceRequirementId, requirementContext]);
 
   const handleShortlisted = useCallback((candidateId: string) => {
-    setResults(prev => prev.map(r =>
+    setAllResults(prev => prev.map(r =>
       r.candidateId === candidateId ? { ...r, isShortlisted: true } : r
     ));
     setShortlistModalCandidate(null);
@@ -714,8 +731,8 @@ export default function RecruiterSearchPage() {
           </button>
           <span className="text-gray-300 dark:text-gray-600">/</span>
           <button
-            onClick={() => results.length > 0 && setViewMode('results')}
-            disabled={results.length === 0}
+            onClick={() => allResults.length > 0 && setViewMode('results')}
+            disabled={allResults.length === 0}
             className={`text-sm ${viewMode === 'results' ? 'text-primary-600 dark:text-primary-400 font-medium' : 'text-gray-500 dark:text-gray-400'} disabled:opacity-50`}
           >
             Results ({totalMatches})
@@ -1495,7 +1512,7 @@ export default function RecruiterSearchPage() {
               )}
 
               {/* Pagination */}
-              {results.length > 0 && (currentPage > 1 || hasMore) && (
+              {allResults.length > PAGE_SIZE && (
                 <div className="mt-6 flex items-center justify-between">
                   <button
                     onClick={handlePreviousPage}
@@ -1508,11 +1525,11 @@ export default function RecruiterSearchPage() {
                     Previous
                   </button>
                   <span className="text-sm text-gray-600 dark:text-gray-400">
-                    Page {currentPage}
+                    Page {currentPage} of {totalPages}
                   </span>
                   <button
                     onClick={handleNextPage}
-                    disabled={!hasMore || loading}
+                    disabled={(currentPage >= totalPages && !hasMore) || loading}
                     className="btn-secondary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Next
@@ -1549,7 +1566,7 @@ export default function RecruiterSearchPage() {
           onRescreen={handleRescreenFromModal}
           onCtcUpdated={(expectedCtc, currentCtc) => {
             setShortlistModalCandidate(prev => prev ? { ...prev, expectedCtc, currentCtc } : prev);
-            setResults(prev => prev.map(c =>
+            setAllResults(prev => prev.map(c =>
               c.candidateId === shortlistModalCandidate.candidateId ? { ...c, expectedCtc, currentCtc } : c
             ));
           }}
