@@ -384,13 +384,13 @@ export default function RecruiterSearchPage() {
     setScreeningCandidate(candidate);
   }, []);
 
-  const handleScreeningComplete = useCallback((candidateId: string) => {
+  const handleScreeningComplete = useCallback((candidateId: string, updatedValues?: Partial<CandidateSearchResult>) => {
     setScreeningCandidate(null);
-    // Update the candidate's lastScreenedAt in the local results
+    // Update the candidate's lastScreenedAt and any screened values in the local results
     const now = new Date().toISOString();
     setAllResults(prev => {
       const updated = prev.map(c =>
-        c.candidateId === candidateId ? { ...c, lastScreenedAt: now } : c
+        c.candidateId === candidateId ? { ...c, ...updatedValues, lastScreenedAt: now } : c
       );
       // After screening in shortlist flow, auto-open the shortlist modal
       if (sourceRequirementId && requirementContext) {

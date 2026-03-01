@@ -17,7 +17,7 @@ interface ScreeningModalProps {
   candidateId?: string;
   candidateName?: string;
   onClose: () => void;
-  onScreeningComplete: (candidateId: string) => void;
+  onScreeningComplete: (candidateId: string, updatedValues?: Partial<CandidateSearchResult>) => void;
   isShortlistFlow?: boolean;
 }
 
@@ -167,14 +167,26 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
 
       await api.screenCandidate(resolvedCandidateId, updatedValues, notes || undefined);
 
+      // Build updated candidate fields to pass back to the caller
+      const refreshedFields: Partial<CandidateSearchResult> = {
+        currentCtc: currentCtc !== '' ? parseFloat(currentCtc) : undefined,
+        expectedCtc: expectedCtc !== '' ? parseFloat(expectedCtc) : undefined,
+        availability: availability || undefined,
+        engagementModel: (engagementModel as CandidateSearchResult['engagementModel']) || undefined,
+        totalExperience: totalExperience !== '' ? parseFloat(totalExperience) : undefined,
+        seniority: (seniority as CandidateSearchResult['seniority']) || undefined,
+      };
+      if (fullName) refreshedFields.fullName = fullName;
+      if (location) refreshedFields.location = location;
+
       if (isShortlistFlow) {
         // Show success message briefly, then close
         setSuccessMessage('Screening saved. You can now shortlist this candidate.');
         setTimeout(() => {
-          onScreeningComplete(resolvedCandidateId);
+          onScreeningComplete(resolvedCandidateId, refreshedFields);
         }, 1500);
       } else {
-        onScreeningComplete(resolvedCandidateId);
+        onScreeningComplete(resolvedCandidateId, refreshedFields);
       }
     } catch (err) {
       let msg = (err as Error).message || 'Failed to save screening';
