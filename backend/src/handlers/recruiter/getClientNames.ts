@@ -7,8 +7,7 @@ async function handleRequest(
   event: AuthenticatedEvent
 ): Promise<APIGatewayProxyResultV2> {
   try {
-    const recruiterId = event.auth.userId;
-    const result = await getDistinctClientNames(recruiterId);
+    const result = await getDistinctClientNames();
 
     return success({
       clientNames: result.clientNames,

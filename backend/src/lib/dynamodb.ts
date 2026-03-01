@@ -647,9 +647,7 @@ export async function getActiveRequirementsByClient(
   return (result.Items || []) as RequirementItem[];
 }
 
-export async function getDistinctClientNames(
-  recruiterId: string
-): Promise<{ clientNames: string[]; endClients: string[] }> {
+export async function getDistinctClientNames(): Promise<{ clientNames: string[]; endClients: string[] }> {
   const clientNameSet = new Set<string>();
   const endClientSet = new Set<string>();
   let currentKey: Record<string, unknown> | undefined;
@@ -657,16 +655,10 @@ export async function getDistinctClientNames(
   do {
     const params: {
       TableName: string;
-      IndexName: string;
-      KeyConditionExpression: string;
-      ExpressionAttributeValues: Record<string, unknown>;
       ProjectionExpression: string;
       ExclusiveStartKey?: Record<string, unknown>;
     } = {
       TableName: config.dynamodb.requirementsTable,
-      IndexName: 'RecruiterIndex',
-      KeyConditionExpression: 'recruiter_id = :rid',
-      ExpressionAttributeValues: { ':rid': recruiterId },
       ProjectionExpression: 'client_name, end_client',
     };
 
@@ -674,7 +666,7 @@ export async function getDistinctClientNames(
       params.ExclusiveStartKey = currentKey;
     }
 
-    const result = await docClient.send(new QueryCommand(params));
+    const result = await docClient.send(new ScanCommand(params));
     for (const item of (result.Items || []) as Pick<RequirementItem, 'client_name' | 'end_client'>[]) {
       if (item.client_name) clientNameSet.add(item.client_name);
       if (item.end_client) endClientSet.add(item.end_client);
