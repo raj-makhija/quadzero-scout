@@ -56,6 +56,9 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
   // Track which fields are empty/missing for highlighting
   const [emptyFields, setEmptyFields] = useState<Set<string>>(new Set());
 
+  // Validation: track whether user attempted submit
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+
   // Fetch full profile data on mount
   useEffect(() => {
     async function fetchProfile() {
@@ -109,6 +112,21 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
   }, [resolvedCandidateId]);
 
   const handleSubmit = useCallback(async () => {
+    setSubmitAttempted(true);
+
+    // Validate required fields
+    const missingFields: string[] = [];
+    if (currentCtc === '') missingFields.push('Current CTC');
+    if (expectedCtc === '') missingFields.push('Expected CTC');
+    if (!availability) missingFields.push('Notice Period');
+    if (!engagementModel) missingFields.push('Engagement Preference');
+    if (!notes.trim()) missingFields.push('Screening Notes');
+
+    if (missingFields.length > 0) {
+      setErrorMessage(`Please fill in: ${missingFields.join(', ')}`);
+      return;
+    }
+
     setLoading(true);
     setErrorMessage('');
 
@@ -250,6 +268,9 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                   <FormField
                     label="Current CTC (LPA)"
                     htmlFor="currentCtc"
+                    required
+                    touched={submitAttempted}
+                    error={currentCtc === '' ? 'Required' : undefined}
                     className={emptyFields.has('currentCtc') && !currentCtc ? 'bg-amber-50 dark:bg-amber-900/10 p-2 rounded' : ''}
                   >
                     <FormInput
@@ -261,11 +282,15 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                       value={currentCtc}
                       onChange={(e) => setCurrentCtc(e.target.value)}
                       placeholder="e.g. 12.5"
+                      hasError={submitAttempted && currentCtc === ''}
                     />
                   </FormField>
                   <FormField
                     label="Expected CTC (LPA)"
                     htmlFor="expectedCtc"
+                    required
+                    touched={submitAttempted}
+                    error={expectedCtc === '' ? 'Required' : undefined}
                     className={emptyFields.has('expectedCtc') && !expectedCtc ? 'bg-amber-50 dark:bg-amber-900/10 p-2 rounded' : ''}
                   >
                     <FormInput
@@ -277,6 +302,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                       value={expectedCtc}
                       onChange={(e) => setExpectedCtc(e.target.value)}
                       placeholder="e.g. 15.0"
+                      hasError={submitAttempted && expectedCtc === ''}
                     />
                   </FormField>
                 </div>
@@ -291,6 +317,9 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                   <FormField
                     label="Notice Period"
                     htmlFor="availability"
+                    required
+                    touched={submitAttempted}
+                    error={!availability ? 'Required' : undefined}
                     className={emptyFields.has('availability') && !availability ? 'bg-amber-50 dark:bg-amber-900/10 p-2 rounded' : ''}
                   >
                     <FormSelect
@@ -299,15 +328,23 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                       onChange={(e) => setAvailability(e.target.value)}
                       options={AVAILABILITY_OPTIONS}
                       placeholder="Select notice period"
+                      hasError={submitAttempted && !availability}
                     />
                   </FormField>
-                  <FormField label="Engagement Preference" htmlFor="engagementModel">
+                  <FormField
+                    label="Engagement Preference"
+                    htmlFor="engagementModel"
+                    required
+                    touched={submitAttempted}
+                    error={!engagementModel ? 'Required' : undefined}
+                  >
                     <FormSelect
                       id="engagementModel"
                       value={engagementModel}
                       onChange={(e) => setEngagementModel(e.target.value)}
                       options={CANDIDATE_ENGAGEMENT_OPTIONS}
                       placeholder="Select preference"
+                      hasError={submitAttempted && !engagementModel}
                     />
                   </FormField>
                 </div>
@@ -497,6 +534,9 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                   label="Notes from the screening call"
                   htmlFor="screeningNotes"
                   hint="Observations, concerns, or other relevant notes"
+                  required
+                  touched={submitAttempted}
+                  error={!notes.trim() ? 'Required' : undefined}
                 >
                   <FormTextarea
                     id="screeningNotes"
@@ -504,6 +544,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                     onChange={(e) => setNotes(e.target.value)}
                     placeholder="e.g. Candidate confirmed 30-day notice, willing to negotiate on CTC..."
                     rows={3}
+                    hasError={submitAttempted && !notes.trim()}
                   />
                 </FormField>
               </div>
