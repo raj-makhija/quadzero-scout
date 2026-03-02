@@ -21,6 +21,7 @@ export default function RequirementsListPage() {
   const [clientNameFilter, setClientNameFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
 
   // Redirect to sign-in if not authenticated
   if (status === 'unauthenticated') {
@@ -37,6 +38,7 @@ export default function RequirementsListPage() {
         clientName: clientNameFilter.trim() || undefined,
         dateFrom: dateFrom || undefined,
         dateTo: dateTo ? dateTo + 'T23:59:59.999Z' : undefined,
+        status: statusFilter || undefined,
         limit: 20,
         lastEvaluatedKey: reset ? undefined : lastKey,
       });
@@ -53,7 +55,7 @@ export default function RequirementsListPage() {
     } finally {
       setLoading(false);
     }
-  }, [clientNameFilter, dateFrom, dateTo, lastKey]);
+  }, [clientNameFilter, dateFrom, dateTo, statusFilter, lastKey]);
 
   useEffect(() => {
     if (status === 'authenticated') {
@@ -128,15 +130,28 @@ export default function RequirementsListPage() {
                 className="input mt-1"
               />
             </div>
+            <div>
+              <label className="label text-xs">Status</label>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="input mt-1"
+              >
+                <option value="">All</option>
+                <option value="active">Active</option>
+                <option value="closed_on_hold">Closed / On-hold</option>
+              </select>
+            </div>
             <button onClick={handleSearch} className="btn-primary whitespace-nowrap">
               Search
             </button>
-            {(clientNameFilter || dateFrom || dateTo) && (
+            {(clientNameFilter || dateFrom || dateTo || statusFilter) && (
               <button
                 onClick={() => {
                   setClientNameFilter('');
                   setDateFrom('');
                   setDateTo('');
+                  setStatusFilter('');
                   setTimeout(() => fetchRequirements(true), 0);
                 }}
                 className="btn-secondary whitespace-nowrap"
@@ -171,6 +186,11 @@ export default function RequirementsListPage() {
                     {req.status === 'duplicate' && (
                       <span className="badge bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300 text-xs">
                         Duplicate
+                      </span>
+                    )}
+                    {req.status === 'closed_on_hold' && (
+                      <span className="badge bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300 text-xs">
+                        Closed / On-hold
                       </span>
                     )}
                     {req.requestCount != null && req.requestCount > 1 && (
@@ -225,11 +245,11 @@ export default function RequirementsListPage() {
               </svg>
               <h3 className="mt-4 text-lg font-medium text-gray-900 dark:text-gray-100">No requirements found</h3>
               <p className="mt-2 text-gray-500 dark:text-gray-400">
-                {clientNameFilter || dateFrom || dateTo
+                {clientNameFilter || dateFrom || dateTo || statusFilter
                   ? 'Try adjusting your filters'
                   : 'Post your first JD requirement to get started'}
               </p>
-              {!clientNameFilter && !dateFrom && !dateTo && (
+              {!clientNameFilter && !dateFrom && !dateTo && !statusFilter && (
                 <button
                   onClick={() => router.push('/recruiter/search')}
                   className="btn-primary mt-4"

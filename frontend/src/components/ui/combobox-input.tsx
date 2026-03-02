@@ -27,6 +27,7 @@ export function ComboboxInput({
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const justSelectedRef = useRef(false);
 
   const filtered = value.trim()
     ? options.filter((opt) =>
@@ -67,6 +68,7 @@ export function ComboboxInput({
     (option: string) => {
       onChange(option);
       setIsOpen(false);
+      justSelectedRef.current = true;
       inputRef.current?.focus();
     },
     [onChange]
@@ -122,6 +124,10 @@ export function ComboboxInput({
         value={value}
         onChange={handleInputChange}
         onFocus={() => {
+          if (justSelectedRef.current) {
+            justSelectedRef.current = false;
+            return;
+          }
           if (options.length > 0) setIsOpen(true);
         }}
         onKeyDown={handleKeyDown}

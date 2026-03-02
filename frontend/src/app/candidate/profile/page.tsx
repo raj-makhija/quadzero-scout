@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
-import { api, CandidateProfile, MatchedRequirement, RequirementDetail } from '@/lib/api';
+import { api, ApiError, CandidateProfile, MatchedRequirement, RequirementDetail } from '@/lib/api';
 import {
   formatSeniority,
   formatAvailability,
@@ -20,6 +20,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { ProfileCardSkeleton } from '@/components/skeletons';
 import { NoProfileFound, ErrorState } from '@/components/EmptyState';
 import { ProfileCompleteness } from '@/components/ProfileCompleteness';
+import { ScreeningModal } from '@/components/screening-modal';
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -42,6 +43,11 @@ export default function ProfilePage() {
 
   // Shortlist loading state (per requirement ID)
   const [shortlistLoading, setShortlistLoading] = useState<Record<string, boolean>>({});
+
+  // Screening modal state
+  const [screeningCandidateId, setScreeningCandidateId] = useState<string | null>(null);
+  const [pendingShortlistRequirementId, setPendingShortlistRequirementId] = useState<string | null>(null);
+  const [shortlistError, setShortlistError] = useState<string | null>(null);
 
   const candidateId = typeof window !== 'undefined' ? sessionStorage.getItem('candidateId') : null;
 
@@ -105,6 +111,7 @@ export default function ProfilePage() {
   const handleShortlistToggle = useCallback(async (requirementId: string, isCurrentlyShortlisted: boolean) => {
     if (!candidateId) return;
 
+    setShortlistError(null);
     setShortlistLoading((prev) => ({ ...prev, [requirementId]: true }));
 
     // Optimistic update
@@ -120,17 +127,36 @@ export default function ProfilePage() {
       } else {
         await api.shortlistCandidate(requirementId, candidateId);
       }
-    } catch {
-      // Revert on failure
+    } catch (err) {
+      // Revert optimistic update
       setMatches((prev) =>
         prev.map((m) =>
           m.requirementId === requirementId ? { ...m, isShortlisted: isCurrentlyShortlisted } : m
         )
       );
+
+      // If screening is required, open screening modal and queue the shortlist
+      if (err instanceof ApiError && err.code === 'SCREENING_REQUIRED') {
+        setPendingShortlistRequirementId(requirementId);
+        setScreeningCandidateId(candidateId);
+      } else {
+        setShortlistError(err instanceof Error ? err.message : 'Failed to shortlist candidate');
+      }
     } finally {
       setShortlistLoading((prev) => ({ ...prev, [requirementId]: false }));
     }
   }, [candidateId]);
+
+  const handleScreeningComplete = useCallback(async (_candidateId: string) => {
+    setScreeningCandidateId(null);
+    const reqId = pendingShortlistRequirementId;
+    setPendingShortlistRequirementId(null);
+
+    // After screening, automatically retry the shortlist
+    if (reqId && candidateId) {
+      handleShortlistToggle(reqId, false);
+    }
+  }, [pendingShortlistRequirementId, candidateId, handleShortlistToggle]);
 
   if (loading) {
     return <ProfileCardSkeleton />;
@@ -329,6 +355,17 @@ export default function ProfilePage() {
             <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">
               Matching Requirements
             </h2>
+
+            {shortlistError && (
+              <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center justify-between">
+                <p className="text-sm text-red-600 dark:text-red-400">{shortlistError}</p>
+                <button onClick={() => setShortlistError(null)} className="text-red-400 hover:text-red-600 ml-2">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            )}
 
             {matchesLoading && (
               <div className="card p-8 text-center">
@@ -633,6 +670,19 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Screening Modal */}
+      {screeningCandidateId && (
+        <ScreeningModal
+          candidateId={screeningCandidateId}
+          candidateName={profile?.fullName || 'Candidate'}
+          onClose={() => {
+            setScreeningCandidateId(null);
+            setPendingShortlistRequirementId(null);
+          }}
+          onScreeningComplete={handleScreeningComplete}
+        />
       )}
 
       <BottomNav />

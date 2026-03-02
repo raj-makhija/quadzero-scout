@@ -15,8 +15,9 @@ import {
 export default function RequirementDetailPage() {
   const router = useRouter();
   const params = useParams();
-  const { status } = useSession();
+  const { data: session, status } = useSession();
   const requirementId = params.requirementId as string;
+  const isInternal = (session?.user as { isInternal?: boolean } | undefined)?.isInternal === true;
 
   const [requirement, setRequirement] = useState<RequirementDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -26,6 +27,27 @@ export default function RequirementDetailPage() {
   const [candidatesLoading, setCandidatesLoading] = useState(true);
 
   const [jdExpanded, setJdExpanded] = useState(false);
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [showReasonModal, setShowReasonModal] = useState(false);
+  const [reason, setReason] = useState('');
+
+  const handleStatusToggle = async (newStatus: 'active' | 'closed_on_hold', reasonText?: string) => {
+    if (!requirement) return;
+    try {
+      setStatusLoading(true);
+      setError(null);
+      const result = await api.updateRequirementStatus(requirementId, newStatus, reasonText);
+      // Re-fetch full requirement to get updated statusHistory
+      const updated = await api.getRequirement(requirementId);
+      setRequirement(updated);
+      setShowReasonModal(false);
+      setReason('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update status');
+    } finally {
+      setStatusLoading(false);
+    }
+  };
 
   // Redirect if not authenticated
   if (status === 'unauthenticated') {
@@ -86,6 +108,15 @@ export default function RequirementDetailPage() {
       suggestions: [],
       viewMode: 'results',
       requirementId,
+      requirementMeta: {
+        clientName: requirement.clientName,
+        jobTitle: requirement.jobTitle,
+        engagementModel: requirement.engagementModel,
+        contractDurationMonths: requirement.contractDurationMonths,
+        paymentTermsDays: requirement.paymentTermsDays,
+        budgetMinLpa: requirement.budgetMinLpa,
+        budgetMaxLpa: requirement.budgetMaxLpa,
+      },
     }));
 
     router.push('/recruiter/search');
@@ -143,13 +174,38 @@ export default function RequirementDetailPage() {
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-2 self-start">
-                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                      requirement.status === 'active'
-                        ? 'bg-green-500/20 text-green-100'
-                        : 'bg-yellow-500/20 text-yellow-100'
-                    }`}>
-                      {requirement.status === 'active' ? 'Active' : 'Duplicate'}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                        requirement.status === 'active'
+                          ? 'bg-green-500/20 text-green-100'
+                          : requirement.status === 'closed_on_hold'
+                          ? 'bg-gray-500/20 text-gray-200'
+                          : 'bg-yellow-500/20 text-yellow-100'
+                      }`}>
+                        {requirement.status === 'active' ? 'Active'
+                          : requirement.status === 'closed_on_hold' ? 'Closed / On-hold'
+                          : 'Duplicate'}
+                      </span>
+                      {isInternal && requirement.status !== 'duplicate' && (
+                        <button
+                          onClick={() => {
+                            if (requirement.status === 'active') {
+                              setShowReasonModal(true);
+                            } else {
+                              handleStatusToggle('active');
+                            }
+                          }}
+                          disabled={statusLoading}
+                          className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                            requirement.status === 'active'
+                              ? 'bg-gray-600/50 text-gray-200 hover:bg-gray-600/70'
+                              : 'bg-green-600/50 text-green-200 hover:bg-green-600/70'
+                          } disabled:opacity-50`}
+                        >
+                          {statusLoading ? 'Updating...' : requirement.status === 'active' ? 'Close / Put On-hold' : 'Re-open'}
+                        </button>
+                      )}
+                    </div>
                     {requirement.requestCount != null && requirement.requestCount > 1 && (
                       <span className="px-3 py-1 rounded-full text-xs font-medium bg-blue-500/20 text-blue-100">
                         Received {requirement.requestCount}x
@@ -321,6 +377,32 @@ export default function RequirementDetailPage() {
               </div>
             )}
 
+            {/* Status History */}
+            {requirement.statusHistory && requirement.statusHistory.length > 0 && (
+              <div className="card p-6 mb-6">
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Status History</h3>
+                <div className="space-y-4">
+                  {requirement.statusHistory.map((entry, i) => (
+                    <div key={i} className="flex items-start gap-3 border-l-2 border-purple-400 pl-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                            {entry.fromStatus === 'active' ? 'Active' : entry.fromStatus === 'closed_on_hold' ? 'Closed / On-hold' : entry.fromStatus}
+                            {' → '}
+                            {entry.toStatus === 'active' ? 'Active' : entry.toStatus === 'closed_on_hold' ? 'Closed / On-hold' : entry.toStatus}
+                          </p>
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{formatDate(entry.changedAt)}</p>
+                        {entry.reason && (
+                          <p className="text-xs text-gray-400 italic mt-1">Reason: {entry.reason}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Shortlisted Candidates Pipeline */}
             <div>
               <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">
@@ -403,6 +485,43 @@ export default function RequirementDetailPage() {
           </>
         )}
       </main>
+
+      {/* Close / On-hold Reason Modal */}
+      {showReasonModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full shadow-xl">
+            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">
+              Close / Put On-hold
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              Optionally provide a reason for closing this requirement.
+            </p>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Reason (optional)"
+              className="input w-full mb-4"
+              rows={3}
+              maxLength={500}
+            />
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => { setShowReasonModal(false); setReason(''); }}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleStatusToggle('closed_on_hold', reason || undefined)}
+                disabled={statusLoading}
+                className="btn-primary"
+              >
+                {statusLoading ? 'Updating...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

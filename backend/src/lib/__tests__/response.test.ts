@@ -110,7 +110,11 @@ describe('ErrorCodes', () => {
     expect(ErrorCodes.DYNAMODB_ERROR).toBe('DYNAMODB_ERROR');
   });
 
-  it('has exactly 10 error codes', () => {
-    expect(Object.keys(ErrorCodes)).toHaveLength(10);
+  it('defines SCREENING_REQUIRED', () => {
+    expect(ErrorCodes.SCREENING_REQUIRED).toBe('SCREENING_REQUIRED');
+  });
+
+  it('has exactly 11 error codes', () => {
+    expect(Object.keys(ErrorCodes)).toHaveLength(11);
   });
 });

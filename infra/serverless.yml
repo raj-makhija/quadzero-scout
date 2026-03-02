@@ -45,6 +45,7 @@ provider:
     DYNAMODB_TABLE_PRICING_CONFIG: ${self:custom.pricingConfigTable}
     DYNAMODB_TABLE_SHORTLISTS: ${self:custom.shortlistsTable}
     DYNAMODB_TABLE_CLIENTS: ${self:custom.clientsTable}
+    DYNAMODB_TABLE_CANDIDATE_SCREENINGS: ${self:custom.candidateScreeningsTable}
 
   httpApi:
     cors:
@@ -93,6 +94,7 @@ custom:
   pricingConfigTable: PricingConfig-${self:provider.stage}
   shortlistsTable: Shortlists-${self:provider.stage}
   clientsTable: Clients-${self:provider.stage}
+  candidateScreeningsTable: CandidateScreenings-${self:provider.stage}
 
   dotenv:
     include:
@@ -299,6 +301,13 @@ functions:
           path: /recruiter/requirements/{requirementId}/criteria
           method: PUT
 
+  recruiterUpdateRequirementStatus:
+    handler: src/handlers/recruiter/updateRequirementStatus.handler
+    events:
+      - httpApi:
+          path: /recruiter/requirements/{requirementId}/status
+          method: PUT
+
   recruiterGetClientNames:
     handler: src/handlers/recruiter/getClientNames.handler
     events:
@@ -442,6 +451,21 @@ functions:
     events:
       - httpApi:
           path: /recruiter/requirements/{requirementId}/shortlisted
+          method: GET
+
+  # Candidate Screening Endpoints
+  recruiterScreenCandidate:
+    handler: src/handlers/recruiter/screenCandidate.handler
+    events:
+      - httpApi:
+          path: /recruiter/screen-candidate
+          method: POST
+
+  recruiterGetScreeningHistory:
+    handler: src/handlers/recruiter/getScreeningHistory.handler
+    events:
+      - httpApi:
+          path: /recruiter/screening-history/{candidateId}
           method: GET
 
   adminGetPricingConfig:

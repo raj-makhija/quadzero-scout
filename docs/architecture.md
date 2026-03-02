@@ -61,6 +61,7 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │                            │  - calculatePricing                         │ │
 │                            │  - shortlist / deleteShortlist              │ │
 │                            │  - getShortlistedCandidates                 │ │
+│                            │  - screenCandidate / screeningHistory       │ │
 │                            │  - saveClient / listClients                 │ │
 │                            │  - getClientDefaults / updateClient         │ │
 │                            └──────────────────────────────────────────────┘ │
@@ -93,6 +94,8 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │  - Shortlists   │  │                 │  │                                 │
 │  - PricingConfig│  │                 │  │                                 │
 │  - Clients      │  │                 │  │                                 │
+│  - Candidate   │  │                 │  │                                 │
+│    Screenings  │  │                 │  │                                 │
 └─────────────────┘  └─────────────────┘  └─────────────────────────────────┘
 ```
 
@@ -262,7 +265,7 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
      │ 7. View Match  │                │                │
      │    Results &   │                │                │
      │    JD Details  │                │                │
-     │    (Drawer)    │                │                │
+     │    (Modal)     │                │                │
      │                │                │                │
      │ 8. Shortlist   │                │                │
      │    Candidate   │                │                │
@@ -307,13 +310,84 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
      │                │                │                │
 ```
 
+### Recruiter Candidate Screening Flow
+
+```
+┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
+│Recruiter │     │ Frontend │     │  Lambda  │     │ DynamoDB │
+└────┬─────┘     └────┬─────┘     └────┬─────┘     └────┬─────┘
+     │                │                │                │
+     │ 1. Open        │                │                │
+     │    Screening   │                │                │
+     │    Modal from  │                │                │
+     │    Search      │                │                │
+     │    Results     │                │                │
+     │───────────────>│                │                │
+     │                │                │                │
+     │ 2. Fill in /   │                │                │
+     │    Verify      │                │                │
+     │    Profile     │                │                │
+     │    Fields      │                │                │
+     │───────────────>│                │                │
+     │                │                │                │
+     │                │ 3. POST        │                │
+     │                │ /recruiter/    │                │
+     │                │ screen-        │                │
+     │                │ candidate      │                │
+     │                │───────────────>│                │
+     │                │                │                │
+     │                │                │ 4. Fetch       │
+     │                │                │    current     │
+     │                │                │    profile     │
+     │                │                │───────────────>│
+     │                │                │<───────────────│
+     │                │                │                │
+     │                │                │ 5. Diff values │
+     │                │                │    (previous   │
+     │                │                │    vs updated) │
+     │                │                │                │
+     │                │                │ 6. Save audit  │
+     │                │                │    record to   │
+     │                │                │    Candidate   │
+     │                │                │    Screenings  │
+     │                │                │───────────────>│
+     │                │                │<───────────────│
+     │                │                │                │
+     │                │                │ 7. Update      │
+     │                │                │    candidate   │
+     │                │                │    profile +   │
+     │                │                │    set         │
+     │                │                │    last_       │
+     │                │                │    screened_at │
+     │                │                │───────────────>│
+     │                │                │<───────────────│
+     │                │                │                │
+     │                │<───────────────│                │
+     │<───────────────│                │                │
+     │                │                │                │
+     │ 8. Candidate   │                │                │
+     │    can now be   │                │                │
+     │    shortlisted  │                │                │
+     │    (screening   │                │                │
+     │    valid for    │                │                │
+     │    15 days)     │                │                │
+     │                │                │                │
+```
+
+**Screening Rules:**
+- A candidate must be screened before they can be shortlisted for any requirement
+- Screening expires after 15 days; re-screening is required after expiry
+- The 15-day expiry check is enforced on the backend in the `POST /recruiter/shortlist` handler
+- Screening records are immutable audit entries; each screening creates a new record
+
 **Key Implementation Details:**
 
 - **Shared scoring module**: The `calculateMatchScore()` function is extracted into `backend/src/lib/matchScoring.ts`, shared by both the recruiter search handler and the candidate match-requirements handler.
 - **Shortlists table**: Uses a composite primary key (`requirement_id` + `candidate_id`) with a `CandidateIndex` GSI for reverse lookups by candidate.
 - **Candidate profile page**: After profile save, the frontend calls `POST /candidate/match-requirements` to display matching opportunities.
-- **Recruiter requirement detail page** (`/recruiter/requirements/[id]`): Shows a candidate pipeline with all shortlisted candidates for that requirement. The "Search Candidates" button writes stored criteria to `sessionStorage` with `viewMode: 'results'` and navigates to `/recruiter/search`, which auto-executes the search and displays results directly (bypassing JD input and criteria views).
-- **JD detail drawer**: Recruiters can view full JD details via a slide-out drawer on the match results page before shortlisting.
+- **Recruiter requirement detail page** (`/recruiter/requirements/[id]`): Shows a candidate pipeline with all shortlisted candidates for that requirement. The "Search Candidates" button writes stored criteria + requirement metadata (client name, engagement model, contract duration, payment terms, budget) to `sessionStorage` with `viewMode: 'results'` and navigates to `/recruiter/search`, which auto-executes the search and displays results directly (bypassing JD input and criteria views).
+- **Unified ShortlistModal for candidate details**: The search results page uses a single `ShortlistModal` component (`frontend/src/components/shortlist-modal.tsx`) as the candidate detail view — there is no separate drawer. Clicking any candidate card opens this modal, which displays: match score, candidate details grid (experience, location, availability, seniority, engagement, expected/current CTC), skills, match analysis, screening status (with amber warning when expired), and PricingPanel auto-populated with requirement context. The modal operates in two modes: (1) **Shortlist mode** (when `requirementContext` is provided): shows shortlist notes, "Shortlist Candidate" button, "Re-screen Candidate" link, and download resume buttons; (2) **View-only mode** (for ad-hoc searches without a requirement): shows download resume buttons and a "Save Requirement" prompt.
+- **Smart routing with single Shortlist button**: Each candidate card has a single "Shortlist" button (visible only when a `sourceRequirementId` exists and the candidate is not already shortlisted). Clicking it performs smart routing: if shortlisting conditions are met (screening done, Expected CTC available, screening < 15 days old), the ShortlistModal opens directly; if conditions are not met, the ScreeningModal opens first, and upon completion the ShortlistModal auto-opens for a seamless chain. The handler validates screening freshness client-side and handles backend errors (SCREENING_REQUIRED, already shortlisted). After shortlisting, the candidate card shows a green "Shortlisted" badge and the modal displays a confirmation banner.
 
 ## Component Details
 
@@ -370,7 +444,7 @@ The active provider is configured via the `LLM_PROVIDER` environment variable.
 
 | Component | Technology | Responsibility |
 |-----------|------------|----------------|
-| Profile Storage | DynamoDB | Candidate data, users, prompts, requirements, shortlists |
+| Profile Storage | DynamoDB | Candidate data, users, prompts, requirements, shortlists, screening history |
 | File Storage | S3 | Resume documents (original + formatted) |
 | Text Extraction | pdf-parse / mammoth | In-Lambda PDF and DOCX parsing |
 
@@ -495,7 +569,7 @@ External recruiters go through an approval process before accessing the platform
 | Authentication | NextAuth.js v4 (JWE sessions) |
 | API Gateway | AWS HTTP API (API Gateway v2) |
 | Compute | AWS Lambda (Node.js 20, arm64) |
-| Database | AWS DynamoDB (9 tables) |
+| Database | AWS DynamoDB (10 tables) |
 | Storage | AWS S3 |
 | Text Extraction | pdf-parse (PDF), mammoth (DOCX) |
 | PDF Generation | puppeteer-core + @sparticuz/chromium |
@@ -504,6 +578,17 @@ External recruiters go through an approval process before accessing the platform
 | Bundler | esbuild (via serverless-esbuild) |
 | Testing | Vitest |
 | Region | ap-south-1 (Mumbai) |
+
+## Operational Scripts
+
+Located in `backend/scripts/`, these are developer-run CLI utilities:
+
+| Script | Purpose | Run Command |
+|--------|---------|-------------|
+| `createAdmin.ts` | Promote a user to admin | `npx tsx scripts/createAdmin.ts <email>` |
+| `migrateUserStatus.ts` | Add status field to existing users | `npx tsx scripts/migrateUserStatus.ts` |
+| `seedPrompts.ts` | Seed initial LLM prompts | `npx tsx scripts/seedPrompts.ts` |
+| `cloneProdToDev.ts` | Clone all prod data (DynamoDB + S3) to dev | `npx tsx scripts/cloneProdToDev.ts` |
 
 ## Pricing Engine
 

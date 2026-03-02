@@ -34,7 +34,6 @@ async function handleRequest(
     }
 
     const { criteria, pagination, sortBy } = validation.data;
-    const limit = pagination?.limit || 20;
 
     // Decode last evaluated key if provided
     let lastEvaluatedKey: Record<string, unknown> | undefined;
@@ -70,7 +69,7 @@ async function handleRequest(
     };
 
     // Search candidates
-    const searchResult = await searchCandidates(searchCriteria, limit * 2, lastEvaluatedKey);
+    const searchResult = await searchCandidates(searchCriteria, undefined, lastEvaluatedKey);
 
     // Calculate match scores and filter
     const scoredCandidates: CandidateSearchResult[] = searchResult.items
@@ -101,6 +100,8 @@ async function handleRequest(
           matchScore: score,
           matchDetails: details,
           lastUpdated: candidate.last_updated,
+          lastScreenedAt: candidate.last_screened_at,
+          lastScreenedBy: candidate.last_screened_by_name || candidate.last_screened_by,
         };
       })
       // Filter out candidates below minimum must-have match ratio
@@ -117,25 +118,25 @@ async function handleRequest(
         return true;
       });
 
-    // Sort by selected criteria
-    switch (sortBy) {
-      case 'matchScore':
-        scoredCandidates.sort((a, b) => b.matchScore - a.matchScore);
-        break;
-      case 'experience':
-        scoredCandidates.sort((a, b) => b.totalExperience - a.totalExperience);
-        break;
-      case 'lastUpdated':
-        scoredCandidates.sort((a, b) =>
-          new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime()
-        );
-        break;
-    }
+    // Sort by selected criteria with tiebreakers (all descending)
+    scoredCandidates.sort((a, b) => {
+      const dateDiff = new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime();
+      const scoreDiff = b.matchScore - a.matchScore;
+      const expDiff = b.totalExperience - a.totalExperience;
 
-    // Apply pagination limit
-    const paginatedCandidates = scoredCandidates.slice(0, limit);
+      switch (sortBy) {
+        case 'matchScore':
+          return scoreDiff || dateDiff || expDiff;
+        case 'lastUpdated':
+          return dateDiff || scoreDiff || expDiff;
+        case 'experience':
+          return expDiff || scoreDiff || dateDiff;
+        default:
+          return scoreDiff || dateDiff || expDiff;
+      }
+    });
 
-    // Encode next page key
+    // Encode next page key (only when DynamoDB has more unscanned records)
     let encodedLastKey: string | undefined;
     if (searchResult.lastKey) {
       encodedLastKey = Buffer.from(JSON.stringify(searchResult.lastKey)).toString('base64');
@@ -145,8 +146,8 @@ async function handleRequest(
     const isAuthenticated = !!event.auth;
 
     const responseCandidates = isAuthenticated
-      ? paginatedCandidates
-      : paginatedCandidates.map((candidate, index) => ({
+      ? scoredCandidates
+      : scoredCandidates.map((candidate, index) => ({
           // Redact PII and sensitive details for unauthenticated users
           candidateId: candidate.candidateId,
           fullName: `Candidate #${index + 1}`, // Hide real name
@@ -173,13 +174,14 @@ async function handleRequest(
             availabilityMatch: candidate.matchDetails.availabilityMatch,
           },
           lastUpdated: candidate.lastUpdated,
+          lastScreenedAt: undefined, // Hide screening info
         }));
 
     const response: SearchResponse = {
       candidates: responseCandidates,
       pagination: {
-        count: paginatedCandidates.length,
-        hasMore: !!searchResult.lastKey || scoredCandidates.length > limit,
+        count: scoredCandidates.length,
+        hasMore: !!searchResult.lastKey,
         lastEvaluatedKey: encodedLastKey,
       },
       totalMatches: scoredCandidates.length,
