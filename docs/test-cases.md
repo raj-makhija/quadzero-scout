@@ -2160,6 +2160,45 @@ All functional and non-functional aspects of Quadzero Scout covering:
 
 ---
 
+## Module 18: Notify Me — Notification Service
+
+### 18.1 Toggle Requirement Notify Endpoint (`PUT /recruiter/requirements/{id}/notify`)
+
+| Test ID | Description | Expected Result | Priority |
+|---------|-------------|-----------------|----------|
+| NM-001 | Opt in: recruiter not yet in list, sends `notify: true` | Recruiter added to `notify_recruiter_ids`; `notify: true` returned | P0 |
+| NM-002 | Opt out: recruiter in list, sends `notify: false` | Recruiter removed from `notify_recruiter_ids`; `notify: false` returned | P0 |
+| NM-003 | Idempotent opt-in: recruiter already in list, sends `notify: true` | No duplicate; list unchanged; success returned | P1 |
+| NM-004 | Opt out when not subscribed | List unchanged (other IDs preserved); success returned | P1 |
+| NM-005 | Missing requirement returns 404 | `{ success: false, error: { code: "NOT_FOUND" } }` | P0 |
+| NM-006 | Missing `notify` field in body returns 400 | `{ success: false, error: { code: "VALIDATION_ERROR" } }` | P1 |
+| NM-007 | No auth token returns 401 | `{ success: false, error: { code: "UNAUTHORIZED" } }` | P0 |
+
+### 18.2 Default Opt-In on Requirement Creation
+
+| Test ID | Description | Expected Result | Priority |
+|---------|-------------|-----------------|----------|
+| NM-008 | Create new requirement | `notify_recruiter_ids: [creatorRecruiterId]` stored in DynamoDB | P0 |
+| NM-009 | `notifyRecruiterIds` returned in `GET /recruiter/requirements` list | Each requirement in list includes `notifyRecruiterIds` array | P1 |
+| NM-010 | `notifyRecruiterIds` returned in `GET /recruiter/requirements/{id}` detail | Detail response includes `notifyRecruiterIds` array | P1 |
+
+### 18.3 Notification Service (notifyMatchingRecruiters)
+
+| Test ID | Description | Expected Result | Priority |
+|---------|-------------|-----------------|----------|
+| NM-011 | Empty `candidateIds` list | Returns immediately; no DynamoDB or SES calls | P0 |
+| NM-012 | No requirements have `notify_recruiter_ids` | No emails sent | P1 |
+| NM-013 | Candidate does not meet `MIN_MUST_HAVE_MATCH_RATIO` | No email sent for that requirement | P0 |
+| NM-014 | Candidate matches active requirement with opted-in recruiter | Email sent to recruiter for that requirement | P0 |
+| NM-015 | Multiple candidates match same requirement | One email with aggregated count (not one email per candidate) | P0 |
+| NM-016 | SES send fails for one recruiter | Error logged; other emails still sent; function does not throw | P1 |
+| NM-017 | `SES_SENDER_EMAIL` env var not set | Function returns immediately; no DynamoDB calls | P1 |
+| NM-018 | Recruiter user ID not found in Users table | Recruiter skipped; other recruiters still notified | P1 |
+| NM-019 | Closed/on-hold requirement is excluded from matching | No email sent for non-active requirements | P0 |
+| NM-020 | Bell icon shows filled state when current user is in `notifyRecruiterIds` | Bell icon renders as filled (opted-in) on both list and detail pages | P1 |
+
+---
+
 ## Traceability Matrix Summary
 
 | Module | Test Count | P0 | P1 | P2 | P3 |
@@ -2182,4 +2221,5 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | E2E Workflows | 10 | 4 | 4 | 2 | 0 |
 | Non-Functional | 15 | 4 | 4 | 5 | 2 |
 | Requirement Status Management | 15 | 3 | 6 | 4 | 2 |
-| **Total** | **242** | **42** | **87** | **82** | **31** |
+| Notify Me — Notification Service | 20 | 5 | 8 | 7 | 0 |
+| **Total** | **262** | **47** | **95** | **89** | **31** |

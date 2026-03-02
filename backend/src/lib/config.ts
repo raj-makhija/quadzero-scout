@@ -25,6 +25,11 @@ interface Config {
   lambda: {
     formatResumeWorkerName: string;
     bulkImportWorkerName: string;
+    notifyWorkerName: string;
+  };
+  email: {
+    senderEmail: string;
+    frontendBaseUrl: string;
   };
   llm: {
     provider: LLMProvider;
@@ -72,6 +77,11 @@ export const config: Config = {
   lambda: {
     formatResumeWorkerName: getEnvVar('FORMAT_RESUME_WORKER_NAME', ''),
     bulkImportWorkerName: getEnvVar('BULK_IMPORT_WORKER_NAME', ''),
+    notifyWorkerName: getEnvVar('NOTIFY_WORKER_NAME', ''),
+  },
+  email: {
+    senderEmail: getEnvVar('SES_SENDER_EMAIL', ''),
+    frontendBaseUrl: getEnvVar('FRONTEND_BASE_URL', 'https://dev.scout.quadzero.com'),
   },
   llm: {
     provider: (getEnvVar('LLM_PROVIDER', 'claude') as LLMProvider),

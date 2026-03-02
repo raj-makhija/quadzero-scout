@@ -133,6 +133,18 @@ export async function handler(
       }
     }
 
+    // Trigger async notification check for matching requirements
+    if (!isLocal && config.lambda.notifyWorkerName) {
+      try {
+        await invokeLambdaAsync(config.lambda.notifyWorkerName, {
+          candidateIds: [finalCandidateId],
+        });
+        console.log('Triggered async notification check for candidate:', finalCandidateId);
+      } catch (err) {
+        console.warn('Failed to trigger notification worker:', err);
+      }
+    }
+
     const response: SaveProfileResponse = {
       candidateId: finalCandidateId,
       lastUpdated: now,

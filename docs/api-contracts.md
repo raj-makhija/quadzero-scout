@@ -1090,6 +1090,48 @@ Update the status of a requirement (internal recruiters only).
 
 ---
 
+### PUT /recruiter/requirements/{requirementId}/notify
+
+Toggle the current recruiter's email notification preference for a requirement. Any recruiter can opt in or out for any requirement.
+
+**Auth Required:** Yes (recruiter role)
+
+**Path Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| requirementId | String (UUID) | ID of the requirement |
+
+**Request Body:**
+```json
+{ "notify": true }
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| notify | Boolean | Yes | `true` to opt in, `false` to opt out |
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "requirementId": "uuid",
+    "notify": true,
+    "notifyRecruiterIds": ["rec_id_1", "rec_id_2"]
+  }
+}
+```
+
+**Error Responses:**
+| Status | Code | Condition |
+|--------|------|-----------|
+| 400 | VALIDATION_ERROR | Missing or invalid `notify` field |
+| 404 | NOT_FOUND | Requirement not found |
+
+> **Note:** The `notifyRecruiterIds` list is also included in `GET /recruiter/requirements` (list) and `GET /recruiter/requirements/{id}` (detail) responses, so the frontend can render the bell state without an extra request.
+
+---
+
 ### GET /recruiter/client-names
 
 Fetch distinct client names and end-client names from the authenticated recruiter's requirements. Used for autocomplete/type-ahead on requirement forms.

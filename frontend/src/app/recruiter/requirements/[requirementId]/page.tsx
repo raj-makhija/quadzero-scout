@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
+import { Bell } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { api, RequirementDetail, ShortlistedCandidate, SearchCriteria } from '@/lib/api';
 import {
@@ -175,6 +176,28 @@ export default function RequirementDetailPage() {
                   </div>
                   <div className="flex flex-col items-end gap-2 self-start">
                     <div className="flex items-center gap-2">
+                      {/* Notify Me bell */}
+                      {(() => {
+                        const currentUserId = (session?.user as { id?: string })?.id ?? '';
+                        const isNotified = requirement.notifyRecruiterIds?.includes(currentUserId) ?? false;
+                        return (
+                          <button
+                            onClick={async () => {
+                              try {
+                                const result = await api.toggleRequirementNotify(requirementId, !isNotified);
+                                setRequirement(prev => prev ? { ...prev, notifyRecruiterIds: result.notifyRecruiterIds } : prev);
+                              } catch {
+                                setError('Failed to update notification preference');
+                              }
+                            }}
+                            title={isNotified ? 'Turn off notifications for this requirement' : 'Get notified of new matching profiles'}
+                            className="flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-white/10 text-white hover:bg-white/20 transition-colors"
+                          >
+                            <Bell size={14} className={isNotified ? 'fill-white' : ''} />
+                            {isNotified ? 'Notifying Me' : 'Notify Me'}
+                          </button>
+                        );
+                      })()}
                       <span className={`px-3 py-1 rounded-full text-sm font-medium ${
                         requirement.status === 'active'
                           ? 'bg-green-500/20 text-green-100'

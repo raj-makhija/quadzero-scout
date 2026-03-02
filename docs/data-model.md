@@ -378,6 +378,7 @@ Stores job requirements created by recruiters with parsed JD criteria.
 | demand_score | Number | No | Computed demand score 0-100 based on request frequency, recency, and distinct recruiters |
 | request_history | List\<Map\> | No | Array of repeat request entries (see below) |
 | status_history | List\<Map\> | No | Array of status change audit entries |
+| notify_recruiter_ids | List\<String\> | No | Recruiter user IDs opted into email notifications for this requirement. Defaults to `[recruiter_id]` (creator) on creation. |
 
 **Request History Entry Schema:**
 

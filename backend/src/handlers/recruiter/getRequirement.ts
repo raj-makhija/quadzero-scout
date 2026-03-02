@@ -73,6 +73,7 @@ async function handleRequest(
       lastRequestedAt: item.last_requested_at || item.created_at,
       contributingRecruiters: recruiters,
       demandScore: item.demand_score || 0,
+      notifyRecruiterIds: item.notify_recruiter_ids || [],
     });
   } catch (err) {
     console.error('Error fetching requirement:', err);
