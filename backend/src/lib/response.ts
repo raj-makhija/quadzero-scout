@@ -52,6 +52,7 @@ export const ErrorCodes = {
   S3_ERROR: 'S3_ERROR',
   TEXTRACT_ERROR: 'TEXTRACT_ERROR',
   DYNAMODB_ERROR: 'DYNAMODB_ERROR',
+  SCREENING_REQUIRED: 'SCREENING_REQUIRED',
 } as const;
 
 export type ErrorCode = typeof ErrorCodes[keyof typeof ErrorCodes];

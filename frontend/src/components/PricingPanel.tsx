@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { api, PricingOutput } from '@/lib/api';
 
 interface RequirementContext {
@@ -106,6 +106,15 @@ export function PricingPanel({
       setAutoCalcPending(false);
     }
   }, [autoCalcPending, savedCtc, handleCalculate]);
+
+  // Auto-calculate on mount when requirement context is provided and CTC is available
+  const autoCalcOnMountDone = useRef(false);
+  useEffect(() => {
+    if (requirementContext && effectiveExpectedCtc != null && !autoCalcOnMountDone.current && !result) {
+      autoCalcOnMountDone.current = true;
+      handleCalculate();
+    }
+  }, [requirementContext, effectiveExpectedCtc, handleCalculate, result]);
 
   const handleSaveCtc = async () => {
     if (!candidateId) return;
@@ -333,19 +342,11 @@ export function PricingPanel({
           {/* Internal Rates */}
           <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
             <div className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Internal Rates</div>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <div>
-                <span className="text-gray-500 dark:text-gray-400">Quoted: </span>
-                <span className="font-medium text-gray-900 dark:text-gray-100">
-                  {formatInr(result.quotedBillingMonthly)}/mo | {formatInr(result.quotedBillingHourly)}/hr
-                </span>
-              </div>
-              <div>
-                <span className="text-gray-500 dark:text-gray-400">Minimum: </span>
-                <span className="font-medium text-gray-900 dark:text-gray-100">
-                  {formatInr(result.minimumBillingMonthly)}/mo | {formatInr(result.minimumBillingHourly)}/hr
-                </span>
-              </div>
+            <div className="text-sm">
+              <span className="text-gray-500 dark:text-gray-400">Minimum: </span>
+              <span className="font-medium text-gray-900 dark:text-gray-100">
+                {formatInr(result.minimumBillingMonthly)}/mo | {formatInr(result.minimumBillingHourly)}/hr
+              </span>
             </div>
           </div>
 

@@ -57,6 +57,7 @@ The backend decrypts NextAuth.js JWE tokens using HKDF-derived encryption keys f
 | S3_ERROR | 500 | File storage error |
 | TEXTRACT_ERROR | 422/500 | Text extraction error |
 | DYNAMODB_ERROR | 500 | Database error |
+| SCREENING_REQUIRED | 409 | Candidate must be screened (or re-screened) before shortlisting |
 
 ---
 
@@ -346,8 +347,8 @@ Authorization: Bearer <jwe_token>
 **Validation Rules:**
 - `candidateId`: Optional (generated if new), string, uuid format
 - `profile.fullName`: Required, string, min 2, max 100 characters
-- `profile.primarySkills`: Required, array of strings, min 1 item, max 20
-- `profile.secondarySkills`: Optional, array of strings, max 50
+- `profile.primarySkills`: Required, array of strings, min 1 item, no upper limit
+- `profile.secondarySkills`: Optional, array of strings, no upper limit
 - `profile.totalExperience`: Required, number, min 0, max 50
 - `profile.seniority`: Required, enum: `intern`, `junior`, `mid`, `senior`, `lead`, `principal`, `executive`
 - `profile.availability`: Required, enum: `immediate`, `1_week`, `2_weeks`, `1_month`, `2_months`, `3_months`, `negotiable`
@@ -587,6 +588,7 @@ Authorization: Bearer <jwe_token> (optional)
         "engagementModel": "either",
         "currentCtc": 18.5,
         "expectedCtc": 25.0,
+        "lastScreenedAt": "2024-01-14T09:00:00Z",
         "matchScore": 92,
         "matchDetails": {
           "mustHaveMatched": ["react", "nodejs"],
@@ -653,15 +655,16 @@ Authorization: Bearer <jwe_token> (optional)
 - `criteria.seniority`: Optional, array of seniority enums
 - `criteria.availability`: Optional, array of availability enums
 - `criteria.maxBudgetLpa`: Optional, number, min 0 (in LPA)
-- `pagination.limit`: Optional, number, default 20, max 100
-- `sortBy`: Optional, enum: `matchScore` (default), `experience`, `lastUpdated`
+- `pagination.lastEvaluatedKey`: Optional, base64-encoded cursor for DynamoDB pagination (only needed when database has >500 candidates)
+- `sortBy`: Optional, enum: `matchScore` (default), `experience`, `lastUpdated`. Each option uses composite sorting with tiebreakers (all descending): `matchScore` → lastUpdated → experience; `lastUpdated` → matchScore → experience; `experience` → matchScore → lastUpdated
 
 **Notes:**
 - Unauthenticated users see redacted results (names hidden, skills hidden, CTC hidden)
 - Candidates with 0% match on must-have skills are filtered out
 - Candidates exceeding `maxBudgetLpa` are filtered out
 - Skills are normalized using the skill normalizer before matching (supports CRM, marketing, design, and HR/finance skills in addition to engineering skills)
-- Search paginates through all candidates in the database (up to 500) to ensure comprehensive results
+- The backend returns **all** scored candidates in a single response (up to 500 scanned from DynamoDB). Pagination is handled client-side on the frontend (page size: 20)
+- `hasMore` is true only when DynamoDB has more unscanned records beyond the 500 cap
 - **Location** is a soft scoring factor (not a hard filter). Multiple locations (comma/semicolon-separated) use OR matching. `locationMatch` values: `"full"` (+10pts), `"partial"` (no location info, +5pts), `"none"` (+0pts)
 - **Experience** is a soft scoring factor. `experienceMatch` values: `"full"` (within range, +8pts), `"partial"` (within 2 years of boundary, +4pts), `"none"` (way outside, +0pts)
 - **Availability** is a soft scoring factor. `availabilityMatch` values: `"full"` (matches or available earlier, +7pts), `"partial"` (1–2 steps later, +3pts), `"none"` (3+ steps later, +0pts)
@@ -808,6 +811,11 @@ List all requirements across the team (not scoped to the authenticated recruiter
 Authorization: Bearer <jwe_token>
 ```
 
+**Query Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| status | String | No | Filter by status: `active` or `closed_on_hold` |
+
 **Response (200 OK):**
 ```json
 {
@@ -849,7 +857,12 @@ Get a specific requirement by ID.
 **Path Parameters:**
 - `requirementId`: The unique requirement identifier
 
-**Response (200 OK):** Returns the full requirement object including `jdText` and `parsedCriteria`.
+**Response (200 OK):** Returns the full requirement object including `jdText`, `parsedCriteria`, and `statusHistory`.
+
+**Response includes:**
+| Field | Type | Description |
+|-------|------|-------------|
+| statusHistory | Array | Array of status change records, each containing `status`, `reason`, `changedBy`, and `changedAt` |
 
 ---
 
@@ -1029,6 +1042,51 @@ Authorization: Bearer <jwe_token>
 - Updates `parsed_criteria` field on the requirement
 - Updates `budget_max_lpa` if provided
 - Updates `last_updated` timestamp
+
+---
+
+### PUT /recruiter/requirements/{requirementId}/status
+
+Update the status of a requirement (internal recruiters only).
+
+**Auth Required:** Yes (recruiter role, must be internal @quadzero.com)
+
+**Path Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| requirementId | String (UUID) | ID of the requirement |
+
+**Request Body:**
+```json
+{
+  "status": "closed_on_hold",
+  "reason": "Client filled the position"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| status | String | Yes | `"active"` or `"closed_on_hold"` |
+| reason | String | No | Optional reason (max 500 chars) |
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "requirementId": "uuid",
+    "status": "closed_on_hold",
+    "lastUpdated": "2026-02-26T12:00:00.000Z"
+  }
+}
+```
+
+**Error Responses:**
+| Status | Code | Condition |
+|--------|------|-----------|
+| 400 | VALIDATION_ERROR | Invalid status value or duplicate requirement |
+| 403 | FORBIDDEN | Non-internal recruiter |
+| 404 | NOT_FOUND | Requirement not found |
 
 ---
 
@@ -1243,7 +1301,19 @@ Authorization: Bearer <jwe_token>
 - `notes`: Optional, string, max 1000 characters
 
 **Notes:**
-- Returns 409 if the candidate is already shortlisted for the requirement
+- Returns 409 (`ALREADY_SHORTLISTED`) if the candidate is already shortlisted for the requirement
+- Returns 409 (`SCREENING_REQUIRED`) if the candidate has never been screened (`last_screened_at` is missing) or was last screened more than 15 days ago. The candidate must be screened (or re-screened) via `POST /recruiter/screen-candidate` before shortlisting.
+
+**Error Response (409 Screening Required):**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "SCREENING_REQUIRED",
+    "message": "Candidate must be screened before shortlisting. Last screened: 2024-01-01T09:00:00Z"
+  }
+}
+```
 
 ---
 
@@ -1306,6 +1376,114 @@ Authorization: Bearer <jwe_token>
   }
 }
 ```
+
+---
+
+## Recruiter Screening Endpoints
+
+### POST /recruiter/screen-candidate
+
+Screen (verify/update) a candidate's profile. Creates an audit record of all changes and updates the candidate's profile.
+
+**Auth:** Requires `recruiter` role.
+
+**Request Headers:**
+```
+Content-Type: application/json
+Authorization: Bearer <jwe_token>
+```
+
+**Request Body:**
+```json
+{
+  "candidateId": "cand_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "updatedValues": {
+    "totalExperience": 6,
+    "seniority": "senior",
+    "availability": "immediate",
+    "primarySkills": ["javascript", "typescript", "react", "nodejs"],
+    "expectedCtc": 25.0
+  },
+  "notes": "Verified experience via phone screening, candidate confirmed immediate availability"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "candidateId": "cand_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "screenedAt": "2024-01-14T09:00:00Z",
+    "fieldsUpdated": ["totalExperience", "seniority", "availability", "primarySkills", "expectedCtc"]
+  }
+}
+```
+
+**Validation Rules:**
+- `candidateId`: Required, string
+- `updatedValues`: Required, object containing one or more of: `fullName`, `email`, `phone`, `location`, `primarySkills`, `primarySkillYears`, `secondarySkills`, `totalExperience`, `seniority`, `availability`, `engagementModel`, `industries`, `roles`, `education`, `certifications`, `summary`, `currentCtc`, `expectedCtc`
+- `notes`: Optional, string, max 2000 characters
+
+**Flow:**
+1. Fetches current candidate profile from TalentProfiles
+2. Diffs provided `updatedValues` against current profile values
+3. Saves a screening audit record to the CandidateScreenings table (with `previous_values` and `updated_values`)
+4. Updates the candidate profile in TalentProfiles with the new values
+5. Sets `last_screened_at` and `last_screened_by` on the candidate profile
+
+**Notes:**
+- Returns 404 if candidate not found
+- Even if no fields changed, the screening is recorded (with empty `fieldsUpdated`) to reset the 15-day screening expiry
+
+---
+
+### GET /recruiter/screening-history/{candidateId}
+
+Retrieve the screening history for a candidate.
+
+**Auth:** Requires `recruiter` role.
+
+**Request Headers:**
+```
+Authorization: Bearer <jwe_token>
+```
+
+**Path Parameters:**
+- `candidateId`: The unique candidate identifier
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "candidateId": "cand_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "screenings": [
+      {
+        "screenedAt": "2024-01-14T09:00:00Z",
+        "screenedBy": "user_r1e2c3",
+        "screenerEmail": "recruiter@quadzero.com",
+        "previousValues": {
+          "totalExperience": 5,
+          "seniority": "mid",
+          "availability": "negotiable"
+        },
+        "updatedValues": {
+          "totalExperience": 6,
+          "seniority": "senior",
+          "availability": "immediate"
+        },
+        "fieldsUpdated": ["totalExperience", "seniority", "availability"],
+        "notes": "Verified experience via phone screening"
+      }
+    ]
+  }
+}
+```
+
+**Notes:**
+- Screenings are returned in reverse chronological order (most recent first)
+- Returns empty `screenings` array if no screening history exists
 
 ---
 

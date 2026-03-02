@@ -13,6 +13,7 @@ interface Config {
     pricingConfigTable: string;
     shortlistsTable: string;
     clientsTable: string;
+    candidateScreeningsTable: string;
   };
   s3: {
     resumesBucket: string;
@@ -59,6 +60,7 @@ export const config: Config = {
     pricingConfigTable: getEnvVar('DYNAMODB_TABLE_PRICING_CONFIG', 'PricingConfig-dev'),
     shortlistsTable: getEnvVar('DYNAMODB_TABLE_SHORTLISTS', 'Shortlists-dev'),
     clientsTable: getEnvVar('DYNAMODB_TABLE_CLIENTS', 'Clients-dev'),
+    candidateScreeningsTable: getEnvVar('DYNAMODB_TABLE_CANDIDATE_SCREENINGS', 'CandidateScreenings-dev'),
   },
   s3: {
     resumesBucket: getEnvVar('S3_BUCKET_RESUMES', 'quadzero-scout-resumes-dev'),

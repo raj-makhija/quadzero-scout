@@ -272,13 +272,13 @@ describe('SaveProfileRequestSchema', () => {
   });
 
   // TC-PROFILE-020
-  it('rejects primarySkills with more than 20 items', () => {
-    const skills = Array.from({ length: 21 }, (_, i) => `skill${i}`);
+  it('accepts primarySkills with more than 20 items (no upper limit)', () => {
+    const skills = Array.from({ length: 30 }, (_, i) => `skill${i}`);
     const result = validate(SaveProfileRequestSchema, {
       profile: { ...validProfile, primarySkills: skills },
       resumeS3Key: 'resumes/2024/01/abc.pdf',
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
   // TC-PROFILE-021

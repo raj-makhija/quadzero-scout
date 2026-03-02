@@ -40,6 +40,25 @@ async function handleRequest(
       return error(ErrorCodes.NOT_FOUND, 'Candidate not found', 404);
     }
 
+    // Check screening freshness (must be screened within last 15 days)
+    const SCREENING_MAX_AGE_DAYS = 15;
+    const lastScreenedAt = candidate.last_screened_at;
+    if (!lastScreenedAt) {
+      return error(
+        ErrorCodes.SCREENING_REQUIRED,
+        'Candidate has not been screened. Please screen the candidate before shortlisting.',
+        409
+      );
+    }
+    const daysSinceScreening = (Date.now() - new Date(lastScreenedAt).getTime()) / (1000 * 60 * 60 * 24);
+    if (daysSinceScreening > SCREENING_MAX_AGE_DAYS) {
+      return error(
+        ErrorCodes.SCREENING_REQUIRED,
+        `Candidate screening is expired (last screened ${Math.floor(daysSinceScreening)} days ago). Please re-screen the candidate before shortlisting.`,
+        409
+      );
+    }
+
     // Check if already shortlisted
     const existing = await getShortlistEntry(requirementId, candidateId);
     if (existing) {
