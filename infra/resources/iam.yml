@@ -60,6 +60,7 @@ sesPolicy:
     - ses:SendRawEmail
   Resource:
     - !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/*'
+    - !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:configuration-set/*'
 
 # SSM Parameter Store Policy
 ssmPolicy:
