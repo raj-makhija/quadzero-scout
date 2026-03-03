@@ -13,6 +13,7 @@ import { parseResume } from '../../lib/llm/index.js';
 import { normalizeSkills, normalizeSkillYears } from '../../lib/skillNormalizer.js';
 import { invokeLambdaAsync } from '../../lib/lambdaInvoke.js';
 import { config } from '../../lib/config.js';
+import { notifyMatchingRecruiters } from '../../lib/notificationService.js';
 import type { CandidateItem } from '../../types/index.js';
 
 interface BulkImportWorkerEvent {
@@ -35,6 +36,20 @@ export async function handler(event: BulkImportWorkerEvent): Promise<void> {
     // All files processed — finalize batch
     await finalizeBulkImportBatch(batchId);
     console.log('Batch completed:', batchId);
+
+    // Notify recruiters about new/updated profiles that match their requirements
+    const completedCandidateIds = batch.files
+      .filter(f => f.status === 'completed' && f.candidate_id)
+      .map(f => f.candidate_id as string);
+
+    if (completedCandidateIds.length > 0) {
+      try {
+        await notifyMatchingRecruiters(completedCandidateIds);
+        console.log(`Notifications sent for ${completedCandidateIds.length} candidates in batch ${batchId}`);
+      } catch (err) {
+        console.error('Failed to send batch notifications:', err);
+      }
+    }
     return;
   }
 

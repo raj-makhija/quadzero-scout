@@ -58,6 +58,7 @@ async function handleRequest(
       createdAt: item.created_at,
       requestCount: item.request_count || 1,
       demandScore: item.demand_score || 0,
+      notifyRecruiterIds: item.notify_recruiter_ids,
     }));
 
     return success({

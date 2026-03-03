@@ -69,6 +69,7 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │  │  Worker Lambdas      │                                                   │
 │  │  - formatResume      │                                                   │
 │  │  - bulkImportWorker  │                                                   │
+│  │  - notifyWorker      │                                                   │
 │  └──────────────────────┘                                                   │
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
@@ -76,7 +77,8 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │  │  - DynamoDB Client    - S3 Client       - Text Extraction           │    │
 │  │  - LLM Adapter        - Validation      - Skill Normalizer          │    │
 │  │  - Auth (JWE)         - CTC Conversion  - PDF Generator             │    │
-│  │  - Pricing Engine     - Match Scoring                              │    │
+│  │  - Pricing Engine     - Match Scoring   - Email Service (SES)       │    │
+│  │  - Notification Service                                             │    │
 │  └─────────────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────────────┘
           │                    │                    │
@@ -97,6 +99,14 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │  - Candidate   │  │                 │  │                                 │
 │    Screenings  │  │                 │  │                                 │
 └─────────────────┘  └─────────────────┘  └─────────────────────────────────┘
+          │
+          ▼
+┌─────────────────────────────────────┐
+│   AWS SES (Simple Email Service)    │
+│   - Notification emails to          │
+│     opted-in recruiters             │
+│   - Region: ap-south-1              │
+└─────────────────────────────────────┘
 ```
 
 ## Data Flow Diagrams
@@ -309,6 +319,36 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
      │<───────────────│                │                │
      │                │                │                │
 ```
+
+### Notify Me — Recruiter Email Notification Flow
+
+Recruiters opt in per-requirement via a bell toggle. After any profile save (single or bulk), matching is run and opted-in recruiters receive one email per requirement.
+
+```
+Single Upload:
+  saveProfile Lambda
+    └─► invokeLambdaAsync(notifyWorker, { candidateIds: [id] })  ← fire-and-forget
+          └─► notificationService.notifyMatchingRecruiters([id])
+                ├─► getAllActiveRequirements()           (DynamoDB scan)
+                ├─► calculateMatchScore() per requirement
+                ├─► group matches by requirement
+                └─► sendNewProfilesNotificationEmail()   (AWS SES) × (requirements × recruiters)
+
+Bulk Upload:
+  bulkImportWorker (when all files processed)
+    └─► finalizeBulkImportBatch()
+    └─► notificationService.notifyMatchingRecruiters([...completedCandidateIds])
+          ├─► same matching logic as above
+          └─► one email per (requirement, recruiter) covering all matching candidates
+```
+
+**Key behaviors:**
+- One email per (requirement × recruiter) per upload event regardless of how many candidates matched
+- Only active requirements are evaluated
+- Email errors are non-fatal — never block the upload response
+- Notification toggle stored in `notify_recruiter_ids` on the `Requirements` table item
+- Creator is opted in by default; any recruiter can opt in/out via `PUT /recruiter/requirements/{id}/notify`
+- Pre-deploy requirement: sender email identity must be verified in AWS SES (ap-south-1)
 
 ### Recruiter Candidate Screening Flow
 

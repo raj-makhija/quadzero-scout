@@ -149,6 +149,11 @@ export const UpdateRequirementStatusRequestSchema = z.object({
   reason: z.string().max(500).optional(),
 });
 
+// Toggle Requirement Notify Request Validation
+export const ToggleRequirementNotifyRequestSchema = z.object({
+  notify: z.boolean(),
+});
+
 // Update Requirement Criteria Request Validation
 export const UpdateRequirementCriteriaRequestSchema = z.object({
   parsedCriteria: LLMJDOutputSchema,

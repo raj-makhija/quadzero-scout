@@ -41,6 +41,9 @@ provider:
     FORMAT_RESUME_WORKER_NAME: ${self:service}-${self:provider.stage}-formatResumeWorker
     DYNAMODB_TABLE_BULK_IMPORT_BATCHES: ${self:custom.bulkImportBatchesTable}
     BULK_IMPORT_WORKER_NAME: ${self:service}-${self:provider.stage}-bulkImportWorker
+    NOTIFY_WORKER_NAME: ${self:service}-${self:provider.stage}-notifyWorker
+    SES_SENDER_EMAIL: ${ssm:/quadzero-scout/${self:provider.stage}/SES_SENDER_EMAIL, env:SES_SENDER_EMAIL, ''}
+    FRONTEND_BASE_URL: ${ssm:/quadzero-scout/${self:provider.stage}/FRONTEND_BASE_URL, env:FRONTEND_BASE_URL, 'https://dev.scout.quadzero.com'}
     DYNAMODB_TABLE_REQUIREMENTS: ${self:custom.requirementsTable}
     DYNAMODB_TABLE_PRICING_CONFIG: ${self:custom.pricingConfigTable}
     DYNAMODB_TABLE_SHORTLISTS: ${self:custom.shortlistsTable}
@@ -67,6 +70,7 @@ provider:
         - ${file(resources/iam.yml):s3Policy}
         - ${file(resources/iam.yml):lambdaInvokePolicy}
         - ${file(resources/iam.yml):ssmPolicy}
+        - ${file(resources/iam.yml):sesPolicy}
 
 custom:
   corsOrigins:
@@ -308,6 +312,13 @@ functions:
           path: /recruiter/requirements/{requirementId}/status
           method: PUT
 
+  recruiterToggleRequirementNotify:
+    handler: src/handlers/recruiter/toggleRequirementNotify.handler
+    events:
+      - httpApi:
+          path: /recruiter/requirements/{requirementId}/notify
+          method: PUT
+
   recruiterGetClientNames:
     handler: src/handlers/recruiter/getClientNames.handler
     events:
@@ -407,6 +418,12 @@ functions:
     handler: src/handlers/worker/bulkImportWorker.handler
     timeout: 120
     memorySize: 1024
+
+  # Notify Worker (no HTTP events)
+  notifyWorker:
+    handler: src/handlers/worker/notifyWorker.handler
+    timeout: 60
+    memorySize: 512
 
   # Pricing Endpoints
   recruiterCalculatePricing:

@@ -715,6 +715,24 @@ export async function updateRequirementStatus(
   );
 }
 
+export async function updateRequirementNotifyIds(
+  requirementId: string,
+  notifyRecruiterIds: string[]
+): Promise<void> {
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.requirementsTable,
+      Key: { requirement_id: requirementId },
+      UpdateExpression: 'SET notify_recruiter_ids = :ids, last_updated = :now',
+      ExpressionAttributeValues: {
+        ':ids': notifyRecruiterIds,
+        ':now': new Date().toISOString(),
+      },
+      ConditionExpression: 'attribute_exists(requirement_id)',
+    })
+  );
+}
+
 export async function consolidateRequirement(
   requirementId: string,
   entry: RequirementRequestEntry,

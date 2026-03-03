@@ -50,6 +50,17 @@ lambdaInvokePolicy:
   Resource:
     - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-formatResumeWorker'
     - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-bulkImportWorker'
+    - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-notifyWorker'
+
+# SES Policy (for sending notification emails)
+sesPolicy:
+  Effect: Allow
+  Action:
+    - ses:SendEmail
+    - ses:SendRawEmail
+  Resource:
+    - !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/*'
+    - !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:configuration-set/*'
 
 # SSM Parameter Store Policy
 ssmPolicy:

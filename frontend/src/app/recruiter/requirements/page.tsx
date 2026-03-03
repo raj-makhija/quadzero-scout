@@ -3,13 +3,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
+import { Bell } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { api, RequirementSummary } from '@/lib/api';
 import { formatDate, formatEngagementModel, formatPayroll } from '@/lib/utils';
 
 export default function RequirementsListPage() {
   const router = useRouter();
-  const { status } = useSession();
+  const { data: session, status } = useSession();
 
   const [requirements, setRequirements] = useState<RequirementSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -231,8 +232,36 @@ export default function RequirementsListPage() {
                   </div>
                 </div>
 
-                <div className="text-sm text-gray-400 dark:text-gray-500 whitespace-nowrap self-start">
-                  {formatDate(req.createdAt)}
+                <div className="flex items-center gap-2 self-start">
+                  <button
+                    title={req.notifyRecruiterIds?.includes((session?.user as { id?: string })?.id ?? '') ? 'Turn off notifications' : 'Get notified of new matches'}
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      const currentUserId = (session?.user as { id?: string })?.id ?? '';
+                      const isNotified = req.notifyRecruiterIds?.includes(currentUserId) ?? false;
+                      try {
+                        const result = await api.toggleRequirementNotify(req.requirementId, !isNotified);
+                        setRequirements(prev =>
+                          prev.map(r =>
+                            r.requirementId === req.requirementId
+                              ? { ...r, notifyRecruiterIds: result.notifyRecruiterIds }
+                              : r
+                          )
+                        );
+                      } catch {
+                        // silent fail — no toast needed for toggle
+                      }
+                    }}
+                    className="p-1.5 rounded-full transition-colors text-gray-400 hover:text-primary-500 dark:hover:text-primary-400"
+                  >
+                    <Bell
+                      size={16}
+                      className={req.notifyRecruiterIds?.includes((session?.user as { id?: string })?.id ?? '') ? 'fill-primary-500 text-primary-500 dark:fill-primary-400 dark:text-primary-400' : ''}
+                    />
+                  </button>
+                  <span className="text-sm text-gray-400 dark:text-gray-500 whitespace-nowrap">
+                    {formatDate(req.createdAt)}
+                  </span>
                 </div>
               </div>
             </div>
