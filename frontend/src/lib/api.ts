@@ -313,6 +313,20 @@ class ApiClient {
     );
   }
 
+  async toggleRequirementNotify(requirementId: string, notify: boolean) {
+    return this.request<{
+      requirementId: string;
+      notify: boolean;
+      notifyRecruiterIds: string[];
+    }>(
+      `/recruiter/requirements/${requirementId}/notify`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ notify }),
+      }
+    );
+  }
+
   // Admin endpoints
   async listPendingRecruiters() {
     return this.request<{
@@ -683,6 +697,7 @@ export interface RequirementSummary {
   createdAt: string;
   requestCount?: number;
   demandScore?: number;
+  notifyRecruiterIds?: string[];
 }
 
 export interface RequestHistoryEntry {

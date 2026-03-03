@@ -391,6 +391,7 @@ export interface RequirementItem {
   contributing_recruiters?: string[];
   demand_score?: number;
   status_history?: StatusHistoryEntry[];
+  notify_recruiter_ids?: string[];
 }
 
 // Requirement API types
@@ -459,6 +460,7 @@ export interface RequirementSummary {
   createdAt: string;
   requestCount?: number;
   demandScore?: number;
+  notifyRecruiterIds?: string[];
 }
 
 export interface ConsolidateRequirementRequest {

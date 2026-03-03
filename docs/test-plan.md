@@ -57,7 +57,6 @@ Quadzero Scout connects IT professionals with recruiters through:
 | Area | Reason |
 |------|--------|
 | Webhook events | Documented as "Future" in API contracts |
-| Email notifications | Not implemented in current codebase |
 | SDK package | Referenced in docs but not shipped |
 | Admin panel | No admin UI implemented |
 | Rate limiting enforcement | Documented but not yet enforced |
@@ -94,7 +93,7 @@ Quadzero Scout connects IT professionals with recruiters through:
 | UI Component Tests | ~30 | React components, form validation, state management |
 | E2E Tests | 10 | Full candidate onboarding, recruiter search, cross-browser |
 | NFR Tests | 15 | Performance, security, accessibility |
-| **Total** | **227** | All modules |
+| **Total** | **237** | All modules |
 
 ### 3.3 Priority-Based Execution
 
@@ -228,7 +227,8 @@ Detailed test cases are in [test-cases.md](test-cases.md). Summary below:
 | 15 | Infrastructure & Config | 10 | Serverless, IAM, tables, CORS, build |
 | 16 | E2E Workflows | 10 | Full user journeys, cross-browser |
 | 17 | Non-Functional Requirements | 15 | Performance, security, accessibility, contracts |
-| | **Total** | **227** | |
+| 18 | Notify Me — Notification Service | 10 | Toggle opt-in/out, default opt-in, match threshold, email aggregation, non-fatal errors, SES config |
+| | **Total** | **237** | |
 
 ---
 

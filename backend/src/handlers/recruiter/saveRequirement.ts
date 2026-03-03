@@ -58,6 +58,7 @@ async function handleRequest(
       last_requested_at: now,
       contributing_recruiters: [recruiterId],
       demand_score: 0,
+      notify_recruiter_ids: [recruiterId],
     };
 
     await saveRequirement(item);
