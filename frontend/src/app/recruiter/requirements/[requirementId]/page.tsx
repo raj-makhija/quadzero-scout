@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Bell } from 'lucide-react';
 import { Header } from '@/components/Header';
+import { CustomFieldsModal } from '@/components/custom-fields-modal';
 import { api, RequirementDetail, ShortlistedCandidate, SearchCriteria } from '@/lib/api';
 import {
   formatDate,
@@ -31,6 +32,11 @@ export default function RequirementDetailPage() {
   const [statusLoading, setStatusLoading] = useState(false);
   const [showReasonModal, setShowReasonModal] = useState(false);
   const [reason, setReason] = useState('');
+  const [customFieldsTarget, setCustomFieldsTarget] = useState<{
+    candidateId: string;
+    candidateName: string;
+    existingValues: Record<string, string | number>;
+  } | null>(null);
 
   const handleStatusToggle = async (newStatus: 'active' | 'closed_on_hold', reasonText?: string) => {
     if (!requirement) return;
@@ -318,6 +324,20 @@ export default function RequirementDetailPage() {
                   </div>
                 )}
 
+                {/* Additional Data Points */}
+                {requirement.additionalFields && requirement.additionalFields.length > 0 && (
+                  <div>
+                    <label className="text-sm text-gray-500 dark:text-gray-400 block mb-1">Additional Data Points</label>
+                    <div className="flex flex-wrap gap-1">
+                      {requirement.additionalFields.map((f) => (
+                        <span key={f.key} className="badge bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 text-xs">
+                          {f.label} ({f.type}){f.required ? ' *' : ''}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* JD Text (collapsible) */}
                 <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
                   <button
@@ -487,6 +507,38 @@ export default function RequirementDetailPage() {
                           {candidate.notes && (
                             <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 italic">{candidate.notes}</p>
                           )}
+                          {/* Additional fields completion status */}
+                          {requirement?.additionalFields && requirement.additionalFields.length > 0 && (
+                            <div className="mt-2 flex flex-wrap items-center gap-1">
+                              {requirement.additionalFields.map((field) => {
+                                const isFilled = candidate.customFields?.[field.key] != null && candidate.customFields[field.key] !== '';
+                                return (
+                                  <span
+                                    key={field.key}
+                                    className={`text-xs px-1.5 py-0.5 rounded ${
+                                      isFilled
+                                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                                        : field.required
+                                          ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
+                                          : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
+                                    }`}
+                                  >
+                                    {field.label}: {isFilled ? String(candidate.customFields![field.key]) : 'Missing'}
+                                  </span>
+                                );
+                              })}
+                              <button
+                                onClick={() => setCustomFieldsTarget({
+                                  candidateId: candidate.candidateId,
+                                  candidateName: candidate.fullName,
+                                  existingValues: candidate.customFields || {},
+                                })}
+                                className="text-xs text-primary-600 dark:text-primary-400 hover:underline ml-1"
+                              >
+                                Edit
+                              </button>
+                            </div>
+                          )}
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -544,6 +596,28 @@ export default function RequirementDetailPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Custom Fields Modal */}
+      {customFieldsTarget && requirement?.additionalFields && (
+        <CustomFieldsModal
+          candidateId={customFieldsTarget.candidateId}
+          candidateName={customFieldsTarget.candidateName}
+          requirementId={requirementId}
+          fieldDefinitions={requirement.additionalFields}
+          existingValues={customFieldsTarget.existingValues}
+          onClose={() => setCustomFieldsTarget(null)}
+          onSaved={(candidateId, updatedFields) => {
+            setCandidates((prev) =>
+              prev.map((c) =>
+                c.candidateId === candidateId
+                  ? { ...c, customFields: updatedFields }
+                  : c
+              )
+            );
+            setCustomFieldsTarget(null);
+          }}
+        />
       )}
     </div>
   );

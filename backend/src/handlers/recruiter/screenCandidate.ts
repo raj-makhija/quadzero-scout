@@ -83,6 +83,15 @@ async function handleRequest(
       fieldsUpdated.push(snakeKey);
     }
 
+    // Handle custom_fields separately (not in FIELD_MAP)
+    if (updatedValues.customFields && Object.keys(updatedValues.customFields).length > 0) {
+      const existingCustomFields = candidate.custom_fields || {};
+      const mergedCustomFields = { ...existingCustomFields, ...updatedValues.customFields };
+      dbFields['custom_fields'] = mergedCustomFields;
+      (previousValues as Record<string, unknown>)['custom_fields'] = existingCustomFields;
+      fieldsUpdated.push('custom_fields');
+    }
+
     // If totalExperience changed, also update experience_bucket
     if (dbFields['total_experience'] !== undefined) {
       const newBucket = getExperienceBucket(dbFields['total_experience'] as number);

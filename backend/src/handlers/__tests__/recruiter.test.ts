@@ -95,6 +95,34 @@ vi.mock('../../lib/skillNormalizer.js', async (importOriginal) => {
   return actual;
 });
 
+vi.mock('../../lib/auth.js', () => ({
+  withAuth: vi.fn((_roles: string[], handler: Function) => {
+    return (event: Record<string, unknown>) => {
+      event.auth = { userId: 'test-user', email: 'test@quadzero.com', role: 'recruiter', isInternal: true };
+      return handler(event);
+    };
+  }),
+  withOptionalAuth: vi.fn((handler: Function) => {
+    return (event: Record<string, unknown>) => {
+      event.auth = { userId: 'test-user', email: 'test@quadzero.com', role: 'recruiter', isInternal: true };
+      return handler(event);
+    };
+  }),
+}));
+
+vi.mock('../../lib/lambdaInvoke.js', () => ({
+  invokeLambdaAsync: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../../lib/config.js', () => ({
+  config: {
+    lambda: {
+      formatResumeWorkerName: '',
+      notifyWorkerName: '',
+    },
+  },
+}));
+
 // Import handlers after mocks
 import { handler as searchHandler } from '../recruiter/search.js';
 import { handler as parseJdHandler } from '../recruiter/parseJd.js';
@@ -169,9 +197,9 @@ describe('POST /recruiter/parse-jd', () => {
   });
 
   // TC-PARSEJD-006
-  it('rejects JD under 50 characters', async () => {
+  it('rejects JD under 3 characters', async () => {
     const event = makeEvent({
-      body: JSON.stringify({ jobDescription: 'Need React dev' }),
+      body: JSON.stringify({ jobDescription: 'ab' }),
     });
     const result = await parseJdHandler(event);
     expect(result.statusCode).toBe(400);
@@ -343,7 +371,7 @@ describe('GET /recruiter/resume-url/{candidateId}', () => {
   });
 
   // TC-DOWNLOAD-001
-  it('generates resume download URL for existing candidate', async () => {
+  it('generates resume download URL for existing candidate with formatted resume', async () => {
     vi.mocked(getCandidateById).mockResolvedValueOnce({
       candidate_id: 'cand_123',
       user_id: 'user_1',
@@ -359,6 +387,8 @@ describe('GET /recruiter/resume-url/{candidateId}', () => {
       roles: [],
       experience_bucket: '3-5',
       resume_s3_key: 'resumes/2024/01/abc-resume.pdf',
+      formatted_resume_s3_key: 'formatted/2024/01/abc-resume.pdf',
+      formatted_at: '2024-01-10T00:00:00Z',
       created_at: '2024-01-10T00:00:00Z',
       last_updated: '2024-01-10T00:00:00Z',
     });
@@ -370,8 +400,8 @@ describe('GET /recruiter/resume-url/{candidateId}', () => {
     expect(result.statusCode).toBe(200);
     expect(body.success).toBe(true);
     expect(body.data.downloadUrl).toContain('https://');
-    expect(body.data.fileName).toBe('resume.pdf');
-    expect(body.data.expiresIn).toBe(300);
+    expect(body.data.status).toBe('ready');
+    expect(body.data.isFormatted).toBe(true);
   });
 
   // TC-DOWNLOAD-002

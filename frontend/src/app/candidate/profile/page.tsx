@@ -341,6 +341,23 @@ export default function ProfilePage() {
               )}
             </div>
 
+            {/* Additional Information (custom fields) */}
+            {profile.customFields && Object.keys(profile.customFields).length > 0 && (
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Additional Information</h2>
+                <div className="grid grid-cols-2 gap-4">
+                  {Object.entries(profile.customFields).map(([key, value]) => (
+                    <div key={key}>
+                      <label className="text-sm text-gray-500 dark:text-gray-400">
+                        {key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+                      </label>
+                      <p className="font-medium text-gray-900 dark:text-gray-100">{String(value)}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Metadata */}
             <div className="pt-4 border-t border-gray-200 dark:border-gray-700 text-sm text-gray-500 dark:text-gray-400">
               <p>Profile ID: {profile.candidateId}</p>

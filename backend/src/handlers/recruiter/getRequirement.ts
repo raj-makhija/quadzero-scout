@@ -74,6 +74,7 @@ async function handleRequest(
       contributingRecruiters: recruiters,
       demandScore: item.demand_score || 0,
       notifyRecruiterIds: item.notify_recruiter_ids || [],
+      additionalFields: item.additional_fields || [],
     });
   } catch (err) {
     console.error('Error fetching requirement:', err);

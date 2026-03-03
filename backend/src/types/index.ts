@@ -44,6 +44,17 @@ export type Payroll = z.infer<typeof PayrollEnum>;
 export const RequirementStatusEnum = z.enum(['active', 'duplicate']);
 export type RequirementStatus = z.infer<typeof RequirementStatusEnum>;
 
+export const AdditionalFieldTypeEnum = z.enum(['text', 'date', 'number']);
+export type AdditionalFieldType = z.infer<typeof AdditionalFieldTypeEnum>;
+
+export const AdditionalFieldDefinitionSchema = z.object({
+  key: z.string().min(1).max(100),
+  label: z.string().min(1).max(100),
+  type: AdditionalFieldTypeEnum,
+  required: z.boolean(),
+});
+export type AdditionalFieldDefinition = z.infer<typeof AdditionalFieldDefinitionSchema>;
+
 // Education Schema - LLMs may return null for fields, so we accept nullable and default to empty string
 export const EducationSchema = z.object({
   degree: z.string().nullable().optional().transform(v => v ?? ''),
@@ -73,7 +84,8 @@ export const CandidateProfileSchema = z.object({
   certifications: z.array(z.string()).max(20).optional().default([]),
   summary: z.string().max(2000).optional(),
   currentCtc: z.number().min(0).max(500).optional(),
-  expectedCtc: z.number().min(0).max(500).optional()
+  expectedCtc: z.number().min(0).max(500).optional(),
+  customFields: z.record(z.string(), z.union([z.string(), z.number()])).optional().default({}),
 });
 export type CandidateProfile = z.infer<typeof CandidateProfileSchema>;
 
@@ -106,6 +118,7 @@ export interface CandidateItem {
   last_screened_at?: string;
   last_screened_by?: string;
   last_screened_by_name?: string;
+  custom_fields?: Record<string, string | number>;
   created_at: string;
   last_updated: string;
 }
@@ -392,6 +405,7 @@ export interface RequirementItem {
   demand_score?: number;
   status_history?: StatusHistoryEntry[];
   notify_recruiter_ids?: string[];
+  additional_fields?: AdditionalFieldDefinition[];
 }
 
 // Requirement API types
@@ -409,6 +423,7 @@ export interface SaveRequirementRequest {
   parsedCriteria: LLMJDOutput;
   status?: string;
   duplicateOf?: string;
+  additionalFields?: AdditionalFieldDefinition[];
 }
 
 export interface SaveRequirementResponse {
@@ -461,6 +476,7 @@ export interface RequirementSummary {
   requestCount?: number;
   demandScore?: number;
   notifyRecruiterIds?: string[];
+  additionalFields?: AdditionalFieldDefinition[];
 }
 
 export interface ConsolidateRequirementRequest {
@@ -674,6 +690,7 @@ export interface ShortlistedCandidate {
   taggedAt: string;
   notes?: string;
   status: ShortlistStatus;
+  customFields?: Record<string, string | number>;
 }
 
 export interface ShortlistedCandidatesResponse {
@@ -754,6 +771,7 @@ export interface ScreeningProfileData {
   summary?: string;
   current_ctc?: number;
   expected_ctc?: number;
+  custom_fields?: Record<string, string | number>;
 }
 
 export interface ScreeningItem {
@@ -788,8 +806,20 @@ export interface ScreenCandidateRequest {
     summary?: string;
     currentCtc?: number;
     expectedCtc?: number;
+    customFields?: Record<string, string | number>;
   };
   notes?: string;
+}
+
+export interface UpdateCandidateCustomFieldsRequest {
+  candidateId: string;
+  customFields: Record<string, string | number>;
+  requirementId?: string;
+}
+
+export interface UpdateCandidateCustomFieldsResponse {
+  candidateId: string;
+  customFields: Record<string, string | number>;
 }
 
 export interface ScreenCandidateResponse {

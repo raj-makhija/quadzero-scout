@@ -30,6 +30,7 @@ async function handleRequest(
           taggedAt: entry.tagged_at,
           notes: entry.notes,
           status: entry.status,
+          customFields: candidate.custom_fields || {},
         });
       }
     });
