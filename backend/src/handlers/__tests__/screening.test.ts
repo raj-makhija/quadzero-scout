@@ -163,6 +163,36 @@ describe('screenCandidate handler', () => {
     expect(mockSaveScreening).toHaveBeenCalledOnce();
   });
 
+  it('should merge customFields with existing candidate custom_fields', async () => {
+    mockGetCandidateById.mockResolvedValue({
+      ...mockCandidate,
+      custom_fields: { pan_number: 'ABCDE1234F' },
+    });
+
+    const event = makeEvent({
+      candidateId: 'cand_1',
+      updatedValues: {
+        currentCtc: 12,
+        customFields: { date_of_birth: '1990-05-15' },
+      },
+      notes: 'Added DOB',
+    });
+
+    const result = await handler(event);
+    const body = JSON.parse(result.body);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.data.fieldsUpdated).toContain('custom_fields');
+
+    // Verify merged custom_fields were passed to updateCandidateProfileFields
+    const updateCall = mockUpdateCandidateProfileFields.mock.calls[0];
+    expect(updateCall[1].custom_fields).toEqual({
+      pan_number: 'ABCDE1234F',
+      date_of_birth: '1990-05-15',
+    });
+  });
+
   it('should update experience_bucket when totalExperience changes', async () => {
     mockGetCandidateById.mockResolvedValue(mockCandidate);
 

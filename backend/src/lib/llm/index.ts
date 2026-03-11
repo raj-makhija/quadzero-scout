@@ -8,6 +8,7 @@ import { OpenAIProvider } from './openai.js';
 import { OpenRouterProvider } from './openrouter.js';
 import { GeminiProvider } from './gemini.js';
 import { LLMResumeOutputSchema, LLMJDOutputSchema } from '../../types/index.js';
+import { normalizeSeniorityArray } from '../seniorityNormalizer.js';
 import type { LLMResumeOutput, LLMJDOutput } from '../../types/index.js';
 import { convertToLpa, type RateUnit } from '../ctcConversion.js';
 import { getActivePrompt } from '../dynamodb.js';
@@ -226,6 +227,9 @@ export async function parseJobDescription(jdText: string, jobTitle?: string): Pr
   }
 
   const output = validated.data;
+
+  // Normalize seniority values from LLM free-text to valid enum values
+  output.seniority = normalizeSeniorityArray(output.seniority);
 
   // Compute rateLpa from raw extraction
   let rateLpa: number | null = null;

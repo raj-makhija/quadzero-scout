@@ -419,6 +419,7 @@ Bulk Upload:
 - Screening expires after 15 days; re-screening is required after expiry
 - The 15-day expiry check is enforced on the backend in the `POST /recruiter/shortlist` handler
 - Screening records are immutable audit entries; each screening creates a new record
+- If a requirement defines `additional_fields`, these are rendered in the screening modal as "Requirement Data Points" and saved to the candidate's `custom_fields` via the `customFields` payload
 
 **Key Implementation Details:**
 

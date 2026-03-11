@@ -440,6 +440,13 @@ functions:
           path: /recruiter/candidate-ctc
           method: PUT
 
+  recruiterUpdateCandidateCustomFields:
+    handler: src/handlers/recruiter/updateCandidateCustomFields.handler
+    events:
+      - httpApi:
+          path: /recruiter/candidate-custom-fields
+          method: PUT
+
   # Candidate Match Requirements
   candidateMatchRequirements:
     handler: src/handlers/candidate/matchRequirements.handler

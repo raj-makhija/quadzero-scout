@@ -512,6 +512,25 @@ export async function updateCandidateCtc(
   );
 }
 
+export async function updateCandidateCustomFields(
+  candidateId: string,
+  customFields: Record<string, string | number>
+): Promise<void> {
+  const now = new Date().toISOString();
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.talentProfilesTable,
+      Key: { candidate_id: candidateId },
+      UpdateExpression: 'SET custom_fields = :cf, last_updated = :now',
+      ExpressionAttributeValues: {
+        ':cf': customFields,
+        ':now': now,
+      },
+      ConditionExpression: 'attribute_exists(candidate_id)',
+    })
+  );
+}
+
 // Requirement Operations
 export async function saveRequirement(item: RequirementItem): Promise<void> {
   await docClient.send(

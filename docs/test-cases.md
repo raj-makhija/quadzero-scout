@@ -1331,6 +1331,58 @@ All functional and non-functional aspects of Quadzero Scout covering:
 
 ---
 
+## 10b. Seniority Normalization
+
+### TC-SENIORITY-001: Valid enum values pass through unchanged
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SENIORITY-001 |
+| **Priority** | P0 |
+| **Input** | `normalizeSeniority("senior")` for each of: `intern`, `junior`, `mid`, `senior`, `lead`, `principal`, `executive` |
+| **Expected Result** | Returns the same value unchanged |
+
+### TC-SENIORITY-004: "manager" maps to "lead"
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SENIORITY-004 |
+| **Priority** | P0 |
+| **Input** | `normalizeSeniority("manager")` |
+| **Expected Result** | Returns `"lead"` |
+
+### TC-SENIORITY-006: "director" maps to "executive"
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SENIORITY-006 |
+| **Priority** | P1 |
+| **Input** | `normalizeSeniority("director")` |
+| **Expected Result** | Returns `"executive"` |
+
+### TC-SENIORITY-008: "staff"/"architect" map to "principal"
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SENIORITY-008 |
+| **Priority** | P1 |
+| **Input** | `normalizeSeniority("staff")`, `normalizeSeniority("architect")` |
+| **Expected Result** | Both return `"principal"` |
+
+### TC-SENIORITY-013: Unmappable values return null
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SENIORITY-013 |
+| **Priority** | P1 |
+| **Input** | `normalizeSeniority("wizard")` |
+| **Expected Result** | Returns `null` |
+
+### TC-SENIORITY-017: Array normalization deduplicates
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SENIORITY-017 |
+| **Priority** | P1 |
+| **Input** | `normalizeSeniorityArray(["manager", "lead"])` |
+| **Expected Result** | Returns `["lead"]` (deduplicated since both map to "lead") |
+
+---
+
 ## 11. Module 10: Match Scoring Algorithm
 
 ### TC-SCORE-001: Perfect match - 100 points

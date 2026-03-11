@@ -46,6 +46,7 @@ Stores candidate profile data extracted from resumes and edited by candidates.
 | summary | String | No | Profile summary |
 | current_ctc | Number | No | Current CTC in LPA (Lakhs Per Annum) |
 | expected_ctc | Number | No | Expected CTC in LPA |
+| custom_fields | Map\<String, String\|Number\> | No | Dynamic key-value pairs for additional data points (e.g., date_of_birth, pan_number). Populated by recruiters when requirements request additional candidate information. |
 | last_screened_at | String | No | ISO 8601 timestamp of last screening |
 | last_screened_by | String | No | User ID of recruiter who last screened |
 | experience_bucket | String | Yes | Bucketed experience for GSI (e.g., "0-2", "3-5") |
@@ -89,6 +90,10 @@ Stores candidate profile data extracted from resumes and edited by candidates.
   "summary": "Experienced full-stack developer specializing in React and Node.js",
   "current_ctc": 18.5,
   "expected_ctc": 25.0,
+  "custom_fields": {
+    "date_of_birth": "1996-05-14",
+    "pan_number": "ABCDE1234F"
+  },
   "last_screened_at": "2024-01-14T09:00:00Z",
   "last_screened_by": "user_r1e2c3",
   "experience_bucket": "6-10",
@@ -379,6 +384,16 @@ Stores job requirements created by recruiters with parsed JD criteria.
 | request_history | List\<Map\> | No | Array of repeat request entries (see below) |
 | status_history | List\<Map\> | No | Array of status change audit entries |
 | notify_recruiter_ids | List\<String\> | No | Recruiter user IDs opted into email notifications for this requirement. Defaults to `[recruiter_id]` (creator) on creation. |
+| additional_fields | List\<Map\> | No | Array of AdditionalFieldDefinition objects defining what additional data points are needed from candidates shortlisted for this requirement. Defaults to empty array. See schema below. |
+
+**AdditionalFieldDefinition Schema:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| key | String | Auto-slugified identifier for the field (e.g., `date_of_birth`, `pan_number`) |
+| label | String | Human-readable label displayed in the UI |
+| type | String | Field type: `text`, `date`, or `number` |
+| required | Boolean | Whether this field is mandatory when filling in candidate data |
 
 **Request History Entry Schema:**
 
@@ -448,6 +463,20 @@ Stores job requirements created by recruiters with parsed JD criteria.
       "received_at": "2024-02-10T14:00:00Z",
       "recruiter_id": "user_r1e2c3",
       "similarity_score": 92
+    }
+  ],
+  "additional_fields": [
+    {
+      "key": "date_of_birth",
+      "label": "Date of Birth",
+      "type": "date",
+      "required": true
+    },
+    {
+      "key": "pan_number",
+      "label": "PAN Number",
+      "type": "text",
+      "required": false
     }
   ],
   "created_at": "2024-01-15T10:30:00Z",
@@ -974,6 +1003,9 @@ export const LLMResumeOutputSchema = z.object({
 ```
 
 ### LLM JD Output Schema
+
+> **Note:** The `seniority` field accepts any `string[]` from the LLM, but values are normalized to valid `SeniorityEnum` values after parsing via `normalizeSeniorityArray()` in `backend/src/lib/seniorityNormalizer.ts`. Common mappings: `manager` → `lead`, `director`/`vp`/`cto` → `executive`, `staff`/`architect` → `principal`, `entry`/`fresher` → `junior`, `trainee` → `intern`. Unmappable values are dropped.
+
 ```typescript
 export const LLMJDOutputSchema = z.object({
   mustHaveSkills: z.array(z.string()),

@@ -4,8 +4,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Header } from '@/components/Header';
-import { api, ParsedCriteria, DuplicateMatch, EngagementModel, Payroll, ConsolidateResponse, ClientDefaultsResponse } from '@/lib/api';
+import { api, ParsedCriteria, DuplicateMatch, EngagementModel, Payroll, ConsolidateResponse, ClientDefaultsResponse, AdditionalFieldDefinition } from '@/lib/api';
 import { ENGAGEMENT_MODEL_OPTIONS, PAYROLL_OPTIONS, formatEngagementModel } from '@/lib/utils';
+import { AdditionalFieldsBuilder } from '@/components/additional-fields-builder';
 
 type Step = 'jd_input' | 'details' | 'duplicate_check' | 'confirmation';
 
@@ -37,6 +38,7 @@ export default function PostRequirementPage() {
   const [contractDurationMonths, setContractDurationMonths] = useState<string>('');
   const [paymentTermsDays, setPaymentTermsDays] = useState<string>('');
   const [coreSkill, setCoreSkill] = useState('');
+  const [additionalFields, setAdditionalFields] = useState<AdditionalFieldDefinition[]>([]);
 
   // Client defaults
   const [clientDefaults, setClientDefaults] = useState<ClientDefaultsResponse | null>(null);
@@ -217,6 +219,7 @@ export default function PostRequirementPage() {
         parsedCriteria,
         status: duplicateOf ? 'duplicate' : 'active',
         duplicateOf,
+        additionalFields: additionalFields.length > 0 ? additionalFields : undefined,
       });
 
       // Persist payment terms to client if recruiter entered them
@@ -567,6 +570,14 @@ export default function PostRequirementPage() {
               </div>
             </div>
 
+            {/* Additional Data Points */}
+            <div className="card p-6">
+              <AdditionalFieldsBuilder
+                fields={additionalFields}
+                onChange={setAdditionalFields}
+              />
+            </div>
+
             <div className="flex justify-between">
               <button onClick={() => setStep('jd_input')} className="btn-secondary">
                 Back
@@ -731,6 +742,7 @@ export default function PostRequirementPage() {
                   setSavedRequirementId(null);
                   setConsolidated(false);
                   setConsolidateResult(null);
+                  setAdditionalFields([]);
                   setError(null);
                 }}
                 className="btn-secondary"

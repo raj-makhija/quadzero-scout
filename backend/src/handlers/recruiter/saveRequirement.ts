@@ -5,6 +5,7 @@ import { validate, formatZodErrors, SaveRequirementRequestSchema } from '../../l
 import { saveRequirement } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import type { RequirementItem, LLMJDOutput } from '../../types/index.js';
+import { slugifyFieldKey } from '../../lib/slugify.js';
 
 async function handleRequest(
   event: AuthenticatedEvent
@@ -59,6 +60,10 @@ async function handleRequest(
       contributing_recruiters: [recruiterId],
       demand_score: 0,
       notify_recruiter_ids: [recruiterId],
+      additional_fields: (data.additionalFields || []).map(field => ({
+        ...field,
+        key: slugifyFieldKey(field.label),
+      })),
     };
 
     await saveRequirement(item);
