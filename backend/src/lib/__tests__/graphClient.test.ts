@@ -121,6 +121,7 @@ describe('graphClient', () => {
       expect(mockFetch).toHaveBeenCalledTimes(2); // token + messages
       expect(mockFetch.mock.calls[1][0]).toContain('isRead eq false');
       expect(mockFetch.mock.calls[1][0]).toContain('$top=5');
+      expect(mockFetch.mock.calls[1][0]).toContain('body');
     });
 
     it('returns empty array when no messages', async () => {

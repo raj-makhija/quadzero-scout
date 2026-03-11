@@ -110,6 +110,7 @@ function makeMessage(overrides: Record<string, unknown> = {}) {
     receivedDateTime: '2026-03-10T10:00:00Z',
     hasAttachments: true,
     internetMessageId: '<unique-msg-id@recruiter.com>',
+    body: { contentType: 'text', content: 'Please review the attached resume. CTC: 12 LPA, Expected: 15 LPA, Notice: 30 days.' },
     attachments: [
       {
         id: 'att-1',
@@ -204,16 +205,21 @@ describe('emailIngestWorker', () => {
     const [s3Key] = mockPutObject.mock.calls[0];
     expect(s3Key).toMatch(/^email-resumes\/\d{4}\/\d{2}\/.+-resume\.pdf$/);
 
-    // Extracted and parsed
+    // Extracted and parsed with email body as supplementary text
     expect(mockExtractTextFromResume).toHaveBeenCalledTimes(1);
     expect(mockParseResume).toHaveBeenCalledTimes(1);
+    expect(mockParseResume).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.stringContaining('CTC: 12 LPA')
+    );
 
-    // Saved candidate profile
+    // Saved candidate profile with cover_letter
     expect(mockSaveCandidateProfile).toHaveBeenCalledTimes(1);
     const savedProfile = mockSaveCandidateProfile.mock.calls[0][0];
     expect(savedProfile.user_id).toBe('email_ingest');
     expect(savedProfile.full_name).toBe('Jane Smith');
     expect(savedProfile.email).toBe('jane@candidate.com');
+    expect(savedProfile.cover_letter).toContain('CTC: 12 LPA');
 
     // Triggered format worker
     expect(mockInvokeLambdaAsync).toHaveBeenCalledWith('test-formatWorker', expect.objectContaining({ candidateId: expect.any(String) }));
@@ -370,5 +376,42 @@ describe('emailIngestWorker', () => {
     // Second message should still be processed
     // (first fails at putIngestLogEntry, second goes through)
     expect(mockExtractTextFromResume).toHaveBeenCalledTimes(1);
+  });
+
+  it('strips HTML from email body before passing to parseResume', async () => {
+    const message = makeMessage({
+      body: {
+        contentType: 'html',
+        content: '<html><body><p>CTC: <b>12 LPA</b></p><br/>Notice: 30 days</body></html>',
+      },
+    });
+    mockGetUnreadMessages.mockResolvedValue([message]);
+    mockGetResumeAttachments.mockReturnValue(message.attachments);
+    setupSuccessfulProcessing();
+
+    await handler();
+
+    // Should strip HTML and pass plain text
+    const supplementaryArg = mockParseResume.mock.calls[0][1];
+    expect(supplementaryArg).not.toContain('<b>');
+    expect(supplementaryArg).not.toContain('<p>');
+    expect(supplementaryArg).toContain('CTC:');
+    expect(supplementaryArg).toContain('12 LPA');
+  });
+
+  it('handles email with no body gracefully', async () => {
+    const message = makeMessage({ body: undefined });
+    mockGetUnreadMessages.mockResolvedValue([message]);
+    mockGetResumeAttachments.mockReturnValue(message.attachments);
+    setupSuccessfulProcessing();
+
+    await handler();
+
+    // Should call parseResume with undefined supplementary text
+    expect(mockParseResume).toHaveBeenCalledWith(expect.any(String), undefined);
+
+    // cover_letter should not be set
+    const savedProfile = mockSaveCandidateProfile.mock.calls[0][0];
+    expect(savedProfile.cover_letter).toBeUndefined();
   });
 });

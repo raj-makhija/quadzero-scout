@@ -69,7 +69,8 @@ Rules:
 3. Determine seniority based on total experience and roles held
 4. If information is not available, use null or empty arrays
 5. ONLY output valid JSON, no additional text
-6. For CTC values, always convert to LPA (Lakhs Per Annum). If given as monthly, multiply by 12. If given in absolute rupees, divide by 100000. Round to 2 decimal places`;
+6. For CTC values, always convert to LPA (Lakhs Per Annum). If given as monthly, multiply by 12. If given in absolute rupees, divide by 100000. Round to 2 decimal places
+7. If supplementary information (email body / cover letter) is provided after the resume, use it to fill in missing fields — especially currentCtc, expectedCtc, and availability (notice period). Resume data takes precedence; supplementary data fills gaps`;
 
 const FALLBACK_RESUME_FORMATTER_PROMPT = `Format the provided resume into a clean, professional Markdown document.
 Use # for the candidate name, ## for major sections (Summary, Experience, Education, Skills, Certifications), ### for job titles.
@@ -148,16 +149,20 @@ async function getPromptContent(promptKey: string): Promise<string> {
   return FALLBACK_PROMPTS[promptKey] || '';
 }
 
-export async function parseResume(resumeText: string): Promise<{
+export async function parseResume(resumeText: string, supplementaryText?: string): Promise<{
   output: LLMResumeOutput;
   confidence: number;
 }> {
   const provider = getLLMProvider();
   const systemPrompt = await getPromptContent('resume_parser');
 
+  const userContent = supplementaryText?.trim()
+    ? `Parse this resume:\n\n${resumeText}\n\n---\n\nSupplementary information (email body / cover letter — use this to fill in fields not found in the resume, especially CTC, notice period, and engagement preferences):\n\n${supplementaryText}`
+    : `Parse this resume:\n\n${resumeText}`;
+
   const messages: LLMMessage[] = [
     { role: 'system', content: systemPrompt },
-    { role: 'user', content: `Parse this resume:\n\n${resumeText}` },
+    { role: 'user', content: userContent },
   ];
 
   const response = await provider.completeWithRetry(messages, {

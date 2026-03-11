@@ -212,9 +212,15 @@ Authorization: Bearer <jwe_token>
 **Request Body:**
 ```json
 {
-  "s3Key": "resumes/2024/01/abc123-john_doe_resume.pdf"
+  "s3Key": "resumes/2024/01/abc123-john_doe_resume.pdf",
+  "supplementaryText": "Dear Hiring Manager, I am writing to express my interest in the Full Stack Developer position..."
 }
 ```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| s3Key | String | Yes | S3 object key of the uploaded resume |
+| supplementaryText | String | No | Optional cover letter or email body text. Passed to the LLM alongside the resume to extract additional context (e.g., availability, motivation, preferred roles). |
 
 **Response (200 OK):**
 ```json
@@ -282,6 +288,7 @@ Authorization: Bearer <jwe_token>
 **Notes:**
 - Text extraction is done in-Lambda using `pdf-parse` (PDF) and `mammoth` (DOCX)
 - CTC values (`currentCtc`, `expectedCtc`) are in LPA (Lakhs Per Annum)
+- When `supplementaryText` is provided, it is passed to `parseResume()` alongside the extracted resume text so the LLM can incorporate additional context (e.g., cover letter details, email body)
 
 ---
 
@@ -300,9 +307,17 @@ Authorization: Bearer <jwe_token>
 {
   "fileName": "resume.pdf",
   "contentType": "application/pdf",
-  "fileData": "<base64-encoded-file-content>"
+  "fileData": "<base64-encoded-file-content>",
+  "supplementaryText": "Dear Hiring Manager, I am writing to express my interest in the Full Stack Developer position..."
 }
 ```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| fileName | String | Yes | Original file name |
+| contentType | String | Yes | MIME type of the file |
+| fileData | String | Yes | Base64-encoded file content |
+| supplementaryText | String | No | Optional cover letter or email body text. Passed to the LLM alongside the resume to extract additional context. |
 
 **Response:** Same format as `/candidate/analyze`
 
@@ -343,6 +358,7 @@ Authorization: Bearer <jwe_token>
     "roles": ["Full Stack Developer", "Frontend Lead"],
     "currentCtc": 18.5,
     "expectedCtc": 25.0,
+    "coverLetter": "Dear Hiring Manager, I am writing to express my interest in the Full Stack Developer position...",
     "customFields": {
       "date_of_joining": "2024-03-01",
       "employee_id": "EMP-1234"
@@ -374,6 +390,7 @@ Authorization: Bearer <jwe_token>
 - `profile.engagementModel`: Optional, enum: `contract`, `full_time`, `either` (default: `either`)
 - `profile.currentCtc`: Optional, number, min 0, max 500 (in LPA)
 - `profile.expectedCtc`: Optional, number, min 0, max 500 (in LPA)
+- `profile.coverLetter`: Optional, string, cover letter or email body text
 - `profile.customFields`: Optional, `Record<string, string | number>` map of custom field key-value pairs
 - `resumeS3Key`: Required, string, min 1, max 500
 
@@ -420,6 +437,7 @@ Authorization: Bearer <jwe_token>
     "expectedCtc": 25.0,
     "resumeS3Key": "resumes/2024/01/abc123-john_doe_resume.pdf",
     "formattedResumeS3Key": "formatted-resumes/abc123.pdf",
+    "coverLetter": "Dear Hiring Manager, I am writing to express my interest in the Full Stack Developer position...",
     "customFields": {
       "date_of_joining": "2024-03-01",
       "employee_id": "EMP-1234"
@@ -431,6 +449,7 @@ Authorization: Bearer <jwe_token>
 ```
 
 **Notes:**
+- `coverLetter`: Optional string containing the candidate's cover letter or supplementary text. For email-ingested candidates, this is the plain-text email body (HTML stripped). May be absent if no cover letter was provided.
 - `customFields`: Optional map of key-value pairs representing recruiter-defined custom fields for this candidate. Keys correspond to `AdditionalFieldDefinition.key` values. May be empty or absent if no custom fields have been set.
 
 ---

@@ -44,6 +44,7 @@ export async function handler(
       expectedCtc: candidate.expected_ctc,
       resumeS3Key: candidate.resume_s3_key,
       customFields: candidate.custom_fields || {},
+      coverLetter: candidate.cover_letter,
       createdAt: candidate.created_at,
       lastUpdated: candidate.last_updated,
     };

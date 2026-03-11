@@ -109,18 +109,18 @@ class ApiClient {
     });
   }
 
-  async analyzeResume(s3Key: string) {
+  async analyzeResume(s3Key: string, supplementaryText?: string) {
     return this.request<{
       extractedProfile: ExtractedProfile;
       confidence: number;
       rawTextLength: number;
     }>('/candidate/analyze', {
       method: 'POST',
-      body: JSON.stringify({ s3Key }),
+      body: JSON.stringify({ s3Key, ...(supplementaryText ? { supplementaryText } : {}) }),
     });
   }
 
-  async uploadAndAnalyze(file: File) {
+  async uploadAndAnalyze(file: File, supplementaryText?: string) {
     const fileContent = await this.fileToBase64(file);
     return this.request<{
       extractedProfile: ExtractedProfile;
@@ -132,6 +132,7 @@ class ApiClient {
         fileContent,
         fileName: file.name,
         contentType: file.type,
+        ...(supplementaryText ? { supplementaryText } : {}),
       }),
     });
   }
@@ -521,6 +522,7 @@ export interface ExtractedProfile {
   currentCtc?: number | null;
   expectedCtc?: number | null;
   customFields?: Record<string, string | number>;
+  coverLetter?: string | null;
 }
 
 export interface CandidateProfile extends ExtractedProfile {
