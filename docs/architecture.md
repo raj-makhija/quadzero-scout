@@ -70,6 +70,7 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │  │  - formatResume      │                                                   │
 │  │  - bulkImportWorker  │                                                   │
 │  │  - notifyWorker      │                                                   │
+│  │  - emailIngestWorker │                                                   │
 │  └──────────────────────┘                                                   │
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
@@ -78,7 +79,7 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │  │  - LLM Adapter        - Validation      - Skill Normalizer          │    │
 │  │  - Auth (JWE)         - CTC Conversion  - PDF Generator             │    │
 │  │  - Pricing Engine     - Match Scoring   - Email Service (SES)       │    │
-│  │  - Notification Service                                             │    │
+│  │  - Notification Service                 - Graph API Client (M365)   │    │
 │  └─────────────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────────────┘
           │                    │                    │
@@ -92,6 +93,8 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │  - Prompts      │  │                 │  │  - OpenRouter                  │
 │  - BulkImport   │  │                 │  │                                 │
 │    Batches      │  │                 │  │                                 │
+│  - EmailIngest  │  │                 │  │                                 │
+│    Log          │  │                 │  │                                 │
 │  - Requirements │  │                 │  │                                 │
 │  - Shortlists   │  │                 │  │                                 │
 │  - PricingConfig│  │                 │  │                                 │
@@ -102,11 +105,12 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
           │
           ▼
 ┌─────────────────────────────────────┐
-│   AWS SES (Simple Email Service)    │
-│   - Notification emails to          │
-│     opted-in recruiters             │
-│   - Region: ap-south-1              │
-└─────────────────────────────────────┘
+│   AWS SES (Simple Email Service)    │       ┌─────────────────────────────────────┐
+│   - Notification emails to          │       │  Microsoft Graph API (M365)          │
+│     opted-in recruiters             │       │   - Polls scout-ingest@quadzero.com  │
+│   - Ingest digest to admin          │       │     shared mailbox for new resumes   │
+│   - Region: ap-south-1              │       │   - OAuth2 client credentials flow   │
+└─────────────────────────────────────┘       └─────────────────────────────────────┘
 ```
 
 ## Data Flow Diagrams
@@ -429,6 +433,74 @@ Bulk Upload:
 - **Recruiter requirement detail page** (`/recruiter/requirements/[id]`): Shows a candidate pipeline with all shortlisted candidates for that requirement. The "Search Candidates" button writes stored criteria + requirement metadata (client name, engagement model, contract duration, payment terms, budget) to `sessionStorage` with `viewMode: 'results'` and navigates to `/recruiter/search`, which auto-executes the search and displays results directly (bypassing JD input and criteria views).
 - **Unified ShortlistModal for candidate details**: The search results page uses a single `ShortlistModal` component (`frontend/src/components/shortlist-modal.tsx`) as the candidate detail view — there is no separate drawer. Clicking any candidate card opens this modal, which displays: match score, candidate details grid (experience, location, availability, seniority, engagement, expected/current CTC), skills, match analysis, screening status (with amber warning when expired), and PricingPanel auto-populated with requirement context. The modal operates in two modes: (1) **Shortlist mode** (when `requirementContext` is provided): shows shortlist notes, "Shortlist Candidate" button, "Re-screen Candidate" link, and download resume buttons; (2) **View-only mode** (for ad-hoc searches without a requirement): shows download resume buttons and a "Save Requirement" prompt.
 - **Smart routing with single Shortlist button**: Each candidate card has a single "Shortlist" button (visible only when a `sourceRequirementId` exists and the candidate is not already shortlisted). Clicking it performs smart routing: if shortlisting conditions are met (screening done, Expected CTC available, screening < 15 days old), the ShortlistModal opens directly; if conditions are not met, the ScreeningModal opens first, and upon completion the ShortlistModal auto-opens for a seamless chain. The handler validates screening freshness client-side and handles backend errors (SCREENING_REQUIRED, already shortlisted). After shortlisting, the candidate card shows a green "Shortlisted" badge and the modal displays a confirmation banner.
+
+### Email Ingest Flow (Automated via M365)
+
+```
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│   M365 DL    │     │ Graph API    │     │emailIngest   │     │  Existing    │
+│ jobs@quadzero│     │              │     │  Worker      │     │  Pipeline    │
+│   .com       │     │              │     │ (scheduled)  │     │              │
+└──────┬───────┘     └──────┬───────┘     └──────┬───────┘     └──────┬───────┘
+       │                    │                    │                    │
+       │ Email with         │                    │                    │
+       │ resume arrives     │                    │                    │
+       │                    │                    │                    │
+       │ Delivered to       │                    │                    │
+       │ scout-ingest@      │                    │                    │
+       │ (shared mailbox    │                    │                    │
+       │  as DL member)     │                    │                    │
+       │                    │                    │                    │
+       │                    │    1. Poll unread   │                    │
+       │                    │    messages (every  │                    │
+       │                    │    3 min via        │                    │
+       │                    │    EventBridge)     │                    │
+       │                    │<───────────────────│                    │
+       │                    │                    │                    │
+       │                    │    Return messages │                    │
+       │                    │    with attachments │                    │
+       │                    │───────────────────>│                    │
+       │                    │                    │                    │
+       │                    │                    │ 2. Idempotency     │
+       │                    │                    │    check           │
+       │                    │                    │    (EmailIngestLog)│
+       │                    │                    │                    │
+       │                    │                    │ 3. Upload          │
+       │                    │                    │    attachment to   │
+       │                    │                    │    S3              │
+       │                    │                    │                    │
+       │                    │                    │ 4. Process resume  │
+       │                    │                    │───────────────────>│
+       │                    │                    │  extractText       │
+       │                    │                    │  parseResume (LLM) │
+       │                    │                    │  normalizeSkills   │
+       │                    │                    │  dedup by email    │
+       │                    │                    │  saveCandidateProfile
+       │                    │                    │  formatResumeWorker│
+       │                    │                    │<───────────────────│
+       │                    │                    │                    │
+       │                    │ 5. Mark as read +  │                    │
+       │                    │    move to         │                    │
+       │                    │    "Processed"     │                    │
+       │                    │<───────────────────│                    │
+       │                    │                    │                    │
+       │                    │                    │ 6. Notify matching │
+       │                    │                    │    recruiters      │
+       │                    │                    │                    │
+       │                    │                    │ 7. Send digest     │
+       │                    │                    │    email to admin  │
+       │                    │                    │                    │
+```
+
+**Key Details:**
+- `jobs@quadzero.com` is a traditional Exchange Distribution List; `scout-ingest@quadzero.com` is a shared mailbox added as a DL member
+- The `emailIngestWorker` Lambda runs every 3 minutes via EventBridge schedule, processing up to 10 emails per invocation
+- Idempotency is ensured via the `EmailIngestLog` DynamoDB table (keyed by RFC 822 `internet_message_id`)
+- Resume processing reuses the same pipeline as single upload and bulk import — no separate parsing logic
+- Admin receives a digest email at `raj@quadzero.com` after each poll cycle with successes, errors, and skipped emails
+- S3 key prefix: `email-resumes/{year}/{month}/{uuid}-{filename}` (separate from `resumes/` for operational visibility)
+- Kill switch: `EMAIL_INGEST_ENABLED` SSM parameter (also disables the EventBridge schedule rule)
+- Graph API authentication: OAuth2 client credentials flow via Azure AD (Entra ID) registered app
 
 ## Component Details
 

@@ -49,6 +49,13 @@ provider:
     DYNAMODB_TABLE_SHORTLISTS: ${self:custom.shortlistsTable}
     DYNAMODB_TABLE_CLIENTS: ${self:custom.clientsTable}
     DYNAMODB_TABLE_CANDIDATE_SCREENINGS: ${self:custom.candidateScreeningsTable}
+    DYNAMODB_TABLE_EMAIL_INGEST_LOG: ${self:custom.emailIngestLogTable}
+    GRAPH_TENANT_ID: ${ssm:/quadzero-scout/${self:provider.stage}/GRAPH_TENANT_ID, env:GRAPH_TENANT_ID, ''}
+    GRAPH_CLIENT_ID: ${ssm:/quadzero-scout/${self:provider.stage}/GRAPH_CLIENT_ID, env:GRAPH_CLIENT_ID, ''}
+    GRAPH_CLIENT_SECRET: ${ssm:/quadzero-scout/${self:provider.stage}/GRAPH_CLIENT_SECRET, env:GRAPH_CLIENT_SECRET, ''}
+    GRAPH_MAILBOX_ADDRESS: ${ssm:/quadzero-scout/${self:provider.stage}/GRAPH_MAILBOX_ADDRESS, env:GRAPH_MAILBOX_ADDRESS, ''}
+    EMAIL_INGEST_ENABLED: ${ssm:/quadzero-scout/${self:provider.stage}/EMAIL_INGEST_ENABLED, env:EMAIL_INGEST_ENABLED, 'false'}
+    EMAIL_INGEST_NOTIFY_ADDRESS: ${ssm:/quadzero-scout/${self:provider.stage}/EMAIL_INGEST_NOTIFY_ADDRESS, env:EMAIL_INGEST_NOTIFY_ADDRESS, ''}
 
   httpApi:
     cors:
@@ -99,6 +106,7 @@ custom:
   shortlistsTable: Shortlists-${self:provider.stage}
   clientsTable: Clients-${self:provider.stage}
   candidateScreeningsTable: CandidateScreenings-${self:provider.stage}
+  emailIngestLogTable: EmailIngestLog-${self:provider.stage}
 
   dotenv:
     include:
@@ -424,6 +432,16 @@ functions:
     handler: src/handlers/worker/notifyWorker.handler
     timeout: 60
     memorySize: 512
+
+  # Email Ingest Worker (scheduled, no HTTP events)
+  emailIngestWorker:
+    handler: src/handlers/worker/emailIngestWorker.handler
+    timeout: 120
+    memorySize: 1024
+    events:
+      - schedule:
+          rate: rate(3 minutes)
+          enabled: true
 
   # Pricing Endpoints
   recruiterCalculatePricing:
