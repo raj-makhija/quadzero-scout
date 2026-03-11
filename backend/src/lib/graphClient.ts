@@ -112,7 +112,7 @@ export async function getUnreadMessages(
     `&$top=${top}` +
     `&$orderby=receivedDateTime asc` +
     `&$select=id,subject,from,receivedDateTime,hasAttachments,internetMessageId` +
-    `&$expand=attachments($select=id,name,contentType,contentBytes,size)`;
+    `&$expand=attachments`;
 
   const response = await fetch(url, {
     method: 'GET',
