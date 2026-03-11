@@ -493,6 +493,19 @@ class ApiClient {
       body: JSON.stringify(data),
     });
   }
+
+  // Locate Profile endpoints
+  async searchCandidatesByName(query: string, limit?: number): Promise<CandidateNameSearchResponse> {
+    const params = new URLSearchParams({ q: query });
+    if (limit) params.set('limit', String(limit));
+    return this.request<CandidateNameSearchResponse>(`/recruiter/candidates/search?${params.toString()}`);
+  }
+
+  async getCandidateShortlistedRequirements(candidateId: string): Promise<CandidateShortlistedRequirementsResponse> {
+    return this.request<CandidateShortlistedRequirementsResponse>(
+      `/recruiter/candidates/${candidateId}/shortlisted-requirements`
+    );
+  }
 }
 
 export const api = new ApiClient(API_URL);
@@ -530,6 +543,8 @@ export interface CandidateProfile extends ExtractedProfile {
   resumeS3Key?: string;
   createdAt?: string;
   lastUpdated?: string;
+  lastScreenedAt?: string;
+  lastScreenedBy?: string;
 }
 
 export interface ParsedCriteria {
@@ -1033,4 +1048,37 @@ export interface ScreeningHistoryEntry {
 export interface ScreeningHistoryResponse {
   candidateId: string;
   screenings: ScreeningHistoryEntry[];
+}
+
+// Locate Profile types
+export interface CandidateNameSearchResult {
+  candidateId: string;
+  fullName: string;
+  primarySkills: string[];
+  totalExperience: number;
+  seniority: string;
+  location?: string;
+  lastUpdated: string;
+  lastScreenedAt?: string;
+}
+
+export interface CandidateNameSearchResponse {
+  candidates: CandidateNameSearchResult[];
+}
+
+export interface ShortlistedRequirement {
+  requirementId: string;
+  clientName: string;
+  endClient?: string;
+  jobTitle?: string;
+  engagementModel: string;
+  mustHaveSkills: string[];
+  taggedAt: string;
+  taggedBy: string;
+  notes?: string;
+  status: ShortlistStatus;
+}
+
+export interface CandidateShortlistedRequirementsResponse {
+  shortlistedRequirements: ShortlistedRequirement[];
 }

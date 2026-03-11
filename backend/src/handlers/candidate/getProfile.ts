@@ -47,6 +47,8 @@ export async function handler(
       coverLetter: candidate.cover_letter,
       createdAt: candidate.created_at,
       lastUpdated: candidate.last_updated,
+      lastScreenedAt: candidate.last_screened_at,
+      lastScreenedBy: candidate.last_screened_by_name,
     };
 
     return success(response);
