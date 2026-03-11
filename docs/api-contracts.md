@@ -716,7 +716,9 @@ Authorization: Bearer <jwe_token> (optional)
 - **Experience** is a soft scoring factor. `experienceMatch` values: `"full"` (within range, +8pts), `"partial"` (within 2 years of boundary, +4pts), `"none"` (way outside, +0pts)
 - **Availability** is a soft scoring factor. `availabilityMatch` values: `"full"` (matches or available earlier, +7pts), `"partial"` (1–2 steps later, +3pts), `"none"` (3+ steps later, +0pts)
 - **Seniority** is a soft scoring factor (not a hard filter). Matched candidates get +5pts
-- Match score weights: must-have skills (50%), good-to-have skills (20%), experience (8%), seniority (5%), location (10%), availability (7%)
+- Match score weights: must-have skills (45%), good-to-have skills (25%), experience (8%), seniority (5%), location (10%), availability (7%)
+- Related skills in the same ontology category count at 0.3x weight for both must-have and good-to-have scoring
+- Minimum effective must-have match ratio threshold: 0.25 (effective = exact matches + related matches × 0.3)
 
 ---
 

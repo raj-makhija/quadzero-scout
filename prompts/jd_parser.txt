@@ -34,16 +34,24 @@ You MUST respond with valid JSON matching this exact schema. Do NOT include any 
 
 ### Skills Classification
 
-**Must-Have Skills (Required)**
-- Explicitly stated as "required", "must have", "essential", "mandatory"
-- Listed under "Requirements" or "Required Qualifications" sections
-- Core technologies the role cannot function without
-- Skills mentioned multiple times as critical
+**Must-Have Skills (Required) — STRICT LIMIT: Maximum 5 skills**
+- ONLY include skills that are absolutely non-negotiable for the role
+- Decision test: "Would a recruiter immediately reject a candidate missing THIS specific skill?"
+- Typically 2-4 skills; never exceed 5
+- A skill qualifies as must-have ONLY if it meets at least one of these criteria:
+  - Explicitly stated as "required", "must have", "essential", "mandatory" AND is a core technology (not a tool or methodology)
+  - It is the primary programming language or framework the role revolves around
+  - It appears in the job title itself
+- Skills listed under a "Requirements" section are NOT automatically must-have — evaluate each against the criteria above
+- If a JD lists more than 5 skills under "Requirements", select only the 3-5 most critical/emphasized ones and move the rest to goodToHaveSkills
 
-**Good-to-Have Skills (Preferred)**
+**Good-to-Have Skills (Preferred) — All remaining skills go here**
+- Everything not meeting the strict must-have criteria above
+- Skills listed under "Requirements" that are supplementary (e.g., tools, methodologies, soft-adjacent tech)
+- Adjacent ecosystem tools (e.g., if React is must-have, then Redux, Jest, Webpack go here)
 - Explicitly stated as "nice to have", "preferred", "bonus", "plus"
 - Listed under "Preferred Qualifications" or "Nice to Have" sections
-- Technologies mentioned as beneficial but not mandatory
+- Technologies mentioned only once without emphasis
 - Skills that would differentiate candidates
 
 ### Experience Interpretation
@@ -112,8 +120,8 @@ Job Description:
 
 ```json
 {
-  "mustHaveSkills": ["react", "nodejs", "typescript", "postgresql"],
-  "goodToHaveSkills": ["aws", "docker", "kubernetes", "graphql"],
+  "mustHaveSkills": ["react", "nodejs"],
+  "goodToHaveSkills": ["typescript", "postgresql", "aws", "docker", "kubernetes", "graphql"],
   "minExperience": 5,
   "maxExperience": null,
   "seniority": ["senior", "lead"],
@@ -134,7 +142,9 @@ Job Description:
 
 ## Edge Cases
 
-1. If JD is vague about requirements, be conservative and include fewer must-haves
-2. If skills are mentioned without context, classify as good-to-have
-3. For startup JDs that list many technologies, focus on the 3-5 most emphasized
-4. If experience is listed per skill (e.g., "3+ years React"), use highest as minExperience
+1. If JD is vague about requirements, put ALL skills in goodToHaveSkills and leave mustHaveSkills with at most 1-2 core technologies
+2. If skills are mentioned without clear priority indicators, classify as good-to-have
+3. For startup JDs that list many technologies, pick at most 3 as must-have and push ALL others to good-to-have
+4. IMPORTANT: It is always better to under-classify must-haves than over-classify. When in doubt, put the skill in goodToHaveSkills
+5. Count check: If your mustHaveSkills array has more than 5 items, re-evaluate and move the least critical ones to goodToHaveSkills
+6. If experience is listed per skill (e.g., "3+ years React"), use highest as minExperience

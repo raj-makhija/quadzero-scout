@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import type { CandidateItem } from '../../types/index.js';
-import { calculateMatchScore, parseSearchLocations, MIN_MUST_HAVE_MATCH_RATIO, RELATED_MATCH_WEIGHT } from '../../lib/matchScoring.js';
+import { calculateMatchScore, parseSearchLocations, MIN_MUST_HAVE_MATCH_RATIO, RELATED_MATCH_WEIGHT, MUST_HAVE_RELATED_WEIGHT, MUST_HAVE_WEIGHT, GOOD_TO_HAVE_WEIGHT } from '../../lib/matchScoring.js';
 
 // ---------------------------------------------------------------------------
 // Match Scoring Algorithm Tests
-// Weights: must-have 50, good-to-have 20, experience 8, seniority 5,
+// Weights: must-have 45, good-to-have 25, experience 8, seniority 5,
 //          location 10, availability 7 = 100
 // ---------------------------------------------------------------------------
 
@@ -53,7 +53,7 @@ describe('Match Scoring Algorithm', () => {
   });
 
   // TC-SCORE-002
-  it('must-have skills contribute 50% of score (prorated, exact only)', () => {
+  it('must-have skills contribute 45% of score (prorated)', () => {
     const candidate = makeCandidate({
       primary_skills: ['react', 'python'],
       secondary_skills: [],
@@ -67,17 +67,17 @@ describe('Match Scoring Algorithm', () => {
       undefined,
       undefined
     );
-    // 1 out of 4 must-have = 50 * 0.25 = 12.5 → 13 (rounded)
-    // good-to-have: none specified → full 20
+    // 1 out of 4 must-have = 45 * 0.25 = 11.25
+    // good-to-have: none specified → full 25
     // experience: no filter → 8, seniority: no filter → 5, location: no filter → 10, availability: no filter → 7
-    // Total: 13 + 20 + 8 + 5 + 10 + 7 = 63
+    // Total: 11.25 + 25 + 8 + 5 + 10 + 7 = 66.25 → 66
     expect(result.details.mustHaveMatched).toContain('react');
     expect(result.details.mustHaveMatched).not.toContain('golang');
     expect(result.score).toBeLessThan(100);
   });
 
   // TC-SCORE-003
-  it('good-to-have skills contribute 20% of score (prorated)', () => {
+  it('good-to-have skills contribute 25% of score (prorated)', () => {
     const candidate = makeCandidate({
       primary_skills: ['react', 'nodejs'],
       secondary_skills: ['typescript'],
@@ -87,11 +87,11 @@ describe('Match Scoring Algorithm', () => {
       [],                           // no must-have
       ['typescript', 'kubernetes'], // 1 of 2 good-to-have (exact)
     );
-    // must-have: none specified → 50
-    // good-to-have: 1/2 exact = (1 + 0) / 2 * 20 = 10
+    // must-have: none specified → 45
+    // good-to-have: 1/2 exact = (1 + 0) / 2 * 25 = 12.5
     // experience: 8, seniority: 5, location: 10, availability: 7
-    // Total: 50 + 10 + 8 + 5 + 10 + 7 = 90
-    expect(result.score).toBe(90);
+    // Total: 45 + 12.5 + 8 + 5 + 10 + 7 = 87.5 → 88
+    expect(result.score).toBe(88);
   });
 
   // TC-SCORE-004
@@ -106,7 +106,7 @@ describe('Match Scoring Algorithm', () => {
     const candidate = makeCandidate({ total_experience: 2 });
     const result = calculateMatchScore(candidate, [], [], 5);
     expect(result.details.experienceMatch).toBe('none');
-    // 50 + 20 + 0 + 5 + 10 + 7 = 92
+    // 45 + 25 + 0 + 5 + 10 + 7 = 92
     expect(result.score).toBe(92);
   });
 
@@ -115,7 +115,7 @@ describe('Match Scoring Algorithm', () => {
     const candidate = makeCandidate({ total_experience: 12 });
     const result = calculateMatchScore(candidate, [], [], undefined, 8);
     expect(result.details.experienceMatch).toBe('none');
-    // 50 + 20 + 0 + 5 + 10 + 7 = 92
+    // 45 + 25 + 0 + 5 + 10 + 7 = 92
     expect(result.score).toBe(92);
   });
 
@@ -131,7 +131,7 @@ describe('Match Scoring Algorithm', () => {
     const candidate = makeCandidate({ seniority: 'junior' });
     const result = calculateMatchScore(candidate, [], [], undefined, undefined, ['senior', 'lead']);
     expect(result.details.seniorityMatch).toBe(false);
-    // 50 + 20 + 8 + 0 + 10 + 7 = 95
+    // 45 + 25 + 8 + 0 + 10 + 7 = 95
     expect(result.score).toBe(95);
   });
 
@@ -148,8 +148,8 @@ describe('Match Scoring Algorithm', () => {
       primary_skills: ['react'],
       secondary_skills: [],
     });
-    // 1 of 3 must-have = 50 * (1/3) = 16.666...
-    // + 20 + 8 + 5 + 10 + 7 = 66.666 → 67
+    // 1 exact + 1 related (typescript in same frontend category) of 3 must-have
+    // = (1 + 1*0.3)/3 * 45 = 19.5 + 25 + 8 + 5 + 10 + 7 = 74.5 → 75
     const result = calculateMatchScore(
       candidate,
       ['react', 'nodejs', 'typescript'],
@@ -185,32 +185,32 @@ describe('Match Scoring Algorithm', () => {
     expect(result2.details.experienceMatch).toBe('full');
   });
 
-  it('empty must-have skills results in full 50 points', () => {
+  it('empty must-have skills results in full 45 points', () => {
     const candidate = makeCandidate();
     const result = calculateMatchScore(candidate, [], ['typescript']);
-    // must-have: 50, good-to-have: 20, exp: 8, seniority: 5, location: 10, availability: 7
+    // must-have: 45, good-to-have: 25, exp: 8, seniority: 5, location: 10, availability: 7
     expect(result.score).toBe(100);
   });
 
-  it('empty good-to-have skills results in full 20 points', () => {
+  it('empty good-to-have skills results in full 25 points', () => {
     const candidate = makeCandidate();
     const result = calculateMatchScore(candidate, ['react'], []);
-    // must-have: 50 (1/1), good-to-have: 20, exp: 8, seniority: 5, location: 10, availability: 7
+    // must-have: 45 (1/1), good-to-have: 25, exp: 8, seniority: 5, location: 10, availability: 7
     expect(result.score).toBe(100);
   });
 
-  // TC-SCORE-012: Related skill does NOT count as must-have match
-  it('related skill does NOT count as must-have match (exact only)', () => {
+  // TC-SCORE-012: Related skill counts at 0.3x for must-have
+  it('related skill counts at 0.3x weight for must-have match', () => {
     const candidate = makeCandidate({
       primary_skills: ['vue'],  // vue is in frontend category, same as react
       secondary_skills: [],
     });
     const result = calculateMatchScore(candidate, ['react'], []);
     expect(result.details.mustHaveMatched).not.toContain('react');
-    expect(result.details.mustHaveRelated).toContain('react'); // shown as related for display
+    expect(result.details.mustHaveRelated).toContain('react'); // related match
     expect(result.details.mustHaveMissing).toEqual([]);
-    // Score: 0/1 must-have = 0 + 20 + 8 + 5 + 10 + 7 = 50
-    expect(result.score).toBe(50);
+    // Score: (0 + 1*0.3)/1 * 45 = 13.5 + 25 + 8 + 5 + 10 + 7 = 68.5 → 69
+    expect(result.score).toBe(69);
   });
 
   // TC-SCORE-013: Related skill counts at 0.3x for good-to-have
@@ -222,8 +222,8 @@ describe('Match Scoring Algorithm', () => {
     const result = calculateMatchScore(candidate, [], ['react']); // react is good-to-have
     expect(result.details.goodToHaveMatched).toEqual([]);
     expect(result.details.goodToHaveRelated).toContain('react');
-    // Score: 50 + (0 + 1*0.3)/1 * 20 = 6 + 8 + 5 + 10 + 7 = 86
-    expect(result.score).toBe(86);
+    // Score: 45 + (0 + 1*0.3)/1 * 25 = 7.5 + 8 + 5 + 10 + 7 = 82.5 → 83
+    expect(result.score).toBe(83);
   });
 
   // TC-SCORE-014: Salesforce and ServiceNow are in different categories after split
@@ -238,8 +238,8 @@ describe('Match Scoring Algorithm', () => {
     expect(result.details.mustHaveMissing).toContain('salesforce');
   });
 
-  // TC-SCORE-015: 1/10 must-have is below 30% threshold
-  it('candidate with 1 of 10 must-have skills is below 30% threshold', () => {
+  // TC-SCORE-015: 1/10 must-have is below 25% threshold
+  it('candidate with 1 of 10 must-have skills is below 25% threshold', () => {
     const candidate = makeCandidate({
       primary_skills: ['react'],
       secondary_skills: [],
@@ -252,8 +252,8 @@ describe('Match Scoring Algorithm', () => {
     expect(ratio).toBeLessThan(MIN_MUST_HAVE_MATCH_RATIO);
   });
 
-  // TC-SCORE-016: 3/10 must-have passes 30% threshold
-  it('candidate with 3 of 10 must-have skills passes 30% threshold', () => {
+  // TC-SCORE-016: 3/10 must-have passes 25% threshold
+  it('candidate with 3 of 10 must-have skills passes 25% threshold', () => {
     const candidate = makeCandidate({
       primary_skills: ['react', 'nodejs', 'python'],
       secondary_skills: [],
@@ -292,8 +292,20 @@ describe('Match Scoring Algorithm', () => {
     expect(RELATED_MATCH_WEIGHT).toBe(0.3);
   });
 
-  it('MIN_MUST_HAVE_MATCH_RATIO is 0.3', () => {
-    expect(MIN_MUST_HAVE_MATCH_RATIO).toBe(0.3);
+  it('MUST_HAVE_RELATED_WEIGHT is 0.3', () => {
+    expect(MUST_HAVE_RELATED_WEIGHT).toBe(0.3);
+  });
+
+  it('MIN_MUST_HAVE_MATCH_RATIO is 0.25', () => {
+    expect(MIN_MUST_HAVE_MATCH_RATIO).toBe(0.25);
+  });
+
+  it('MUST_HAVE_WEIGHT is 45', () => {
+    expect(MUST_HAVE_WEIGHT).toBe(45);
+  });
+
+  it('GOOD_TO_HAVE_WEIGHT is 25', () => {
+    expect(GOOD_TO_HAVE_WEIGHT).toBe(25);
   });
 
   // --- Location Tests ---
@@ -311,7 +323,7 @@ describe('Match Scoring Algorithm', () => {
     const candidate = makeCandidate({ location: 'Mumbai, India' });
     const result = calculateMatchScore(candidate, [], [], undefined, undefined, undefined, undefined, ['bangalore']);
     expect(result.details.locationMatch).toBe('none');
-    // 50 + 20 + 8 + 5 + 0 + 7 = 90
+    // 45 + 25 + 8 + 5 + 0 + 7 = 90
     expect(result.score).toBe(90);
   });
 
@@ -320,7 +332,7 @@ describe('Match Scoring Algorithm', () => {
     const candidate = makeCandidate({ location: undefined });
     const result = calculateMatchScore(candidate, [], [], undefined, undefined, undefined, undefined, ['bangalore']);
     expect(result.details.locationMatch).toBe('partial');
-    // 50 + 20 + 8 + 5 + 5 + 7 = 95
+    // 45 + 25 + 8 + 5 + 5 + 7 = 95
     expect(result.score).toBe(95);
   });
 
@@ -357,7 +369,7 @@ describe('Match Scoring Algorithm', () => {
     // min = 5, candidate = 4, diff = 1 ≤ 2 → partial
     const result = calculateMatchScore(candidate, [], [], 5);
     expect(result.details.experienceMatch).toBe('partial');
-    // 50 + 20 + 4 + 5 + 10 + 7 = 96
+    // 45 + 25 + 4 + 5 + 10 + 7 = 96
     expect(result.score).toBe(96);
   });
 
@@ -367,7 +379,7 @@ describe('Match Scoring Algorithm', () => {
     // min = 5, candidate = 1, diff = 4 > 2 → none
     const result = calculateMatchScore(candidate, [], [], 5);
     expect(result.details.experienceMatch).toBe('none');
-    // 50 + 20 + 0 + 5 + 10 + 7 = 92
+    // 45 + 25 + 0 + 5 + 10 + 7 = 92
     expect(result.score).toBe(92);
   });
 
@@ -377,7 +389,7 @@ describe('Match Scoring Algorithm', () => {
     // max = 8, candidate = 9, diff = 1 ≤ 2 → partial
     const result = calculateMatchScore(candidate, [], [], undefined, 8);
     expect(result.details.experienceMatch).toBe('partial');
-    // 50 + 20 + 4 + 5 + 10 + 7 = 96
+    // 45 + 25 + 4 + 5 + 10 + 7 = 96
     expect(result.score).toBe(96);
   });
 
@@ -407,7 +419,7 @@ describe('Match Scoring Algorithm', () => {
     // Let me use a closer example: looking for 2_weeks (idx 2), candidate is 1_month (idx 3), diff = 1 → partial
     const result = calculateMatchScore(candidate, [], [], undefined, undefined, undefined, undefined, [], ['2_weeks']);
     expect(result.details.availabilityMatch).toBe('partial');
-    // 50 + 20 + 8 + 5 + 10 + 3 = 96
+    // 45 + 25 + 8 + 5 + 10 + 3 = 96
     expect(result.score).toBe(96);
   });
 
@@ -417,7 +429,7 @@ describe('Match Scoring Algorithm', () => {
     // Looking for immediate (idx 0), candidate is 3_months (idx 5), diff = 5 > 2 → none
     const result = calculateMatchScore(candidate, [], [], undefined, undefined, undefined, undefined, [], ['immediate']);
     expect(result.details.availabilityMatch).toBe('none');
-    // 50 + 20 + 8 + 5 + 10 + 0 = 93
+    // 45 + 25 + 8 + 5 + 10 + 0 = 93
     expect(result.score).toBe(93);
   });
 

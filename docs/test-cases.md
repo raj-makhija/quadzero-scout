@@ -1391,31 +1391,31 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | **ID** | TC-SCORE-001 |
 | **Priority** | P0 |
 | **Scenario** | Candidate has all must-have skills, all good-to-have skills, experience in range, matching seniority |
-| **Expected Result** | `matchScore: 100` (50 + 20 + 15 + 15) |
+| **Expected Result** | `matchScore: 100` (45 + 25 + 8 + 5 + 10 + 7) |
 
-### TC-SCORE-002: Must-have skills contribute 50% of score
+### TC-SCORE-002: Must-have skills contribute 45% of score
 | Field | Value |
 |-------|-------|
 | **ID** | TC-SCORE-002 |
 | **Priority** | P0 |
-| **Scenario** | Candidate matches 2 of 4 must-have skills; no good-to-have, no exp, no seniority match |
-| **Expected Result** | Must-have component = 50 * (2/4) = 25 points |
+| **Scenario** | Candidate matches 1 of 4 must-have skills exactly (no related matches); no good-to-have specified |
+| **Expected Result** | Must-have component = 45 * (1/4) = 11.25 points. Related skills in same ontology category count at 0.3x weight |
 
-### TC-SCORE-003: Good-to-have skills contribute 20% of score
+### TC-SCORE-003: Good-to-have skills contribute 25% of score
 | Field | Value |
 |-------|-------|
 | **ID** | TC-SCORE-003 |
 | **Priority** | P1 |
 | **Scenario** | Candidate matches 1 of 2 good-to-have skills |
-| **Expected Result** | Good-to-have component = 20 * (1/2) = 10 points |
+| **Expected Result** | Good-to-have component = 25 * (1/2) = 12.5 points |
 
-### TC-SCORE-004: Experience in range contributes 15 points
+### TC-SCORE-004: Experience in range contributes 8 points
 | Field | Value |
 |-------|-------|
 | **ID** | TC-SCORE-004 |
 | **Priority** | P1 |
 | **Scenario** | Required: 3-10 years; Candidate has 5 years |
-| **Expected Result** | Experience component = 15 points |
+| **Expected Result** | Experience component = 8 points (full match) |
 
 ### TC-SCORE-005: Experience below minimum
 | Field | Value |
@@ -1433,13 +1433,13 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | **Scenario** | Required: maxExperience=8; Candidate has 12 years |
 | **Expected Result** | Experience component = 0 points; `experienceMatch: false` |
 
-### TC-SCORE-007: Seniority match contributes 15 points
+### TC-SCORE-007: Seniority match contributes 5 points
 | Field | Value |
 |-------|-------|
 | **ID** | TC-SCORE-007 |
 | **Priority** | P1 |
 | **Scenario** | Required: ["senior", "lead"]; Candidate is "senior" |
-| **Expected Result** | Seniority component = 15 points; `seniorityMatch: true` |
+| **Expected Result** | Seniority component = 5 points; `seniorityMatch: true` |
 
 ### TC-SCORE-008: Seniority mismatch
 | Field | Value |
