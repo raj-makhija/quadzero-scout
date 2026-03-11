@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { X, AlertCircle, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import { api } from '@/lib/api';
-import type { CandidateSearchResult, ScreeningUpdatedValues } from '@/lib/api';
+import type { CandidateSearchResult, ScreeningUpdatedValues, AdditionalFieldDefinition } from '@/lib/api';
 import { FormField, FormInput, FormSelect, FormTextarea } from '@/components/ui/form-field';
 import {
   SENIORITY_OPTIONS,
@@ -19,9 +19,10 @@ interface ScreeningModalProps {
   onClose: () => void;
   onScreeningComplete: (candidateId: string, updatedValues?: Partial<CandidateSearchResult>) => void;
   isShortlistFlow?: boolean;
+  additionalFields?: AdditionalFieldDefinition[];
 }
 
-export function ScreeningModal({ candidate, candidateId: candidateIdProp, candidateName: candidateNameProp, onClose, onScreeningComplete, isShortlistFlow }: ScreeningModalProps) {
+export function ScreeningModal({ candidate, candidateId: candidateIdProp, candidateName: candidateNameProp, onClose, onScreeningComplete, isShortlistFlow, additionalFields }: ScreeningModalProps) {
   const resolvedCandidateId = candidate?.candidateId || candidateIdProp || '';
   const resolvedCandidateName = candidate?.fullName || candidateNameProp || 'Candidate';
   const [loading, setLoading] = useState(false);
@@ -53,6 +54,9 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
   // Screening notes
   const [notes, setNotes] = useState('');
 
+  // Custom/additional fields from requirement definitions
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, string>>({});
+
   // Track which fields are empty/missing for highlighting
   const [emptyFields, setEmptyFields] = useState<Set<string>>(new Set());
 
@@ -80,6 +84,16 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
         setRoles((profile.roles || []).join(', '));
         setCertifications((profile.certifications || []).join(', '));
         setSummary(profile.summary || '');
+
+        // Pre-fill custom fields from candidate profile
+        if (additionalFields && additionalFields.length > 0) {
+          const initial: Record<string, string> = {};
+          for (const field of additionalFields) {
+            const existing = profile.customFields?.[field.key];
+            initial[field.key] = existing != null ? String(existing) : '';
+          }
+          setCustomFieldValues(initial);
+        }
 
         // Identify empty fields
         const empty = new Set<string>();
@@ -121,6 +135,16 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
     if (!availability) missingFields.push('Notice Period');
     if (!engagementModel) missingFields.push('Engagement Preference');
     if (!notes.trim()) missingFields.push('Screening Notes');
+
+    // Validate required additional fields
+    if (additionalFields && additionalFields.length > 0) {
+      for (const field of additionalFields) {
+        const val = customFieldValues[field.key];
+        if (field.required && (!val || val.trim() === '')) {
+          missingFields.push(field.label);
+        }
+      }
+    }
 
     if (missingFields.length > 0) {
       setErrorMessage(`Please fill in: ${missingFields.join(', ')}`);
@@ -165,6 +189,20 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
       }
       if (summary) updatedValues.summary = summary;
 
+      // Include custom fields from requirement additional fields
+      if (additionalFields && additionalFields.length > 0) {
+        const customFields: Record<string, string | number> = {};
+        for (const field of additionalFields) {
+          const val = customFieldValues[field.key];
+          if (val && val.trim() !== '') {
+            customFields[field.key] = field.type === 'number' ? Number(val) : val;
+          }
+        }
+        if (Object.keys(customFields).length > 0) {
+          updatedValues.customFields = customFields;
+        }
+      }
+
       await api.screenCandidate(resolvedCandidateId, updatedValues, notes || undefined);
 
       // Build updated candidate fields to pass back to the caller
@@ -204,7 +242,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
     currentCtc, expectedCtc, availability, engagementModel,
     totalExperience, seniority, primarySkillsText, secondarySkillsText,
     industries, roles, certifications, summary, notes, onScreeningComplete,
-    isShortlistFlow,
+    isShortlistFlow, additionalFields, customFieldValues,
   ]);
 
   return (
@@ -536,6 +574,43 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                   </div>
                 )}
               </div>
+
+              {/* Requirement Data Points */}
+              {additionalFields && additionalFields.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                    Requirement Data Points
+                  </h3>
+                  <div className="space-y-3">
+                    {additionalFields.map((field) => {
+                      const value = customFieldValues[field.key] ?? '';
+                      const isEmpty = field.required && (!value || value.trim() === '');
+
+                      return (
+                        <FormField
+                          key={field.key}
+                          label={field.label}
+                          htmlFor={`cf_${field.key}`}
+                          required={field.required}
+                          touched={submitAttempted}
+                          error={isEmpty ? 'Required' : undefined}
+                        >
+                          <FormInput
+                            id={`cf_${field.key}`}
+                            type={field.type === 'date' ? 'date' : field.type === 'number' ? 'number' : 'text'}
+                            value={value}
+                            onChange={(e) =>
+                              setCustomFieldValues((prev) => ({ ...prev, [field.key]: e.target.value }))
+                            }
+                            placeholder={field.type === 'date' ? undefined : `Enter ${field.label.toLowerCase()}`}
+                            hasError={submitAttempted && isEmpty}
+                          />
+                        </FormField>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Screening Notes */}
               <div>

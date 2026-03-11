@@ -70,6 +70,7 @@ export default function RecruiterSearchPage() {
     paymentTermsDays?: number;
     budgetMinLpa?: number;
     budgetMaxLpa?: number;
+    additionalFields?: AdditionalFieldDefinition[];
   } | null>(() => {
     if (prefilled?.requirementId && prefilled?.requirementMeta) {
       return { requirementId: prefilled.requirementId, ...prefilled.requirementMeta };
@@ -217,6 +218,7 @@ export default function RecruiterSearchPage() {
             paymentTermsDays: req.paymentTermsDays,
             budgetMinLpa: req.budgetMinLpa,
             budgetMaxLpa: req.budgetMaxLpa,
+            additionalFields: req.additionalFields,
           });
         }
       })
@@ -510,6 +512,7 @@ export default function RecruiterSearchPage() {
         paymentTermsDays: resolvedPaymentTerms,
         budgetMinLpa: budgetMinLpa ? parseFloat(budgetMinLpa) : undefined,
         budgetMaxLpa: budgetMaxLpa ? parseFloat(budgetMaxLpa) : undefined,
+        additionalFields: additionalFields.length > 0 ? additionalFields : undefined,
       });
 
       // Persist payment terms to client if recruiter entered them for a client without terms
@@ -1559,6 +1562,7 @@ export default function RecruiterSearchPage() {
           onClose={() => setScreeningCandidate(null)}
           onScreeningComplete={handleScreeningComplete}
           isShortlistFlow={!!sourceRequirementId}
+          additionalFields={requirementContext?.additionalFields}
         />
       )}
 

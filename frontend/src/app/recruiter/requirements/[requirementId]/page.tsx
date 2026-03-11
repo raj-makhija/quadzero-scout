@@ -123,6 +123,7 @@ export default function RequirementDetailPage() {
         paymentTermsDays: requirement.paymentTermsDays,
         budgetMinLpa: requirement.budgetMinLpa,
         budgetMaxLpa: requirement.budgetMaxLpa,
+        additionalFields: requirement.additionalFields,
       },
     }));
 
