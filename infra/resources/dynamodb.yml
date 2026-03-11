@@ -311,6 +311,29 @@ Resources:
         - Key: Project
           Value: quadzero-scout
 
+  # EmailIngestLog Table (idempotency log for email-based resume ingestion)
+  EmailIngestLogTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: ${self:custom.emailIngestLogTable}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: internet_message_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: internet_message_id
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Project
+          Value: quadzero-scout
+
 Outputs:
   TalentProfilesTableArn:
     Description: TalentProfiles table ARN
@@ -371,3 +394,9 @@ Outputs:
     Value: !GetAtt CandidateScreeningsTable.Arn
     Export:
       Name: ${self:provider.stage}-CandidateScreeningsTableArn
+
+  EmailIngestLogTableArn:
+    Description: EmailIngestLog table ARN
+    Value: !GetAtt EmailIngestLogTable.Arn
+    Export:
+      Name: ${self:provider.stage}-EmailIngestLogTableArn

@@ -1,0 +1,374 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// ---------------------------------------------------------------------------
+// Mocks
+// ---------------------------------------------------------------------------
+
+vi.mock('../config.js', () => ({
+  config: {
+    region: 'ap-south-1',
+    graph: {
+      tenantId: 'test-tenant',
+      clientId: 'test-client',
+      clientSecret: 'test-secret',
+      mailboxAddress: 'scout-ingest@test.com',
+      enabled: true,
+    },
+    s3: { resumesBucket: 'test-bucket' },
+    lambda: { formatResumeWorkerName: 'test-formatWorker' },
+    email: { senderEmail: 'notify@test.com', ingestNotifyAddress: 'admin@test.com' },
+    dynamodb: { emailIngestLogTable: 'EmailIngestLog-test', talentProfilesTable: 'TalentProfiles-test' },
+  },
+}));
+
+const mockGetUnreadMessages = vi.fn();
+const mockGetResumeAttachments = vi.fn();
+const mockMarkMessageAsRead = vi.fn();
+const mockMoveMessageToFolder = vi.fn();
+const mockGetMailFolderByName = vi.fn();
+const mockInvalidateTokenCache = vi.fn();
+
+vi.mock('../graphClient.js', () => ({
+  getUnreadMessages: (...args: unknown[]) => mockGetUnreadMessages(...args),
+  getResumeAttachments: (...args: unknown[]) => mockGetResumeAttachments(...args),
+  markMessageAsRead: (...args: unknown[]) => mockMarkMessageAsRead(...args),
+  moveMessageToFolder: (...args: unknown[]) => mockMoveMessageToFolder(...args),
+  getMailFolderByName: (...args: unknown[]) => mockGetMailFolderByName(...args),
+  invalidateTokenCache: (...args: unknown[]) => mockInvalidateTokenCache(...args),
+}));
+
+const mockGetIngestLogEntry = vi.fn();
+const mockPutIngestLogEntry = vi.fn();
+const mockUpdateIngestLogStatus = vi.fn();
+
+vi.mock('../emailIngestLog.js', () => ({
+  getIngestLogEntry: (...args: unknown[]) => mockGetIngestLogEntry(...args),
+  putIngestLogEntry: (...args: unknown[]) => mockPutIngestLogEntry(...args),
+  updateIngestLogStatus: (...args: unknown[]) => mockUpdateIngestLogStatus(...args),
+}));
+
+const mockSendIngestDigestEmail = vi.fn();
+vi.mock('../emailIngestNotifier.js', () => ({
+  sendIngestDigestEmail: (...args: unknown[]) => mockSendIngestDigestEmail(...args),
+}));
+
+const mockPutObject = vi.fn();
+const mockDeleteObject = vi.fn();
+vi.mock('../s3.js', () => ({
+  putObject: (...args: unknown[]) => mockPutObject(...args),
+  deleteObject: (...args: unknown[]) => mockDeleteObject(...args),
+}));
+
+const mockExtractTextFromResume = vi.fn();
+vi.mock('../textract.js', () => ({
+  extractTextFromResume: (...args: unknown[]) => mockExtractTextFromResume(...args),
+}));
+
+const mockParseResume = vi.fn();
+vi.mock('../llm/index.js', () => ({
+  parseResume: (...args: unknown[]) => mockParseResume(...args),
+}));
+
+vi.mock('../skillNormalizer.js', () => ({
+  normalizeSkills: (skills: string[]) => skills.map((s) => s.toLowerCase()),
+  normalizeSkillYears: (years: Record<string, number>) => years,
+}));
+
+const mockGetCandidateByEmail = vi.fn();
+const mockSaveCandidateProfile = vi.fn();
+vi.mock('../dynamodb.js', () => ({
+  getCandidateByEmail: (...args: unknown[]) => mockGetCandidateByEmail(...args),
+  saveCandidateProfile: (...args: unknown[]) => mockSaveCandidateProfile(...args),
+  getExperienceBucket: (years: number) => (years <= 5 ? '3-5' : '6-10'),
+}));
+
+const mockInvokeLambdaAsync = vi.fn();
+vi.mock('../lambdaInvoke.js', () => ({
+  invokeLambdaAsync: (...args: unknown[]) => mockInvokeLambdaAsync(...args),
+}));
+
+const mockNotifyMatchingRecruiters = vi.fn();
+vi.mock('../notificationService.js', () => ({
+  notifyMatchingRecruiters: (...args: unknown[]) => mockNotifyMatchingRecruiters(...args),
+}));
+
+// ---------------------------------------------------------------------------
+// Subject under test
+// ---------------------------------------------------------------------------
+
+import { handler } from '../../handlers/worker/emailIngestWorker.js';
+
+// ---------------------------------------------------------------------------
+// Fixtures
+// ---------------------------------------------------------------------------
+
+function makeMessage(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'graph-msg-1',
+    subject: 'Resume for review',
+    from: { emailAddress: { name: 'John Doe', address: 'john@recruiter.com' } },
+    receivedDateTime: '2026-03-10T10:00:00Z',
+    hasAttachments: true,
+    internetMessageId: '<unique-msg-id@recruiter.com>',
+    attachments: [
+      {
+        id: 'att-1',
+        name: 'resume.pdf',
+        contentType: 'application/pdf',
+        contentBytes: Buffer.from('fake-pdf-content').toString('base64'),
+        size: 1024,
+      },
+    ],
+    ...overrides,
+  };
+}
+
+function setupSuccessfulProcessing() {
+  mockExtractTextFromResume.mockResolvedValue({
+    text: 'A'.repeat(100),
+    confidence: 0.9,
+  });
+  mockParseResume.mockResolvedValue({
+    output: {
+      fullName: 'Jane Smith',
+      email: 'jane@candidate.com',
+      phone: '+91-9999999999',
+      primarySkills: ['React', 'TypeScript'],
+      primarySkillYears: { react: 3, typescript: 2 },
+      secondarySkills: ['Node.js'],
+      totalExperience: 5,
+      seniority: 'mid',
+      availability: 'immediate',
+      engagementModel: 'full_time',
+      industries: ['IT'],
+      roles: ['Frontend Developer'],
+      education: [{ degree: 'B.Tech', institution: 'IIT', year: 2020 }],
+      certifications: [],
+      summary: 'Experienced frontend developer',
+    },
+    confidence: 0.85,
+  });
+  mockGetCandidateByEmail.mockResolvedValue(null);
+  mockSaveCandidateProfile.mockResolvedValue(undefined);
+  mockInvokeLambdaAsync.mockResolvedValue(undefined);
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe('emailIngestWorker', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetMailFolderByName.mockResolvedValue('folder-processed-id');
+    mockMarkMessageAsRead.mockResolvedValue(undefined);
+    mockMoveMessageToFolder.mockResolvedValue(undefined);
+    mockGetIngestLogEntry.mockResolvedValue(null);
+    mockPutIngestLogEntry.mockResolvedValue(undefined);
+    mockUpdateIngestLogStatus.mockResolvedValue(undefined);
+    mockPutObject.mockResolvedValue(undefined);
+    mockSendIngestDigestEmail.mockResolvedValue(undefined);
+    mockNotifyMatchingRecruiters.mockResolvedValue(undefined);
+  });
+
+  it('returns immediately when disabled', async () => {
+    const { config } = await import('../config.js');
+    const originalEnabled = config.graph.enabled;
+    config.graph.enabled = false;
+
+    await handler();
+
+    expect(mockGetUnreadMessages).not.toHaveBeenCalled();
+    config.graph.enabled = originalEnabled;
+  });
+
+  it('does nothing when inbox is empty', async () => {
+    mockGetUnreadMessages.mockResolvedValue([]);
+
+    await handler();
+
+    expect(mockPutIngestLogEntry).not.toHaveBeenCalled();
+    expect(mockSendIngestDigestEmail).not.toHaveBeenCalled();
+  });
+
+  it('processes a single email with a PDF attachment (happy path)', async () => {
+    const message = makeMessage();
+    mockGetUnreadMessages.mockResolvedValue([message]);
+    mockGetResumeAttachments.mockReturnValue(message.attachments);
+    setupSuccessfulProcessing();
+
+    await handler();
+
+    // Uploaded to S3
+    expect(mockPutObject).toHaveBeenCalledTimes(1);
+    const [s3Key] = mockPutObject.mock.calls[0];
+    expect(s3Key).toMatch(/^email-resumes\/\d{4}\/\d{2}\/.+-resume\.pdf$/);
+
+    // Extracted and parsed
+    expect(mockExtractTextFromResume).toHaveBeenCalledTimes(1);
+    expect(mockParseResume).toHaveBeenCalledTimes(1);
+
+    // Saved candidate profile
+    expect(mockSaveCandidateProfile).toHaveBeenCalledTimes(1);
+    const savedProfile = mockSaveCandidateProfile.mock.calls[0][0];
+    expect(savedProfile.user_id).toBe('email_ingest');
+    expect(savedProfile.full_name).toBe('Jane Smith');
+    expect(savedProfile.email).toBe('jane@candidate.com');
+
+    // Triggered format worker
+    expect(mockInvokeLambdaAsync).toHaveBeenCalledWith('test-formatWorker', expect.objectContaining({ candidateId: expect.any(String) }));
+
+    // Idempotency log updated
+    expect(mockPutIngestLogEntry).toHaveBeenCalledTimes(1);
+    expect(mockUpdateIngestLogStatus).toHaveBeenCalledWith(
+      '<unique-msg-id@recruiter.com>',
+      'completed',
+      expect.arrayContaining([expect.any(String)])
+    );
+
+    // Email marked as read and moved
+    expect(mockMarkMessageAsRead).toHaveBeenCalledTimes(1);
+    expect(mockMoveMessageToFolder).toHaveBeenCalledWith(expect.anything(), 'graph-msg-1', 'folder-processed-id');
+
+    // Recruiter notifications sent
+    expect(mockNotifyMatchingRecruiters).toHaveBeenCalledTimes(1);
+
+    // Digest email sent
+    expect(mockSendIngestDigestEmail).toHaveBeenCalledTimes(1);
+    const digestResults = mockSendIngestDigestEmail.mock.calls[0][0];
+    expect(digestResults).toHaveLength(1);
+    expect(digestResults[0].status).toBe('success');
+    expect(digestResults[0].candidateName).toBe('Jane Smith');
+  });
+
+  it('skips already processed messages (idempotency)', async () => {
+    const message = makeMessage();
+    mockGetUnreadMessages.mockResolvedValue([message]);
+    mockGetResumeAttachments.mockReturnValue(message.attachments);
+    mockGetIngestLogEntry.mockResolvedValue({ status: 'completed' });
+
+    await handler();
+
+    // Should not process
+    expect(mockExtractTextFromResume).not.toHaveBeenCalled();
+    expect(mockSaveCandidateProfile).not.toHaveBeenCalled();
+
+    // Should still mark as read
+    expect(mockMarkMessageAsRead).toHaveBeenCalledTimes(1);
+
+    // Digest should report as skipped
+    expect(mockSendIngestDigestEmail).toHaveBeenCalledTimes(1);
+    const results = mockSendIngestDigestEmail.mock.calls[0][0];
+    expect(results[0].status).toBe('skipped');
+    expect(results[0].reason).toBe('already processed');
+  });
+
+  it('skips emails with no qualifying attachments', async () => {
+    const message = makeMessage();
+    mockGetUnreadMessages.mockResolvedValue([message]);
+    mockGetResumeAttachments.mockReturnValue([]); // No PDF/DOCX
+
+    await handler();
+
+    expect(mockExtractTextFromResume).not.toHaveBeenCalled();
+    expect(mockMarkMessageAsRead).toHaveBeenCalledTimes(1);
+    expect(mockMoveMessageToFolder).toHaveBeenCalledTimes(1);
+
+    const results = mockSendIngestDigestEmail.mock.calls[0][0];
+    expect(results[0].status).toBe('skipped');
+    expect(results[0].reason).toBe('no PDF/DOCX attachments found');
+  });
+
+  it('handles text extraction failure with error digest', async () => {
+    const message = makeMessage();
+    mockGetUnreadMessages.mockResolvedValue([message]);
+    mockGetResumeAttachments.mockReturnValue(message.attachments);
+    mockExtractTextFromResume.mockResolvedValue({ text: 'short', confidence: 0.5 });
+
+    await handler();
+
+    // Should not save profile
+    expect(mockSaveCandidateProfile).not.toHaveBeenCalled();
+
+    // Idempotency log should be marked as failed
+    expect(mockUpdateIngestLogStatus).toHaveBeenCalledWith(
+      '<unique-msg-id@recruiter.com>',
+      'failed',
+      [],
+      'All attachments failed'
+    );
+
+    // Digest should report error
+    const results = mockSendIngestDigestEmail.mock.calls[0][0];
+    expect(results[0].status).toBe('error');
+    expect(results[0].errorType).toBe('text extraction failed');
+  });
+
+  it('handles ConditionalCheckFailedException (race condition)', async () => {
+    const message = makeMessage();
+    mockGetUnreadMessages.mockResolvedValue([message]);
+    mockGetResumeAttachments.mockReturnValue(message.attachments);
+    const condErr = new Error('Condition not met');
+    condErr.name = 'ConditionalCheckFailedException';
+    mockPutIngestLogEntry.mockRejectedValue(condErr);
+
+    await handler();
+
+    // Should not process
+    expect(mockExtractTextFromResume).not.toHaveBeenCalled();
+
+    // Should report as skipped
+    const results = mockSendIngestDigestEmail.mock.calls[0][0];
+    expect(results[0].status).toBe('skipped');
+  });
+
+  it('updates existing candidate (dedup by email)', async () => {
+    const message = makeMessage();
+    mockGetUnreadMessages.mockResolvedValue([message]);
+    mockGetResumeAttachments.mockReturnValue(message.attachments);
+    setupSuccessfulProcessing();
+    mockGetCandidateByEmail.mockResolvedValue({
+      candidate_id: 'existing-cand-123',
+      email: 'jane@candidate.com',
+      resume_s3_key: 'old-resume-key',
+      formatted_resume_s3_key: 'old-formatted-key',
+      created_at: '2026-01-01T00:00:00Z',
+    });
+
+    await handler();
+
+    const savedProfile = mockSaveCandidateProfile.mock.calls[0][0];
+    expect(savedProfile.candidate_id).toBe('existing-cand-123');
+    expect(savedProfile.created_at).toBe('2026-01-01T00:00:00Z'); // Preserved
+
+    // Old formatted resume should be deleted
+    expect(mockDeleteObject).toHaveBeenCalledWith('old-formatted-key');
+
+    // Digest should show as update
+    const results = mockSendIngestDigestEmail.mock.calls[0][0];
+    expect(results[0].isUpdate).toBe(true);
+  });
+
+  it('continues processing next email if one fails unexpectedly', async () => {
+    const msg1 = makeMessage({ id: 'msg-1', internetMessageId: '<msg-1@test.com>' });
+    const msg2 = makeMessage({ id: 'msg-2', internetMessageId: '<msg-2@test.com>' });
+    mockGetUnreadMessages.mockResolvedValue([msg1, msg2]);
+    mockGetResumeAttachments.mockReturnValue([msg1.attachments![0]]);
+
+    // First message fails unexpectedly
+    mockGetIngestLogEntry
+      .mockResolvedValueOnce(null) // msg1
+      .mockResolvedValueOnce(null); // msg2
+    mockPutIngestLogEntry
+      .mockRejectedValueOnce(new Error('Unexpected DB error')) // msg1 — throws after idempotency check
+      .mockResolvedValueOnce(undefined); // msg2
+
+    setupSuccessfulProcessing();
+
+    await handler();
+
+    // Second message should still be processed
+    // (first fails at putIngestLogEntry, second goes through)
+    expect(mockExtractTextFromResume).toHaveBeenCalledTimes(1);
+  });
+});

@@ -803,6 +803,42 @@ Stores audit records of recruiter screening actions on candidate profiles. Each 
 
 ---
 
+### 11. EmailIngestLog
+
+Idempotency log for email-based resume ingestion. Prevents duplicate processing of the same email when the `emailIngestWorker` Lambda polls the M365 shared mailbox.
+
+**Table Name:** `EmailIngestLog-{stage}`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `internet_message_id` | String (PK) | RFC 822 Message-ID — globally unique per email |
+| `graph_message_id` | String | Microsoft Graph API message ID |
+| `from_address` | String | Sender email address |
+| `subject` | String | Email subject line |
+| `received_at` | String (ISO 8601) | When the email was received |
+| `processed_at` | String (ISO 8601) | When processing started/completed |
+| `status` | String | `processing` \| `completed` \| `failed` |
+| `candidate_ids` | List\<String\> | Candidate IDs created/updated from this email |
+| `attachment_count` | Number | Number of resume attachments found |
+| `error_message` | String (optional) | Error details if status is `failed` |
+| `ttl` | Number | Unix timestamp — auto-expires after 90 days |
+
+**Key Schema:** Hash key on `internet_message_id`
+
+**TTL:** Enabled on `ttl` attribute (records auto-expire after 90 days)
+
+**Global Secondary Indexes:** None
+
+**Access Patterns:**
+
+| Operation | Access Pattern | Index |
+|-----------|---------------|-------|
+| Check if email already processed | GetItem by internet_message_id | Primary |
+| Claim email for processing (conditional write) | PutItem with `attribute_not_exists` condition | Primary |
+| Update processing status | UpdateItem by internet_message_id | Primary |
+
+---
+
 ## S3 Storage Structure
 
 ### Bucket: quadzero-scout-resumes-{stage}
@@ -815,6 +851,12 @@ resumes/
 │   │   ├── {candidate_id}-{original_filename}.pdf
 │   │   ├── {candidate_id}-{original_filename}.docx
 │   │   └── ...
+email-resumes/
+├── {year}/
+│   ├── {month}/
+│   │   ├── {uuid}-{sanitized_filename}.pdf
+│   │   ├── {uuid}-{sanitized_filename}.docx
+│   │   └── ...
 formatted-resumes/
 ├── {candidate_id}.pdf
 ├── ...
@@ -824,6 +866,7 @@ formatted-resumes/
 ```
 resumes/2024/01/a1b2c3d4-john_doe_resume.pdf
 resumes/2024/01/e5f6g7h8-jane_smith_cv.docx
+email-resumes/2026/03/f9e8d7c6-resume_john_smith.pdf
 formatted-resumes/a1b2c3d4.pdf
 ```
 
@@ -1225,3 +1268,10 @@ See `backend/src/data/skills_ontology.json` for the full list of mappings, categ
 |-----------|---------------|-------|
 | Get screening history for candidate | Query by candidate_id (desc) | Primary |
 | Get single screening record | GetItem with candidate_id + screened_at | Primary |
+
+### Email Ingest Operations
+| Operation | Access Pattern | Index |
+|-----------|---------------|-------|
+| Check if email already processed | GetItem by internet_message_id | Primary |
+| Claim email for processing | PutItem with `attribute_not_exists` condition | Primary |
+| Update processing status | UpdateItem by internet_message_id | Primary |
