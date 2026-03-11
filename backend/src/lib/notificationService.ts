@@ -1,5 +1,5 @@
 import { getCandidateById, getAllActiveRequirements, getUserById } from './dynamodb.js';
-import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO } from './matchScoring.js';
+import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, MUST_HAVE_RELATED_WEIGHT } from './matchScoring.js';
 import { normalizeSkills } from './skillNormalizer.js';
 import { isCandidateWithinBudget } from './ctcConversion.js';
 import { sendNewProfilesNotificationEmail } from './emailService.js';
@@ -60,8 +60,8 @@ export async function notifyMatchingRecruiters(candidateIds: string[]): Promise<
 
       // Apply the same min-match-ratio filter as matchRequirements.ts
       if (normalizedMustHave.length > 0) {
-        const exactRatio = details.mustHaveMatched.length / normalizedMustHave.length;
-        if (exactRatio < MIN_MUST_HAVE_MATCH_RATIO) continue;
+        const effectiveRatio = (details.mustHaveMatched.length + details.mustHaveRelated.length * MUST_HAVE_RELATED_WEIGHT) / normalizedMustHave.length;
+        if (effectiveRatio < MIN_MUST_HAVE_MATCH_RATIO) continue;
       }
 
       const budgetFit = isCandidateWithinBudget(candidate.expected_ctc, req.budget_max_lpa);

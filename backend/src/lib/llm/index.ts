@@ -106,7 +106,7 @@ You MUST respond with valid JSON matching this exact schema:
 
 Rules:
 1. All skills must be lowercase
-2. Distinguish between mandatory requirements and nice-to-haves
+2. Distinguish between mandatory requirements and nice-to-haves. STRICT LIMIT: mustHaveSkills should contain at most 5 skills. Select only the 2-5 most critical, non-negotiable skills as must-have; put all others in goodToHaveSkills. When in doubt, classify as good-to-have. Skills under "Requirements" sections are NOT automatically must-have — evaluate each individually
 3. If experience is mentioned as "X+ years", set minExperience to X
 4. If no specific requirement, use null or empty array
 5. ONLY output valid JSON, no additional text
