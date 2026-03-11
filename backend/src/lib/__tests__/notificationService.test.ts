@@ -17,7 +17,8 @@ vi.mock('../dynamodb.js', () => ({
 const mockCalculateMatchScore = vi.fn();
 vi.mock('../matchScoring.js', () => ({
   calculateMatchScore: (...args: unknown[]) => mockCalculateMatchScore(...args),
-  MIN_MUST_HAVE_MATCH_RATIO: 0.3,
+  MIN_MUST_HAVE_MATCH_RATIO: 0.25,
+  MUST_HAVE_RELATED_WEIGHT: 0.3,
 }));
 
 vi.mock('../skillNormalizer.js', () => ({
@@ -112,7 +113,7 @@ describe('notifyMatchingRecruiters', () => {
   it('TC-NOTIFY-003: no email when candidate does not meet MIN_MUST_HAVE_MATCH_RATIO', async () => {
     mockGetCandidateById.mockResolvedValue(candidateA);
     mockGetAllActiveRequirements.mockResolvedValue([requirementActive]);
-    // 0 out of 1 must-have matched → ratio 0 < 0.3
+    // 0 out of 1 must-have matched → effective ratio 0 < 0.25
     mockCalculateMatchScore.mockReturnValue({
       score: 0,
       details: { mustHaveMatched: [], mustHaveRelated: [], mustHaveMissing: ['react'] },

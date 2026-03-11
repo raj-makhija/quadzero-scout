@@ -3,7 +3,7 @@ import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, MatchRequirementsRequestSchema } from '../../lib/validation.js';
 import { getCandidateById, getAllActiveRequirements, getShortlistsForCandidate } from '../../lib/dynamodb.js';
 import { normalizeSkills } from '../../lib/skillNormalizer.js';
-import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO } from '../../lib/matchScoring.js';
+import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, MUST_HAVE_RELATED_WEIGHT } from '../../lib/matchScoring.js';
 import { isCandidateWithinBudget } from '../../lib/ctcConversion.js';
 import type { MatchedRequirement, MatchRequirementsResponse } from '../../types/index.js';
 
@@ -64,8 +64,8 @@ export async function handler(
 
       // Filter out requirements below minimum must-have match ratio
       if (normalizedMustHave.length > 0) {
-        const exactRatio = details.mustHaveMatched.length / normalizedMustHave.length;
-        if (exactRatio < MIN_MUST_HAVE_MATCH_RATIO) {
+        const effectiveRatio = (details.mustHaveMatched.length + details.mustHaveRelated.length * MUST_HAVE_RELATED_WEIGHT) / normalizedMustHave.length;
+        if (effectiveRatio < MIN_MUST_HAVE_MATCH_RATIO) {
           continue;
         }
       }

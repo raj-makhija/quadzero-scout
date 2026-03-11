@@ -4,12 +4,22 @@ import type { CandidateItem, CandidateSearchResult } from '../types/index.js';
 
 export type MatchDetails = CandidateSearchResult['matchDetails'];
 
-/** Minimum ratio of exact must-have matches to total must-have skills.
- *  Candidates below this threshold are filtered out. */
-export const MIN_MUST_HAVE_MATCH_RATIO = 0.3;
+/** Minimum ratio of effective must-have matches to total must-have skills.
+ *  Candidates below this threshold are filtered out.
+ *  Effective = exact + related * MUST_HAVE_RELATED_WEIGHT. */
+export const MIN_MUST_HAVE_MATCH_RATIO = 0.25;
 
 /** Weight applied to related (category-based) good-to-have skill matches. */
 export const RELATED_MATCH_WEIGHT = 0.3;
+
+/** Weight applied to related (category-based) must-have skill matches. */
+export const MUST_HAVE_RELATED_WEIGHT = 0.3;
+
+/** Score weight for must-have skills component. */
+export const MUST_HAVE_WEIGHT = 45;
+
+/** Score weight for good-to-have skills component. */
+export const GOOD_TO_HAVE_WEIGHT = 25;
 
 /** Tolerance (in years) for partial experience match outside the specified range. */
 const EXPERIENCE_PARTIAL_TOLERANCE = 2;
@@ -141,23 +151,20 @@ export function calculateMatchScore(
     ...candidate.secondary_skills,
   ];
 
-  // Must-have skills match (50% of score) — exact only, no related credit
-  const mustHaveMatch = calculateSkillMatch(candidateSkills, mustHaveSkills, true);
+  // Must-have skills match — exact full credit, related at reduced weight
+  const mustHaveMatch = calculateSkillMatch(candidateSkills, mustHaveSkills, false);
 
-  // Second pass: check which missing must-have skills have related matches (for display only)
-  const mustHaveRelatedCheck = calculateSkillMatch(candidateSkills, mustHaveMatch.missing, false);
-
-  const mustHaveRatio = mustHaveSkills.length > 0
-    ? mustHaveMatch.exactMatched.length / mustHaveSkills.length
+  const mustHaveEffective = mustHaveSkills.length > 0
+    ? (mustHaveMatch.exactMatched.length + mustHaveMatch.relatedMatched.length * MUST_HAVE_RELATED_WEIGHT) / mustHaveSkills.length
     : 1;
-  score += mustHaveRatio * 50;
+  score += mustHaveEffective * MUST_HAVE_WEIGHT;
 
-  // Good-to-have skills match (20% of score) — related allowed at reduced weight
+  // Good-to-have skills match — related allowed at reduced weight
   const goodToHaveMatch = calculateSkillMatch(candidateSkills, goodToHaveSkills, false);
   const goodToHaveEffective = goodToHaveSkills.length > 0
     ? (goodToHaveMatch.exactMatched.length + goodToHaveMatch.relatedMatched.length * RELATED_MATCH_WEIGHT) / goodToHaveSkills.length
     : 1;
-  score += goodToHaveEffective * 20;
+  score += goodToHaveEffective * GOOD_TO_HAVE_WEIGHT;
 
   // Experience match (8% of score) — graduated
   const experienceMatch = matchExperience(candidate.total_experience, minExp, maxExp);
@@ -201,8 +208,8 @@ export function calculateMatchScore(
     score: Math.round(score),
     details: {
       mustHaveMatched: mustHaveMatch.exactMatched,
-      mustHaveRelated: mustHaveRelatedCheck.relatedMatched,
-      mustHaveMissing: mustHaveRelatedCheck.missing,
+      mustHaveRelated: mustHaveMatch.relatedMatched,
+      mustHaveMissing: mustHaveMatch.missing,
       goodToHaveMatched: goodToHaveMatch.exactMatched,
       goodToHaveRelated: goodToHaveMatch.relatedMatched,
       experienceMatch,
