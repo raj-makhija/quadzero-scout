@@ -6,7 +6,8 @@ import { useSession } from 'next-auth/react';
 import { Header } from '@/components/Header';
 import { PricingPanel } from '@/components/PricingPanel';
 import { ComboboxInput } from '@/components/ui/combobox-input';
-import { api, ApiError, ParsedCriteria, SearchCriteria, CandidateSearchResult, EngagementModel, Payroll, DuplicateMatch, ConsolidateResponse, ClientDefaultsResponse } from '@/lib/api';
+import { api, ApiError, ParsedCriteria, SearchCriteria, CandidateSearchResult, EngagementModel, Payroll, DuplicateMatch, ConsolidateResponse, ClientDefaultsResponse, AdditionalFieldDefinition } from '@/lib/api';
+import { AdditionalFieldsBuilder } from '@/components/additional-fields-builder';
 import { formatSeniority, formatAvailability, formatCandidateEngagement, getMatchScoreColor, getMatchScoreBgColor, formatRelativeTime, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS, ENGAGEMENT_MODEL_OPTIONS, PAYROLL_OPTIONS, formatEngagementModel } from '@/lib/utils';
 import { ScreeningModal, getScreeningStatus, isScreeningExpired } from '@/components/screening-modal';
 import { ShortlistModal } from '@/components/shortlist-modal';
@@ -69,6 +70,7 @@ export default function RecruiterSearchPage() {
     paymentTermsDays?: number;
     budgetMinLpa?: number;
     budgetMaxLpa?: number;
+    additionalFields?: AdditionalFieldDefinition[];
   } | null>(() => {
     if (prefilled?.requirementId && prefilled?.requirementMeta) {
       return { requirementId: prefilled.requirementId, ...prefilled.requirementMeta };
@@ -102,6 +104,7 @@ export default function RecruiterSearchPage() {
   const clientLookupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [clientNameOptions, setClientNameOptions] = useState<string[]>([]);
   const [endClientOptions, setEndClientOptions] = useState<string[]>([]);
+  const [additionalFields, setAdditionalFields] = useState<AdditionalFieldDefinition[]>([]);
 
   // Debounced client defaults lookup
   const lookupClientDefaults = useCallback((name: string) => {
@@ -215,6 +218,7 @@ export default function RecruiterSearchPage() {
             paymentTermsDays: req.paymentTermsDays,
             budgetMinLpa: req.budgetMinLpa,
             budgetMaxLpa: req.budgetMaxLpa,
+            additionalFields: req.additionalFields,
           });
         }
       })
@@ -494,6 +498,7 @@ export default function RecruiterSearchPage() {
         jdText: jobDescription,
         parsedCriteria,
         status: 'active',
+        additionalFields: additionalFields.length > 0 ? additionalFields : undefined,
       });
 
       // Capture requirement ID so shortlisting is available from search results
@@ -507,6 +512,7 @@ export default function RecruiterSearchPage() {
         paymentTermsDays: resolvedPaymentTerms,
         budgetMinLpa: budgetMinLpa ? parseFloat(budgetMinLpa) : undefined,
         budgetMaxLpa: budgetMaxLpa ? parseFloat(budgetMaxLpa) : undefined,
+        additionalFields: additionalFields.length > 0 ? additionalFields : undefined,
       });
 
       // Persist payment terms to client if recruiter entered them for a client without terms
@@ -902,6 +908,11 @@ export default function RecruiterSearchPage() {
                   </select>
                 </div>
               ) : null}
+
+              {/* Additional Data Points */}
+              <div className="mt-4">
+                <AdditionalFieldsBuilder fields={additionalFields} onChange={setAdditionalFields} />
+              </div>
             </div>
 
             {/* Duplicate Modal */}
@@ -1551,6 +1562,7 @@ export default function RecruiterSearchPage() {
           onClose={() => setScreeningCandidate(null)}
           onScreeningComplete={handleScreeningComplete}
           isShortlistFlow={!!sourceRequirementId}
+          additionalFields={requirementContext?.additionalFields}
         />
       )}
 

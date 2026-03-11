@@ -59,6 +59,21 @@ The backend decrypts NextAuth.js JWE tokens using HKDF-derived encryption keys f
 | DYNAMODB_ERROR | 500 | Database error |
 | SCREENING_REQUIRED | 409 | Candidate must be screened (or re-screened) before shortlisting |
 
+### Shared Types
+
+#### AdditionalFieldDefinition
+
+Defines a custom field attached to a requirement. Used in requirement creation/retrieval and validated against when updating candidate custom fields.
+
+```typescript
+{
+  key: string,       // auto-slugified from label (e.g., "date_of_joining")
+  label: string,     // human-readable label (e.g., "Date of Joining")
+  type: "text" | "date" | "number",
+  required: boolean
+}
+```
+
 ---
 
 ## Auth Endpoints
@@ -327,7 +342,11 @@ Authorization: Bearer <jwe_token>
     "industries": ["fintech", "e-commerce"],
     "roles": ["Full Stack Developer", "Frontend Lead"],
     "currentCtc": 18.5,
-    "expectedCtc": 25.0
+    "expectedCtc": 25.0,
+    "customFields": {
+      "date_of_joining": "2024-03-01",
+      "employee_id": "EMP-1234"
+    }
   },
   "resumeS3Key": "resumes/2024/01/abc123-john_doe_resume.pdf"
 }
@@ -355,6 +374,7 @@ Authorization: Bearer <jwe_token>
 - `profile.engagementModel`: Optional, enum: `contract`, `full_time`, `either` (default: `either`)
 - `profile.currentCtc`: Optional, number, min 0, max 500 (in LPA)
 - `profile.expectedCtc`: Optional, number, min 0, max 500 (in LPA)
+- `profile.customFields`: Optional, `Record<string, string | number>` map of custom field key-value pairs
 - `resumeS3Key`: Required, string, min 1, max 500
 
 ---
@@ -400,11 +420,18 @@ Authorization: Bearer <jwe_token>
     "expectedCtc": 25.0,
     "resumeS3Key": "resumes/2024/01/abc123-john_doe_resume.pdf",
     "formattedResumeS3Key": "formatted-resumes/abc123.pdf",
+    "customFields": {
+      "date_of_joining": "2024-03-01",
+      "employee_id": "EMP-1234"
+    },
     "lastUpdated": "2024-01-15T10:30:00Z",
     "createdAt": "2024-01-10T08:00:00Z"
   }
 }
 ```
+
+**Notes:**
+- `customFields`: Optional map of key-value pairs representing recruiter-defined custom fields for this candidate. Keys correspond to `AdditionalFieldDefinition.key` values. May be empty or absent if no custom fields have been set.
 
 ---
 
@@ -536,6 +563,7 @@ Authorization: Bearer <jwe_token>
 **Notes:**
 - The `coreSkill` field in `parsedCriteria` is extracted by the LLM and represents the primary skill or technology focus of the job description. It may be `null` if the LLM cannot determine a single core skill.
 - `jobTitle` is now auto-generated on the frontend using the pattern: `"Client Name (End Client) - Core Skill"`. The manual `jobTitle` input field has been removed from the frontend.
+- Seniority values returned by the LLM are normalized to valid `SeniorityEnum` values (e.g., `manager` → `lead`, `director` → `executive`, `staff` → `principal`). Unmappable values are dropped. See `backend/src/lib/seniorityNormalizer.ts` for the full mapping.
 
 ---
 
@@ -768,7 +796,21 @@ Authorization: Bearer <jwe_token>
     "industries": [],
     "roles": ["React Developer"],
     "coreSkill": "React"
-  }
+  },
+  "additionalFields": [
+    {
+      "key": "date_of_joining",
+      "label": "Date of Joining",
+      "type": "date",
+      "required": true
+    },
+    {
+      "key": "employee_id",
+      "label": "Employee ID",
+      "type": "text",
+      "required": false
+    }
+  ]
 }
 ```
 
@@ -795,6 +837,7 @@ Authorization: Bearer <jwe_token>
 - `jobTitle`: Optional, string, max 200 (auto-generated on frontend as "Client Name (End Client) - Core Skill")
 - `jdText`: Required, string, min 50, max 10000
 - `parsedCriteria`: Required, LLM JD output schema (includes `coreSkill`)
+- `additionalFields`: Optional, array of `AdditionalFieldDefinition` objects (see Shared Types)
 - `status`: Optional, enum: `active` (default), `duplicate`
 - `duplicateOf`: Optional, string, uuid
 
@@ -835,7 +878,15 @@ Authorization: Bearer <jwe_token>
         "status": "active",
         "createdAt": "2024-01-15T10:30:00Z",
         "requestCount": 3,
-        "demandScore": 70
+        "demandScore": 70,
+        "additionalFields": [
+          {
+            "key": "date_of_joining",
+            "label": "Date of Joining",
+            "type": "date",
+            "required": true
+          }
+        ]
       }
     ],
     "pagination": {
@@ -857,12 +908,13 @@ Get a specific requirement by ID.
 **Path Parameters:**
 - `requirementId`: The unique requirement identifier
 
-**Response (200 OK):** Returns the full requirement object including `jdText`, `parsedCriteria`, and `statusHistory`.
+**Response (200 OK):** Returns the full requirement object including `jdText`, `parsedCriteria`, `statusHistory`, and `additionalFields`.
 
 **Response includes:**
 | Field | Type | Description |
 |-------|------|-------------|
 | statusHistory | Array | Array of status change records, each containing `status`, `reason`, `changedBy`, and `changedAt` |
+| additionalFields | Array | Array of `AdditionalFieldDefinition` objects defining custom fields for this requirement (see Shared Types). May be empty or absent if none were configured. |
 
 ---
 
@@ -1412,7 +1464,11 @@ Authorization: Bearer <jwe_token>
         "expectedCtc": 25.0,
         "taggedAt": "2024-01-15T10:30:00Z",
         "notes": "Strong React skills, good culture fit",
-        "status": "shortlisted"
+        "status": "shortlisted",
+        "customFields": {
+          "date_of_joining": "2024-03-01",
+          "employee_id": "EMP-1234"
+        }
       }
     ]
   }
@@ -1444,7 +1500,10 @@ Authorization: Bearer <jwe_token>
     "seniority": "senior",
     "availability": "immediate",
     "primarySkills": ["javascript", "typescript", "react", "nodejs"],
-    "expectedCtc": 25.0
+    "expectedCtc": 25.0,
+    "customFields": {
+      "date_of_joining": "2024-03-01"
+    }
   },
   "notes": "Verified experience via phone screening, candidate confirmed immediate availability"
 }
@@ -1464,7 +1523,8 @@ Authorization: Bearer <jwe_token>
 
 **Validation Rules:**
 - `candidateId`: Required, string
-- `updatedValues`: Required, object containing one or more of: `fullName`, `email`, `phone`, `location`, `primarySkills`, `primarySkillYears`, `secondarySkills`, `totalExperience`, `seniority`, `availability`, `engagementModel`, `industries`, `roles`, `education`, `certifications`, `summary`, `currentCtc`, `expectedCtc`
+- `updatedValues`: Required, object containing one or more of: `fullName`, `email`, `phone`, `location`, `primarySkills`, `primarySkillYears`, `secondarySkills`, `totalExperience`, `seniority`, `availability`, `engagementModel`, `industries`, `roles`, `education`, `certifications`, `summary`, `currentCtc`, `expectedCtc`, `customFields`
+- `updatedValues.customFields`: Optional, `Record<string, string | number>` map of custom field key-value pairs to merge into the candidate's existing custom fields
 - `notes`: Optional, string, max 2000 characters
 
 **Flow:**
@@ -1526,6 +1586,66 @@ Authorization: Bearer <jwe_token>
 **Notes:**
 - Screenings are returned in reverse chronological order (most recent first)
 - Returns empty `screenings` array if no screening history exists
+
+---
+
+### PUT /recruiter/candidate-custom-fields
+
+Update a candidate's custom fields map. Merges provided fields with existing ones (i.e., only the keys included in the request are added or overwritten; keys not included remain unchanged).
+
+**Auth:** Requires `recruiter` or `admin` role.
+
+**Request Headers:**
+```
+Content-Type: application/json
+Authorization: Bearer <jwe_token>
+```
+
+**Request Body:**
+```json
+{
+  "candidateId": "cand_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "customFields": {
+    "date_of_joining": "2024-03-01",
+    "employee_id": "EMP-1234",
+    "notice_period_days": 30
+  },
+  "requirementId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "candidateId": "cand_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "customFields": {
+      "date_of_joining": "2024-03-01",
+      "employee_id": "EMP-1234",
+      "notice_period_days": 30
+    }
+  }
+}
+```
+
+**Validation Rules:**
+- `candidateId`: Required, string
+- `customFields`: Required, `Record<string, string | number>` map of key-value pairs
+- `requirementId`: Optional, string, UUID format. When provided, the backend validates that all keys in `customFields` match defined `additionalFields` keys on the referenced requirement.
+
+**Error Responses:**
+| Status | Code | Condition |
+|--------|------|-----------|
+| 400 | VALIDATION_ERROR | Missing or invalid fields, or key mismatch when `requirementId` is provided |
+| 401 | UNAUTHORIZED | Missing or invalid authentication |
+| 403 | FORBIDDEN | Insufficient permissions |
+| 404 | NOT_FOUND | Candidate not found |
+
+**Notes:**
+- Merge semantics: provided keys are set/overwritten; existing keys not in the request remain untouched
+- When `requirementId` is provided, the endpoint fetches the requirement's `additionalFields` and validates that all keys in the request's `customFields` exist in the requirement's field definitions. Returns 400 if any key is unrecognized.
+- Values must match the expected type from the `AdditionalFieldDefinition` (text -> string, number -> number, date -> string in ISO 8601 date format)
 
 ---
 

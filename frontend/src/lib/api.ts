@@ -413,6 +413,17 @@ class ApiClient {
     });
   }
 
+  async updateCandidateCustomFields(
+    candidateId: string,
+    customFields: Record<string, string | number>,
+    requirementId?: string
+  ) {
+    return this.request<{ candidateId: string; customFields: Record<string, string | number> }>('/recruiter/candidate-custom-fields', {
+      method: 'PUT',
+      body: JSON.stringify({ candidateId, customFields, requirementId }),
+    });
+  }
+
   async updateCandidateCtc(candidateId: string, expectedCtc: number, currentCtc?: number) {
     return this.request<{ candidateId: string; expectedCtc: number; currentCtc?: number }>('/recruiter/candidate-ctc', {
       method: 'PUT',
@@ -509,6 +520,7 @@ export interface ExtractedProfile {
   summary?: string | null;
   currentCtc?: number | null;
   expectedCtc?: number | null;
+  customFields?: Record<string, string | number>;
 }
 
 export interface CandidateProfile extends ExtractedProfile {
@@ -665,6 +677,13 @@ export interface BulkImportStatus {
 export type EngagementModel = 'full_time_regular' | 'full_time_contract' | 'part_time_contract';
 export type Payroll = 'quadzero' | 'client';
 
+export interface AdditionalFieldDefinition {
+  key: string;
+  label: string;
+  type: 'text' | 'date' | 'number';
+  required: boolean;
+}
+
 export interface SaveRequirementPayload {
   clientName: string;
   endClient?: string;
@@ -679,6 +698,7 @@ export interface SaveRequirementPayload {
   parsedCriteria: ParsedCriteria;
   status?: 'active' | 'duplicate';
   duplicateOf?: string;
+  additionalFields?: AdditionalFieldDefinition[];
 }
 
 export interface RequirementSummary {
@@ -698,6 +718,7 @@ export interface RequirementSummary {
   requestCount?: number;
   demandScore?: number;
   notifyRecruiterIds?: string[];
+  additionalFields?: AdditionalFieldDefinition[];
 }
 
 export interface RequestHistoryEntry {
@@ -900,6 +921,7 @@ export interface ShortlistedCandidate {
   taggedAt: string;
   notes?: string;
   status: ShortlistStatus;
+  customFields?: Record<string, string | number>;
 }
 
 export interface ShortlistedCandidatesResponse {
@@ -966,6 +988,7 @@ export interface ScreeningUpdatedValues {
   summary?: string;
   currentCtc?: number | null;
   expectedCtc?: number | null;
+  customFields?: Record<string, string | number>;
 }
 
 export interface ScreenCandidateResponse {

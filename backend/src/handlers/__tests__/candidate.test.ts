@@ -18,6 +18,7 @@ vi.mock('../../lib/s3.js', () => ({
   }),
   getObject: vi.fn().mockResolvedValue(Buffer.from('fake pdf content')),
   extractFileNameFromKey: vi.fn().mockReturnValue('resume.pdf'),
+  deleteObject: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../../lib/textract.js', () => ({
@@ -54,6 +55,7 @@ vi.mock('../../lib/llm/index.js', () => ({
 vi.mock('../../lib/dynamodb.js', () => ({
   saveCandidateProfile: vi.fn().mockResolvedValue(undefined),
   getCandidateById: vi.fn(),
+  getCandidateByEmail: vi.fn().mockResolvedValue(null),
   getExperienceBucket: vi.fn((years: number) => {
     if (years <= 2) return '0-2';
     if (years <= 5) return '3-5';
@@ -61,6 +63,24 @@ vi.mock('../../lib/dynamodb.js', () => ({
     if (years <= 15) return '11-15';
     return '16+';
   }),
+}));
+
+vi.mock('../../lib/lambdaInvoke.js', () => ({
+  invokeLambdaAsync: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../../lib/config.js', () => ({
+  config: {
+    lambda: {
+      formatResumeWorkerName: '',
+      notifyWorkerName: '',
+    },
+  },
+}));
+
+vi.mock('../../lib/skillNormalizer.js', () => ({
+  normalizeSkills: vi.fn((skills: string[]) => skills),
+  normalizeSkillYears: vi.fn((years: Record<string, number>) => years),
 }));
 
 // Import handlers after mocks

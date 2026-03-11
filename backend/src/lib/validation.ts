@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { LLMJDOutputSchema, PricingConfigSchema } from '../types/index.js';
+import { LLMJDOutputSchema, PricingConfigSchema, AdditionalFieldDefinitionSchema, SeniorityEnum, AvailabilityEnum } from '../types/index.js';
 
 // Upload URL Request Validation
 export const UploadUrlRequestSchema = z.object({
@@ -41,6 +41,7 @@ export const SaveProfileRequestSchema = z.object({
     summary: z.string().max(2000).optional(),
     currentCtc: z.number().min(0).max(500).optional(),
     expectedCtc: z.number().min(0).max(500).optional(),
+    customFields: z.record(z.string(), z.union([z.string(), z.number()])).optional().default({}),
   }),
   resumeS3Key: z.string().min(1).max(500),
 });
@@ -80,8 +81,8 @@ export const SaveSearchRequestSchema = z.object({
     goodToHaveSkills: z.array(z.string()).optional(),
     minExperience: z.number().min(0).optional(),
     maxExperience: z.number().max(50).optional(),
-    seniority: z.array(z.string()).optional(),
-    availability: z.array(z.string()).optional(),
+    seniority: z.array(SeniorityEnum).optional(),
+    availability: z.array(AvailabilityEnum).optional(),
     location: z.string().optional(),
     remote: z.boolean().optional(),
     industries: z.array(z.string()).optional(),
@@ -119,6 +120,7 @@ export const SaveRequirementRequestSchema = z.object({
   parsedCriteria: LLMJDOutputSchema,
   status: z.enum(['active', 'duplicate']).optional().default('active'),
   duplicateOf: z.string().uuid().optional(),
+  additionalFields: z.array(AdditionalFieldDefinitionSchema).max(20).optional().default([]),
 });
 
 // Check Duplicate Request Validation
@@ -268,8 +270,24 @@ export const ScreenCandidateRequestSchema = z.object({
     summary: z.string().max(2000).optional(),
     currentCtc: z.number().min(0).max(500).nullable().optional(),
     expectedCtc: z.number().min(0).max(500).nullable().optional(),
+    customFields: z.record(
+      z.string(),
+      z.union([z.string().max(500), z.number()])
+    ).optional(),
   }),
   notes: z.string().max(2000).optional(),
+});
+
+// Update Candidate Custom Fields Request Validation
+export const UpdateCandidateCustomFieldsRequestSchema = z.object({
+  candidateId: z.string().min(1),
+  customFields: z.record(
+    z.string().min(1).max(100),
+    z.union([z.string().max(500), z.number()])
+  ).refine(obj => Object.keys(obj).length > 0 && Object.keys(obj).length <= 20, {
+    message: 'customFields must have between 1 and 20 entries',
+  }),
+  requirementId: z.string().min(1).optional(),
 });
 
 // Format Zod errors for API response

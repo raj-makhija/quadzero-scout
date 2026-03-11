@@ -6,6 +6,8 @@ import {
   ParseJdRequestSchema,
   SearchRequestSchema,
   SaveSearchRequestSchema,
+  SaveRequirementRequestSchema,
+  UpdateCandidateCustomFieldsRequestSchema,
   validate,
   formatZodErrors,
 } from '../validation.js';
@@ -365,11 +367,18 @@ describe('ParseJdRequestSchema', () => {
   });
 
   // TC-PARSEJD-006
-  it('rejects JD under 50 characters', () => {
+  it('rejects JD under 3 characters', () => {
     const result = validate(ParseJdRequestSchema, {
-      jobDescription: 'Need React dev',
+      jobDescription: 'ab',
     });
     expect(result.success).toBe(false);
+  });
+
+  it('accepts JD at exactly 3 characters', () => {
+    const result = validate(ParseJdRequestSchema, {
+      jobDescription: 'abc',
+    });
+    expect(result.success).toBe(true);
   });
 
   it('accepts JD at exactly 50 characters', () => {
@@ -522,6 +531,42 @@ describe('SaveSearchRequestSchema', () => {
     });
     expect(result.success).toBe(true);
   });
+
+  // TC-SAVEDSEARCH-004
+  it('rejects invalid seniority enum value', () => {
+    const result = validate(SaveSearchRequestSchema, {
+      name: 'My Search',
+      criteria: { seniority: ['manager'] },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  // TC-SAVEDSEARCH-005
+  it('accepts valid seniority enum values', () => {
+    const result = validate(SaveSearchRequestSchema, {
+      name: 'My Search',
+      criteria: { seniority: ['senior', 'lead'] },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  // TC-SAVEDSEARCH-006
+  it('rejects invalid availability enum value', () => {
+    const result = validate(SaveSearchRequestSchema, {
+      name: 'My Search',
+      criteria: { availability: ['asap'] },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  // TC-SAVEDSEARCH-007
+  it('accepts valid availability enum values', () => {
+    const result = validate(SaveSearchRequestSchema, {
+      name: 'My Search',
+      criteria: { availability: ['immediate', '1_week'] },
+    });
+    expect(result.success).toBe(true);
+  });
 });
 
 describe('validate() helper', () => {
@@ -558,5 +603,291 @@ describe('formatZodErrors()', () => {
       // Should contain path separators
       expect(formatted).toContain(': ');
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SaveProfileRequestSchema — customFields
+// ---------------------------------------------------------------------------
+
+describe('SaveProfileRequestSchema — customFields', () => {
+  const validProfile = {
+    fullName: 'John Doe',
+    email: 'john@example.com',
+    primarySkills: ['react'],
+    primarySkillYears: { react: 4 },
+    totalExperience: 6,
+    seniority: 'senior',
+    availability: 'immediate',
+  };
+
+  it('accepts profile with customFields', () => {
+    const result = validate(SaveProfileRequestSchema, {
+      profile: {
+        ...validProfile,
+        customFields: { date_of_birth: '1990-05-15', pan_number: 'ABCDE1234F' },
+      },
+      resumeS3Key: 'resumes/abc.pdf',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.profile.customFields).toEqual({
+        date_of_birth: '1990-05-15',
+        pan_number: 'ABCDE1234F',
+      });
+    }
+  });
+
+  it('accepts profile with numeric customFields values', () => {
+    const result = validate(SaveProfileRequestSchema, {
+      profile: {
+        ...validProfile,
+        customFields: { age: 30 },
+      },
+      resumeS3Key: 'resumes/abc.pdf',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('defaults customFields to empty object when omitted', () => {
+    const result = validate(SaveProfileRequestSchema, {
+      profile: validProfile,
+      resumeS3Key: 'resumes/abc.pdf',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.profile.customFields).toEqual({});
+    }
+  });
+
+  it('rejects customFields with boolean values', () => {
+    const result = validate(SaveProfileRequestSchema, {
+      profile: {
+        ...validProfile,
+        customFields: { is_active: true },
+      },
+      resumeS3Key: 'resumes/abc.pdf',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SaveRequirementRequestSchema — additionalFields
+// ---------------------------------------------------------------------------
+
+describe('SaveRequirementRequestSchema — additionalFields', () => {
+  const validParsedCriteria = {
+    mustHaveSkills: ['react', 'nodejs'],
+    goodToHaveSkills: ['typescript'],
+    minExperience: 3,
+    maxExperience: 10,
+    seniority: ['senior'],
+    location: 'Bangalore',
+    remote: false,
+    summary: 'Need a senior React developer',
+  };
+
+  const validRequirement = {
+    clientName: 'Acme Corp',
+    engagementModel: 'full_time_contract' as const,
+    payroll: 'quadzero' as const,
+    jdText: 'A'.repeat(50),
+    parsedCriteria: validParsedCriteria,
+  };
+
+  it('accepts requirement with additionalFields', () => {
+    const result = validate(SaveRequirementRequestSchema, {
+      ...validRequirement,
+      additionalFields: [
+        { key: 'dob', label: 'Date of Birth', type: 'date', required: true },
+        { key: 'pan', label: 'PAN Number', type: 'text', required: false },
+      ],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.additionalFields).toHaveLength(2);
+    }
+  });
+
+  it('defaults additionalFields to empty array when omitted', () => {
+    const result = validate(SaveRequirementRequestSchema, validRequirement);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.additionalFields).toEqual([]);
+    }
+  });
+
+  it('rejects additionalFields with more than 20 entries', () => {
+    const fields = Array.from({ length: 21 }, (_, i) => ({
+      key: `field_${i}`,
+      label: `Field ${i}`,
+      type: 'text',
+      required: false,
+    }));
+    const result = validate(SaveRequirementRequestSchema, {
+      ...validRequirement,
+      additionalFields: fields,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts additionalFields at exactly 20 entries', () => {
+    const fields = Array.from({ length: 20 }, (_, i) => ({
+      key: `field_${i}`,
+      label: `Field ${i}`,
+      type: 'text',
+      required: false,
+    }));
+    const result = validate(SaveRequirementRequestSchema, {
+      ...validRequirement,
+      additionalFields: fields,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects additionalFields with invalid type', () => {
+    const result = validate(SaveRequirementRequestSchema, {
+      ...validRequirement,
+      additionalFields: [
+        { key: 'email', label: 'Email', type: 'email', required: false },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts all valid field types (text, date, number)', () => {
+    const result = validate(SaveRequirementRequestSchema, {
+      ...validRequirement,
+      additionalFields: [
+        { key: 'name', label: 'Name', type: 'text', required: false },
+        { key: 'dob', label: 'DOB', type: 'date', required: false },
+        { key: 'age', label: 'Age', type: 'number', required: false },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects additionalFields entry missing label', () => {
+    const result = validate(SaveRequirementRequestSchema, {
+      ...validRequirement,
+      additionalFields: [
+        { key: 'dob', type: 'date', required: true },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects additionalFields entry missing required flag', () => {
+    const result = validate(SaveRequirementRequestSchema, {
+      ...validRequirement,
+      additionalFields: [
+        { key: 'dob', label: 'DOB', type: 'date' },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects additionalFields entry with empty label', () => {
+    const result = validate(SaveRequirementRequestSchema, {
+      ...validRequirement,
+      additionalFields: [
+        { key: 'dob', label: '', type: 'date', required: true },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// UpdateCandidateCustomFieldsRequestSchema
+// ---------------------------------------------------------------------------
+
+describe('UpdateCandidateCustomFieldsRequestSchema', () => {
+  it('accepts valid request with string values', () => {
+    const result = validate(UpdateCandidateCustomFieldsRequestSchema, {
+      candidateId: 'cand-123',
+      customFields: { date_of_birth: '1990-05-15' },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts valid request with numeric values', () => {
+    const result = validate(UpdateCandidateCustomFieldsRequestSchema, {
+      candidateId: 'cand-123',
+      customFields: { age: 30, salary: 50000 },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts valid request with optional requirementId', () => {
+    const result = validate(UpdateCandidateCustomFieldsRequestSchema, {
+      candidateId: 'cand-123',
+      customFields: { pan: 'ABCDE1234F' },
+      requirementId: 'req-456',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects empty customFields object', () => {
+    const result = validate(UpdateCandidateCustomFieldsRequestSchema, {
+      candidateId: 'cand-123',
+      customFields: {},
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects customFields with more than 20 entries', () => {
+    const fields: Record<string, string> = {};
+    for (let i = 0; i < 21; i++) {
+      fields[`field_${i}`] = `value_${i}`;
+    }
+    const result = validate(UpdateCandidateCustomFieldsRequestSchema, {
+      candidateId: 'cand-123',
+      customFields: fields,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts customFields at exactly 20 entries', () => {
+    const fields: Record<string, string> = {};
+    for (let i = 0; i < 20; i++) {
+      fields[`field_${i}`] = `value_${i}`;
+    }
+    const result = validate(UpdateCandidateCustomFieldsRequestSchema, {
+      candidateId: 'cand-123',
+      customFields: fields,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects missing candidateId', () => {
+    const result = validate(UpdateCandidateCustomFieldsRequestSchema, {
+      customFields: { pan: 'ABCDE1234F' },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects missing customFields', () => {
+    const result = validate(UpdateCandidateCustomFieldsRequestSchema, {
+      candidateId: 'cand-123',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects customFields with value exceeding 500 chars', () => {
+    const result = validate(UpdateCandidateCustomFieldsRequestSchema, {
+      candidateId: 'cand-123',
+      customFields: { notes: 'x'.repeat(501) },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts customFields with value at exactly 500 chars', () => {
+    const result = validate(UpdateCandidateCustomFieldsRequestSchema, {
+      candidateId: 'cand-123',
+      customFields: { notes: 'x'.repeat(500) },
+    });
+    expect(result.success).toBe(true);
   });
 });
