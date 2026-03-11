@@ -14,6 +14,7 @@ interface Config {
     shortlistsTable: string;
     clientsTable: string;
     candidateScreeningsTable: string;
+    emailIngestLogTable: string;
   };
   s3: {
     resumesBucket: string;
@@ -30,6 +31,14 @@ interface Config {
   email: {
     senderEmail: string;
     frontendBaseUrl: string;
+    ingestNotifyAddress: string;
+  };
+  graph: {
+    tenantId: string;
+    clientId: string;
+    clientSecret: string;
+    mailboxAddress: string;
+    enabled: boolean;
   };
   llm: {
     provider: LLMProvider;
@@ -66,6 +75,7 @@ export const config: Config = {
     shortlistsTable: getEnvVar('DYNAMODB_TABLE_SHORTLISTS', 'Shortlists-dev'),
     clientsTable: getEnvVar('DYNAMODB_TABLE_CLIENTS', 'Clients-dev'),
     candidateScreeningsTable: getEnvVar('DYNAMODB_TABLE_CANDIDATE_SCREENINGS', 'CandidateScreenings-dev'),
+    emailIngestLogTable: getEnvVar('DYNAMODB_TABLE_EMAIL_INGEST_LOG', 'EmailIngestLog-dev'),
   },
   s3: {
     resumesBucket: getEnvVar('S3_BUCKET_RESUMES', 'quadzero-scout-resumes-dev'),
@@ -82,6 +92,14 @@ export const config: Config = {
   email: {
     senderEmail: getEnvVar('SES_SENDER_EMAIL', ''),
     frontendBaseUrl: getEnvVar('FRONTEND_BASE_URL', 'https://dev.scout.quadzero.com'),
+    ingestNotifyAddress: getEnvVar('EMAIL_INGEST_NOTIFY_ADDRESS', ''),
+  },
+  graph: {
+    tenantId: getEnvVar('GRAPH_TENANT_ID', ''),
+    clientId: getEnvVar('GRAPH_CLIENT_ID', ''),
+    clientSecret: getEnvVar('GRAPH_CLIENT_SECRET', ''),
+    mailboxAddress: getEnvVar('GRAPH_MAILBOX_ADDRESS', ''),
+    enabled: getEnvVar('EMAIL_INGEST_ENABLED', 'false') === 'true',
   },
   llm: {
     provider: (getEnvVar('LLM_PROVIDER', 'claude') as LLMProvider),
