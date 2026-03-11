@@ -1245,3 +1245,42 @@ export async function updateCandidateProfileFields(
     })
   );
 }
+
+export async function searchCandidatesByName(
+  query: string,
+  limit = 50
+): Promise<CandidateItem[]> {
+  const lowerQuery = query.toLowerCase();
+  const PAGE_SIZE = 100;
+  const MAX_SCAN = 500;
+
+  const allItems: CandidateItem[] = [];
+  let currentKey: Record<string, unknown> | undefined;
+
+  do {
+    const scanParams: {
+      TableName: string;
+      Limit: number;
+      ExclusiveStartKey?: Record<string, unknown>;
+    } = {
+      TableName: config.dynamodb.talentProfilesTable,
+      Limit: PAGE_SIZE,
+    };
+    if (currentKey) {
+      scanParams.ExclusiveStartKey = currentKey;
+    }
+
+    const result = await docClient.send(new ScanCommand(scanParams));
+    const items = (result.Items || []) as CandidateItem[];
+    for (const item of items) {
+      if ((item.full_name || '').toLowerCase().includes(lowerQuery)) {
+        allItems.push(item);
+        if (allItems.length >= limit) break;
+      }
+    }
+
+    currentKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (currentKey && allItems.length < limit && allItems.length < MAX_SCAN);
+
+  return allItems;
+}

@@ -2191,6 +2191,89 @@ For future integrations, the system can emit webhook events:
 
 ---
 
+## Locate Profile Endpoints
+
+### Search Candidates by Name
+`GET /recruiter/candidates/search`
+
+Searches candidate profiles by name (case-insensitive partial match). Used for typeahead suggestions and full search results.
+
+**Auth**: Required (recruiter/admin)
+
+**Query Parameters**:
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `q` | string | Yes | Name query (min 2 characters) |
+| `limit` | number | No | Max results (default 50, max 100) |
+
+**Response 200**:
+```json
+{
+  "success": true,
+  "data": {
+    "candidates": [
+      {
+        "candidateId": "uuid",
+        "fullName": "Rajesh Kumar",
+        "primarySkills": ["react", "nodejs"],
+        "totalExperience": 8,
+        "seniority": "senior",
+        "location": "Bangalore, India",
+        "lastUpdated": "2026-03-01T10:00:00.000Z",
+        "lastScreenedAt": "2026-02-25T09:00:00.000Z"
+      }
+    ]
+  }
+}
+```
+
+**Error Responses**:
+- `400 VALIDATION_ERROR` — query too short (< 2 chars)
+- `401 UNAUTHORIZED` — missing/invalid auth token
+
+---
+
+### Get Candidate's Shortlisted Requirements
+`GET /recruiter/candidates/{candidateId}/shortlisted-requirements`
+
+Returns all active requirements for which the given candidate has been shortlisted.
+
+**Auth**: Required (recruiter/admin)
+
+**Path Parameters**:
+| Parameter | Description |
+|-----------|-------------|
+| `candidateId` | UUID of the candidate |
+
+**Response 200**:
+```json
+{
+  "success": true,
+  "data": {
+    "shortlistedRequirements": [
+      {
+        "requirementId": "uuid",
+        "clientName": "Acme Corp",
+        "endClient": "Google",
+        "jobTitle": "Senior React Developer",
+        "engagementModel": "full_time_contract",
+        "mustHaveSkills": ["react", "typescript"],
+        "taggedAt": "2026-02-20T14:00:00.000Z",
+        "taggedBy": "recruiter-uuid",
+        "notes": "Strong fit for the role",
+        "status": "shortlisted"
+      }
+    ]
+  }
+}
+```
+
+**Error Responses**:
+- `401 UNAUTHORIZED` — missing/invalid auth token
+- `500 DYNAMODB_ERROR` — database error
+
+---
+
 ## Rate Limits
 
 | Endpoint Category | Rate Limit |
