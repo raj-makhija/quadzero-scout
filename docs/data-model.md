@@ -47,6 +47,7 @@ Stores candidate profile data extracted from resumes and edited by candidates.
 | current_ctc | Number | No | Current CTC in LPA (Lakhs Per Annum) |
 | expected_ctc | Number | No | Expected CTC in LPA |
 | custom_fields | Map\<String, String\|Number\> | No | Dynamic key-value pairs for additional data points (e.g., date_of_birth, pan_number). Populated by recruiters when requirements request additional candidate information. |
+| cover_letter | String | No | Cover letter or supplementary text. For email-ingested candidates, this is the plain-text email body (HTML stripped). |
 | last_screened_at | String | No | ISO 8601 timestamp of last screening |
 | last_screened_by | String | No | User ID of recruiter who last screened |
 | experience_bucket | String | Yes | Bucketed experience for GSI (e.g., "0-2", "3-5") |
@@ -94,6 +95,7 @@ Stores candidate profile data extracted from resumes and edited by candidates.
     "date_of_birth": "1996-05-14",
     "pan_number": "ABCDE1234F"
   },
+  "cover_letter": "Dear Hiring Manager, I am writing to express my interest in the Full Stack Developer position...",
   "last_screened_at": "2024-01-14T09:00:00Z",
   "last_screened_by": "user_r1e2c3",
   "experience_bucket": "6-10",

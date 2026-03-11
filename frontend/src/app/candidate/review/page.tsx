@@ -15,6 +15,7 @@ export default function ReviewPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newSkill, setNewSkill] = useState('');
+  const [supplementaryText, setSupplementaryText] = useState<string | null>(null);
 
   useEffect(() => {
     const stored = sessionStorage.getItem('extractedProfile');
@@ -29,6 +30,7 @@ export default function ReviewPage() {
     setProfile(JSON.parse(stored));
     setS3Key(storedS3Key);
     setConfidence(parseFloat(storedConfidence || '0'));
+    setSupplementaryText(sessionStorage.getItem('supplementaryText'));
   }, [router]);
 
   const updateProfile = (updates: Partial<ExtractedProfile>) => {
@@ -95,6 +97,7 @@ export default function ReviewPage() {
         location: profile.location || undefined,
         currentCtc: profile.currentCtc || undefined,
         expectedCtc: profile.expectedCtc || undefined,
+        coverLetter: supplementaryText || undefined,
       };
       const { candidateId } = await api.saveProfile({ profile: profileToSave, resumeS3Key: s3Key });
 
@@ -102,6 +105,7 @@ export default function ReviewPage() {
       sessionStorage.removeItem('extractedProfile');
       sessionStorage.removeItem('s3Key');
       sessionStorage.removeItem('confidence');
+      sessionStorage.removeItem('supplementaryText');
 
       // Store candidate ID for profile page
       sessionStorage.setItem('candidateId', candidateId);
@@ -368,6 +372,21 @@ export default function ReviewPage() {
               placeholder="Brief professional summary..."
             />
           </div>
+
+          {/* Cover Letter / Email Body (read-only) */}
+          {supplementaryText && (
+            <div className="card p-6">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                Cover Letter / Email Body
+              </h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                This text was provided alongside the resume and was used to assist AI extraction.
+              </p>
+              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap max-h-48 overflow-y-auto">
+                {supplementaryText}
+              </div>
+            </div>
+          )}
 
           {/* Error Message */}
           {error && (

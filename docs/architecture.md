@@ -469,25 +469,33 @@ Bulk Upload:
        │                    │                    │    attachment to   │
        │                    │                    │    S3              │
        │                    │                    │                    │
-       │                    │                    │ 4. Process resume  │
+       │                    │                    │ 4. Extract email   │
+       │                    │                    │    body, strip HTML│
+       │                    │                    │    → supplementary │
+       │                    │                    │    text            │
+       │                    │                    │                    │
+       │                    │                    │ 5. Process resume  │
        │                    │                    │───────────────────>│
        │                    │                    │  extractText       │
        │                    │                    │  parseResume (LLM) │
+       │                    │                    │   + supplementary  │
+       │                    │                    │     text           │
        │                    │                    │  normalizeSkills   │
        │                    │                    │  dedup by email    │
        │                    │                    │  saveCandidateProfile
+       │                    │                    │   (incl. cover_letter)
        │                    │                    │  formatResumeWorker│
        │                    │                    │<───────────────────│
        │                    │                    │                    │
-       │                    │ 5. Mark as read +  │                    │
+       │                    │ 6. Mark as read +  │                    │
        │                    │    move to         │                    │
        │                    │    "Processed"     │                    │
        │                    │<───────────────────│                    │
        │                    │                    │                    │
-       │                    │                    │ 6. Notify matching │
+       │                    │                    │ 7. Notify matching │
        │                    │                    │    recruiters      │
        │                    │                    │                    │
-       │                    │                    │ 7. Send digest     │
+       │                    │                    │ 8. Send digest     │
        │                    │                    │    email to admin  │
        │                    │                    │                    │
 ```
@@ -496,6 +504,7 @@ Bulk Upload:
 - `jobs@quadzero.com` is a traditional Exchange Distribution List; `scout-ingest@quadzero.com` is a shared mailbox added as a DL member
 - The `emailIngestWorker` Lambda runs every 3 minutes via EventBridge schedule, processing up to 10 emails per invocation
 - Idempotency is ensured via the `EmailIngestLog` DynamoDB table (keyed by RFC 822 `internet_message_id`)
+- The worker extracts the email body from each message, strips HTML tags to produce plain text, and passes it to `parseResume()` as supplementary text. The plain-text email body is also stored as `cover_letter` on the candidate profile.
 - Resume processing reuses the same pipeline as single upload and bulk import — no separate parsing logic
 - Admin receives a digest email at `raj@quadzero.com` after each poll cycle with successes, errors, and skipped emails
 - S3 key prefix: `email-resumes/{year}/{month}/{uuid}-{filename}` (separate from `resumes/` for operational visibility)

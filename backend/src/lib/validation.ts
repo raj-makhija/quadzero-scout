@@ -13,6 +13,7 @@ export const UploadUrlRequestSchema = z.object({
 // Analyze Request Validation
 export const AnalyzeRequestSchema = z.object({
   s3Key: z.string().min(1).max(500),
+  supplementaryText: z.string().max(10000).optional(),
 });
 
 // Save Profile Request Validation
@@ -42,6 +43,7 @@ export const SaveProfileRequestSchema = z.object({
     currentCtc: z.number().min(0).max(500).optional(),
     expectedCtc: z.number().min(0).max(500).optional(),
     customFields: z.record(z.string(), z.union([z.string(), z.number()])).optional().default({}),
+    coverLetter: z.string().max(10000).optional(),
   }),
   resumeS3Key: z.string().min(1).max(500),
 });

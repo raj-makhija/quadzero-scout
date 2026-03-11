@@ -112,6 +112,7 @@ export async function handler(
         ...(existingCandidate?.custom_fields || {}),
         ...(profile.customFields || {}),
       },
+      cover_letter: profile.coverLetter || existingCandidate?.cover_letter,
       ...(preserveFormattedResume ? preserveFormattedResume : {}),
       created_at: existingCandidate?.created_at || now,
       last_updated: now,

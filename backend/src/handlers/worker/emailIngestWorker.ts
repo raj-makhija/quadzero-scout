@@ -274,8 +274,9 @@ async function processAttachment(
       throw err;
     }
 
-    // Step 3: Parse with LLM
-    const parseResult = await parseResume(extractedText.text);
+    // Step 3: Parse with LLM — include email body as supplementary text
+    const emailBodyText = getEmailBodyText(message);
+    const parseResult = await parseResume(extractedText.text, emailBodyText);
     const profile = parseResult.output;
 
     // Step 4: Handle missing email
@@ -337,6 +338,7 @@ async function processAttachment(
       current_ctc: profile.currentCtc ?? undefined,
       expected_ctc: profile.expectedCtc ?? undefined,
       resume_s3_key: s3Key,
+      cover_letter: emailBodyText || undefined,
       ...(preserveFormattedResume || {}),
       created_at: existingCandidate?.created_at || nowIso,
       last_updated: nowIso,
@@ -371,6 +373,34 @@ function categorizeError(errorMessage: string): string {
   if (msg.includes('dynamodb') || msg.includes('database') || msg.includes('save')) return 'database save failed';
   if (msg.includes('s3') || msg.includes('upload') || msg.includes('bucket')) return 'S3 upload failed';
   return 'processing failed';
+}
+
+const MAX_SUPPLEMENTARY_LENGTH = 10000;
+
+function stripHtmlToPlainText(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function getEmailBodyText(message: GraphMessage): string | undefined {
+  if (!message.body?.content) return undefined;
+  const text = message.body.contentType === 'html'
+    ? stripHtmlToPlainText(message.body.content)
+    : message.body.content;
+  if (!text.trim()) return undefined;
+  return text.substring(0, MAX_SUPPLEMENTARY_LENGTH);
 }
 
 async function safeMarkAsRead(graphConfig: GraphConfig, messageId: string): Promise<void> {

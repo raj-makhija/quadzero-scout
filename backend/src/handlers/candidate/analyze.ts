@@ -31,7 +31,7 @@ export async function handler(
       );
     }
 
-    const { s3Key } = validation.data;
+    const { s3Key, supplementaryText } = validation.data;
 
     // Extract text from resume using Textract
     console.log('Extracting text from resume:', s3Key);
@@ -62,7 +62,7 @@ export async function handler(
     let parseResult: { output: unknown; confidence: number };
 
     try {
-      parseResult = await parseResume(extractedText.text);
+      parseResult = await parseResume(extractedText.text, supplementaryText);
     } catch (err) {
       console.error('LLM parse error:', err);
       return error(
