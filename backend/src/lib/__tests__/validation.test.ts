@@ -531,6 +531,42 @@ describe('SaveSearchRequestSchema', () => {
     });
     expect(result.success).toBe(true);
   });
+
+  // TC-SAVEDSEARCH-004
+  it('rejects invalid seniority enum value', () => {
+    const result = validate(SaveSearchRequestSchema, {
+      name: 'My Search',
+      criteria: { seniority: ['manager'] },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  // TC-SAVEDSEARCH-005
+  it('accepts valid seniority enum values', () => {
+    const result = validate(SaveSearchRequestSchema, {
+      name: 'My Search',
+      criteria: { seniority: ['senior', 'lead'] },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  // TC-SAVEDSEARCH-006
+  it('rejects invalid availability enum value', () => {
+    const result = validate(SaveSearchRequestSchema, {
+      name: 'My Search',
+      criteria: { availability: ['asap'] },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  // TC-SAVEDSEARCH-007
+  it('accepts valid availability enum values', () => {
+    const result = validate(SaveSearchRequestSchema, {
+      name: 'My Search',
+      criteria: { availability: ['immediate', '1_week'] },
+    });
+    expect(result.success).toBe(true);
+  });
 });
 
 describe('validate() helper', () => {

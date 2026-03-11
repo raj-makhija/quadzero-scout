@@ -1003,6 +1003,9 @@ export const LLMResumeOutputSchema = z.object({
 ```
 
 ### LLM JD Output Schema
+
+> **Note:** The `seniority` field accepts any `string[]` from the LLM, but values are normalized to valid `SeniorityEnum` values after parsing via `normalizeSeniorityArray()` in `backend/src/lib/seniorityNormalizer.ts`. Common mappings: `manager` → `lead`, `director`/`vp`/`cto` → `executive`, `staff`/`architect` → `principal`, `entry`/`fresher` → `junior`, `trainee` → `intern`. Unmappable values are dropped.
+
 ```typescript
 export const LLMJDOutputSchema = z.object({
   mustHaveSkills: z.array(z.string()),

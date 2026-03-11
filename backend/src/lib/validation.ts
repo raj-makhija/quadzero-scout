@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { LLMJDOutputSchema, PricingConfigSchema, AdditionalFieldDefinitionSchema } from '../types/index.js';
+import { LLMJDOutputSchema, PricingConfigSchema, AdditionalFieldDefinitionSchema, SeniorityEnum, AvailabilityEnum } from '../types/index.js';
 
 // Upload URL Request Validation
 export const UploadUrlRequestSchema = z.object({
@@ -81,8 +81,8 @@ export const SaveSearchRequestSchema = z.object({
     goodToHaveSkills: z.array(z.string()).optional(),
     minExperience: z.number().min(0).optional(),
     maxExperience: z.number().max(50).optional(),
-    seniority: z.array(z.string()).optional(),
-    availability: z.array(z.string()).optional(),
+    seniority: z.array(SeniorityEnum).optional(),
+    availability: z.array(AvailabilityEnum).optional(),
     location: z.string().optional(),
     remote: z.boolean().optional(),
     industries: z.array(z.string()).optional(),

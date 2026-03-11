@@ -563,6 +563,7 @@ Authorization: Bearer <jwe_token>
 **Notes:**
 - The `coreSkill` field in `parsedCriteria` is extracted by the LLM and represents the primary skill or technology focus of the job description. It may be `null` if the LLM cannot determine a single core skill.
 - `jobTitle` is now auto-generated on the frontend using the pattern: `"Client Name (End Client) - Core Skill"`. The manual `jobTitle` input field has been removed from the frontend.
+- Seniority values returned by the LLM are normalized to valid `SeniorityEnum` values (e.g., `manager` → `lead`, `director` → `executive`, `staff` → `principal`). Unmappable values are dropped. See `backend/src/lib/seniorityNormalizer.ts` for the full mapping.
 
 ---
 
