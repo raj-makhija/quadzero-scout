@@ -119,6 +119,7 @@ export interface CandidateItem {
   last_screened_by?: string;
   last_screened_by_name?: string;
   custom_fields?: Record<string, string | number>;
+  cover_letter?: string;
   created_at: string;
   last_updated: string;
 }

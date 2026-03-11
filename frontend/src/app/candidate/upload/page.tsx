@@ -11,6 +11,7 @@ type UploadState = 'idle' | 'uploading' | 'analyzing' | 'complete' | 'error';
 export default function UploadPage() {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
+  const [supplementaryText, setSupplementaryText] = useState('');
   const [uploadState, setUploadState] = useState<UploadState>('idle');
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -69,7 +70,7 @@ export default function UploadPage() {
         // Local dev: send file directly to backend (bypasses S3 + Textract)
         setProgress(30);
         setUploadState('analyzing');
-        const result = await api.uploadAndAnalyze(file);
+        const result = await api.uploadAndAnalyze(file, supplementaryText || undefined);
         extractedProfile = result.extractedProfile;
         confidence = result.confidence;
         s3Key = `local-dev/${file.name}`;
@@ -92,7 +93,7 @@ export default function UploadPage() {
         setProgress(60);
 
         setUploadState('analyzing');
-        const analyzeResult = await api.analyzeResume(s3Key);
+        const analyzeResult = await api.analyzeResume(s3Key, supplementaryText || undefined);
         extractedProfile = analyzeResult.extractedProfile;
         confidence = analyzeResult.confidence;
         setProgress(100);
@@ -102,6 +103,11 @@ export default function UploadPage() {
       sessionStorage.setItem('extractedProfile', JSON.stringify(extractedProfile));
       sessionStorage.setItem('s3Key', s3Key);
       sessionStorage.setItem('confidence', confidence.toString());
+      if (supplementaryText) {
+        sessionStorage.setItem('supplementaryText', supplementaryText);
+      } else {
+        sessionStorage.removeItem('supplementaryText');
+      }
 
       setUploadState('complete');
 
@@ -203,6 +209,23 @@ export default function UploadPage() {
           <p className="mt-4 text-sm text-gray-500 dark:text-gray-400 text-center">
             Supported formats: PDF, DOCX (max 10MB)
           </p>
+
+          {/* Supplementary Text (Cover Letter / Email Body) */}
+          <div className="mt-6">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Cover Letter / Email Body
+              <span className="text-gray-400 dark:text-gray-500 font-normal ml-1">(optional)</span>
+            </label>
+            <textarea
+              value={supplementaryText}
+              onChange={(e) => setSupplementaryText(e.target.value)}
+              rows={4}
+              maxLength={10000}
+              className="mt-1 block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+              placeholder="Paste any cover letter or email body text here. This helps the AI extract additional details like CTC, notice period, engagement preferences, etc."
+              disabled={uploadState !== 'idle'}
+            />
+          </div>
 
           {/* Error Message */}
           {error && (

@@ -20,7 +20,7 @@ export async function handler(
       return error(ErrorCodes.VALIDATION_ERROR, 'Request body is required', 400);
     }
 
-    let body: { fileContent: string; fileName: string; contentType: string };
+    let body: { fileContent: string; fileName: string; contentType: string; supplementaryText?: string };
     try {
       body = JSON.parse(event.body);
     } catch {
@@ -64,7 +64,7 @@ export async function handler(
     let parseResult: { output: unknown; confidence: number };
 
     try {
-      parseResult = await parseResume(extractedText);
+      parseResult = await parseResume(extractedText, body.supplementaryText);
     } catch (err) {
       console.error('LLM parse error:', err);
       return error(

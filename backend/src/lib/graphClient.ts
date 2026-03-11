@@ -32,6 +32,7 @@ export interface GraphMessage {
   hasAttachments: boolean;
   attachments?: GraphAttachment[];
   internetMessageId: string; // RFC 822 Message-ID — globally unique, used for idempotency
+  body?: { contentType: string; content: string };
 }
 
 interface GraphMailFolder {
@@ -111,7 +112,7 @@ export async function getUnreadMessages(
     `?$filter=isRead eq false` +
     `&$top=${top}` +
     `&$orderby=receivedDateTime asc` +
-    `&$select=id,subject,from,receivedDateTime,hasAttachments,internetMessageId` +
+    `&$select=id,subject,from,receivedDateTime,hasAttachments,internetMessageId,body` +
     `&$expand=attachments`;
 
   const response = await fetch(url, {
