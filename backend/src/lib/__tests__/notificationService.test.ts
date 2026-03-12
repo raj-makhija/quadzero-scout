@@ -55,6 +55,7 @@ import { notifyMatchingRecruiters } from '../notificationService.js';
 
 const candidateA = {
   candidate_id: 'cand_1',
+  full_name: 'John Doe',
   primary_skills: ['react', 'typescript'],
   secondary_skills: [],
   total_experience: 5,
@@ -135,12 +136,19 @@ describe('notifyMatchingRecruiters', () => {
         toEmail: 'rec@example.com',
         requirementId: 'req_1',
         candidateCount: 1,
+        matchedProfiles: [
+          expect.objectContaining({
+            candidateId: 'cand_1',
+            fullName: 'John Doe',
+            primarySkills: ['react', 'typescript'],
+          }),
+        ],
       })
     );
   });
 
   it('TC-NOTIFY-005: aggregates multiple candidates into one email per requirement', async () => {
-    const candidateB = { ...candidateA, candidate_id: 'cand_2' };
+    const candidateB = { ...candidateA, candidate_id: 'cand_2', full_name: 'Jane Smith' };
     mockGetCandidateById
       .mockResolvedValueOnce(candidateA)
       .mockResolvedValueOnce(candidateB);
@@ -152,7 +160,13 @@ describe('notifyMatchingRecruiters', () => {
     // One email for both candidates combined
     expect(mockSendEmail).toHaveBeenCalledOnce();
     expect(mockSendEmail).toHaveBeenCalledWith(
-      expect.objectContaining({ candidateCount: 2 })
+      expect.objectContaining({
+        candidateCount: 2,
+        matchedProfiles: [
+          expect.objectContaining({ candidateId: 'cand_1', fullName: 'John Doe' }),
+          expect.objectContaining({ candidateId: 'cand_2', fullName: 'Jane Smith' }),
+        ],
+      })
     );
   });
 
