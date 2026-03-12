@@ -68,6 +68,9 @@ export default function CandidateProfilePage() {
   // Cover letter / email body viewer
   const [showCoverLetter, setShowCoverLetter] = useState(false);
 
+  // Screening status (computed early so handlers can reference it)
+  const screeningExpired = isScreeningExpired(profile?.lastScreenedAt ?? undefined);
+
   // Load all data in parallel
   useEffect(() => {
     async function loadData() {
@@ -91,7 +94,12 @@ export default function CandidateProfilePage() {
     loadData();
   }, [candidateId]);
 
-  const handleOpenShortlist = (reqId: string) => {
+  const handleOpenShortlist = (reqId: string, req?: MatchedRequirement) => {
+    if (screeningExpired && req) {
+      setScreeningForShortlist(req);
+      setShowScreeningModal(true);
+      return;
+    }
     setShortlistOpen(reqId);
     setShortlistNotes('');
     setShortlistError('');
@@ -140,8 +148,9 @@ export default function CandidateProfilePage() {
     async (screenedCandidateId: string) => {
       setShowScreeningModal(false);
       // Update profile screening date optimistically
+      const now = new Date().toISOString();
       setProfile((prev) =>
-        prev ? { ...prev, lastUpdated: new Date().toISOString() } : prev
+        prev ? { ...prev, lastUpdated: now, lastScreenedAt: now } : prev
       );
       // Retry shortlist if there was a pending requirement
       if (screeningForShortlist) {
@@ -236,7 +245,6 @@ export default function CandidateProfilePage() {
   }
 
   const screeningStatus = getScreeningStatus(profile.lastScreenedAt ?? undefined);
-  const screeningExpired = isScreeningExpired(profile.lastScreenedAt ?? undefined);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -546,7 +554,7 @@ export default function CandidateProfilePage() {
                   shortlistNotes={shortlistNotes}
                   shortlisting={shortlisting}
                   shortlistError={shortlistError}
-                  onOpen={() => handleOpenShortlist(req.requirementId)}
+                  onOpen={() => handleOpenShortlist(req.requirementId, req)}
                   onClose={() => { setShortlistOpen(null); setShortlistError(''); }}
                   onNotesChange={setShortlistNotes}
                   onConfirm={() => handleConfirmShortlist(req)}
