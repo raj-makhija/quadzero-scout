@@ -156,6 +156,17 @@ export default function RequirementDetailPage() {
         return;
       }
 
+      // Auto re-parse JD text when it changes
+      if (payload.jdText) {
+        try {
+          const parseResult = await api.parseJobDescription(payload.jdText, payload.jobTitle || requirement.jobTitle);
+          payload.parsedCriteria = parseResult.parsedCriteria;
+        } catch (parseErr) {
+          console.error('JD re-parse failed, saving text without updating criteria:', parseErr);
+          // Still save the JD text change even if parsing fails
+        }
+      }
+
       await api.updateRequirement(requirementId, payload);
 
       // Re-fetch to get updated data and change history

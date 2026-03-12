@@ -1321,6 +1321,7 @@ If no fields actually changed (submitted values are identical to current values)
 **Notes:**
 - Each successful update (where at least one field changed) atomically appends a `RequirementChangeEntry` to the requirement's `change_history` array, recording old and new values for every changed field.
 - The `change_history` is returned in the `GET /recruiter/requirements/{requirementId}` detail response as `changeHistory` (camelCase).
+- **Auto re-parse on JD text edit:** When the frontend detects that `jdText` has changed, it automatically calls `api.parseJobDescription()` to re-extract `parsedCriteria` from the updated JD text before sending the update request. Both `jdText` and the re-parsed `parsedCriteria` are included in the update payload, so both changes are tracked in the audit trail as separate field entries. If the JD re-parse fails (e.g., LLM error), the frontend still sends the `jdText` change without updating `parsedCriteria`, allowing the text edit to be saved independently.
 
 ---
 
