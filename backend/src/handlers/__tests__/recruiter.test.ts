@@ -353,6 +353,45 @@ describe('POST /recruiter/search', () => {
     }
   });
 
+  // TC-SEARCH-016
+  it('coreSkill filter excludes candidates who do not have the core skill', async () => {
+    // Mock: cand_1 has ['react', 'nodejs', 'typescript'], cand_2 has ['python', 'django']
+    // coreSkill = 'nodejs' → only cand_1 should be returned
+    const event = makeEvent({
+      body: JSON.stringify({
+        criteria: {
+          coreSkill: 'nodejs',
+          mustHaveSkills: ['nodejs'],
+        },
+      }),
+    });
+    const result = await searchHandler(event);
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    // Only cand_1 has nodejs
+    expect(body.data.candidates).toHaveLength(1);
+    expect(body.data.candidates[0].candidateId).toBe('cand_1');
+  });
+
+  // TC-SEARCH-017
+  it('coreSkill filter is not applied when coreSkill is not specified', async () => {
+    // Without coreSkill, both candidates should be evaluated normally
+    const event = makeEvent({
+      body: JSON.stringify({
+        criteria: {
+          mustHaveSkills: ['react'],
+        },
+      }),
+    });
+    const result = await searchHandler(event);
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    // cand_1 has react (passes threshold), cand_2 does not (fails threshold)
+    expect(body.data.candidates.some((c: { candidateId: string }) => c.candidateId === 'cand_1')).toBe(true);
+  });
+
   it('rejects empty body', async () => {
     const event = makeEvent({ body: undefined });
     const result = await searchHandler(event);

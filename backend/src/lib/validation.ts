@@ -57,6 +57,7 @@ export const ParseJdRequestSchema = z.object({
 // Search Request Validation
 export const SearchRequestSchema = z.object({
   criteria: z.object({
+    coreSkill: z.string().optional(),
     mustHaveSkills: z.array(z.string()).optional(),
     goodToHaveSkills: z.array(z.string()).optional(),
     minExperience: z.number().min(0).optional(),

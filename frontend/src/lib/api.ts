@@ -592,6 +592,7 @@ export interface ParsedCriteria {
 }
 
 export interface SearchCriteria {
+  coreSkill?: string;
   mustHaveSkills?: string[];
   goodToHaveSkills?: string[];
   minExperience?: number;

@@ -4,10 +4,10 @@ import type { CandidateItem, CandidateSearchResult } from '../types/index.js';
 
 export type MatchDetails = CandidateSearchResult['matchDetails'];
 
-/** Minimum ratio of effective must-have matches to total must-have skills.
+/** Minimum ratio of exact must-have matches to total must-have skills.
  *  Candidates below this threshold are filtered out.
- *  Effective = exact + related * MUST_HAVE_RELATED_WEIGHT. */
-export const MIN_MUST_HAVE_MATCH_RATIO = 0.25;
+ *  Only exact matches count; related matches do not contribute to this ratio. */
+export const MIN_MUST_HAVE_MATCH_RATIO = 0.40;
 
 /** Weight applied to related (category-based) good-to-have skill matches. */
 export const RELATED_MATCH_WEIGHT = 0.3;
@@ -151,11 +151,13 @@ export function calculateMatchScore(
     ...candidate.secondary_skills,
   ];
 
-  // Must-have skills match — exact full credit, related at reduced weight
-  const mustHaveMatch = calculateSkillMatch(candidateSkills, mustHaveSkills, false);
+  // Must-have skills match — exact matches only for scoring
+  const mustHaveMatch = calculateSkillMatch(candidateSkills, mustHaveSkills, true);
+  // Second pass on missing must-haves to find related skills for display only (not scored)
+  const mustHaveRelatedDisplay = calculateSkillMatch(candidateSkills, mustHaveMatch.missing, false);
 
   const mustHaveEffective = mustHaveSkills.length > 0
-    ? (mustHaveMatch.exactMatched.length + mustHaveMatch.relatedMatched.length * MUST_HAVE_RELATED_WEIGHT) / mustHaveSkills.length
+    ? mustHaveMatch.exactMatched.length / mustHaveSkills.length
     : 1;
   score += mustHaveEffective * MUST_HAVE_WEIGHT;
 
@@ -208,8 +210,8 @@ export function calculateMatchScore(
     score: Math.round(score),
     details: {
       mustHaveMatched: mustHaveMatch.exactMatched,
-      mustHaveRelated: mustHaveMatch.relatedMatched,
-      mustHaveMissing: mustHaveMatch.missing,
+      mustHaveRelated: mustHaveRelatedDisplay.relatedMatched,
+      mustHaveMissing: mustHaveRelatedDisplay.missing,
       goodToHaveMatched: goodToHaveMatch.exactMatched,
       goodToHaveRelated: goodToHaveMatch.relatedMatched,
       experienceMatch,

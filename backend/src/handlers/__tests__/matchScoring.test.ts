@@ -148,8 +148,8 @@ describe('Match Scoring Algorithm', () => {
       primary_skills: ['react'],
       secondary_skills: [],
     });
-    // 1 exact + 1 related (typescript in same frontend category) of 3 must-have
-    // = (1 + 1*0.3)/3 * 45 = 19.5 + 25 + 8 + 5 + 10 + 7 = 74.5 → 75
+    // 1 exact (react) of 3 must-have — nodejs and typescript are missing or related (not scored)
+    // = 1/3 * 45 = 15 + 25 + 8 + 5 + 10 + 7 = 70
     const result = calculateMatchScore(
       candidate,
       ['react', 'nodejs', 'typescript'],
@@ -199,18 +199,18 @@ describe('Match Scoring Algorithm', () => {
     expect(result.score).toBe(100);
   });
 
-  // TC-SCORE-012: Related skill counts at 0.3x for must-have
-  it('related skill counts at 0.3x weight for must-have match', () => {
+  // TC-SCORE-012: Related skill does NOT score for must-have (exact-only)
+  it('related skill does NOT score for must-have (exact-only scoring)', () => {
     const candidate = makeCandidate({
       primary_skills: ['vue'],  // vue is in frontend category, same as react
       secondary_skills: [],
     });
     const result = calculateMatchScore(candidate, ['react'], []);
     expect(result.details.mustHaveMatched).not.toContain('react');
-    expect(result.details.mustHaveRelated).toContain('react'); // related match
+    expect(result.details.mustHaveRelated).toContain('react'); // related shown for display only
     expect(result.details.mustHaveMissing).toEqual([]);
-    // Score: (0 + 1*0.3)/1 * 45 = 13.5 + 25 + 8 + 5 + 10 + 7 = 68.5 → 69
-    expect(result.score).toBe(69);
+    // Score: 0/1 * 45 = 0 + 25 + 8 + 5 + 10 + 7 = 55
+    expect(result.score).toBe(55);
   });
 
   // TC-SCORE-013: Related skill counts at 0.3x for good-to-have
@@ -238,8 +238,8 @@ describe('Match Scoring Algorithm', () => {
     expect(result.details.mustHaveMissing).toContain('salesforce');
   });
 
-  // TC-SCORE-015: 1/10 must-have is below 25% threshold
-  it('candidate with 1 of 10 must-have skills is below 25% threshold', () => {
+  // TC-SCORE-015: 1/10 must-have is below 40% threshold
+  it('candidate with 1 of 10 must-have skills is below 40% threshold', () => {
     const candidate = makeCandidate({
       primary_skills: ['react'],
       secondary_skills: [],
@@ -252,17 +252,17 @@ describe('Match Scoring Algorithm', () => {
     expect(ratio).toBeLessThan(MIN_MUST_HAVE_MATCH_RATIO);
   });
 
-  // TC-SCORE-016: 3/10 must-have passes 25% threshold
-  it('candidate with 3 of 10 must-have skills passes 25% threshold', () => {
+  // TC-SCORE-016: 4/10 must-have passes 40% threshold
+  it('candidate with 4 of 10 must-have skills passes 40% threshold', () => {
     const candidate = makeCandidate({
-      primary_skills: ['react', 'nodejs', 'python'],
+      primary_skills: ['react', 'nodejs', 'python', 'java'],
       secondary_skills: [],
     });
     const mustHave = ['react', 'nodejs', 'python', 'java', 'golang',
                        'rust', 'csharp', 'ruby', 'php', 'scala'];
     const result = calculateMatchScore(candidate, mustHave, []);
     const ratio = result.details.mustHaveMatched.length / mustHave.length;
-    expect(ratio).toBe(0.3);
+    expect(ratio).toBe(0.4);
     expect(ratio).toBeGreaterThanOrEqual(MIN_MUST_HAVE_MATCH_RATIO);
   });
 
@@ -296,8 +296,8 @@ describe('Match Scoring Algorithm', () => {
     expect(MUST_HAVE_RELATED_WEIGHT).toBe(0.3);
   });
 
-  it('MIN_MUST_HAVE_MATCH_RATIO is 0.25', () => {
-    expect(MIN_MUST_HAVE_MATCH_RATIO).toBe(0.25);
+  it('MIN_MUST_HAVE_MATCH_RATIO is 0.40', () => {
+    expect(MIN_MUST_HAVE_MATCH_RATIO).toBe(0.40);
   });
 
   it('MUST_HAVE_WEIGHT is 45', () => {
