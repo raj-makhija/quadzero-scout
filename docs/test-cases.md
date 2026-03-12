@@ -1705,6 +1705,70 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | **Steps** | Load pages at 375x667 |
 | **Expected Result** | Single-column layout; mobile nav active; all content accessible |
 
+### TC-UI-017: Recruiter dashboard loads latest requirements
+| Field | Value |
+|-------|-------|
+| **ID** | TC-UI-017 |
+| **Priority** | P1 |
+| **Steps** | Log in as recruiter; navigate to home page |
+| **Expected Result** | "Latest Requirements" section shows up to 10 requirements sorted by creation date descending; each item shows job title, client name, skill badges, status dot, and relative time; clicking navigates to requirement detail page |
+
+### TC-UI-018: Recruiter dashboard loads latest profiles
+| Field | Value |
+|-------|-------|
+| **ID** | TC-UI-018 |
+| **Priority** | P1 |
+| **Steps** | Log in as recruiter; navigate to home page |
+| **Expected Result** | "Latest Profiles" section shows up to 10 profiles sorted by last updated descending; each item shows full name, seniority, experience, skill badges, location, and relative time; clicking navigates to candidate locate detail page |
+
+### TC-UI-019: Recruiter dashboard loading skeletons
+| Field | Value |
+|-------|-------|
+| **ID** | TC-UI-019 |
+| **Priority** | P2 |
+| **Steps** | Log in as recruiter; navigate to home page (with slow/throttled network) |
+| **Expected Result** | Both sections show animated skeleton placeholders while data loads; quick-action cards are visible immediately |
+
+### TC-UI-020: Recruiter dashboard empty states
+| Field | Value |
+|-------|-------|
+| **ID** | TC-UI-020 |
+| **Priority** | P2 |
+| **Steps** | Log in as recruiter with no requirements or profiles in system |
+| **Expected Result** | Requirements section shows "No requirements yet"; profiles section shows "No profiles yet"; quick-action cards still functional |
+
+### TC-UI-021: Recruiter dashboard independent error handling
+| Field | Value |
+|-------|-------|
+| **ID** | TC-UI-021 |
+| **Priority** | P2 |
+| **Steps** | Simulate one API endpoint failing while other succeeds |
+| **Expected Result** | Failed section shows error message; successful section renders data normally; quick-action cards unaffected |
+
+### TC-UI-022: Recent profiles API endpoint
+| Field | Value |
+|-------|-------|
+| **ID** | TC-UI-022 |
+| **Priority** | P1 |
+| **Steps** | Call `GET /recruiter/recent-profiles` with valid recruiter token |
+| **Expected Result** | Returns 10 profiles sorted by `lastUpdated` descending with fields: candidateId, fullName, primarySkills, totalExperience, seniority, location, lastUpdated, createdAt |
+
+### TC-UI-023: Recent profiles API with custom limit
+| Field | Value |
+|-------|-------|
+| **ID** | TC-UI-023 |
+| **Priority** | P2 |
+| **Steps** | Call `GET /recruiter/recent-profiles?limit=5` with valid recruiter token |
+| **Expected Result** | Returns exactly 5 profiles (or fewer if less exist) |
+
+### TC-UI-024: Recent profiles API requires auth
+| Field | Value |
+|-------|-------|
+| **ID** | TC-UI-024 |
+| **Priority** | P0 |
+| **Steps** | Call `GET /recruiter/recent-profiles` without auth token |
+| **Expected Result** | Returns 401 Unauthorized |
+
 ---
 
 ## 14. Module 13: Frontend - Utility Functions
@@ -2266,7 +2330,7 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | Skill Normalization | 19 | 5 | 6 | 6 | 2 |
 | Match Scoring | 11 | 3 | 5 | 2 | 1 |
 | Input Validation | 12 | 1 | 4 | 4 | 3 |
-| Frontend UI | 16 | 0 | 5 | 7 | 4 |
+| Frontend UI | 24 | 1 | 8 | 10 | 5 |
 | Frontend Utilities | 16 | 0 | 1 | 8 | 7 |
 | API Client | 7 | 1 | 5 | 1 | 0 |
 | Infrastructure | 10 | 0 | 4 | 4 | 2 |
@@ -2274,4 +2338,4 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | Non-Functional | 15 | 4 | 4 | 5 | 2 |
 | Requirement Status Management | 15 | 3 | 6 | 4 | 2 |
 | Notify Me — Notification Service | 20 | 5 | 8 | 7 | 0 |
-| **Total** | **262** | **47** | **95** | **89** | **31** |
+| **Total** | **270** | **48** | **98** | **92** | **32** |

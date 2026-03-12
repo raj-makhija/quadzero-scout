@@ -141,6 +141,8 @@ For filtering candidates by experience range.
 
 *Buckets: 0-2, 3-5, 6-10, 11-15, 16+*
 
+> **Recent Profiles Query Pattern:** The `GET /recruiter/recent-profiles` endpoint retrieves recently updated profiles via a full-table Scan, sorted client-side by `last_updated` descending, capped at 500 items scanned. This is adequate at current scale but should be replaced with a dedicated GSI (e.g., partition key `_type = "PROFILE"`, sort key `last_updated`) if the table exceeds ~1000 items.
+
 ---
 
 ### 2. Users

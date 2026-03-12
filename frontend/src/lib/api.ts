@@ -252,6 +252,15 @@ class ApiClient {
     return this.request<ListRequirementsResponse>(`/recruiter/requirements${qs ? `?${qs}` : ''}`);
   }
 
+  async listRecentProfiles(limit?: number) {
+    const params = new URLSearchParams();
+    if (limit) params.set('limit', String(limit));
+    const qs = params.toString();
+    return this.request<{ profiles: RecentProfileSummary[] }>(
+      `/recruiter/recent-profiles${qs ? `?${qs}` : ''}`
+    );
+  }
+
   async getRequirement(requirementId: string) {
     return this.request<RequirementDetail>(`/recruiter/requirements/${requirementId}`);
   }
@@ -736,6 +745,17 @@ export interface RequirementSummary {
   demandScore?: number;
   notifyRecruiterIds?: string[];
   additionalFields?: AdditionalFieldDefinition[];
+}
+
+export interface RecentProfileSummary {
+  candidateId: string;
+  fullName: string;
+  primarySkills: string[];
+  totalExperience: number;
+  seniority: string;
+  location?: string;
+  lastUpdated: string;
+  createdAt?: string;
 }
 
 export interface RequestHistoryEntry {
