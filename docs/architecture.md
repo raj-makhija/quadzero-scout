@@ -354,6 +354,13 @@ Bulk Upload:
 - Creator is opted in by default; any recruiter can opt in/out via `PUT /recruiter/requirements/{id}/notify`
 - Pre-deploy requirement: sender email identity must be verified in AWS SES (ap-south-1)
 
+**Email content:**
+- Subject: "New profile match(es): {requirement label}"
+- Body includes the count of matched profiles and individual clickable links to each matched candidate profile (`/recruiter/locate/{candidateId}`) showing candidate name and top 3 primary skills
+- Profile links are capped at 10 per email; additional matches show an "and N more..." note
+- A "View Requirement" button links to the requirement detail page
+- Both HTML and plain-text versions are sent
+
 ### Recruiter Candidate Screening Flow
 
 ```
