@@ -656,6 +656,7 @@ export default function RecruiterSearchPage() {
 
   // Derive the original search criteria from parsedCriteria for comparison
   const deriveSearchCriteria = (pc: ParsedCriteria): SearchCriteria => ({
+    coreSkill: pc.coreSkill || undefined,
     mustHaveSkills: pc.mustHaveSkills,
     goodToHaveSkills: pc.goodToHaveSkills,
     minExperience: pc.minExperience || undefined,
@@ -1438,6 +1439,17 @@ export default function RecruiterSearchPage() {
                               </span>
                             )}
                           </div>
+
+                          {(() => {
+                            const hiddenMatched = candidate.matchDetails.mustHaveMatched.filter(
+                              s => !candidate.primarySkills.includes(s)
+                            );
+                            return hiddenMatched.length > 0 ? (
+                              <div className="mt-2 text-sm text-green-700 dark:text-green-400">
+                                Matched: {hiddenMatched.join(', ')}
+                              </div>
+                            ) : null;
+                          })()}
 
                           {candidate.matchDetails.mustHaveRelated?.length > 0 && (
                             <div className="mt-2 text-sm text-yellow-600 dark:text-yellow-400">
