@@ -1102,6 +1102,46 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | **Steps** | 1. From search results, click download on a candidate 2. Browser initiates download |
 | **Expected Result** | File downloads with original filename; correct content type |
 
+### TC-DOWNLOAD-006: Formatted resume download from candidate detail page
+| Field | Value |
+|-------|-------|
+| **ID** | TC-DOWNLOAD-006 |
+| **Priority** | P1 |
+| **Steps** | 1. Navigate to `/recruiter/locate/{candidateId}` 2. Click "Download Resume" button |
+| **Expected Result** | Calls `GET /recruiter/resume-url/{candidateId}`; browser downloads the formatted resume with correct filename and content type |
+
+### TC-DOWNLOAD-007: Original resume download from candidate detail page
+| Field | Value |
+|-------|-------|
+| **ID** | TC-DOWNLOAD-007 |
+| **Priority** | P1 |
+| **Steps** | 1. Navigate to `/recruiter/locate/{candidateId}` 2. Click "Download Original" button |
+| **Expected Result** | Calls `GET /recruiter/original-resume-url/{candidateId}`; browser downloads the original resume with correct filename and content type |
+
+### TC-DOWNLOAD-008: Cover letter viewer toggle on candidate detail page
+| Field | Value |
+|-------|-------|
+| **ID** | TC-DOWNLOAD-008 |
+| **Priority** | P1 |
+| **Steps** | 1. Navigate to `/recruiter/locate/{candidateId}` for a candidate with a `coverLetter` field 2. Click "View Email / Cover Letter" button 3. Click the button again |
+| **Expected Result** | First click expands section showing the cover letter text; second click collapses it |
+
+### TC-DOWNLOAD-009: Cover letter button hidden when no cover letter exists
+| Field | Value |
+|-------|-------|
+| **ID** | TC-DOWNLOAD-009 |
+| **Priority** | P1 |
+| **Steps** | Navigate to `/recruiter/locate/{candidateId}` for a candidate without a `coverLetter` field |
+| **Expected Result** | "View Email / Cover Letter" button is not rendered; resume download buttons are still visible |
+
+### TC-DOWNLOAD-010: Resume download error handling on candidate detail page
+| Field | Value |
+|-------|-------|
+| **ID** | TC-DOWNLOAD-010 |
+| **Priority** | P2 |
+| **Steps** | 1. Navigate to `/recruiter/locate/{candidateId}` 2. Simulate a failed resume download (e.g., network error or 500 response) |
+| **Expected Result** | Error toast/notification displayed to the user; page remains functional; no unhandled exceptions |
+
 ---
 
 ## 9. Module 8: Recruiter - Saved Searches
@@ -2325,7 +2365,7 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | Profile Management | 26 | 5 | 9 | 9 | 3 |
 | JD Parsing | 12 | 2 | 5 | 3 | 2 |
 | Candidate Search | 18 | 3 | 6 | 7 | 2 |
-| Resume Download | 5 | 0 | 3 | 2 | 0 |
+| Resume Download | 10 | 0 | 7 | 3 | 0 |
 | Saved Searches | 8 | 0 | 0 | 5 | 3 |
 | Skill Normalization | 19 | 5 | 6 | 6 | 2 |
 | Match Scoring | 11 | 3 | 5 | 2 | 1 |
@@ -2338,4 +2378,4 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | Non-Functional | 15 | 4 | 4 | 5 | 2 |
 | Requirement Status Management | 15 | 3 | 6 | 4 | 2 |
 | Notify Me — Notification Service | 20 | 5 | 8 | 7 | 0 |
-| **Total** | **270** | **48** | **98** | **92** | **32** |
+| **Total** | **275** | **48** | **102** | **93** | **32** |
