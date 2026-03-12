@@ -380,6 +380,19 @@ export interface StatusHistoryEntry {
   reason?: string;
 }
 
+// Requirement change history entry (tracks each field-level edit)
+export interface RequirementChangeDetail {
+  field: string;
+  old_value: unknown;
+  new_value: unknown;
+}
+
+export interface RequirementChangeEntry {
+  changed_at: string;
+  changed_by: string;
+  changes: RequirementChangeDetail[];
+}
+
 // Requirement Item (DynamoDB Requirements table, snake_case)
 export interface RequirementItem {
   requirement_id: string;
@@ -406,6 +419,7 @@ export interface RequirementItem {
   contributing_recruiters?: string[];
   demand_score?: number;
   status_history?: StatusHistoryEntry[];
+  change_history?: RequirementChangeEntry[];
   notify_recruiter_ids?: string[];
   additional_fields?: AdditionalFieldDefinition[];
 }

@@ -9,7 +9,7 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { config } from './config.js';
-import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, StatusHistoryEntry, PricingConfig, PricingConfigItem, ShortlistItem, ClientItem, ScreeningItem } from '../types/index.js';
+import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, StatusHistoryEntry, RequirementChangeEntry, PricingConfig, PricingConfigItem, ShortlistItem, ClientItem, ScreeningItem } from '../types/index.js';
 
 const client = new DynamoDBClient({ region: config.region });
 const docClient = DynamoDBDocumentClient.from(client, {
@@ -807,6 +807,44 @@ export async function updateRequirementCriteria(
       TableName: config.dynamodb.requirementsTable,
       Key: { requirement_id: requirementId },
       UpdateExpression: updateExpression,
+      ExpressionAttributeValues: expressionAttributeValues,
+      ConditionExpression: 'attribute_exists(requirement_id)',
+    })
+  );
+}
+
+export async function updateRequirementFields(
+  requirementId: string,
+  fields: Record<string, unknown>,
+  changeEntry: RequirementChangeEntry
+): Promise<void> {
+  const setParts: string[] = ['last_updated = :now'];
+  const expressionAttributeValues: Record<string, unknown> = {
+    ':now': changeEntry.changed_at,
+    ':newChangeEntry': [changeEntry],
+    ':emptyList': [],
+  };
+  const expressionAttributeNames: Record<string, string> = {};
+
+  let idx = 0;
+  for (const [key, value] of Object.entries(fields)) {
+    const placeholder = `:f${idx}`;
+    // Use expression attribute names for reserved words
+    const nameAlias = `#f${idx}`;
+    expressionAttributeNames[nameAlias] = key;
+    setParts.push(`${nameAlias} = ${placeholder}`);
+    expressionAttributeValues[placeholder] = value;
+    idx++;
+  }
+
+  const updateExpression = `SET ${setParts.join(', ')}, change_history = list_append(if_not_exists(change_history, :emptyList), :newChangeEntry)`;
+
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.requirementsTable,
+      Key: { requirement_id: requirementId },
+      UpdateExpression: updateExpression,
+      ExpressionAttributeNames: expressionAttributeNames,
       ExpressionAttributeValues: expressionAttributeValues,
       ConditionExpression: 'attribute_exists(requirement_id)',
     })

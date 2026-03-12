@@ -389,6 +389,7 @@ Stores job requirements created by recruiters with parsed JD criteria.
 | status_history | List\<Map\> | No | Array of status change audit entries |
 | notify_recruiter_ids | List\<String\> | No | Recruiter user IDs opted into email notifications for this requirement. Defaults to `[recruiter_id]` (creator) on creation. |
 | additional_fields | List\<Map\> | No | Array of AdditionalFieldDefinition objects defining what additional data points are needed from candidates shortlisted for this requirement. Defaults to empty array. See schema below. |
+| change_history | List\<Map\> | No | Array of field-level change audit entries recording updates made via the Update Requirement endpoint. See RequirementChangeEntry schema below. |
 
 **AdditionalFieldDefinition Schema:**
 
@@ -398,6 +399,24 @@ Stores job requirements created by recruiters with parsed JD criteria.
 | label | String | Human-readable label displayed in the UI |
 | type | String | Field type: `text`, `date`, or `number` |
 | required | Boolean | Whether this field is mandatory when filling in candidate data |
+
+**RequirementChangeEntry Schema:**
+
+Each entry in the `change_history` array records a single update operation, capturing which fields changed and their old/new values.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| changed_at | String (ISO 8601) | Timestamp of the update |
+| changed_by | String | User ID of the recruiter who made the update |
+| changes | List\<Map\> | Array of individual field changes (see below) |
+
+**RequirementChangeEntry.changes item:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| field | String | Name of the changed field (e.g., `client_name`, `payroll`, `parsed_criteria`) |
+| old_value | Any | Previous value of the field (serialized as JSON-compatible value; `null` if the field was previously unset) |
+| new_value | Any | New value of the field |
 
 **Request History Entry Schema:**
 
@@ -481,6 +500,24 @@ Stores job requirements created by recruiters with parsed JD criteria.
       "label": "PAN Number",
       "type": "text",
       "required": false
+    }
+  ],
+  "change_history": [
+    {
+      "changed_at": "2024-02-05T11:00:00Z",
+      "changed_by": "user_r1e2c3",
+      "changes": [
+        {
+          "field": "budget_max_lpa",
+          "old_value": 25,
+          "new_value": 30
+        },
+        {
+          "field": "payroll",
+          "old_value": "client",
+          "new_value": "quadzero"
+        }
+      ]
     }
   ],
   "created_at": "2024-01-15T10:30:00Z",
@@ -1099,6 +1136,26 @@ export const SaveRequirementRequestSchema = z.object({
 });
 ```
 
+### Update Requirement Request Schema
+```typescript
+export const UpdateRequirementRequestSchema = z.object({
+  clientName: z.string().min(1).max(200).optional(),
+  endClient: z.string().max(200).nullable().optional(),
+  engagementModel: z.enum(['full_time_regular', 'full_time_contract', 'part_time_contract']).optional(),
+  payroll: z.enum(['quadzero', 'client']).optional(),
+  budgetMinLpa: z.number().min(0).max(500).nullable().optional(),
+  budgetMaxLpa: z.number().min(0).max(500).nullable().optional(),
+  contractDurationMonths: z.number().min(1).max(60).nullable().optional(),
+  paymentTermsDays: z.number().refine(v => [30, 45, 60, 90].includes(v)).nullable().optional(),
+  jobTitle: z.string().max(200).optional(),
+  jdText: z.string().min(50).max(10000).optional(),
+  parsedCriteria: LLMJDOutputSchema.optional(),
+  additionalFields: z.array(AdditionalFieldDefinitionSchema).optional(),
+}).refine(obj => Object.keys(obj).length > 0, {
+  message: 'At least one field must be provided',
+});
+```
+
 ### Consolidate Requirement Request Schema
 ```typescript
 export const ConsolidateRequirementRequestSchema = z.object({
@@ -1216,6 +1273,7 @@ See `backend/src/data/skills_ontology.json` for the full list of mappings, categ
 | List by client | Query by client_name_lower | ClientNameIndex |
 | List by recruiter | Query by recruiter_id | RecruiterIndex |
 | Get active by client | Query + filter status=active | ClientNameIndex |
+| Update requirement fields | Update by requirement_id (atomically updates fields + appends to change_history) | Primary |
 
 ### User Authentication
 | Operation | Access Pattern | Index |

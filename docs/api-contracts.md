@@ -964,13 +964,14 @@ Get a specific requirement by ID.
 **Path Parameters:**
 - `requirementId`: The unique requirement identifier
 
-**Response (200 OK):** Returns the full requirement object including `jdText`, `parsedCriteria`, `statusHistory`, and `additionalFields`.
+**Response (200 OK):** Returns the full requirement object including `jdText`, `parsedCriteria`, `statusHistory`, `additionalFields`, and `changeHistory`.
 
 **Response includes:**
 | Field | Type | Description |
 |-------|------|-------------|
 | statusHistory | Array | Array of status change records, each containing `status`, `reason`, `changedBy`, and `changedAt` |
 | additionalFields | Array | Array of `AdditionalFieldDefinition` objects defining custom fields for this requirement (see Shared Types). May be empty or absent if none were configured. |
+| changeHistory | Array | Array of field-level change audit records (see `RequirementChangeEntry` in data model). Each entry contains `changedAt`, `changedBy`, and `changes` (array of `{field, oldValue, newValue}`). May be empty or absent if no updates have been made. |
 
 ---
 
@@ -1237,6 +1238,90 @@ Toggle the current recruiter's email notification preference for a requirement. 
 | 404 | NOT_FOUND | Requirement not found |
 
 > **Note:** The `notifyRecruiterIds` list is also included in `GET /recruiter/requirements` (list) and `GET /recruiter/requirements/{id}` (detail) responses, so the frontend can render the bell state without an extra request.
+
+---
+
+### PUT /recruiter/requirements/{requirementId}/details
+
+Update one or more fields on a requirement with field-level audit trail. Only the requirement owner can update, and duplicate requirements cannot be updated.
+
+**Auth Required:** Yes (recruiter role, must be the requirement owner)
+
+**Path Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| requirementId | String (UUID) | ID of the requirement to update |
+
+**Request Body (all fields optional, at least one required):**
+```json
+{
+  "clientName": "string",
+  "endClient": "string | null",
+  "engagementModel": "full_time_regular | full_time_contract | part_time_contract",
+  "payroll": "quadzero | client",
+  "budgetMinLpa": "number | null",
+  "budgetMaxLpa": "number | null",
+  "contractDurationMonths": "number | null",
+  "paymentTermsDays": "30 | 45 | 60 | 90 | null",
+  "jobTitle": "string",
+  "jdText": "string (min 50, max 10000)",
+  "parsedCriteria": "ParsedCriteria object",
+  "additionalFields": "AdditionalFieldDefinition[]"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| clientName | String | No | Client company name |
+| endClient | String \| null | No | End client company (send `null` to clear) |
+| engagementModel | String | No | `full_time_regular`, `full_time_contract`, or `part_time_contract` |
+| payroll | String | No | `quadzero` or `client` |
+| budgetMinLpa | Number \| null | No | Minimum budget in LPA (send `null` to clear) |
+| budgetMaxLpa | Number \| null | No | Maximum budget in LPA (send `null` to clear) |
+| contractDurationMonths | Number \| null | No | Contract duration in months, 1-60 (send `null` to clear) |
+| paymentTermsDays | Number \| null | No | Payment terms: 30, 45, 60, or 90 (send `null` to clear) |
+| jobTitle | String | No | Job title |
+| jdText | String | No | Raw JD text (min 50, max 10000 chars) |
+| parsedCriteria | Object | No | LLM-parsed search criteria (ParsedCriteria) |
+| additionalFields | Array | No | Array of AdditionalFieldDefinition objects |
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "requirementId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "lastUpdated": "2026-03-12T10:00:00.000Z",
+    "fieldsUpdated": ["clientName", "payroll"]
+  }
+}
+```
+
+If no fields actually changed (submitted values are identical to current values), the response returns:
+```json
+{
+  "success": true,
+  "data": {
+    "requirementId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "lastUpdated": "2026-03-12T10:00:00.000Z",
+    "fieldsUpdated": [],
+    "message": "No fields changed"
+  }
+}
+```
+
+**Error Responses:**
+| Status | Code | Condition |
+|--------|------|-----------|
+| 400 | VALIDATION_ERROR | No updatable fields provided, or invalid field values |
+| 400 | VALIDATION_ERROR | Attempt to update a duplicate requirement |
+| 403 | FORBIDDEN | Authenticated user is not the requirement owner |
+| 404 | NOT_FOUND | Requirement not found |
+
+**Notes:**
+- Each successful update (where at least one field changed) atomically appends a `RequirementChangeEntry` to the requirement's `change_history` array, recording old and new values for every changed field.
+- The `change_history` is returned in the `GET /recruiter/requirements/{requirementId}` detail response as `changeHistory` (camelCase).
+- **Auto re-parse on JD text edit:** When the frontend detects that `jdText` has changed, it automatically calls `api.parseJobDescription()` to re-extract `parsedCriteria` from the updated JD text before sending the update request. Both `jdText` and the re-parsed `parsedCriteria` are included in the update payload, so both changes are tracked in the audit trail as separate field entries. If the JD re-parse fails (e.g., LLM error), the frontend still sends the `jdText` change without updating `parsedCriteria`, allowing the text edit to be saved independently.
 
 ---
 
