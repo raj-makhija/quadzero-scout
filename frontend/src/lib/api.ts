@@ -301,6 +301,19 @@ class ApiClient {
     );
   }
 
+  async updateRequirement(
+    requirementId: string,
+    payload: UpdateRequirementPayload
+  ) {
+    return this.request<UpdateRequirementResponse>(
+      `/recruiter/requirements/${requirementId}/details`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      }
+    );
+  }
+
   async updateRequirementCriteria(
     requirementId: string,
     parsedCriteria: ParsedCriteria,
@@ -785,6 +798,39 @@ export interface StatusHistoryEntry {
   reason?: string;
 }
 
+export interface ChangeDetail {
+  field: string;
+  oldValue: unknown;
+  newValue: unknown;
+}
+
+export interface ChangeHistoryEntry {
+  changedAt: string;
+  changedBy: string;
+  changes: ChangeDetail[];
+}
+
+export interface UpdateRequirementPayload {
+  clientName?: string;
+  endClient?: string | null;
+  engagementModel?: string;
+  payroll?: string;
+  budgetMinLpa?: number | null;
+  budgetMaxLpa?: number | null;
+  contractDurationMonths?: number | null;
+  paymentTermsDays?: number | null;
+  jobTitle?: string;
+  jdText?: string;
+  parsedCriteria?: ParsedCriteria;
+  additionalFields?: AdditionalFieldDefinition[];
+}
+
+export interface UpdateRequirementResponse {
+  requirementId: string;
+  lastUpdated: string;
+  fieldsUpdated: string[];
+}
+
 export interface ContributingRecruiter {
   id: string;
   name: string;
@@ -799,6 +845,7 @@ export interface RequirementDetail extends RequirementSummary {
   lastUpdated: string;
   requestHistory?: RequestHistoryEntry[];
   statusHistory?: StatusHistoryEntry[];
+  changeHistory?: ChangeHistoryEntry[];
   lastRequestedAt?: string;
   contributingRecruiters?: ContributingRecruiter[];
 }

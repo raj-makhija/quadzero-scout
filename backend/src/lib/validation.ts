@@ -165,6 +165,26 @@ export const UpdateRequirementCriteriaRequestSchema = z.object({
   maxBudgetLpa: z.number().min(0).max(500).optional(),
 });
 
+// Update Requirement (general field update) Request Validation
+export const UpdateRequirementRequestSchema = z.object({
+  clientName: z.string().min(1).max(200).optional(),
+  endClient: z.string().max(200).nullable().optional(),
+  engagementModel: z.enum(['full_time_regular', 'full_time_contract', 'part_time_contract']).optional(),
+  payroll: z.enum(['quadzero', 'client']).optional(),
+  budgetMinLpa: z.number().min(0).max(500).nullable().optional(),
+  budgetMaxLpa: z.number().min(0).max(500).nullable().optional(),
+  contractDurationMonths: z.number().min(1).max(60).nullable().optional(),
+  paymentTermsDays: z.number().refine(v => [30, 45, 60, 90].includes(v), {
+    message: 'paymentTermsDays must be 30, 45, 60, or 90',
+  }).nullable().optional(),
+  jobTitle: z.string().max(200).optional(),
+  jdText: z.string().min(50).max(10000).optional(),
+  parsedCriteria: LLMJDOutputSchema.optional(),
+  additionalFields: z.array(AdditionalFieldDefinitionSchema).max(20).optional(),
+}).refine(data => Object.values(data).some(v => v !== undefined), {
+  message: 'At least one field must be provided for update',
+});
+
 // Validate function with proper error handling
 export function validate<T>(schema: z.ZodSchema<T>, data: unknown): { success: true; data: T } | { success: false; errors: z.ZodError } {
   const result = schema.safeParse(data);

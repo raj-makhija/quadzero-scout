@@ -3,10 +3,10 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { Bell } from 'lucide-react';
+import { Bell, Pencil } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { CustomFieldsModal } from '@/components/custom-fields-modal';
-import { api, RequirementDetail, ShortlistedCandidate, SearchCriteria } from '@/lib/api';
+import { api, RequirementDetail, ShortlistedCandidate, SearchCriteria, UpdateRequirementPayload } from '@/lib/api';
 import {
   formatDate,
   formatEngagementModel,
@@ -14,12 +14,53 @@ import {
   formatSeniority,
 } from '@/lib/utils';
 
+const FIELD_LABELS: Record<string, string> = {
+  clientName: 'Client Name',
+  endClient: 'End Client',
+  engagementModel: 'Engagement Model',
+  payroll: 'Payroll',
+  budgetMinLpa: 'Budget Min (LPA)',
+  budgetMaxLpa: 'Budget Max (LPA)',
+  contractDurationMonths: 'Contract Duration',
+  paymentTermsDays: 'Payment Terms',
+  jobTitle: 'Job Title',
+  jdText: 'Job Description',
+  parsedCriteria: 'Parsed Criteria',
+  additionalFields: 'Additional Fields',
+};
+
+function formatFieldValue(field: string, value: unknown): string {
+  if (value == null) return 'Not set';
+  if (field === 'engagementModel') return formatEngagementModel(String(value));
+  if (field === 'payroll') return formatPayroll(String(value));
+  if (field === 'contractDurationMonths') return `${value} months`;
+  if (field === 'paymentTermsDays') return `Net ${value} days`;
+  if (field === 'budgetMinLpa' || field === 'budgetMaxLpa') return `${value} LPA`;
+  if (field === 'parsedCriteria' || field === 'additionalFields') return JSON.stringify(value, null, 2).slice(0, 200) + '...';
+  if (field === 'jdText') return String(value).slice(0, 100) + (String(value).length > 100 ? '...' : '');
+  return String(value);
+}
+
+interface EditFormData {
+  clientName: string;
+  endClient: string;
+  engagementModel: string;
+  payroll: string;
+  budgetMinLpa: string;
+  budgetMaxLpa: string;
+  contractDurationMonths: string;
+  paymentTermsDays: string;
+  jobTitle: string;
+  jdText: string;
+}
+
 export default function RequirementDetailPage() {
   const router = useRouter();
   const params = useParams();
   const { data: session, status } = useSession();
   const requirementId = params.requirementId as string;
   const isInternal = (session?.user as { isInternal?: boolean } | undefined)?.isInternal === true;
+  const currentUserId = (session?.user as { id?: string })?.id ?? '';
 
   const [requirement, setRequirement] = useState<RequirementDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -38,13 +79,102 @@ export default function RequirementDetailPage() {
     existingValues: Record<string, string | number>;
   } | null>(null);
 
+  // Edit mode state
+  const [editing, setEditing] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editForm, setEditForm] = useState<EditFormData>({
+    clientName: '',
+    endClient: '',
+    engagementModel: '',
+    payroll: '',
+    budgetMinLpa: '',
+    budgetMaxLpa: '',
+    contractDurationMonths: '',
+    paymentTermsDays: '',
+    jobTitle: '',
+    jdText: '',
+  });
+
+  const startEditing = () => {
+    if (!requirement) return;
+    setEditForm({
+      clientName: requirement.clientName || '',
+      endClient: requirement.endClient || '',
+      engagementModel: requirement.engagementModel || 'full_time_regular',
+      payroll: requirement.payroll || 'quadzero',
+      budgetMinLpa: requirement.budgetMinLpa != null ? String(requirement.budgetMinLpa) : '',
+      budgetMaxLpa: requirement.budgetMaxLpa != null ? String(requirement.budgetMaxLpa) : '',
+      contractDurationMonths: requirement.contractDurationMonths != null ? String(requirement.contractDurationMonths) : '',
+      paymentTermsDays: requirement.paymentTermsDays != null ? String(requirement.paymentTermsDays) : '',
+      jobTitle: requirement.jobTitle || '',
+      jdText: requirement.jdText || '',
+    });
+    setEditing(true);
+    setError(null);
+  };
+
+  const cancelEditing = () => {
+    setEditing(false);
+    setError(null);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!requirement) return;
+    try {
+      setEditSaving(true);
+      setError(null);
+
+      // Build payload with only changed fields
+      const payload: UpdateRequirementPayload = {};
+      if (editForm.clientName !== requirement.clientName) payload.clientName = editForm.clientName;
+      if (editForm.endClient !== (requirement.endClient || '')) payload.endClient = editForm.endClient || null;
+      if (editForm.engagementModel !== requirement.engagementModel) payload.engagementModel = editForm.engagementModel;
+      if (editForm.payroll !== requirement.payroll) payload.payroll = editForm.payroll;
+
+      const newBudgetMin = editForm.budgetMinLpa ? Number(editForm.budgetMinLpa) : null;
+      const oldBudgetMin = requirement.budgetMinLpa ?? null;
+      if (newBudgetMin !== oldBudgetMin) payload.budgetMinLpa = newBudgetMin;
+
+      const newBudgetMax = editForm.budgetMaxLpa ? Number(editForm.budgetMaxLpa) : null;
+      const oldBudgetMax = requirement.budgetMaxLpa ?? null;
+      if (newBudgetMax !== oldBudgetMax) payload.budgetMaxLpa = newBudgetMax;
+
+      const newDuration = editForm.contractDurationMonths ? Number(editForm.contractDurationMonths) : null;
+      const oldDuration = requirement.contractDurationMonths ?? null;
+      if (newDuration !== oldDuration) payload.contractDurationMonths = newDuration;
+
+      const newPayTerms = editForm.paymentTermsDays ? Number(editForm.paymentTermsDays) : null;
+      const oldPayTerms = requirement.paymentTermsDays ?? null;
+      if (newPayTerms !== oldPayTerms) payload.paymentTermsDays = newPayTerms;
+
+      if (editForm.jobTitle !== (requirement.jobTitle || '')) payload.jobTitle = editForm.jobTitle;
+      if (editForm.jdText !== requirement.jdText) payload.jdText = editForm.jdText;
+
+      // Check if anything changed
+      if (Object.keys(payload).length === 0) {
+        setEditing(false);
+        return;
+      }
+
+      await api.updateRequirement(requirementId, payload);
+
+      // Re-fetch to get updated data and change history
+      const updated = await api.getRequirement(requirementId);
+      setRequirement(updated);
+      setEditing(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update requirement');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   const handleStatusToggle = async (newStatus: 'active' | 'closed_on_hold', reasonText?: string) => {
     if (!requirement) return;
     try {
       setStatusLoading(true);
       setError(null);
-      const result = await api.updateRequirementStatus(requirementId, newStatus, reasonText);
-      // Re-fetch full requirement to get updated statusHistory
+      await api.updateRequirementStatus(requirementId, newStatus, reasonText);
       const updated = await api.getRequirement(requirementId);
       setRequirement(updated);
       setShowReasonModal(false);
@@ -131,6 +261,8 @@ export default function RequirementDetailPage() {
     router.push('/recruiter/search');
   };
 
+  const isOwner = requirement?.recruiterId === currentUserId;
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <Header>
@@ -157,18 +289,23 @@ export default function RequirementDetailPage() {
         )}
 
         {error && (
-          <div className="card p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+          <div className="card p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 mb-4">
             <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+          </div>
+        )}
+
+        {!loading && !error && !requirement && (
+          <div className="card p-4">
             <button
               onClick={() => router.push('/recruiter/requirements')}
-              className="mt-2 btn-secondary text-sm"
+              className="btn-secondary text-sm"
             >
               Back to Requirements
             </button>
           </div>
         )}
 
-        {!loading && !error && requirement && (
+        {!loading && requirement && (
           <>
             {/* Requirement Header */}
             <div className="card overflow-hidden mb-6">
@@ -184,9 +321,19 @@ export default function RequirementDetailPage() {
                   </div>
                   <div className="flex flex-col items-end gap-2 self-start">
                     <div className="flex items-center gap-2">
+                      {/* Edit button — any internal recruiter can edit */}
+                      {isInternal && requirement.status !== 'duplicate' && !editing && (
+                        <button
+                          onClick={startEditing}
+                          title="Edit requirement details"
+                          className="flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-white/10 text-white hover:bg-white/20 transition-colors"
+                        >
+                          <Pencil size={14} />
+                          Edit
+                        </button>
+                      )}
                       {/* Notify Me bell */}
                       {(() => {
-                        const currentUserId = (session?.user as { id?: string })?.id ?? '';
                         const isNotified = requirement.notifyRecruiterIds?.includes(currentUserId) ?? false;
                         return (
                           <button
@@ -247,129 +394,267 @@ export default function RequirementDetailPage() {
               </div>
 
               <div className="p-6 space-y-5">
-                {/* Quick info grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                  <div>
-                    <label className="text-xs text-gray-500 dark:text-gray-400">Engagement</label>
-                    <p className="font-medium text-gray-900 dark:text-gray-100">{formatEngagementModel(requirement.engagementModel)}</p>
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500 dark:text-gray-400">Payroll</label>
-                    <p className="font-medium text-gray-900 dark:text-gray-100">{formatPayroll(requirement.payroll)}</p>
-                  </div>
-                  {(requirement.budgetMinLpa != null || requirement.budgetMaxLpa != null) && (
+                {/* Edit Mode */}
+                {editing ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Client Name *</label>
+                        <input
+                          type="text"
+                          value={editForm.clientName}
+                          onChange={(e) => setEditForm(f => ({ ...f, clientName: e.target.value }))}
+                          className="input w-full"
+                          maxLength={200}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">End Client</label>
+                        <input
+                          type="text"
+                          value={editForm.endClient}
+                          onChange={(e) => setEditForm(f => ({ ...f, endClient: e.target.value }))}
+                          className="input w-full"
+                          maxLength={200}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Job Title</label>
+                        <input
+                          type="text"
+                          value={editForm.jobTitle}
+                          onChange={(e) => setEditForm(f => ({ ...f, jobTitle: e.target.value }))}
+                          className="input w-full"
+                          maxLength={200}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Engagement Model</label>
+                        <select
+                          value={editForm.engagementModel}
+                          onChange={(e) => setEditForm(f => ({ ...f, engagementModel: e.target.value }))}
+                          className="input w-full"
+                        >
+                          <option value="full_time_regular">Full Time Regular</option>
+                          <option value="full_time_contract">Full Time Contract</option>
+                          <option value="part_time_contract">Part Time Contract</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Payroll</label>
+                        <select
+                          value={editForm.payroll}
+                          onChange={(e) => setEditForm(f => ({ ...f, payroll: e.target.value }))}
+                          className="input w-full"
+                        >
+                          <option value="quadzero">QuadZero</option>
+                          <option value="client">Client</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Budget Min (LPA)</label>
+                        <input
+                          type="number"
+                          value={editForm.budgetMinLpa}
+                          onChange={(e) => setEditForm(f => ({ ...f, budgetMinLpa: e.target.value }))}
+                          className="input w-full"
+                          min={0}
+                          max={500}
+                          step={0.5}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Budget Max (LPA)</label>
+                        <input
+                          type="number"
+                          value={editForm.budgetMaxLpa}
+                          onChange={(e) => setEditForm(f => ({ ...f, budgetMaxLpa: e.target.value }))}
+                          className="input w-full"
+                          min={0}
+                          max={500}
+                          step={0.5}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Contract Duration (months)</label>
+                        <input
+                          type="number"
+                          value={editForm.contractDurationMonths}
+                          onChange={(e) => setEditForm(f => ({ ...f, contractDurationMonths: e.target.value }))}
+                          className="input w-full"
+                          min={1}
+                          max={60}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Payment Terms (days)</label>
+                        <select
+                          value={editForm.paymentTermsDays}
+                          onChange={(e) => setEditForm(f => ({ ...f, paymentTermsDays: e.target.value }))}
+                          className="input w-full"
+                        >
+                          <option value="">Not specified</option>
+                          <option value="30">Net 30 days</option>
+                          <option value="45">Net 45 days</option>
+                          <option value="60">Net 60 days</option>
+                          <option value="90">Net 90 days</option>
+                        </select>
+                      </div>
+                    </div>
                     <div>
-                      <label className="text-xs text-gray-500 dark:text-gray-400">Budget Range</label>
-                      <p className="font-medium text-gray-900 dark:text-gray-100">
-                        {requirement.budgetMinLpa ?? '0'} - {requirement.budgetMaxLpa ?? '∞'} LPA
-                      </p>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Job Description</label>
+                      <textarea
+                        value={editForm.jdText}
+                        onChange={(e) => setEditForm(f => ({ ...f, jdText: e.target.value }))}
+                        className="input w-full"
+                        rows={6}
+                        maxLength={10000}
+                      />
                     </div>
-                  )}
-                  {(requirement.parsedCriteria.minExperience != null || requirement.parsedCriteria.maxExperience != null) && (
-                    <div>
-                      <label className="text-xs text-gray-500 dark:text-gray-400">Experience</label>
-                      <p className="font-medium text-gray-900 dark:text-gray-100">
-                        {requirement.parsedCriteria.minExperience ?? 0} - {requirement.parsedCriteria.maxExperience ?? '∞'} years
-                      </p>
+                    <div className="flex gap-3 pt-2">
+                      <button
+                        onClick={handleSaveEdit}
+                        disabled={editSaving}
+                        className="btn-primary"
+                      >
+                        {editSaving ? 'Saving...' : 'Save Changes'}
+                      </button>
+                      <button
+                        onClick={cancelEditing}
+                        disabled={editSaving}
+                        className="btn-secondary"
+                      >
+                        Cancel
+                      </button>
                     </div>
-                  )}
-                  <div>
-                    <label className="text-xs text-gray-500 dark:text-gray-400">Contract Duration</label>
-                    <p className="font-medium text-gray-900 dark:text-gray-100">
-                      {requirement.contractDurationMonths != null ? `${requirement.contractDurationMonths} months` : 'Not specified'}
-                    </p>
                   </div>
-                  <div>
-                    <label className="text-xs text-gray-500 dark:text-gray-400">Payment Terms</label>
-                    <p className="font-medium text-gray-900 dark:text-gray-100">
-                      {requirement.paymentTermsDays != null ? `Net ${requirement.paymentTermsDays} days` : 'Not specified'}
-                    </p>
-                  </div>
-                </div>
+                ) : (
+                  <>
+                    {/* Quick info grid (view mode) */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                      <div>
+                        <label className="text-xs text-gray-500 dark:text-gray-400">Engagement</label>
+                        <p className="font-medium text-gray-900 dark:text-gray-100">{formatEngagementModel(requirement.engagementModel)}</p>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 dark:text-gray-400">Payroll</label>
+                        <p className="font-medium text-gray-900 dark:text-gray-100">{formatPayroll(requirement.payroll)}</p>
+                      </div>
+                      {(requirement.budgetMinLpa != null || requirement.budgetMaxLpa != null) && (
+                        <div>
+                          <label className="text-xs text-gray-500 dark:text-gray-400">Budget Range</label>
+                          <p className="font-medium text-gray-900 dark:text-gray-100">
+                            {requirement.budgetMinLpa ?? '0'} - {requirement.budgetMaxLpa ?? '∞'} LPA
+                          </p>
+                        </div>
+                      )}
+                      {(requirement.parsedCriteria.minExperience != null || requirement.parsedCriteria.maxExperience != null) && (
+                        <div>
+                          <label className="text-xs text-gray-500 dark:text-gray-400">Experience</label>
+                          <p className="font-medium text-gray-900 dark:text-gray-100">
+                            {requirement.parsedCriteria.minExperience ?? 0} - {requirement.parsedCriteria.maxExperience ?? '∞'} years
+                          </p>
+                        </div>
+                      )}
+                      <div>
+                        <label className="text-xs text-gray-500 dark:text-gray-400">Contract Duration</label>
+                        <p className="font-medium text-gray-900 dark:text-gray-100">
+                          {requirement.contractDurationMonths != null ? `${requirement.contractDurationMonths} months` : 'Not specified'}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 dark:text-gray-400">Payment Terms</label>
+                        <p className="font-medium text-gray-900 dark:text-gray-100">
+                          {requirement.paymentTermsDays != null ? `Net ${requirement.paymentTermsDays} days` : 'Not specified'}
+                        </p>
+                      </div>
+                    </div>
 
-                {/* Parsed Criteria */}
-                {requirement.parsedCriteria.mustHaveSkills.length > 0 && (
-                  <div>
-                    <label className="text-sm text-gray-500 dark:text-gray-400 block mb-1">Must-Have Skills</label>
-                    <div className="flex flex-wrap gap-1">
-                      {requirement.parsedCriteria.mustHaveSkills.map((skill) => (
-                        <span key={skill} className="badge bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 text-xs">{skill}</span>
-                      ))}
+                    {/* Parsed Criteria */}
+                    {requirement.parsedCriteria.mustHaveSkills.length > 0 && (
+                      <div>
+                        <label className="text-sm text-gray-500 dark:text-gray-400 block mb-1">Must-Have Skills</label>
+                        <div className="flex flex-wrap gap-1">
+                          {requirement.parsedCriteria.mustHaveSkills.map((skill) => (
+                            <span key={skill} className="badge bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 text-xs">{skill}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {requirement.parsedCriteria.goodToHaveSkills.length > 0 && (
+                      <div>
+                        <label className="text-sm text-gray-500 dark:text-gray-400 block mb-1">Good-to-Have Skills</label>
+                        <div className="flex flex-wrap gap-1">
+                          {requirement.parsedCriteria.goodToHaveSkills.map((skill) => (
+                            <span key={skill} className="badge bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs">{skill}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {requirement.parsedCriteria.seniority.length > 0 && (
+                      <div>
+                        <label className="text-sm text-gray-500 dark:text-gray-400 block mb-1">Seniority</label>
+                        <p className="text-gray-900 dark:text-gray-100">
+                          {requirement.parsedCriteria.seniority.map(formatSeniority).join(', ')}
+                        </p>
+                      </div>
+                    )}
+
+                    {requirement.parsedCriteria.location && (
+                      <div>
+                        <label className="text-sm text-gray-500 dark:text-gray-400 block mb-1">Location</label>
+                        <p className="text-gray-900 dark:text-gray-100">{requirement.parsedCriteria.location}</p>
+                      </div>
+                    )}
+
+                    {/* Additional Data Points */}
+                    {requirement.additionalFields && requirement.additionalFields.length > 0 && (
+                      <div>
+                        <label className="text-sm text-gray-500 dark:text-gray-400 block mb-1">Additional Data Points</label>
+                        <div className="flex flex-wrap gap-1">
+                          {requirement.additionalFields.map((f) => (
+                            <span key={f.key} className="badge bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 text-xs">
+                              {f.label} ({f.type}){f.required ? ' *' : ''}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* JD Text (collapsible) */}
+                    <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                      <button
+                        onClick={() => setJdExpanded(!jdExpanded)}
+                        className="flex items-center justify-between w-full text-left"
+                      >
+                        <h3 className="font-medium text-gray-900 dark:text-gray-100">Job Description</h3>
+                        <svg
+                          className={`w-5 h-5 text-gray-400 transition-transform ${jdExpanded ? 'rotate-180' : ''}`}
+                          fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                      {jdExpanded && (
+                        <div className="mt-3 text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap">
+                          {requirement.jdText}
+                        </div>
+                      )}
                     </div>
-                  </div>
+
+                    {/* Actions */}
+                    <div className="flex flex-wrap gap-3 pt-2">
+                      <button onClick={handleSearchCandidates} className="btn-primary">
+                        Search Candidates
+                      </button>
+                      <button onClick={() => router.push('/recruiter/requirements')} className="btn-secondary">
+                        Back to Requirements
+                      </button>
+                    </div>
+                  </>
                 )}
-
-                {requirement.parsedCriteria.goodToHaveSkills.length > 0 && (
-                  <div>
-                    <label className="text-sm text-gray-500 dark:text-gray-400 block mb-1">Good-to-Have Skills</label>
-                    <div className="flex flex-wrap gap-1">
-                      {requirement.parsedCriteria.goodToHaveSkills.map((skill) => (
-                        <span key={skill} className="badge bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs">{skill}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {requirement.parsedCriteria.seniority.length > 0 && (
-                  <div>
-                    <label className="text-sm text-gray-500 dark:text-gray-400 block mb-1">Seniority</label>
-                    <p className="text-gray-900 dark:text-gray-100">
-                      {requirement.parsedCriteria.seniority.map(formatSeniority).join(', ')}
-                    </p>
-                  </div>
-                )}
-
-                {requirement.parsedCriteria.location && (
-                  <div>
-                    <label className="text-sm text-gray-500 dark:text-gray-400 block mb-1">Location</label>
-                    <p className="text-gray-900 dark:text-gray-100">{requirement.parsedCriteria.location}</p>
-                  </div>
-                )}
-
-                {/* Additional Data Points */}
-                {requirement.additionalFields && requirement.additionalFields.length > 0 && (
-                  <div>
-                    <label className="text-sm text-gray-500 dark:text-gray-400 block mb-1">Additional Data Points</label>
-                    <div className="flex flex-wrap gap-1">
-                      {requirement.additionalFields.map((f) => (
-                        <span key={f.key} className="badge bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 text-xs">
-                          {f.label} ({f.type}){f.required ? ' *' : ''}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* JD Text (collapsible) */}
-                <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-                  <button
-                    onClick={() => setJdExpanded(!jdExpanded)}
-                    className="flex items-center justify-between w-full text-left"
-                  >
-                    <h3 className="font-medium text-gray-900 dark:text-gray-100">Job Description</h3>
-                    <svg
-                      className={`w-5 h-5 text-gray-400 transition-transform ${jdExpanded ? 'rotate-180' : ''}`}
-                      fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                  {jdExpanded && (
-                    <div className="mt-3 text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap">
-                      {requirement.jdText}
-                    </div>
-                  )}
-                </div>
-
-                {/* Actions */}
-                <div className="flex flex-wrap gap-3 pt-2">
-                  <button onClick={handleSearchCandidates} className="btn-primary">
-                    Search Candidates
-                  </button>
-                  <button onClick={() => router.push('/recruiter/requirements')} className="btn-secondary">
-                    Back to Requirements
-                  </button>
-                </div>
               </div>
             </div>
 
@@ -441,6 +726,41 @@ export default function RequirementDetailPage() {
                         {entry.reason && (
                           <p className="text-xs text-gray-400 italic mt-1">Reason: {entry.reason}</p>
                         )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Change History (Edit Audit Trail) */}
+            {requirement.changeHistory && requirement.changeHistory.length > 0 && (
+              <div className="card p-6 mb-6">
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Change History</h3>
+                <div className="space-y-4">
+                  {[...requirement.changeHistory].reverse().map((entry, i) => (
+                    <div key={i} className="border-l-2 border-amber-400 pl-4">
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                        {formatDate(entry.changedAt)}
+                      </p>
+                      <div className="space-y-1.5">
+                        {entry.changes.map((change, j) => (
+                          <div key={j} className="text-sm">
+                            <span className="font-medium text-gray-900 dark:text-gray-100">
+                              {FIELD_LABELS[change.field] || change.field}
+                            </span>
+                            <span className="text-gray-500 dark:text-gray-400">
+                              {': '}
+                              <span className="line-through text-red-500 dark:text-red-400">
+                                {formatFieldValue(change.field, change.oldValue)}
+                              </span>
+                              {' → '}
+                              <span className="text-green-600 dark:text-green-400">
+                                {formatFieldValue(change.field, change.newValue)}
+                              </span>
+                            </span>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   ))}
