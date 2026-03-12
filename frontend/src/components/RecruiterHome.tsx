@@ -31,7 +31,7 @@ export function RecruiterHome({ userName }: RecruiterHomeProps) {
   useEffect(() => {
     const fetchRequirements = async () => {
       try {
-        const data = await api.listRequirements({ limit: 10, status: 'active' });
+        const data = await api.listRecentRequirements(10, 'active');
         setRequirements(data.requirements);
       } catch {
         setErrorReqs('Failed to load requirements');

@@ -974,6 +974,56 @@ export async function getAllRequirementsPaginated(
   };
 }
 
+// ─── Recent Requirements ────────────────────────────────────────────────────
+
+// TODO: If Requirements table grows beyond ~1000 items, add a GSI with
+// partition key = "ALL" and sort key = created_at for efficient queries.
+export async function getRecentRequirements(
+  limit: number = 10,
+  statusFilter?: string
+): Promise<RequirementItem[]> {
+  const PAGE_SIZE = 100;
+  const MAX_SCAN = 500;
+  const allItems: RequirementItem[] = [];
+  let currentKey: Record<string, unknown> | undefined;
+
+  do {
+    const scanParams: {
+      TableName: string;
+      Limit: number;
+      ExclusiveStartKey?: Record<string, unknown>;
+      FilterExpression?: string;
+      ExpressionAttributeNames?: Record<string, string>;
+      ExpressionAttributeValues?: Record<string, unknown>;
+    } = {
+      TableName: config.dynamodb.requirementsTable,
+      Limit: PAGE_SIZE,
+    };
+
+    if (statusFilter) {
+      scanParams.FilterExpression = '#status = :statusVal';
+      scanParams.ExpressionAttributeNames = { '#status': 'status' };
+      scanParams.ExpressionAttributeValues = { ':statusVal': statusFilter };
+    }
+
+    if (currentKey) {
+      scanParams.ExclusiveStartKey = currentKey;
+    }
+
+    const result = await docClient.send(new ScanCommand(scanParams));
+    allItems.push(...((result.Items || []) as RequirementItem[]));
+    currentKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (currentKey && allItems.length < MAX_SCAN);
+
+  // Sort by created_at descending and return top N
+  allItems.sort(
+    (a, b) =>
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+
+  return allItems.slice(0, limit);
+}
+
 // ─── Requirement Scanning ───────────────────────────────────────────────────
 
 export async function getAllActiveRequirements(): Promise<RequirementItem[]> {
