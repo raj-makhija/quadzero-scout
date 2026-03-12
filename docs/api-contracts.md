@@ -2228,6 +2228,17 @@ For future integrations, the system can emit webhook events:
 
 ## Locate Profile Endpoints
 
+### Candidate Detail Page (`/recruiter/locate/[candidateId]`)
+
+The candidate detail page displays the full candidate profile. Between the profile header and the expandable profile details section, a card section provides:
+
+- **Resume Download Buttons** — Two buttons for downloading the candidate's resume:
+  - "Download Resume" — downloads the formatted (LLM-reformatted) resume via `GET /recruiter/resume-url/{candidateId}`
+  - "Download Original" — downloads the original uploaded resume via `GET /recruiter/original-resume-url/{candidateId}`
+- **Email Body / Cover Letter Viewer** — A "View Email / Cover Letter" toggle button that expands to show the candidate's cover letter text. This button is only visible when the candidate record includes a `coverLetter` field.
+
+---
+
 ### Search Candidates by Name
 `GET /recruiter/candidates/search`
 
