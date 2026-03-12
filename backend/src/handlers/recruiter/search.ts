@@ -2,8 +2,8 @@ import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, SearchRequestSchema } from '../../lib/validation.js';
 import { searchCandidates } from '../../lib/dynamodb.js';
-import { normalizeSkills } from '../../lib/skillNormalizer.js';
-import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, MUST_HAVE_RELATED_WEIGHT, parseSearchLocations } from '../../lib/matchScoring.js';
+import { normalizeSkill, normalizeSkills } from '../../lib/skillNormalizer.js';
+import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, parseSearchLocations } from '../../lib/matchScoring.js';
 import { withOptionalAuth, type OptionalAuthEvent } from '../../lib/auth.js';
 import type { CandidateSearchResult, SearchResponse, SearchCriteria } from '../../types/index.js';
 
@@ -71,8 +71,17 @@ async function handleRequest(
     // Search candidates
     const searchResult = await searchCandidates(searchCriteria, undefined, lastEvaluatedKey);
 
+    // Pre-filter: if coreSkill is specified, only score candidates who have it
+    const normalizedCoreSkill = criteria.coreSkill ? normalizeSkill(criteria.coreSkill) : null;
+    const candidatesToScore = normalizedCoreSkill
+      ? searchResult.items.filter((c) => {
+          const allSkills = new Set(normalizeSkills([...c.primary_skills, ...c.secondary_skills]));
+          return allSkills.has(normalizedCoreSkill);
+        })
+      : searchResult.items;
+
     // Calculate match scores and filter
-    const scoredCandidates: CandidateSearchResult[] = searchResult.items
+    const scoredCandidates: CandidateSearchResult[] = candidatesToScore
       .map((candidate) => {
         const { score, details } = calculateMatchScore(
           candidate,
@@ -104,11 +113,11 @@ async function handleRequest(
           lastScreenedBy: candidate.last_screened_by_name || candidate.last_screened_by,
         };
       })
-      // Filter out candidates below minimum must-have match ratio
+      // Filter out candidates below minimum must-have exact match ratio
       .filter((c) => {
         if (normalizedMustHave.length > 0) {
-          const effectiveRatio = (c.matchDetails.mustHaveMatched.length + c.matchDetails.mustHaveRelated.length * MUST_HAVE_RELATED_WEIGHT) / normalizedMustHave.length;
-          if (effectiveRatio < MIN_MUST_HAVE_MATCH_RATIO) {
+          const exactRatio = c.matchDetails.mustHaveMatched.length / normalizedMustHave.length;
+          if (exactRatio < MIN_MUST_HAVE_MATCH_RATIO) {
             return false;
           }
         }

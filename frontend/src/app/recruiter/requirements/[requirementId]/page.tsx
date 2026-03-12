@@ -97,6 +97,7 @@ export default function RequirementDetailPage() {
     if (!requirement) return;
 
     const searchCriteria: SearchCriteria = {
+      coreSkill: requirement.parsedCriteria.coreSkill || undefined,
       mustHaveSkills: requirement.parsedCriteria.mustHaveSkills,
       goodToHaveSkills: requirement.parsedCriteria.goodToHaveSkills,
       minExperience: requirement.parsedCriteria.minExperience || undefined,
