@@ -920,6 +920,41 @@ Authorization: Bearer <jwe_token>
 
 ---
 
+### GET /recruiter/recent-profiles
+
+Returns the most recently updated candidate profiles (sorted by `lastUpdated` descending).
+
+**Auth:** Requires `recruiter` role.
+
+**Query Parameters:**
+
+| Param | Type   | Default | Description                    |
+|-------|--------|---------|--------------------------------|
+| limit | number | 10      | Max profiles to return (1–50)  |
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "profiles": [
+      {
+        "candidateId": "uuid",
+        "fullName": "string",
+        "primarySkills": ["string"],
+        "totalExperience": 8,
+        "seniority": "senior",
+        "location": "Bangalore, India",
+        "lastUpdated": "2026-03-12T10:30:00.000Z",
+        "createdAt": "2026-03-10T08:00:00.000Z"
+      }
+    ]
+  }
+}
+```
+
+---
+
 ### GET /recruiter/requirements/{requirementId}
 
 Get a specific requirement by ID.
