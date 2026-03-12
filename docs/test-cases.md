@@ -2,7 +2,7 @@
 
 **Document Version:** 1.0
 **Application:** Quadzero Scout - AI-powered Talent Matching Platform
-**Last Updated:** 2026-01-30
+**Last Updated:** 2026-03-12
 
 ---
 
@@ -27,6 +27,7 @@
 17. [Module 16: End-to-End Workflows](#17-module-16-end-to-end-workflows)
 18. [Module 17: Non-Functional Requirements](#18-module-17-non-functional-requirements)
 19. [Module 18: Requirement Status Management](#19-module-18-requirement-status-management)
+20. [Module 19: Update Requirement with Audit Trail](#20-module-19-update-requirement-with-audit-trail)
 
 ---
 
@@ -2355,6 +2356,58 @@ All functional and non-functional aspects of Quadzero Scout covering:
 
 ---
 
+## 20. Module 19: Update Requirement with Audit Trail
+
+### 19.1 Update Requirement Endpoint (`PUT /recruiter/requirements/{requirementId}/details`)
+
+| Test ID | Description | Expected Result | Priority |
+|---------|-------------|-----------------|----------|
+| UR-001 | Missing `requirementId` path parameter | 400 VALIDATION_ERROR or 404 NOT_FOUND (route mismatch) | P0 |
+| UR-002 | Empty request body (no fields provided) | 400 VALIDATION_ERROR: "At least one field must be provided" | P0 |
+| UR-003 | Request body with no updatable fields (e.g., unknown keys only) | 400 VALIDATION_ERROR: "At least one field must be provided" | P1 |
+| UR-004 | Requirement not found for given `requirementId` | 404 NOT_FOUND | P0 |
+| UR-005 | Authenticated user is not the requirement owner | 403 FORBIDDEN | P0 |
+| UR-006 | Attempt to update a duplicate requirement | 400 VALIDATION_ERROR: "Cannot update a duplicate requirement" | P0 |
+| UR-007 | Successful single field update (e.g., `clientName`) | 200 with `fieldsUpdated: ["clientName"]`; DynamoDB record updated; `change_history` entry appended with old and new values | P0 |
+| UR-008 | No-op when submitted value is identical to current value | 200 with `fieldsUpdated: []` and `message: "No fields changed"`; no `change_history` entry appended | P0 |
+| UR-009 | Multiple field changes in a single request | 200 with `fieldsUpdated` listing all changed fields; single `change_history` entry with multiple items in `changes` array | P0 |
+| UR-010 | Nullable field set to `null` (e.g., `endClient: null`) | Field cleared in DynamoDB; `change_history` records old value and `new_value: null` | P1 |
+| UR-011 | Nullable field set from `null` to a value | Field set in DynamoDB; `change_history` records `old_value: null` and new value | P1 |
+| UR-012 | Update `jdText` with value shorter than 50 characters | 400 VALIDATION_ERROR (min length validation) | P1 |
+| UR-013 | Update `jdText` with value longer than 10000 characters | 400 VALIDATION_ERROR (max length validation) | P1 |
+| UR-014 | Update `engagementModel` with invalid value | 400 VALIDATION_ERROR (enum validation) | P1 |
+| UR-015 | Update `paymentTermsDays` with non-allowed value (e.g., 15) | 400 VALIDATION_ERROR (must be 30, 45, 60, or 90) | P1 |
+| UR-016 | Update `parsedCriteria` with valid ParsedCriteria object | 200 with `fieldsUpdated: ["parsedCriteria"]`; DynamoDB `parsed_criteria` updated | P1 |
+| UR-017 | Update `additionalFields` with valid array | 200 with `fieldsUpdated: ["additionalFields"]`; DynamoDB `additional_fields` updated | P1 |
+| UR-018 | No auth token provided | 401 UNAUTHORIZED | P0 |
+| UR-019 | Non-recruiter role attempts update | 403 FORBIDDEN | P1 |
+| UR-020 | `changeHistory` included in `GET /recruiter/requirements/{id}` response after update | Detail endpoint returns `changeHistory` array with the new entry (camelCase) | P1 |
+
+### 19.2 Frontend — Edit Requirement
+
+| Test ID | Description | Expected Result | Priority |
+|---------|-------------|-----------------|----------|
+| UR-021 | Edit button visible only to requirement owner | Non-owner recruiters do not see the Edit button on the requirement detail page | P1 |
+| UR-022 | Edit mode renders form with all editable fields pre-filled | Form fields populated with current requirement values | P1 |
+| UR-023 | Submitting edit form calls `api.updateRequirement(requirementId, payload)` | API client sends PUT request to `/recruiter/requirements/{id}/details` with changed fields | P1 |
+| UR-024 | Successful update refreshes requirement detail with updated values | Page re-fetches requirement data and exits edit mode | P2 |
+| UR-025 | Change History section displays audit trail entries | Each entry shows timestamp, changed-by user, and list of field changes with old/new values | P1 |
+
+### 19.3 Auto Re-parse on JD Text Edit
+
+| Test ID | Description | Expected Result | Priority |
+|---------|-------------|-----------------|----------|
+| UR-026 | Editing `jdText` triggers automatic JD re-parse | When recruiter modifies `jdText` and saves, frontend calls `api.parseJobDescription()` with the new text before sending the update request | P0 |
+| UR-027 | Update payload includes both `jdText` and re-parsed `parsedCriteria` | PUT request body contains both `jdText` (new text) and `parsedCriteria` (freshly parsed from new text); `fieldsUpdated` includes both fields | P0 |
+| UR-028 | Audit trail records both JD text and criteria changes | `change_history` entry contains separate items for `jdText` (old/new text) and `parsedCriteria` (old/new criteria) | P0 |
+| UR-029 | JD re-parse failure still saves `jdText` change | If `api.parseJobDescription()` returns an error or times out, the update payload includes only `jdText` without `parsedCriteria`; JD text is saved successfully | P0 |
+| UR-030 | Non-JD field edits do not trigger re-parse | Changing fields like `clientName` or `budgetMinLpa` without touching `jdText` does not call `api.parseJobDescription()` | P1 |
+| UR-031 | JD text unchanged but other fields edited does not trigger re-parse | If `jdText` is present in the form but its value has not changed from the current requirement value, no re-parse call is made | P1 |
+| UR-032 | Re-parse loading state shown during JD text save | When `jdText` is changed and save is clicked, the UI indicates that JD parsing is in progress before the update completes | P2 |
+| UR-033 | JD text and criteria changes alongside other field edits | Editing `jdText` plus other fields (e.g., `clientName`) in the same save triggers re-parse and includes all changed fields in a single update payload | P1 |
+
+---
+
 ## Traceability Matrix Summary
 
 | Module | Test Count | P0 | P1 | P2 | P3 |
@@ -2378,4 +2431,5 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | Non-Functional | 15 | 4 | 4 | 5 | 2 |
 | Requirement Status Management | 15 | 3 | 6 | 4 | 2 |
 | Notify Me — Notification Service | 20 | 5 | 8 | 7 | 0 |
-| **Total** | **275** | **48** | **102** | **93** | **32** |
+| Update Requirement with Audit Trail | 33 | 13 | 18 | 2 | 0 |
+| **Total** | **308** | **61** | **120** | **95** | **32** |

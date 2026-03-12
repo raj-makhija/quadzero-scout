@@ -2,7 +2,7 @@ import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { getRequirementById, getUserById } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
-import type { RequirementRequestEntry, StatusHistoryEntry } from '../../types/index.js';
+import type { RequirementRequestEntry, StatusHistoryEntry, RequirementChangeEntry } from '../../types/index.js';
 
 async function handleRequest(
   event: AuthenticatedEvent
@@ -34,6 +34,17 @@ async function handleRequest(
       fromStatus: entry.from_status,
       toStatus: entry.to_status,
       reason: entry.reason,
+    }));
+
+    // Transform change_history from snake_case to camelCase
+    const changeHistory = (item.change_history || []).map((entry: RequirementChangeEntry) => ({
+      changedAt: entry.changed_at,
+      changedBy: entry.changed_by,
+      changes: entry.changes.map(c => ({
+        field: c.field,
+        oldValue: c.old_value,
+        newValue: c.new_value,
+      })),
     }));
 
     // Resolve contributing recruiter IDs to names
@@ -75,6 +86,7 @@ async function handleRequest(
       demandScore: item.demand_score || 0,
       notifyRecruiterIds: item.notify_recruiter_ids || [],
       additionalFields: item.additional_fields || [],
+      changeHistory,
     });
   } catch (err) {
     console.error('Error fetching requirement:', err);

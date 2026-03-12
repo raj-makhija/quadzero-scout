@@ -334,6 +334,13 @@ functions:
           path: /recruiter/requirements/{requirementId}/consolidate
           method: PUT
 
+  recruiterUpdateRequirement:
+    handler: src/handlers/recruiter/updateRequirement.handler
+    events:
+      - httpApi:
+          path: /recruiter/requirements/{requirementId}/details
+          method: PUT
+
   recruiterUpdateRequirementCriteria:
     handler: src/handlers/recruiter/updateRequirementCriteria.handler
     events:
