@@ -14,6 +14,9 @@ import {
   CheckCircle,
   AlertCircle,
   X,
+  Download,
+  FileText,
+  Mail,
 } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { api, ApiError } from '@/lib/api';
@@ -57,6 +60,17 @@ export default function CandidateProfilePage() {
   const [removeConfirmId, setRemoveConfirmId] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
 
+  // Resume download state
+  const [downloadingFormatted, setDownloadingFormatted] = useState(false);
+  const [downloadingOriginal, setDownloadingOriginal] = useState(false);
+  const [downloadError, setDownloadError] = useState('');
+
+  // Cover letter / email body viewer
+  const [showCoverLetter, setShowCoverLetter] = useState(false);
+
+  // Screening status (computed early so handlers can reference it)
+  const screeningExpired = isScreeningExpired(profile?.lastScreenedAt ?? undefined);
+
   // Load all data in parallel
   useEffect(() => {
     async function loadData() {
@@ -80,7 +94,12 @@ export default function CandidateProfilePage() {
     loadData();
   }, [candidateId]);
 
-  const handleOpenShortlist = (reqId: string) => {
+  const handleOpenShortlist = (reqId: string, req?: MatchedRequirement) => {
+    if (screeningExpired && req) {
+      setScreeningForShortlist(req);
+      setShowScreeningModal(true);
+      return;
+    }
     setShortlistOpen(reqId);
     setShortlistNotes('');
     setShortlistError('');
@@ -129,8 +148,9 @@ export default function CandidateProfilePage() {
     async (screenedCandidateId: string) => {
       setShowScreeningModal(false);
       // Update profile screening date optimistically
+      const now = new Date().toISOString();
       setProfile((prev) =>
-        prev ? { ...prev, lastUpdated: new Date().toISOString() } : prev
+        prev ? { ...prev, lastUpdated: now, lastScreenedAt: now } : prev
       );
       // Retry shortlist if there was a pending requirement
       if (screeningForShortlist) {
@@ -159,6 +179,42 @@ export default function CandidateProfilePage() {
     },
     [candidateId]
   );
+
+  const handleDownloadResume = async () => {
+    try {
+      setDownloadingFormatted(true);
+      setDownloadError('');
+      const maxRetries = 20;
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        const response = await api.getResumeUrl(candidateId);
+        if (response.status === 'ready' && response.downloadUrl) {
+          window.open(response.downloadUrl, '_blank');
+          return;
+        }
+        if (attempt < maxRetries - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+        }
+      }
+      setDownloadError('Resume formatting is taking longer than expected. Please try again.');
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : 'Failed to get formatted resume');
+    } finally {
+      setDownloadingFormatted(false);
+    }
+  };
+
+  const handleDownloadOriginal = async () => {
+    try {
+      setDownloadingOriginal(true);
+      setDownloadError('');
+      const response = await api.getOriginalResumeUrl(candidateId);
+      window.open(response.downloadUrl, '_blank');
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : 'Failed to get original resume');
+    } finally {
+      setDownloadingOriginal(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -189,7 +245,6 @@ export default function CandidateProfilePage() {
   }
 
   const screeningStatus = getScreeningStatus(profile.lastScreenedAt ?? undefined);
-  const screeningExpired = isScreeningExpired(profile.lastScreenedAt ?? undefined);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -267,6 +322,69 @@ export default function CandidateProfilePage() {
               )}
             </div>
           </div>
+        </div>
+
+        {/* Actions: Resume Downloads & Cover Letter */}
+        <div className="card p-4 mb-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={handleDownloadResume}
+              disabled={downloadingFormatted}
+              className="btn-primary text-sm flex items-center gap-1.5"
+            >
+              {downloadingFormatted ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              {downloadingFormatted ? 'Formatting...' : 'Download Resume'}
+            </button>
+            <button
+              onClick={handleDownloadOriginal}
+              disabled={downloadingOriginal}
+              className="btn-secondary text-sm flex items-center gap-1.5"
+            >
+              {downloadingOriginal ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <FileText className="w-4 h-4" />
+              )}
+              {downloadingOriginal ? 'Downloading...' : 'Download Original'}
+            </button>
+            {profile.coverLetter && (
+              <button
+                onClick={() => setShowCoverLetter(!showCoverLetter)}
+                className="btn-secondary text-sm flex items-center gap-1.5"
+              >
+                <Mail className="w-4 h-4" />
+                {showCoverLetter ? 'Hide' : 'View'} Email / Cover Letter
+              </button>
+            )}
+          </div>
+          {downloadError && (
+            <div className="mt-3 flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              {downloadError}
+            </div>
+          )}
+          {showCoverLetter && profile.coverLetter && (
+            <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Email Body / Cover Letter
+                </h3>
+                <button
+                  onClick={() => setShowCoverLetter(false)}
+                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
+                {profile.coverLetter}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Expandable Profile Details */}
@@ -436,7 +554,7 @@ export default function CandidateProfilePage() {
                   shortlistNotes={shortlistNotes}
                   shortlisting={shortlisting}
                   shortlistError={shortlistError}
-                  onOpen={() => handleOpenShortlist(req.requirementId)}
+                  onOpen={() => handleOpenShortlist(req.requirementId, req)}
                   onClose={() => { setShortlistOpen(null); setShortlistError(''); }}
                   onNotesChange={setShortlistNotes}
                   onConfirm={() => handleConfirmShortlist(req)}
