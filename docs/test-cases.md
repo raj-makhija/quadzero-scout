@@ -2354,6 +2354,17 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | NM-019 | Closed/on-hold requirement is excluded from matching | No email sent for non-active requirements | P0 |
 | NM-020 | Bell icon shows filled state when current user is in `notifyRecruiterIds` | Bell icon renders as filled (opted-in) on both list and detail pages | P1 |
 
+### 18.4 Email Service (sendNewProfilesNotificationEmail)
+
+| Test ID | Description | Expected Result | Priority |
+|---------|-------------|-----------------|----------|
+| NM-021 | `matchedProfiles` provided with profile links | HTML body contains clickable links to `/recruiter/locate/{candidateId}` with candidate name and skills | P0 |
+| NM-022 | More than 10 matched profiles | Only first 10 profiles rendered as links; remaining count shown as "and N more..." | P1 |
+| NM-023 | `matchedProfiles` is undefined (backward compat) | Email renders correctly without profile links section | P1 |
+| NM-024 | Plain text body includes profile URLs | Text body contains "Matched profiles:" section with name, skills, and URL per candidate | P1 |
+| NM-025 | Candidate name or skills contain HTML characters | Values are HTML-escaped to prevent XSS (e.g., `<script>` becomes `&lt;script&gt;`) | P0 |
+| NM-026 | Candidate with empty `primarySkills` array | Profile link shows name only without skill separator | P2 |
+
 ---
 
 ## 20. Module 19: Update Requirement with Audit Trail

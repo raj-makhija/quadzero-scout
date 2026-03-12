@@ -2,7 +2,7 @@ import { getCandidateById, getAllActiveRequirements, getUserById } from './dynam
 import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, MUST_HAVE_RELATED_WEIGHT } from './matchScoring.js';
 import { normalizeSkills } from './skillNormalizer.js';
 import { isCandidateWithinBudget } from './ctcConversion.js';
-import { sendNewProfilesNotificationEmail } from './emailService.js';
+import { sendNewProfilesNotificationEmail, type MatchedProfile } from './emailService.js';
 import { config } from './config.js';
 import type { CandidateItem, RequirementItem } from '../types/index.js';
 
@@ -38,15 +38,15 @@ export async function notifyMatchingRecruiters(candidateIds: string[]): Promise<
   if (notifiableRequirements.length === 0) return;
 
   // Score each candidate against each notifiable requirement
-  // Result: Map<requirementId, matchCount>
-  const requirementMatchCounts = new Map<string, { requirement: typeof notifiableRequirements[0]; count: number }>();
+  // Result: Map<requirementId, { requirement, matchedProfiles }>
+  const requirementMatches = new Map<string, { requirement: typeof notifiableRequirements[0]; matchedProfiles: MatchedProfile[] }>();
 
   for (const req of notifiableRequirements) {
     const criteria = req.parsed_criteria;
     const normalizedMustHave = normalizeSkills(criteria.mustHaveSkills || []);
     const normalizedGoodToHave = normalizeSkills(criteria.goodToHaveSkills || []);
 
-    let matchCount = 0;
+    const matchedProfiles: MatchedProfile[] = [];
     for (const candidate of candidates) {
       const { score, details } = calculateMatchScore(
         candidate,
@@ -66,16 +66,20 @@ export async function notifyMatchingRecruiters(candidateIds: string[]): Promise<
 
       const budgetFit = isCandidateWithinBudget(candidate.expected_ctc, req.budget_max_lpa);
       if (score > 0 || budgetFit) {
-        matchCount++;
+        matchedProfiles.push({
+          candidateId: candidate.candidate_id,
+          fullName: candidate.full_name,
+          primarySkills: candidate.primary_skills,
+        });
       }
     }
 
-    if (matchCount > 0) {
-      requirementMatchCounts.set(req.requirement_id, { requirement: req, count: matchCount });
+    if (matchedProfiles.length > 0) {
+      requirementMatches.set(req.requirement_id, { requirement: req, matchedProfiles });
     }
   }
 
-  if (requirementMatchCounts.size === 0) return;
+  if (requirementMatches.size === 0) return;
 
   // Cache recruiter info lookups to avoid duplicate DynamoDB reads
   const recruiterCache = new Map<string, { email: string; name: string } | null>();
@@ -94,7 +98,7 @@ export async function notifyMatchingRecruiters(candidateIds: string[]): Promise<
   };
 
   // Send one email per (requirement × recruiter)
-  for (const [, { requirement, count }] of requirementMatchCounts) {
+  for (const [, { requirement, matchedProfiles }] of requirementMatches) {
     for (const recruiterId of requirement.notify_recruiter_ids) {
       const recruiterInfo = await getRecruiterInfo(recruiterId);
       if (!recruiterInfo) {
@@ -109,10 +113,11 @@ export async function notifyMatchingRecruiters(candidateIds: string[]): Promise<
           requirementId: requirement.requirement_id,
           requirementJobTitle: requirement.job_title || '',
           clientName: requirement.client_name,
-          candidateCount: count,
+          candidateCount: matchedProfiles.length,
+          matchedProfiles,
         });
         console.log(
-          `Notification sent: requirement=${requirement.requirement_id}, recruiter=${recruiterId}, matches=${count}`
+          `Notification sent: requirement=${requirement.requirement_id}, recruiter=${recruiterId}, matches=${matchedProfiles.length}`
         );
       } catch (err) {
         console.error(
