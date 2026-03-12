@@ -126,6 +126,7 @@ export interface CandidateItem {
 
 // Search Criteria Schema
 export const SearchCriteriaSchema = z.object({
+  coreSkill: z.string().optional(),
   mustHaveSkills: z.array(z.string()).optional().default([]),
   goodToHaveSkills: z.array(z.string()).optional().default([]),
   minExperience: z.number().min(0).optional(),
