@@ -252,6 +252,16 @@ class ApiClient {
     return this.request<ListRequirementsResponse>(`/recruiter/requirements${qs ? `?${qs}` : ''}`);
   }
 
+  async listRecentRequirements(limit?: number, status?: string) {
+    const params = new URLSearchParams();
+    if (limit) params.set('limit', String(limit));
+    if (status) params.set('status', status);
+    const qs = params.toString();
+    return this.request<{ requirements: RequirementSummary[] }>(
+      `/recruiter/recent-requirements${qs ? `?${qs}` : ''}`
+    );
+  }
+
   async listRecentProfiles(limit?: number) {
     const params = new URLSearchParams();
     if (limit) params.set('limit', String(limit));

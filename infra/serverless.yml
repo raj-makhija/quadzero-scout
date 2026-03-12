@@ -298,6 +298,13 @@ functions:
           path: /recruiter/requirements
           method: GET
 
+  recruiterListRecentRequirements:
+    handler: src/handlers/recruiter/listRecentRequirements.handler
+    events:
+      - httpApi:
+          path: /recruiter/recent-requirements
+          method: GET
+
   recruiterListRecentProfiles:
     handler: src/handlers/recruiter/listRecentProfiles.handler
     events:
