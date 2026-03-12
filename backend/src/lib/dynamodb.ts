@@ -1284,3 +1284,48 @@ export async function searchCandidatesByName(
 
   return allItems;
 }
+
+// ─── Recent Profiles ────────────────────────────────────────────────────────
+
+// TODO: If TalentProfiles table grows beyond ~1000 items, add a GSI with
+// partition key = "ALL" and sort key = last_updated for efficient queries.
+export async function getRecentProfiles(
+  limit: number = 10
+): Promise<CandidateItem[]> {
+  const PAGE_SIZE = 100;
+  const MAX_SCAN = 500;
+  const allItems: CandidateItem[] = [];
+  let currentKey: Record<string, unknown> | undefined;
+
+  do {
+    const scanParams: {
+      TableName: string;
+      Limit: number;
+      ProjectionExpression: string;
+      ExpressionAttributeNames: Record<string, string>;
+      ExclusiveStartKey?: Record<string, unknown>;
+    } = {
+      TableName: config.dynamodb.talentProfilesTable,
+      Limit: PAGE_SIZE,
+      ProjectionExpression:
+        'candidate_id, full_name, primary_skills, total_experience, seniority, #loc, last_updated, created_at',
+      ExpressionAttributeNames: { '#loc': 'location' },
+    };
+
+    if (currentKey) {
+      scanParams.ExclusiveStartKey = currentKey;
+    }
+
+    const result = await docClient.send(new ScanCommand(scanParams));
+    allItems.push(...((result.Items || []) as CandidateItem[]));
+    currentKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (currentKey && allItems.length < MAX_SCAN);
+
+  // Sort by last_updated descending and return top N
+  allItems.sort(
+    (a, b) =>
+      new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime()
+  );
+
+  return allItems.slice(0, limit);
+}
