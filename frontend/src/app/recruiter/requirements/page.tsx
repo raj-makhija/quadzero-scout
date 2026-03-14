@@ -16,7 +16,7 @@ export default function RequirementsListPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
-  const [lastKey, setLastKey] = useState<string | undefined>();
+  const [currentOffset, setCurrentOffset] = useState(0);
 
   // Filters
   const [clientNameFilter, setClientNameFilter] = useState('');
@@ -35,13 +35,15 @@ export default function RequirementsListPage() {
       setLoading(true);
       setError(null);
 
+      const offset = reset ? 0 : currentOffset;
+
       const response = await api.listRequirements({
         clientName: clientNameFilter.trim() || undefined,
         dateFrom: dateFrom || undefined,
         dateTo: dateTo ? dateTo + 'T23:59:59.999Z' : undefined,
         status: statusFilter || undefined,
         limit: 20,
-        lastEvaluatedKey: reset ? undefined : lastKey,
+        offset,
       });
 
       if (reset) {
@@ -50,13 +52,13 @@ export default function RequirementsListPage() {
         setRequirements((prev) => [...prev, ...response.requirements]);
       }
       setHasMore(response.pagination.hasMore);
-      setLastKey(response.pagination.lastEvaluatedKey);
+      setCurrentOffset(response.pagination.offset + response.pagination.count);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load requirements');
     } finally {
       setLoading(false);
     }
-  }, [clientNameFilter, dateFrom, dateTo, statusFilter, lastKey]);
+  }, [clientNameFilter, dateFrom, dateTo, statusFilter, currentOffset]);
 
   useEffect(() => {
     if (status === 'authenticated') {

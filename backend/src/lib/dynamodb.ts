@@ -975,40 +975,85 @@ export async function savePricingConfig(
 
 export async function getAllRequirementsPaginated(
   limit: number = 20,
-  lastEvaluatedKey?: Record<string, unknown>,
-  statusFilter?: string
-): Promise<{ items: RequirementItem[]; lastKey?: Record<string, unknown> }> {
-  const params: {
-    TableName: string;
-    Limit: number;
-    ExclusiveStartKey?: Record<string, unknown>;
-    FilterExpression?: string;
-    ExpressionAttributeNames?: Record<string, string>;
-    ExpressionAttributeValues?: Record<string, unknown>;
-  } = {
-    TableName: config.dynamodb.requirementsTable,
-    Limit: limit,
-  };
+  offset: number = 0,
+  statusFilter?: string,
+  clientNameLower?: string,
+  dateFrom?: string,
+  dateTo?: string
+): Promise<{ items: RequirementItem[]; total: number; hasMore: boolean }> {
+  const PAGE_SIZE = 100;
+  const MAX_SCAN = 1000;
+  const allItems: RequirementItem[] = [];
+  let currentKey: Record<string, unknown> | undefined;
 
-  if (statusFilter) {
-    params.FilterExpression = '#status = :statusVal';
-    params.ExpressionAttributeNames = { '#status': 'status' };
-    params.ExpressionAttributeValues = { ':statusVal': statusFilter };
-  }
+  do {
+    const scanParams: {
+      TableName: string;
+      Limit: number;
+      ExclusiveStartKey?: Record<string, unknown>;
+      FilterExpression?: string;
+      ExpressionAttributeNames?: Record<string, string>;
+      ExpressionAttributeValues?: Record<string, unknown>;
+    } = {
+      TableName: config.dynamodb.requirementsTable,
+      Limit: PAGE_SIZE,
+    };
 
-  if (lastEvaluatedKey) {
-    params.ExclusiveStartKey = lastEvaluatedKey;
-  }
+    const filterParts: string[] = [];
+    const exprNames: Record<string, string> = {};
+    const exprValues: Record<string, unknown> = {};
 
-  const result = await docClient.send(new ScanCommand(params));
-  const items = (result.Items || []) as RequirementItem[];
+    if (statusFilter) {
+      filterParts.push('#status = :statusVal');
+      exprNames['#status'] = 'status';
+      exprValues[':statusVal'] = statusFilter;
+    }
 
-  // Sort by created_at descending (Scan doesn't guarantee order)
-  items.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    if (clientNameLower) {
+      filterParts.push('client_name_lower = :clientName');
+      exprValues[':clientName'] = clientNameLower;
+    }
+
+    if (dateFrom) {
+      filterParts.push('created_at >= :dateFrom');
+      exprValues[':dateFrom'] = dateFrom;
+    }
+
+    if (dateTo) {
+      filterParts.push('created_at <= :dateTo');
+      exprValues[':dateTo'] = dateTo;
+    }
+
+    if (filterParts.length > 0) {
+      scanParams.FilterExpression = filterParts.join(' AND ');
+      if (Object.keys(exprNames).length > 0) {
+        scanParams.ExpressionAttributeNames = exprNames;
+      }
+      scanParams.ExpressionAttributeValues = exprValues;
+    }
+
+    if (currentKey) {
+      scanParams.ExclusiveStartKey = currentKey;
+    }
+
+    const result = await docClient.send(new ScanCommand(scanParams));
+    allItems.push(...((result.Items || []) as RequirementItem[]));
+    currentKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (currentKey && allItems.length < MAX_SCAN);
+
+  // Sort all items by created_at descending
+  allItems.sort(
+    (a, b) =>
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+
+  // Paginate by offset
+  const page = allItems.slice(offset, offset + limit);
 
   return {
-    items,
-    lastKey: result.LastEvaluatedKey as Record<string, unknown> | undefined,
+    items: page,
+    total: allItems.length,
+    hasMore: offset + limit < allItems.length,
   };
 }
 
