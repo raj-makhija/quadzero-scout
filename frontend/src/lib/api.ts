@@ -247,7 +247,7 @@ class ApiClient {
     if (filters?.dateTo) params.set('dateTo', filters.dateTo);
     if (filters?.status) params.set('status', filters.status);
     if (filters?.limit) params.set('limit', filters.limit.toString());
-    if (filters?.lastEvaluatedKey) params.set('lastEvaluatedKey', filters.lastEvaluatedKey);
+    if (filters?.offset !== undefined) params.set('offset', filters.offset.toString());
     const qs = params.toString();
     return this.request<ListRequirementsResponse>(`/recruiter/requirements${qs ? `?${qs}` : ''}`);
   }
@@ -869,15 +869,16 @@ export interface RequirementFilters {
   dateTo?: string;
   status?: string;
   limit?: number;
-  lastEvaluatedKey?: string;
+  offset?: number;
 }
 
 export interface ListRequirementsResponse {
   requirements: RequirementSummary[];
   pagination: {
     count: number;
+    total: number;
     hasMore: boolean;
-    lastEvaluatedKey?: string;
+    offset: number;
   };
 }
 

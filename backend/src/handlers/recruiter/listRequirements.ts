@@ -1,6 +1,6 @@
 import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
-import { getRequirementsByClient, getAllRequirementsPaginated } from '../../lib/dynamodb.js';
+import { getAllRequirementsPaginated } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 
 async function handleRequest(
@@ -14,35 +14,18 @@ async function handleRequest(
     const dateTo = params.dateTo;
     const statusFilter = params.status;
     const limit = params.limit ? parseInt(params.limit, 10) : 20;
-    const lastEvaluatedKey = params.lastEvaluatedKey
-      ? JSON.parse(Buffer.from(params.lastEvaluatedKey, 'base64').toString())
-      : undefined;
+    const offset = params.offset ? parseInt(params.offset, 10) : 0;
 
-    let items;
-    let lastKey;
+    const result = await getAllRequirementsPaginated(
+      limit,
+      offset,
+      statusFilter,
+      clientName ? clientName.toLowerCase().trim() : undefined,
+      dateFrom,
+      dateTo
+    );
 
-    if (clientName) {
-      const result = await getRequirementsByClient(
-        clientName.toLowerCase().trim(),
-        dateFrom,
-        dateTo,
-        limit,
-        lastEvaluatedKey,
-        statusFilter
-      );
-      items = result.items;
-      lastKey = result.lastKey;
-    } else {
-      const result = await getAllRequirementsPaginated(
-        limit,
-        lastEvaluatedKey,
-        statusFilter
-      );
-      items = result.items;
-      lastKey = result.lastKey;
-    }
-
-    const requirements = items.map((item) => ({
+    const requirements = result.items.map((item) => ({
       requirementId: item.requirement_id,
       clientName: item.client_name,
       endClient: item.end_client,
@@ -66,10 +49,9 @@ async function handleRequest(
       requirements,
       pagination: {
         count: requirements.length,
-        hasMore: !!lastKey,
-        lastEvaluatedKey: lastKey
-          ? Buffer.from(JSON.stringify(lastKey)).toString('base64')
-          : undefined,
+        total: result.total,
+        hasMore: result.hasMore,
+        offset,
       },
     });
   } catch (err) {
