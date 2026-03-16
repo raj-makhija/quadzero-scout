@@ -3,6 +3,7 @@ import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, ToggleRequirementNotifyRequestSchema } from '../../lib/validation.js';
 import { getRequirementById, updateRequirementNotifyIds } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import { logAuditEvent } from '../../lib/audit.js';
 
 async function handleRequest(
   event: AuthenticatedEvent
@@ -49,6 +50,13 @@ async function handleRequest(
     }
 
     await updateRequirementNotifyIds(requirementId, updated);
+
+    logAuditEvent(event.auth, event, {
+      action: 'REQUIREMENT_TOGGLE_NOTIFY',
+      entityType: 'requirement',
+      entityId: requirementId,
+      metadata: { requirementId, subscribed: notify },
+    });
 
     return success({
       requirementId,

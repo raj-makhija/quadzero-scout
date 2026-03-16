@@ -58,6 +58,7 @@ The backend decrypts NextAuth.js JWE tokens using HKDF-derived encryption keys f
 | TEXTRACT_ERROR | 422/500 | Text extraction error |
 | DYNAMODB_ERROR | 500 | Database error |
 | SCREENING_REQUIRED | 409 | Candidate must be screened (or re-screened) before shortlisting |
+| SESSION_EXPIRED | 401 | Session has exceeded the configured timeout duration |
 
 ### Shared Types
 
@@ -2299,6 +2300,148 @@ Save a new version of the pricing configuration (becomes the active version).
 - Each save creates a new version; previous active version is deactivated
 - `description` is optional (max 500 characters)
 - Config is cached for 5 minutes on reads
+
+---
+
+### Admin Audit Log Endpoints
+
+#### GET /admin/audit-logs
+
+List audit logs with filters. Requires admin role.
+
+**Query Parameters**:
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| userId | string | conditional | Filter by actor's user ID |
+| action | string | conditional | Filter by action type |
+| startDate | string | no | ISO date (YYYY-MM-DD), start of range |
+| endDate | string | no | ISO date (YYYY-MM-DD), end of range |
+| limit | number | no | Page size (default 50, max 100) |
+| nextToken | string | no | Base64-encoded pagination cursor |
+
+At least one of `userId` or `action` (with a date) is required.
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "logs": [
+      {
+        "eventId": "uuid",
+        "userId": "string",
+        "userEmail": "string",
+        "userRole": "string",
+        "action": "SIGN_IN_SUCCESS",
+        "entityType": "session",
+        "entityId": "string",
+        "metadata": {},
+        "ipAddress": "string",
+        "timestamp": "ISO 8601"
+      }
+    ],
+    "pagination": {
+      "count": 10,
+      "hasMore": true,
+      "nextToken": "base64string"
+    }
+  }
+}
+```
+
+---
+
+#### GET /admin/audit-logs/user/{userId}
+
+Get audit trail for a specific user. Requires admin role.
+
+**Path Parameters**: `userId` (string)
+**Query Parameters**: `limit`, `nextToken`, `startDate`, `endDate` (same as above)
+**Response**: Same structure as `/admin/audit-logs`
+
+---
+
+#### GET /admin/audit-logs/entity/{entityType}/{entityId}
+
+Get audit trail for a specific entity. Requires admin role.
+
+**Path Parameters**:
+- `entityType`: One of session, search, candidate, shortlist, requirement, client, user, config
+- `entityId`: The entity's ID
+
+**Query Parameters**: `limit`, `nextToken`
+**Response**: Same structure as `/admin/audit-logs`
+
+---
+
+### GET /admin/session-settings
+
+Retrieve the current session timeout configuration. Requires admin role.
+
+**Auth**: Required (admin only)
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "settings": {
+      "sessionTimeoutSeconds": 86400
+    }
+  }
+}
+```
+
+---
+
+### PUT /admin/session-settings
+
+Update the session timeout configuration. Requires admin role.
+
+**Auth**: Required (admin only)
+
+**Request Body**:
+```json
+{
+  "settings": {
+    "sessionTimeoutSeconds": 86400
+  },
+  "description": "Updated session timeout to 24 hours"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| settings.sessionTimeoutSeconds | Number | Yes | Timeout in seconds (min: 1800, max: 2592000) |
+| description | String | No | Description of the change |
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "version": 3
+  }
+}
+```
+
+---
+
+### GET /public/session-timeout
+
+Retrieve the current session timeout value. No authentication required. Used by the frontend to configure the session timeout guard before user authentication.
+
+**Auth**: None (public endpoint)
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "sessionTimeoutSeconds": 86400
+  }
+}
+```
 
 ---
 

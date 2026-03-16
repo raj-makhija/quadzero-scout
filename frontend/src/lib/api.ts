@@ -87,6 +87,12 @@ class ApiClient {
     const data: ApiResponse<T> = await response.json();
 
     if (!data.success) {
+      // Force sign-out on expired session
+      if (data.error?.code === 'SESSION_EXPIRED' && typeof window !== 'undefined') {
+        import('next-auth/react').then(({ signOut }) => {
+          signOut({ callbackUrl: '/auth/signin?reason=session_expired' });
+        });
+      }
       throw new ApiError(
         data.error?.code || 'UNKNOWN_ERROR',
         data.error?.message || 'API request failed',
@@ -537,6 +543,52 @@ class ApiClient {
     return this.request<CandidateShortlistedRequirementsResponse>(
       `/recruiter/candidates/${candidateId}/shortlisted-requirements`
     );
+  }
+
+  // Admin Audit Log endpoints
+  async listAuditLogs(params: AuditLogFilters): Promise<ListAuditLogsResponse> {
+    const searchParams = new URLSearchParams();
+    if (params.email) searchParams.set('email', params.email);
+    if (params.action) searchParams.set('action', params.action);
+    if (params.startDate) searchParams.set('startDate', params.startDate);
+    if (params.endDate) searchParams.set('endDate', params.endDate);
+    if (params.limit) searchParams.set('limit', String(params.limit));
+    if (params.nextToken) searchParams.set('nextToken', params.nextToken);
+    return this.request<ListAuditLogsResponse>(`/admin/audit-logs?${searchParams.toString()}`);
+  }
+
+  async getUserAuditLogs(userId: string, params?: { limit?: number; nextToken?: string; startDate?: string; endDate?: string }): Promise<ListAuditLogsResponse> {
+    const searchParams = new URLSearchParams();
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    if (params?.nextToken) searchParams.set('nextToken', params.nextToken);
+    if (params?.startDate) searchParams.set('startDate', params.startDate);
+    if (params?.endDate) searchParams.set('endDate', params.endDate);
+    return this.request<ListAuditLogsResponse>(`/admin/audit-logs/user/${userId}?${searchParams.toString()}`);
+  }
+
+  async getEntityAuditLogs(entityType: string, entityId: string, params?: { limit?: number; nextToken?: string }): Promise<ListAuditLogsResponse> {
+    const searchParams = new URLSearchParams();
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    if (params?.nextToken) searchParams.set('nextToken', params.nextToken);
+    return this.request<ListAuditLogsResponse>(`/admin/audit-logs/entity/${entityType}/${entityId}?${searchParams.toString()}`);
+  }
+
+  // Session Settings endpoints
+  async getSessionSettings() {
+    return this.request<{ settings: { sessionTimeoutSeconds: number } }>('/admin/session-settings');
+  }
+
+  async updateSessionSettings(settings: { sessionTimeoutSeconds: number }, description?: string) {
+    return this.request<{ version: number }>('/admin/session-settings', {
+      method: 'PUT',
+      body: JSON.stringify({ settings, description }),
+    });
+  }
+
+  async getSessionTimeout(): Promise<{ sessionTimeoutSeconds: number }> {
+    const response = await fetch(`${this.baseUrl}/public/session-timeout`);
+    const data = await response.json();
+    return data.data as { sessionTimeoutSeconds: number };
   }
 }
 
@@ -1160,4 +1212,36 @@ export interface ShortlistedRequirement {
 
 export interface CandidateShortlistedRequirementsResponse {
   shortlistedRequirements: ShortlistedRequirement[];
+}
+
+// Audit Log types
+export interface AuditLogEntry {
+  eventId: string;
+  userId: string;
+  userEmail: string;
+  userRole: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  metadata?: Record<string, unknown>;
+  ipAddress?: string;
+  timestamp: string;
+}
+
+export interface ListAuditLogsResponse {
+  logs: AuditLogEntry[];
+  pagination: {
+    count: number;
+    hasMore: boolean;
+    nextToken?: string;
+  };
+}
+
+export interface AuditLogFilters {
+  email?: string;
+  action?: string;
+  startDate?: string;
+  endDate?: string;
+  limit?: number;
+  nextToken?: string;
 }

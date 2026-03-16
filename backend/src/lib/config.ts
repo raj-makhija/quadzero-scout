@@ -15,6 +15,7 @@ interface Config {
     clientsTable: string;
     candidateScreeningsTable: string;
     emailIngestLogTable: string;
+    auditLogTable: string;
   };
   s3: {
     resumesBucket: string;
@@ -76,6 +77,7 @@ export const config: Config = {
     clientsTable: getEnvVar('DYNAMODB_TABLE_CLIENTS', 'Clients-dev'),
     candidateScreeningsTable: getEnvVar('DYNAMODB_TABLE_CANDIDATE_SCREENINGS', 'CandidateScreenings-dev'),
     emailIngestLogTable: getEnvVar('DYNAMODB_TABLE_EMAIL_INGEST_LOG', 'EmailIngestLog-dev'),
+    auditLogTable: getEnvVar('DYNAMODB_TABLE_AUDIT_LOG', 'AuditLog-dev'),
   },
   s3: {
     resumesBucket: getEnvVar('S3_BUCKET_RESUMES', 'quadzero-scout-resumes-dev'),

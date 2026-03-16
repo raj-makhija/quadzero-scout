@@ -25,6 +25,7 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │  │  - Prompts      │                                                        │
 │  │  - Bulk Import  │                                                        │
 │  │  - Pricing Cfg  │                                                        │
+│  │  - Settings     │                                                        │
 │  └─────────────────┘                                                        │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
@@ -662,6 +663,26 @@ External recruiters go through an approval process before accessing the platform
 11. **Optional Auth**: Search endpoint supports unauthenticated access with PII redaction
 12. **User Lookup Fallback**: Auth middleware falls back to email-based lookup when user ID is not found (supports Google OAuth users whose token ID differs from their database ID)
 
+### Session Timeout / Auto-Logout
+
+The platform supports admin-configurable session timeouts to automatically log out inactive users.
+
+**Configuration:**
+- Admins configure the session timeout duration via the `/admin/settings` page
+- Settings are stored in the `PricingConfig` table under `config_key: 'session_settings'`
+- Default timeout: 24 hours (86,400 seconds)
+- Minimum: 30 minutes (1,800 seconds), Maximum: 30 days (2,592,000 seconds)
+
+**Dual Enforcement:**
+1. **Backend (token age check):** The `withAuth` middleware compares the token's `iat` (issued-at) claim against the configured timeout. If the token age exceeds the timeout, the request is rejected with HTTP 401 and error code `SESSION_EXPIRED`. The `withOptionalAuth` middleware performs the same check but treats expired tokens as unauthenticated rather than returning an error.
+2. **Frontend (SessionTimeoutGuard):** A client-side `SessionTimeoutGuard` component fetches the timeout value from `GET /public/session-timeout` and proactively logs the user out when the session approaches expiry, providing a smoother user experience.
+
+**Caching:**
+- The backend caches session timeout settings for 5 minutes to avoid repeated DynamoDB reads on every authenticated request.
+
+**Public Endpoint:**
+- `GET /public/session-timeout` exposes the timeout value without authentication, allowing the frontend to configure the guard before the user is fully authenticated.
+
 ## Scalability Considerations
 
 ### DynamoDB
@@ -788,3 +809,16 @@ The pricing engine is a deterministic module that generates recommended billing 
 - **Audit flags**: `marginUplifted`, `marginConstrained`, `contributionCapped`, `variableMarkupAdjusted` provide transparency into pricing decisions.
 - **4-band experience mapping**: Simplified from the 7-level ATS seniority system. Uses years as the primary discriminator (0-4: junior, 5-8: mid, 9-12: senior, 12+: architect).
 - **INR-centric**: All calculations in INR. CTC input is LPA (Lakhs Per Annum), converted to monthly (÷12). Hourly assumes 160 hours/month.
+
+## Audit Trail
+
+The platform includes a centralized audit trail that tracks all recruiter and admin actions in a dedicated `AuditLog` DynamoDB table. Key design decisions:
+
+- **Fire-and-forget logging**: Audit writes are non-blocking — the DynamoDB PutItem is initiated but not awaited, ensuring zero impact on API response latency.
+- **Partition strategy**: PK = `USER#{userId}` distributes writes across partitions. SK = `{timestamp}#{uuid}` provides chronological ordering.
+- **Three query patterns** via GSIs:
+  1. By user (primary key) — "show me everything this recruiter did"
+  2. By entity (EntityIndex GSI) — "who touched this candidate/requirement?"
+  3. By action+date (ActionTypeIndex GSI) — "all resume downloads on 2026-03-16"
+- **Auto-expiry**: TTL of 365 days automatically removes old audit records.
+- **25 tracked event types** covering sign-ins, searches, resume downloads, shortlisting, screening, requirement CRUD, client management, and admin actions.

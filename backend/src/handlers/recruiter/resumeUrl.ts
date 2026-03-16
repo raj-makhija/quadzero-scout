@@ -5,6 +5,7 @@ import { generateDownloadUrl } from '../../lib/s3.js';
 import { invokeLambdaAsync } from '../../lib/lambdaInvoke.js';
 import { config } from '../../lib/config.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import { logAuditEvent } from '../../lib/audit.js';
 
 interface ResumeUrlReadyResponse {
   status: 'ready';
@@ -50,6 +51,11 @@ async function handleRequest(
           expiresIn: result.expiresIn,
           isFormatted: true,
         };
+        logAuditEvent(event.auth, event, {
+          action: 'RESUME_DOWNLOAD_FORMATTED',
+          entityType: 'candidate',
+          entityId: candidateId,
+        });
         return success(response);
       } catch (err) {
         console.warn('Cached formatted resume not found, triggering regeneration:', err);
@@ -81,6 +87,11 @@ async function handleRequest(
             isFormatted: true,
           };
           console.log('PDF generation completed within wait time');
+          logAuditEvent(event.auth, event, {
+            action: 'RESUME_DOWNLOAD_FORMATTED',
+            entityType: 'candidate',
+            entityId: candidateId,
+          });
           return success(response);
         } catch (err) {
           console.warn('Error generating download URL for newly created resume:', err);

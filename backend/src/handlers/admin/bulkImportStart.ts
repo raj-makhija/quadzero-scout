@@ -2,6 +2,7 @@ import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import { logAuditEvent } from '../../lib/audit.js';
 import { validate, formatZodErrors, BulkImportStartRequestSchema } from '../../lib/validation.js';
 import { createBulkImportBatch } from '../../lib/dynamodb.js';
 import { invokeLambdaAsync } from '../../lib/lambdaInvoke.js';
@@ -57,6 +58,13 @@ async function handleRequest(event: AuthenticatedEvent): Promise<APIGatewayProxy
     } else {
       console.warn('BULK_IMPORT_WORKER_NAME not configured, batch created but worker not invoked');
     }
+
+    logAuditEvent(event.auth, event, {
+      action: 'BULK_IMPORT_START',
+      entityType: 'config',
+      entityId: batchId,
+      metadata: { batchId, fileCount: files.length },
+    });
 
     return success({ batchId });
   } catch (err) {

@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { getUserByEmail } from '../../lib/dynamodb.js';
 import { isInternalUser } from '../../lib/auth.js';
+import { logSignInEvent } from '../../lib/audit.js';
 
 export async function handler(
   event: APIGatewayProxyEventV2
@@ -28,18 +29,23 @@ export async function handler(
     // Look up user
     const user = await getUserByEmail(email.toLowerCase());
     if (!user) {
+      logSignInEvent(event, email, undefined, false, { reason: 'user_not_found' });
       return error(ErrorCodes.UNAUTHORIZED, 'Invalid email or password', 401);
     }
 
     // Verify password
     if (!user.passwordHash) {
+      logSignInEvent(event, email, user.id, false, { reason: 'wrong_provider' });
       return error(ErrorCodes.UNAUTHORIZED, 'This account uses a different sign-in method', 401);
     }
 
     const isValid = await bcrypt.compare(password, user.passwordHash);
     if (!isValid) {
+      logSignInEvent(event, email, user.id, false, { reason: 'invalid_password' });
       return error(ErrorCodes.UNAUTHORIZED, 'Invalid email or password', 401);
     }
+
+    logSignInEvent(event, email, user.id, true, { method: 'credentials' });
 
     // Return user data without passwordHash
     return success({

@@ -858,3 +858,116 @@ export interface ScreeningHistoryResponse {
   candidateId: string;
   screenings: ScreeningHistoryEntry[];
 }
+
+// ─── Session Settings Types ─────────────────────────────────────────────────
+
+export const SessionSettingsSchema = z.object({
+  sessionTimeoutSeconds: z.number().min(1800).max(2592000), // 30 min to 30 days
+});
+export type SessionSettings = z.infer<typeof SessionSettingsSchema>;
+
+export const DEFAULT_SESSION_TIMEOUT_SECONDS = 86400; // 24 hours
+
+export interface SessionSettingsItem {
+  config_key: string;
+  version: number;
+  config: SessionSettings;
+  is_active: boolean;
+  created_at: string;
+  created_by: string;
+  description?: string;
+}
+
+export interface UpdateSessionSettingsRequest {
+  settings: SessionSettings;
+  description?: string;
+}
+
+export interface UpdateSessionSettingsResponse {
+  version: number;
+}
+
+export interface GetSessionSettingsResponse {
+  settings: SessionSettings;
+}
+
+// ─── Audit Log Types ────────────────────────────────────────────────────────
+
+export type AuditAction =
+  | 'SIGN_IN_SUCCESS'
+  | 'SIGN_IN_FAILURE'
+  | 'CANDIDATE_SEARCH'
+  | 'CANDIDATE_SEARCH_BY_NAME'
+  | 'RESUME_DOWNLOAD_FORMATTED'
+  | 'RESUME_DOWNLOAD_ORIGINAL'
+  | 'SHORTLIST_ADD'
+  | 'SHORTLIST_REMOVE'
+  | 'CANDIDATE_SCREEN'
+  | 'REQUIREMENT_CREATE'
+  | 'REQUIREMENT_UPDATE'
+  | 'REQUIREMENT_UPDATE_STATUS'
+  | 'REQUIREMENT_UPDATE_CRITERIA'
+  | 'REQUIREMENT_CONSOLIDATE'
+  | 'REQUIREMENT_TOGGLE_NOTIFY'
+  | 'REQUIREMENT_CHECK_DUPLICATE'
+  | 'CLIENT_CREATE'
+  | 'CLIENT_UPDATE'
+  | 'SEARCH_SAVE'
+  | 'SEARCH_DELETE'
+  | 'USER_APPROVE'
+  | 'USER_REJECT'
+  | 'PRICING_CONFIG_UPDATE'
+  | 'PROMPT_UPDATE'
+  | 'BULK_IMPORT_START'
+  | 'SESSION_SETTINGS_UPDATE';
+
+export type AuditEntityType =
+  | 'session'
+  | 'search'
+  | 'candidate'
+  | 'shortlist'
+  | 'requirement'
+  | 'client'
+  | 'user'
+  | 'config';
+
+export interface AuditLogItem {
+  pk: string;
+  sk: string;
+  event_id: string;
+  user_id: string;
+  user_email: string;
+  user_role: string;
+  action: AuditAction;
+  entity_type: AuditEntityType;
+  entity_id: string;
+  entity_key: string;
+  action_date: string;
+  metadata?: Record<string, unknown>;
+  ip_address?: string;
+  user_agent?: string;
+  timestamp: string;
+  ttl: number;
+}
+
+export interface AuditLogEntry {
+  eventId: string;
+  userId: string;
+  userEmail: string;
+  userRole: string;
+  action: AuditAction;
+  entityType: AuditEntityType;
+  entityId: string;
+  metadata?: Record<string, unknown>;
+  ipAddress?: string;
+  timestamp: string;
+}
+
+export interface ListAuditLogsResponse {
+  logs: AuditLogEntry[];
+  pagination: {
+    count: number;
+    hasMore: boolean;
+    nextToken?: string;
+  };
+}

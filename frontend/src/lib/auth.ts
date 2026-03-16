@@ -104,6 +104,8 @@ export const authOptions: NextAuthOptions = {
         (session.user as { role?: string }).role = token.role as string;
         (session.user as { isInternal?: boolean }).isInternal = token.isInternal as boolean;
       }
+      // Expose token issued-at for client-side session timeout
+      (session as { iat?: number }).iat = token.iat as number | undefined;
       return session;
     },
   },

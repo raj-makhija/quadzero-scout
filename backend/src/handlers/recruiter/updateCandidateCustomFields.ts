@@ -3,6 +3,7 @@ import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, UpdateCandidateCustomFieldsRequestSchema } from '../../lib/validation.js';
 import { getCandidateById, updateCandidateCustomFields as updateInDb } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import { logAuditEvent } from '../../lib/audit.js';
 
 async function handleRequest(
   event: AuthenticatedEvent
@@ -37,6 +38,13 @@ async function handleRequest(
 
     const merged = { ...(candidate.custom_fields || {}), ...customFields };
     await updateInDb(candidateId, merged);
+
+    logAuditEvent(event.auth, event, {
+      action: 'CANDIDATE_SCREEN',
+      entityType: 'candidate',
+      entityId: candidateId,
+      metadata: { candidateId, field: 'customFields' },
+    });
 
     return success({ candidateId, customFields: merged });
   } catch (err) {
