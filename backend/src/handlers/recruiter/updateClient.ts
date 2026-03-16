@@ -3,6 +3,7 @@ import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, UpdateClientRequestSchema } from '../../lib/validation.js';
 import { updateClient } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import { logAuditEvent } from '../../lib/audit.js';
 
 async function handleRequest(
   event: AuthenticatedEvent
@@ -40,6 +41,13 @@ async function handleRequest(
       defaultEngagementModel: data.defaultEngagementModel,
       defaultPayroll: data.defaultPayroll,
       notes: data.notes,
+    });
+
+    logAuditEvent(event.auth, event, {
+      action: 'CLIENT_UPDATE',
+      entityType: 'client',
+      entityId: clientId,
+      metadata: { clientId },
     });
 
     return success({ updated: true });

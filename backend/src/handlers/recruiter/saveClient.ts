@@ -4,6 +4,7 @@ import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, SaveClientRequestSchema } from '../../lib/validation.js';
 import { saveClient, getClientByName } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import { logAuditEvent } from '../../lib/audit.js';
 import type { ClientItem } from '../../types/index.js';
 
 async function handleRequest(
@@ -58,6 +59,13 @@ async function handleRequest(
     };
 
     await saveClient(item);
+
+    logAuditEvent(event.auth, event, {
+      action: 'CLIENT_CREATE',
+      entityType: 'client',
+      entityId: item.client_id,
+      metadata: { clientId: item.client_id, clientName: item.client_name },
+    });
 
     return success({
       clientId: item.client_id,

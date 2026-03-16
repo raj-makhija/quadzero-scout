@@ -3,6 +3,7 @@ import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, UpdateRequirementRequestSchema } from '../../lib/validation.js';
 import { getRequirementById, updateRequirementFields } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import { logAuditEvent } from '../../lib/audit.js';
 import { slugifyFieldKey } from '../../lib/slugify.js';
 import type { RequirementChangeEntry, RequirementChangeDetail } from '../../types/index.js';
 
@@ -131,6 +132,13 @@ async function handleRequest(
     };
 
     await updateRequirementFields(requirementId, fieldsToUpdate, changeEntry);
+
+    logAuditEvent(event.auth, event, {
+      action: 'REQUIREMENT_UPDATE',
+      entityType: 'requirement',
+      entityId: requirementId,
+      metadata: { requirementId, changedFields: changes.map(c => c.field) },
+    });
 
     return success({
       requirementId,

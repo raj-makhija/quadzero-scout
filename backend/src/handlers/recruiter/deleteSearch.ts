@@ -2,6 +2,7 @@ import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { deleteSavedSearch } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import { logAuditEvent } from '../../lib/audit.js';
 
 async function handleRequest(
   event: AuthenticatedEvent
@@ -17,6 +18,13 @@ async function handleRequest(
     const recruiterId = event.auth.userId;
 
     await deleteSavedSearch(recruiterId, searchId);
+
+    logAuditEvent(event.auth, event, {
+      action: 'SEARCH_DELETE',
+      entityType: 'search',
+      entityId: searchId,
+      metadata: { searchId },
+    });
 
     return success({ deleted: true });
   } catch (err) {

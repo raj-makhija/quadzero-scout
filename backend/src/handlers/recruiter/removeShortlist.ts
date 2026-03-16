@@ -2,6 +2,7 @@ import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { deleteShortlist } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import { logAuditEvent } from '../../lib/audit.js';
 
 async function handleRequest(
   event: AuthenticatedEvent
@@ -15,6 +16,13 @@ async function handleRequest(
     }
 
     await deleteShortlist(requirementId, candidateId);
+
+    logAuditEvent(event.auth, event, {
+      action: 'SHORTLIST_REMOVE',
+      entityType: 'shortlist',
+      entityId: `${requirementId}:${candidateId}`,
+      metadata: { requirementId, candidateId },
+    });
 
     return success({ success: true });
   } catch (err) {

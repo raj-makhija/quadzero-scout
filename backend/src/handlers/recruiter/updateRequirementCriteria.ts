@@ -3,6 +3,7 @@ import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, UpdateRequirementCriteriaRequestSchema } from '../../lib/validation.js';
 import { getRequirementById, updateRequirementCriteria } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import { logAuditEvent } from '../../lib/audit.js';
 
 async function handleRequest(
   event: AuthenticatedEvent
@@ -53,6 +54,13 @@ async function handleRequest(
       data.maxBudgetLpa,
       now
     );
+
+    logAuditEvent(event.auth, event, {
+      action: 'REQUIREMENT_UPDATE_CRITERIA',
+      entityType: 'requirement',
+      entityId: requirementId,
+      metadata: { requirementId },
+    });
 
     return success({ requirementId, lastUpdated: now });
   } catch (err) {

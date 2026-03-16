@@ -3,6 +3,7 @@ import { success, error, ErrorCodes } from '../../lib/response.js';
 import { getCandidateById } from '../../lib/dynamodb.js';
 import { generateDownloadUrl } from '../../lib/s3.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import { logAuditEvent } from '../../lib/audit.js';
 
 async function handleRequest(
   event: AuthenticatedEvent
@@ -32,6 +33,12 @@ async function handleRequest(
     const originalFilename = match ? match[1] : fullName;
 
     const result = await generateDownloadUrl(candidate.resume_s3_key, { fileName: originalFilename });
+
+    logAuditEvent(event.auth, event, {
+      action: 'RESUME_DOWNLOAD_ORIGINAL',
+      entityType: 'candidate',
+      entityId: candidateId,
+    });
 
     return success({
       downloadUrl: result.url,

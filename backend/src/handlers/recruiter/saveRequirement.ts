@@ -4,6 +4,7 @@ import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, SaveRequirementRequestSchema } from '../../lib/validation.js';
 import { saveRequirement } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import { logAuditEvent } from '../../lib/audit.js';
 import type { RequirementItem, LLMJDOutput } from '../../types/index.js';
 import { slugifyFieldKey } from '../../lib/slugify.js';
 
@@ -67,6 +68,13 @@ async function handleRequest(
     };
 
     await saveRequirement(item);
+
+    logAuditEvent(event.auth, event, {
+      action: 'REQUIREMENT_CREATE',
+      entityType: 'requirement',
+      entityId: requirementId,
+      metadata: { requirementId, clientName: data.clientName, jobTitle: data.jobTitle },
+    });
 
     return success({
       requirementId,

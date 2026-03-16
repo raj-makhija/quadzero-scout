@@ -4,6 +4,7 @@ import { validate, formatZodErrors, ConsolidateRequirementRequestSchema } from '
 import { getRequirementById, consolidateRequirement } from '../../lib/dynamodb.js';
 import { computeDemandScore } from '../../lib/demandScore.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import { logAuditEvent } from '../../lib/audit.js';
 import type { RequirementRequestEntry } from '../../types/index.js';
 
 async function handleRequest(
@@ -71,6 +72,13 @@ async function handleRequest(
 
     // Atomically update the original requirement
     await consolidateRequirement(requirementId, entry, contributingRecruiters, demandScore);
+
+    logAuditEvent(event.auth, event, {
+      action: 'REQUIREMENT_CONSOLIDATE',
+      entityType: 'requirement',
+      entityId: requirementId,
+      metadata: { requirementId, similarityScore: data.similarityScore },
+    });
 
     return success({
       requirementId,

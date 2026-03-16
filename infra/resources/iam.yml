@@ -29,6 +29,8 @@ dynamoDbPolicy:
     - !Sub '${ClientsTable.Arn}/index/*'
     - !GetAtt CandidateScreeningsTable.Arn
     - !GetAtt EmailIngestLogTable.Arn
+    - !GetAtt AuditLogTable.Arn
+    - !Sub '${AuditLogTable.Arn}/index/*'
 
 # S3 Policy
 s3Policy:

@@ -1,7 +1,7 @@
 import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
-import { validate, formatZodErrors, UpdatePricingConfigRequestSchema } from '../../lib/validation.js';
-import { savePricingConfig } from '../../lib/dynamodb.js';
+import { validate, formatZodErrors, UpdateSessionSettingsRequestSchema } from '../../lib/validation.js';
+import { saveSessionSettings } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
 
@@ -20,7 +20,7 @@ async function handleRequest(
       return error(ErrorCodes.VALIDATION_ERROR, 'Invalid JSON in request body', 400);
     }
 
-    const validation = validate(UpdatePricingConfigRequestSchema, body);
+    const validation = validate(UpdateSessionSettingsRequestSchema, body);
     if (!validation.success) {
       return error(
         ErrorCodes.VALIDATION_ERROR,
@@ -29,22 +29,22 @@ async function handleRequest(
       );
     }
 
-    const { config: pricingConfig, description } = validation.data;
+    const { settings, description } = validation.data;
     const userId = event.auth.userId;
 
-    const version = await savePricingConfig(pricingConfig, userId, description);
+    const version = await saveSessionSettings(settings, userId, description);
 
     logAuditEvent(event.auth, event, {
-      action: 'PRICING_CONFIG_UPDATE',
+      action: 'SESSION_SETTINGS_UPDATE',
       entityType: 'config',
-      entityId: 'pricing',
-      metadata: { version },
+      entityId: 'session_settings',
+      metadata: { version, sessionTimeoutSeconds: settings.sessionTimeoutSeconds },
     });
 
     return success({ version });
   } catch (err) {
-    console.error('Error updating pricing config:', err);
-    return error(ErrorCodes.INTERNAL_ERROR, 'Failed to update pricing config', 500);
+    console.error('Error updating session settings:', err);
+    return error(ErrorCodes.INTERNAL_ERROR, 'Failed to update session settings', 500);
   }
 }
 

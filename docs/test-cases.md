@@ -28,6 +28,7 @@
 18. [Module 17: Non-Functional Requirements](#18-module-17-non-functional-requirements)
 19. [Module 18: Requirement Status Management](#19-module-18-requirement-status-management)
 20. [Module 19: Update Requirement with Audit Trail](#20-module-19-update-requirement-with-audit-trail)
+21. [Module 20: Session Timeout / Auto-Logout](#21-module-20-session-timeout--auto-logout)
 
 ---
 
@@ -2419,6 +2420,47 @@ All functional and non-functional aspects of Quadzero Scout covering:
 
 ---
 
+## 21. Module 20: Session Timeout / Auto-Logout
+
+### 20.1 Backend — Session Settings API
+
+| Test ID | Description | Expected Result | Priority |
+|---------|-------------|-----------------|----------|
+| ST-001 | Default session timeout when no settings configured | Backend uses default of 86400 seconds (24 hours) when no `session_settings` record exists in PricingConfig table | P0 |
+| ST-002 | Save session settings via `PUT /admin/session-settings` | 200 response with `version` number; new record created in PricingConfig with `config_key: 'session_settings'` | P0 |
+| ST-003 | Get session settings via `GET /admin/session-settings` | 200 response with `{ settings: { sessionTimeoutSeconds: <number> } }` matching the saved value | P0 |
+| ST-004 | Public session timeout endpoint `GET /public/session-timeout` | 200 response with `{ sessionTimeoutSeconds: <number> }` without requiring authentication | P0 |
+| ST-005 | Public endpoint returns default when no settings saved | `GET /public/session-timeout` returns `{ sessionTimeoutSeconds: 86400 }` when no explicit config exists | P1 |
+| ST-006 | Reject session timeout below minimum (1800 seconds) | `PUT /admin/session-settings` with `sessionTimeoutSeconds: 1799` returns 400 VALIDATION_ERROR | P1 |
+| ST-007 | Reject session timeout above maximum (2592000 seconds) | `PUT /admin/session-settings` with `sessionTimeoutSeconds: 2592001` returns 400 VALIDATION_ERROR | P1 |
+| ST-008 | Token expiry enforcement in `withAuth` | Request with valid token older than configured timeout returns 401 with error code `SESSION_EXPIRED` | P0 |
+| ST-009 | Token within timeout passes `withAuth` | Request with valid token younger than configured timeout proceeds normally | P0 |
+| ST-010 | Expired token in `withOptionalAuth` treated as unauthenticated | Request with expired token to optional-auth endpoint is treated as unauthenticated (PII redacted) rather than returning 401 | P1 |
+| ST-011 | Non-admin cannot access `GET /admin/session-settings` | Recruiter or candidate role receives 403 FORBIDDEN | P0 |
+| ST-012 | Non-admin cannot access `PUT /admin/session-settings` | Recruiter or candidate role receives 403 FORBIDDEN | P0 |
+| ST-013 | Backend caches session settings for 5 minutes | Subsequent requests within 5 minutes do not query DynamoDB again; settings update takes effect after cache expiry | P2 |
+
+### 20.2 Frontend — Admin Settings Page
+
+| Test ID | Description | Expected Result | Priority |
+|---------|-------------|-----------------|----------|
+| ST-014 | Admin settings page loads at `/admin/settings` | Page renders with current session timeout value pre-filled | P0 |
+| ST-015 | Admin can update session timeout and save | Submitting new timeout value calls `PUT /admin/session-settings`; success toast displayed; form reflects new value | P0 |
+| ST-016 | Validation prevents invalid timeout values in form | Form rejects values below 30 minutes or above 30 days with inline validation messages | P1 |
+| ST-017 | Non-admin users cannot access `/admin/settings` | Navigating to `/admin/settings` as a non-admin user redirects to appropriate dashboard | P1 |
+
+### 20.3 Frontend — SessionTimeoutGuard
+
+| Test ID | Description | Expected Result | Priority |
+|---------|-------------|-----------------|----------|
+| ST-018 | SessionTimeoutGuard fetches timeout from public endpoint | On app load, the guard calls `GET /public/session-timeout` and sets the logout timer | P0 |
+| ST-019 | Auto-logout triggers when session exceeds timeout | User is automatically signed out and redirected to the sign-in page when the configured timeout elapses | P0 |
+| ST-020 | API 401 SESSION_EXPIRED triggers logout fallback | When any API call returns 401 with `SESSION_EXPIRED` code, the frontend logs out the user and redirects to sign-in | P0 |
+| ST-021 | Sign-in page displays session expired message | After auto-logout, the sign-in page shows a message indicating the session has expired | P1 |
+| ST-022 | Guard handles unavailable public endpoint gracefully | If `GET /public/session-timeout` fails, the guard falls back to the default 24-hour timeout | P1 |
+
+---
+
 ## Traceability Matrix Summary
 
 | Module | Test Count | P0 | P1 | P2 | P3 |
@@ -2443,4 +2485,5 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | Requirement Status Management | 15 | 3 | 6 | 4 | 2 |
 | Notify Me — Notification Service | 20 | 5 | 8 | 7 | 0 |
 | Update Requirement with Audit Trail | 33 | 13 | 18 | 2 | 0 |
-| **Total** | **308** | **61** | **120** | **95** | **32** |
+| Session Timeout / Auto-Logout | 22 | 13 | 8 | 1 | 0 |
+| **Total** | **330** | **74** | **128** | **96** | **32** |

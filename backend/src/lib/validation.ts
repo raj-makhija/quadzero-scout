@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { LLMJDOutputSchema, PricingConfigSchema, AdditionalFieldDefinitionSchema, SeniorityEnum, AvailabilityEnum } from '../types/index.js';
+import { LLMJDOutputSchema, PricingConfigSchema, SessionSettingsSchema, AdditionalFieldDefinitionSchema, SeniorityEnum, AvailabilityEnum } from '../types/index.js';
 
 // Upload URL Request Validation
 export const UploadUrlRequestSchema = z.object({
@@ -311,6 +311,12 @@ export const UpdateCandidateCustomFieldsRequestSchema = z.object({
     message: 'customFields must have between 1 and 20 entries',
   }),
   requirementId: z.string().min(1).optional(),
+});
+
+// Update Session Settings Request Validation
+export const UpdateSessionSettingsRequestSchema = z.object({
+  settings: SessionSettingsSchema,
+  description: z.string().max(500).optional(),
 });
 
 // Format Zod errors for API response

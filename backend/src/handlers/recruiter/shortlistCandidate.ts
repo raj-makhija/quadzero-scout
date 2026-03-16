@@ -3,6 +3,7 @@ import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, ShortlistCandidateRequestSchema } from '../../lib/validation.js';
 import { getRequirementById, getCandidateById, getShortlistEntry, saveShortlist } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import { logAuditEvent } from '../../lib/audit.js';
 import type { ShortlistItem } from '../../types/index.js';
 
 async function handleRequest(
@@ -75,6 +76,13 @@ async function handleRequest(
     };
 
     await saveShortlist(item);
+
+    logAuditEvent(event.auth, event, {
+      action: 'SHORTLIST_ADD',
+      entityType: 'shortlist',
+      entityId: `${requirementId}:${candidateId}`,
+      metadata: { requirementId, candidateId },
+    });
 
     return success({ success: true });
   } catch (err) {

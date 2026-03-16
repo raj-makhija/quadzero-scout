@@ -53,6 +53,7 @@ export const ErrorCodes = {
   TEXTRACT_ERROR: 'TEXTRACT_ERROR',
   DYNAMODB_ERROR: 'DYNAMODB_ERROR',
   SCREENING_REQUIRED: 'SCREENING_REQUIRED',
+  SESSION_EXPIRED: 'SESSION_EXPIRED',
 } as const;
 
 export type ErrorCode = typeof ErrorCodes[keyof typeof ErrorCodes];
