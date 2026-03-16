@@ -859,6 +859,38 @@ export interface ScreeningHistoryResponse {
   screenings: ScreeningHistoryEntry[];
 }
 
+// ─── Session Settings Types ─────────────────────────────────────────────────
+
+export const SessionSettingsSchema = z.object({
+  sessionTimeoutSeconds: z.number().min(1800).max(2592000), // 30 min to 30 days
+});
+export type SessionSettings = z.infer<typeof SessionSettingsSchema>;
+
+export const DEFAULT_SESSION_TIMEOUT_SECONDS = 86400; // 24 hours
+
+export interface SessionSettingsItem {
+  config_key: string;
+  version: number;
+  config: SessionSettings;
+  is_active: boolean;
+  created_at: string;
+  created_by: string;
+  description?: string;
+}
+
+export interface UpdateSessionSettingsRequest {
+  settings: SessionSettings;
+  description?: string;
+}
+
+export interface UpdateSessionSettingsResponse {
+  version: number;
+}
+
+export interface GetSessionSettingsResponse {
+  settings: SessionSettings;
+}
+
 // ─── Audit Log Types ────────────────────────────────────────────────────────
 
 export type AuditAction =
@@ -886,7 +918,8 @@ export type AuditAction =
   | 'USER_REJECT'
   | 'PRICING_CONFIG_UPDATE'
   | 'PROMPT_UPDATE'
-  | 'BULK_IMPORT_START';
+  | 'BULK_IMPORT_START'
+  | 'SESSION_SETTINGS_UPDATE';
 
 export type AuditEntityType =
   | 'session'

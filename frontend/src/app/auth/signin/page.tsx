@@ -19,6 +19,7 @@ function SignInContent() {
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get('callbackUrl') || '/';
   const error = searchParams.get('error');
+  const reason = searchParams.get('reason');
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -80,6 +81,11 @@ function SignInContent() {
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="card py-8 px-4 sm:px-10">
+          {reason === 'session_expired' && (
+            <div className="mb-4 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+              <p className="text-sm text-amber-700 dark:text-amber-300">Your session has expired. Please sign in again.</p>
+            </div>
+          )}
           {authError && (
             <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
               <p className="text-sm text-red-600 dark:text-red-400">{authError}</p>

@@ -1,7 +1,7 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { jwtDecrypt } from 'jose';
 import { error, ErrorCodes } from './response.js';
-import { getUserById, getUserByEmail } from './dynamodb.js';
+import { getUserById, getUserByEmail, getActiveSessionSettings } from './dynamodb.js';
 import type { UserRole } from '../types/index.js';
 
 export interface AuthContext {
@@ -96,7 +96,7 @@ function extractToken(event: APIGatewayProxyEventV2): string | null {
 async function decryptNextAuthToken(
   token: string,
   secret: string
-): Promise<{ id: string; email: string; role?: string }> {
+): Promise<{ id: string; email: string; role?: string; iat?: number }> {
   const encryptionKey = await getDerivedEncryptionKey(secret);
 
   const { payload } = await jwtDecrypt(token, encryptionKey, {
@@ -112,6 +112,7 @@ async function decryptNextAuthToken(
     id,
     email: (payload.email as string) || '',
     role: payload.role as string | undefined,
+    iat: payload.iat as number | undefined,
   };
 }
 
@@ -140,13 +141,22 @@ export function withAuth(
     }
 
     // Decrypt and verify NextAuth JWE token
-    let tokenPayload: { id: string; email: string; role?: string };
+    let tokenPayload: { id: string; email: string; role?: string; iat?: number };
     try {
       const secret = getJwtSecret();
       tokenPayload = await decryptNextAuthToken(token, secret);
     } catch (err) {
       console.error('JWT verification failed:', (err as Error).message);
       return error(ErrorCodes.UNAUTHORIZED, 'Invalid or expired token', 401);
+    }
+
+    // Check configurable session timeout
+    if (tokenPayload.iat) {
+      const sessionSettings = await getActiveSessionSettings();
+      const tokenAgeSeconds = Math.floor(Date.now() / 1000) - tokenPayload.iat;
+      if (tokenAgeSeconds > sessionSettings.sessionTimeoutSeconds) {
+        return error(ErrorCodes.SESSION_EXPIRED, 'Session expired. Please sign in again.', 401);
+      }
     }
 
     // Always fetch current role from database to ensure role changes take effect immediately
@@ -225,6 +235,15 @@ export function withOptionalAuth(
       try {
         const secret = getJwtSecret();
         const tokenPayload = await decryptNextAuthToken(token, secret);
+
+        // Check configurable session timeout — treat expired as unauthenticated
+        if (tokenPayload.iat) {
+          const sessionSettings = await getActiveSessionSettings();
+          const tokenAgeSeconds = Math.floor(Date.now() / 1000) - tokenPayload.iat;
+          if (tokenAgeSeconds > sessionSettings.sessionTimeoutSeconds) {
+            return handler(optionalEvent);
+          }
+        }
 
         let userRole: UserRole;
         let resolvedUser: { role: UserRole; status?: string } | null = null;

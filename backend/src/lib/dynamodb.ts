@@ -9,7 +9,8 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { config } from './config.js';
-import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, StatusHistoryEntry, RequirementChangeEntry, PricingConfig, PricingConfigItem, ShortlistItem, ClientItem, ScreeningItem, AuditLogItem, AuditLogEntry } from '../types/index.js';
+import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, StatusHistoryEntry, RequirementChangeEntry, PricingConfig, PricingConfigItem, SessionSettings, SessionSettingsItem, ShortlistItem, ClientItem, ScreeningItem, AuditLogItem, AuditLogEntry } from '../types/index.js';
+import { DEFAULT_SESSION_TIMEOUT_SECONDS } from '../types/index.js';
 
 const client = new DynamoDBClient({ region: config.region });
 const docClient = DynamoDBDocumentClient.from(client, {
@@ -969,6 +970,111 @@ export async function savePricingConfig(
 
   // Invalidate cache
   pricingConfigCache = null;
+
+  return newVersion;
+}
+
+// ─── Session Settings (reuses PricingConfig table with config_key = 'session_settings') ───
+
+const DEFAULT_SESSION_SETTINGS: SessionSettings = {
+  sessionTimeoutSeconds: DEFAULT_SESSION_TIMEOUT_SECONDS,
+};
+
+let sessionSettingsCache: { settings: SessionSettings; fetchedAt: number } | null = null;
+const SESSION_SETTINGS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+export async function getActiveSessionSettings(): Promise<SessionSettings> {
+  if (sessionSettingsCache && Date.now() - sessionSettingsCache.fetchedAt < SESSION_SETTINGS_CACHE_TTL) {
+    return sessionSettingsCache.settings;
+  }
+
+  try {
+    const result = await docClient.send(
+      new QueryCommand({
+        TableName: config.dynamodb.pricingConfigTable,
+        KeyConditionExpression: 'config_key = :key',
+        FilterExpression: 'is_active = :active',
+        ExpressionAttributeValues: {
+          ':key': 'session_settings',
+          ':active': true,
+        },
+        ScanIndexForward: false,
+        Limit: 1,
+      })
+    );
+
+    const item = result.Items?.[0] as SessionSettingsItem | undefined;
+    const settings = item?.config ?? DEFAULT_SESSION_SETTINGS;
+    sessionSettingsCache = { settings, fetchedAt: Date.now() };
+    return settings;
+  } catch {
+    return DEFAULT_SESSION_SETTINGS;
+  }
+}
+
+export async function saveSessionSettings(
+  settings: SessionSettings,
+  createdBy: string,
+  description?: string
+): Promise<number> {
+  // Get latest version number
+  const existing = await docClient.send(
+    new QueryCommand({
+      TableName: config.dynamodb.pricingConfigTable,
+      KeyConditionExpression: 'config_key = :key',
+      ExpressionAttributeValues: { ':key': 'session_settings' },
+      ScanIndexForward: false,
+      Limit: 1,
+    })
+  );
+
+  const latestVersion = (existing.Items?.[0] as SessionSettingsItem | undefined)?.version ?? 0;
+  const newVersion = latestVersion + 1;
+
+  // Deactivate current active version
+  const activeItems = await docClient.send(
+    new QueryCommand({
+      TableName: config.dynamodb.pricingConfigTable,
+      KeyConditionExpression: 'config_key = :key',
+      FilterExpression: 'is_active = :active',
+      ExpressionAttributeValues: {
+        ':key': 'session_settings',
+        ':active': true,
+      },
+    })
+  );
+
+  for (const item of (activeItems.Items || []) as SessionSettingsItem[]) {
+    await docClient.send(
+      new UpdateCommand({
+        TableName: config.dynamodb.pricingConfigTable,
+        Key: { config_key: item.config_key, version: item.version },
+        UpdateExpression: 'SET is_active = :inactive',
+        ExpressionAttributeValues: { ':inactive': false },
+      })
+    );
+  }
+
+  // Save new version
+  const newItem: SessionSettingsItem = {
+    config_key: 'session_settings',
+    version: newVersion,
+    config: settings,
+    is_active: true,
+    created_at: new Date().toISOString(),
+    created_by: createdBy,
+    ...(description && { description }),
+  };
+
+  await docClient.send(
+    new PutCommand({
+      TableName: config.dynamodb.pricingConfigTable,
+      Item: newItem,
+    })
+  );
+
+  // Invalidate cache
+  sessionSettingsCache = null;
 
   return newVersion;
 }

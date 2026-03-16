@@ -561,6 +561,29 @@ functions:
           path: /admin/pricing-config
           method: PUT
 
+  # Admin Session Settings Endpoints
+  adminGetSessionSettings:
+    handler: src/handlers/admin/getSessionSettings.handler
+    events:
+      - httpApi:
+          path: /admin/session-settings
+          method: GET
+
+  adminUpdateSessionSettings:
+    handler: src/handlers/admin/updateSessionSettings.handler
+    events:
+      - httpApi:
+          path: /admin/session-settings
+          method: PUT
+
+  # Public Session Timeout Endpoint
+  publicGetSessionTimeout:
+    handler: src/handlers/public/getSessionTimeout.handler
+    events:
+      - httpApi:
+          path: /public/session-timeout
+          method: GET
+
   # Admin Audit Log Endpoints
   adminListAuditLogs:
     handler: src/handlers/admin/listAuditLogs.handler

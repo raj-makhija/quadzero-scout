@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { Header } from '@/components/Header';
-import { Users, FileText, LayoutDashboard, Upload, ClipboardList } from 'lucide-react';
+import { Users, FileText, LayoutDashboard, Upload, ClipboardList, Settings } from 'lucide-react';
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -85,6 +85,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               >
                 <ClipboardList className="w-5 h-5 mr-3" />
                 Audit Logs
+              </Link>
+              <Link
+                href="/admin/settings"
+                className="flex items-center px-4 py-2 text-sm font-medium rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"
+              >
+                <Settings className="w-5 h-5 mr-3" />
+                Settings
               </Link>
             </nav>
           </aside>

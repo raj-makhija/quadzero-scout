@@ -58,6 +58,7 @@ The backend decrypts NextAuth.js JWE tokens using HKDF-derived encryption keys f
 | TEXTRACT_ERROR | 422/500 | Text extraction error |
 | DYNAMODB_ERROR | 500 | Database error |
 | SCREENING_REQUIRED | 409 | Candidate must be screened (or re-screened) before shortlisting |
+| SESSION_EXPIRED | 401 | Session has exceeded the configured timeout duration |
 
 ### Shared Types
 
@@ -2370,6 +2371,77 @@ Get audit trail for a specific entity. Requires admin role.
 
 **Query Parameters**: `limit`, `nextToken`
 **Response**: Same structure as `/admin/audit-logs`
+
+---
+
+### GET /admin/session-settings
+
+Retrieve the current session timeout configuration. Requires admin role.
+
+**Auth**: Required (admin only)
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "settings": {
+      "sessionTimeoutSeconds": 86400
+    }
+  }
+}
+```
+
+---
+
+### PUT /admin/session-settings
+
+Update the session timeout configuration. Requires admin role.
+
+**Auth**: Required (admin only)
+
+**Request Body**:
+```json
+{
+  "settings": {
+    "sessionTimeoutSeconds": 86400
+  },
+  "description": "Updated session timeout to 24 hours"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| settings.sessionTimeoutSeconds | Number | Yes | Timeout in seconds (min: 1800, max: 2592000) |
+| description | String | No | Description of the change |
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "version": 3
+  }
+}
+```
+
+---
+
+### GET /public/session-timeout
+
+Retrieve the current session timeout value. No authentication required. Used by the frontend to configure the session timeout guard before user authentication.
+
+**Auth**: None (public endpoint)
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "sessionTimeoutSeconds": 86400
+  }
+}
+```
 
 ---
 

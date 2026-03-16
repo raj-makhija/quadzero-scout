@@ -704,6 +704,8 @@ Stores versioned pricing configuration parameters managed via the admin interfac
 | Get latest version | Query config_key='default', ScanIndexForward=false, Limit=1 | Primary |
 | Save new version | Put item with incremented version | Primary |
 | Deactivate old version | Update is_active=false on previous active | Primary |
+| Get session settings | Query config_key='session_settings', ScanIndexForward=false, Limit=1 | Primary |
+| Save session settings | Put item with config_key='session_settings' and incremented version | Primary |
 
 **Pricing Experience Bands:**
 
@@ -713,6 +715,33 @@ Stores versioned pricing configuration parameters managed via the admin interfac
 | mid | 5–8 years | Mid level |
 | senior | 9–12 years | Senior level |
 | architect | 12+ years | Architect level |
+
+**Session Settings Config (`config_key: 'session_settings'`):**
+
+In addition to pricing configuration (`config_key: 'default'`), the PricingConfig table stores session timeout settings under `config_key: 'session_settings'`.
+
+| Field | Type | Description | Default |
+|-------|------|-------------|---------|
+| sessionTimeoutSeconds | Number | Duration in seconds before a session expires | 86400 (24 hours) |
+
+**Constraints:**
+- Minimum: 1800 (30 minutes)
+- Maximum: 2592000 (30 days)
+
+**Example Item:**
+```json
+{
+  "config_key": "session_settings",
+  "version": 1,
+  "config": {
+    "sessionTimeoutSeconds": 86400
+  },
+  "is_active": true,
+  "created_at": "2026-03-16T10:00:00Z",
+  "created_by": "user_admin123",
+  "description": "Default session timeout"
+}
+```
 
 *Note: These 4 pricing bands are distinct from the 7-level ATS seniority system (intern/junior/mid/senior/lead/principal/executive). Pricing bands use years of experience as the primary discriminator.*
 
