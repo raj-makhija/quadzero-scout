@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { api, AuditLogEntry } from '@/lib/api';
 import { Search, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 
@@ -57,37 +57,33 @@ function ActionBadge({ action }: { action: string }) {
 
 export default function AuditLogsPage() {
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [nextToken, setNextToken] = useState<string | undefined>();
   const [loadingMore, setLoadingMore] = useState(false);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
   // Filters
-  const [userId, setUserId] = useState('');
+  const [email, setEmail] = useState('');
   const [action, setAction] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
-  const fetchLogs = useCallback(async (append = false) => {
-    if (!userId && !action) return;
-
+  const fetchLogs = useCallback(async (append = false, token?: string) => {
     if (append) {
       setLoadingMore(true);
     } else {
       setLoading(true);
       setLogs([]);
-      setNextToken(undefined);
     }
 
     try {
       const result = await api.listAuditLogs({
-        userId: userId || undefined,
+        email: email || undefined,
         action: action || undefined,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
         limit: 50,
-        nextToken: append ? nextToken : undefined,
+        nextToken: append ? token : undefined,
       });
 
       if (append) {
@@ -96,14 +92,18 @@ export default function AuditLogsPage() {
         setLogs(result.logs);
       }
       setNextToken(result.pagination.nextToken);
-      setHasSearched(true);
     } catch (err) {
       console.error('Failed to fetch audit logs:', err);
     } finally {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [userId, action, startDate, endDate, nextToken]);
+  }, [email, action, startDate, endDate]);
+
+  // Auto-load all logs on page mount
+  useEffect(() => {
+    fetchLogs(false);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,13 +121,13 @@ export default function AuditLogsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              User ID
+              Email
             </label>
             <input
               type="text"
-              value={userId}
-              onChange={(e) => setUserId(e.target.value)}
-              placeholder="Enter user ID"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Filter by email"
               className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
           </div>
@@ -178,7 +178,7 @@ export default function AuditLogsPage() {
         <div className="mt-4 flex gap-2">
           <button
             type="submit"
-            disabled={loading || (!userId && !action)}
+            disabled={loading}
             className="btn-primary flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
           >
             <Search className="w-4 h-4" />
@@ -187,13 +187,13 @@ export default function AuditLogsPage() {
           <button
             type="button"
             onClick={() => {
-              setUserId('');
+              setEmail('');
               setAction('');
               setStartDate('');
               setEndDate('');
-              setLogs([]);
-              setHasSearched(false);
               setNextToken(undefined);
+              // Re-fetch all logs with no filters
+              setTimeout(() => fetchLogs(false), 0);
             }}
             className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
           >
@@ -207,13 +207,9 @@ export default function AuditLogsPage() {
         <div className="flex justify-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
         </div>
-      ) : !hasSearched ? (
-        <div className="card p-12 text-center text-gray-500 dark:text-gray-400">
-          Enter a User ID or select an Action Type, then click Search to view audit logs.
-        </div>
       ) : logs.length === 0 ? (
         <div className="card p-12 text-center text-gray-500 dark:text-gray-400">
-          No audit logs found for the selected filters.
+          No audit logs found.
         </div>
       ) : (
         <div className="card overflow-hidden">
@@ -306,7 +302,7 @@ export default function AuditLogsPage() {
           {nextToken && (
             <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-center">
               <button
-                onClick={() => fetchLogs(true)}
+                onClick={() => fetchLogs(true, nextToken)}
                 disabled={loadingMore}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-600 dark:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg disabled:opacity-50"
               >

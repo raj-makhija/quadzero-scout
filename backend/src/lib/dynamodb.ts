@@ -1562,6 +1562,33 @@ export async function queryAuditLogsByEntity(
   };
 }
 
+export async function scanRecentAuditLogs(
+  options?: { limit?: number; nextToken?: string }
+): Promise<{ logs: AuditLogEntry[]; nextToken?: string }> {
+  const limit = options?.limit || 50;
+
+  const params = {
+    TableName: config.dynamodb.auditLogTable,
+    Limit: limit,
+    ExclusiveStartKey: options?.nextToken
+      ? JSON.parse(Buffer.from(options.nextToken, 'base64').toString())
+      : undefined,
+  };
+
+  const result = await docClient.send(new ScanCommand(params));
+  const items = (result.Items || []) as AuditLogItem[];
+
+  // Sort by timestamp descending since Scan doesn't guarantee order
+  items.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+
+  return {
+    logs: items.map(toAuditLogEntry),
+    nextToken: result.LastEvaluatedKey
+      ? Buffer.from(JSON.stringify(result.LastEvaluatedKey)).toString('base64')
+      : undefined,
+  };
+}
+
 export async function queryAuditLogsByAction(
   action: string,
   date: string,

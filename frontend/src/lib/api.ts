@@ -542,7 +542,7 @@ class ApiClient {
   // Admin Audit Log endpoints
   async listAuditLogs(params: AuditLogFilters): Promise<ListAuditLogsResponse> {
     const searchParams = new URLSearchParams();
-    if (params.userId) searchParams.set('userId', params.userId);
+    if (params.email) searchParams.set('email', params.email);
     if (params.action) searchParams.set('action', params.action);
     if (params.startDate) searchParams.set('startDate', params.startDate);
     if (params.endDate) searchParams.set('endDate', params.endDate);
@@ -1214,7 +1214,7 @@ export interface ListAuditLogsResponse {
 }
 
 export interface AuditLogFilters {
-  userId?: string;
+  email?: string;
   action?: string;
   startDate?: string;
   endDate?: string;
