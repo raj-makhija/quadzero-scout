@@ -43,12 +43,31 @@ export async function generateUploadUrl(
   };
 }
 
-export async function generateDownloadUrl(s3Key: string): Promise<PresignedUrlResult> {
+function getContentTypeFromKey(s3Key: string): string {
+  const extension = s3Key.toLowerCase().split('.').pop();
+  switch (extension) {
+    case 'pdf': return 'application/pdf';
+    case 'docx': return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    case 'doc': return 'application/msword';
+    default: return 'application/octet-stream';
+  }
+}
+
+export interface DownloadUrlOptions {
+  fileName?: string;
+}
+
+export async function generateDownloadUrl(s3Key: string, options?: DownloadUrlOptions): Promise<PresignedUrlResult> {
+  const contentType = getContentTypeFromKey(s3Key);
+  const disposition = options?.fileName
+    ? `attachment; filename="${options.fileName}"`
+    : 'inline';
+
   const command = new GetObjectCommand({
     Bucket: config.s3.resumesBucket,
     Key: s3Key,
-    ResponseContentType: 'application/pdf',
-    ResponseContentDisposition: 'inline',
+    ResponseContentType: contentType,
+    ResponseContentDisposition: disposition,
   });
 
   const url = await getSignedUrl(s3Client, command, {

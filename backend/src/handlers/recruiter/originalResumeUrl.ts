@@ -24,14 +24,14 @@ async function handleRequest(
       return error(ErrorCodes.NOT_FOUND, 'No resume found for this candidate', 404);
     }
 
-    const result = await generateDownloadUrl(candidate.resume_s3_key);
-    
     // Extract original filename from S3 key
     const s3Key = candidate.resume_s3_key;
     const parts = s3Key.split('/');
     const fullName = parts[parts.length - 1];
     const match = fullName.match(/^[a-f0-9-]+-(.+)$/);
     const originalFilename = match ? match[1] : fullName;
+
+    const result = await generateDownloadUrl(candidate.resume_s3_key, { fileName: originalFilename });
 
     return success({
       downloadUrl: result.url,

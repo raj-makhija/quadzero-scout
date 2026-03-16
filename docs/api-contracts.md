@@ -776,6 +776,10 @@ Authorization: Bearer <jwe_token>
 }
 ```
 
+**Notes:**
+- The pre-signed URL uses the correct `Content-Type` based on the original file extension (PDF, DOCX, or DOC)
+- The `Content-Disposition` is set to `attachment` with the original filename, prompting a download rather than inline display
+
 ---
 
 ## Recruiter Requirements Endpoints

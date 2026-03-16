@@ -133,6 +133,7 @@ import { handler as getSearchesHandler } from '../recruiter/getSearches.js';
 import { handler as deleteSearchHandler } from '../recruiter/deleteSearch.js';
 import { getCandidateById, getSavedSearches } from '../../lib/dynamodb.js';
 import { parseJobDescription } from '../../lib/llm/index.js';
+import { generateDownloadUrl } from '../../lib/s3.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -581,6 +582,39 @@ describe('GET /recruiter/original-resume-url/{candidateId}', () => {
     expect(result.statusCode).toBe(400);
     expect(body.error.code).toBe('VALIDATION_ERROR');
     expect(body.error.message).toBe('Candidate ID is required');
+  });
+
+  // TC-ORIGINAL-RESUME-005b
+  it('passes correct filename to generateDownloadUrl for DOCX resumes', async () => {
+    vi.mocked(getCandidateById).mockResolvedValueOnce({
+      candidate_id: 'cand_docx',
+      user_id: 'user_docx',
+      full_name: 'Tanuja Boduggam',
+      email: 'tanuja@example.com',
+      primary_skills: ['java'],
+      primary_skill_years: { java: 5 },
+      secondary_skills: [],
+      total_experience: 5,
+      seniority: 'senior',
+      availability: 'immediate',
+      industries: [],
+      roles: ['Backend Developer'],
+      experience_bucket: '3-5',
+      resume_s3_key: 'resumes/2024/03/abc123def-Tanuja_Resume.docx',
+      created_at: '2024-03-01T00:00:00Z',
+      last_updated: '2024-03-01T00:00:00Z',
+    });
+
+    const event = makeEvent({ pathParameters: { candidateId: 'cand_docx' } });
+    const result = await originalResumeUrlHandler(event);
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.data.fileName).toBe('Tanuja_Resume.docx');
+    expect(vi.mocked(generateDownloadUrl)).toHaveBeenCalledWith(
+      'resumes/2024/03/abc123def-Tanuja_Resume.docx',
+      { fileName: 'Tanuja_Resume.docx' }
+    );
   });
 
   // TC-ORIGINAL-RESUME-005
