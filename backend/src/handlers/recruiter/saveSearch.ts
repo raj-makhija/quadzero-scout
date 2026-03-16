@@ -4,6 +4,7 @@ import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, SaveSearchRequestSchema } from '../../lib/validation.js';
 import { saveSavedSearch } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import { logAuditEvent } from '../../lib/audit.js';
 import type { SavedSearch, SearchCriteria } from '../../types/index.js';
 
 async function handleRequest(
@@ -61,6 +62,13 @@ async function handleRequest(
     };
 
     await saveSavedSearch(savedSearch);
+
+    logAuditEvent(event.auth, event, {
+      action: 'SEARCH_SAVE',
+      entityType: 'search',
+      entityId: searchId,
+      metadata: { searchId, name },
+    });
 
     return success({
       searchId,

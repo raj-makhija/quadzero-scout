@@ -5,6 +5,7 @@ import { getCandidateById, saveScreening, updateCandidateProfileFields, getUserB
 import { getExperienceBucket } from '../../lib/dynamodb.js';
 import { normalizeSkills } from '../../lib/skillNormalizer.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import { logAuditEvent } from '../../lib/audit.js';
 import type { ScreeningItem, ScreeningProfileData } from '../../types/index.js';
 
 // Map camelCase request fields to snake_case DynamoDB fields
@@ -141,6 +142,13 @@ async function handleRequest(
     if (Object.keys(dbFields).length === 0) {
       await updateCandidateProfileFields(candidateId, {}, event.auth.userId, screenerName);
     }
+
+    logAuditEvent(event.auth, event, {
+      action: 'CANDIDATE_SCREEN',
+      entityType: 'candidate',
+      entityId: candidateId,
+      metadata: { candidateId, fieldsUpdated, notes },
+    });
 
     return success({
       candidateId,

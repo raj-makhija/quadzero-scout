@@ -3,6 +3,7 @@ import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, UpdateRequirementStatusRequestSchema } from '../../lib/validation.js';
 import { getRequirementById, updateRequirementStatus } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import { logAuditEvent } from '../../lib/audit.js';
 import type { StatusHistoryEntry } from '../../types/index.js';
 
 async function handleRequest(
@@ -68,6 +69,13 @@ async function handleRequest(
     };
 
     await updateRequirementStatus(requirementId, newStatus, historyEntry);
+
+    logAuditEvent(event.auth, event, {
+      action: 'REQUIREMENT_UPDATE_STATUS',
+      entityType: 'requirement',
+      entityId: requirementId,
+      metadata: { requirementId, fromStatus: existing.status, toStatus: newStatus },
+    });
 
     return success({
       requirementId,

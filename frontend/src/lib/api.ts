@@ -538,6 +538,34 @@ class ApiClient {
       `/recruiter/candidates/${candidateId}/shortlisted-requirements`
     );
   }
+
+  // Admin Audit Log endpoints
+  async listAuditLogs(params: AuditLogFilters): Promise<ListAuditLogsResponse> {
+    const searchParams = new URLSearchParams();
+    if (params.userId) searchParams.set('userId', params.userId);
+    if (params.action) searchParams.set('action', params.action);
+    if (params.startDate) searchParams.set('startDate', params.startDate);
+    if (params.endDate) searchParams.set('endDate', params.endDate);
+    if (params.limit) searchParams.set('limit', String(params.limit));
+    if (params.nextToken) searchParams.set('nextToken', params.nextToken);
+    return this.request<ListAuditLogsResponse>(`/admin/audit-logs?${searchParams.toString()}`);
+  }
+
+  async getUserAuditLogs(userId: string, params?: { limit?: number; nextToken?: string; startDate?: string; endDate?: string }): Promise<ListAuditLogsResponse> {
+    const searchParams = new URLSearchParams();
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    if (params?.nextToken) searchParams.set('nextToken', params.nextToken);
+    if (params?.startDate) searchParams.set('startDate', params.startDate);
+    if (params?.endDate) searchParams.set('endDate', params.endDate);
+    return this.request<ListAuditLogsResponse>(`/admin/audit-logs/user/${userId}?${searchParams.toString()}`);
+  }
+
+  async getEntityAuditLogs(entityType: string, entityId: string, params?: { limit?: number; nextToken?: string }): Promise<ListAuditLogsResponse> {
+    const searchParams = new URLSearchParams();
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    if (params?.nextToken) searchParams.set('nextToken', params.nextToken);
+    return this.request<ListAuditLogsResponse>(`/admin/audit-logs/entity/${entityType}/${entityId}?${searchParams.toString()}`);
+  }
 }
 
 export const api = new ApiClient(API_URL);
@@ -1160,4 +1188,36 @@ export interface ShortlistedRequirement {
 
 export interface CandidateShortlistedRequirementsResponse {
   shortlistedRequirements: ShortlistedRequirement[];
+}
+
+// Audit Log types
+export interface AuditLogEntry {
+  eventId: string;
+  userId: string;
+  userEmail: string;
+  userRole: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  metadata?: Record<string, unknown>;
+  ipAddress?: string;
+  timestamp: string;
+}
+
+export interface ListAuditLogsResponse {
+  logs: AuditLogEntry[];
+  pagination: {
+    count: number;
+    hasMore: boolean;
+    nextToken?: string;
+  };
+}
+
+export interface AuditLogFilters {
+  userId?: string;
+  action?: string;
+  startDate?: string;
+  endDate?: string;
+  limit?: number;
+  nextToken?: string;
 }

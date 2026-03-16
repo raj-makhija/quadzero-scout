@@ -3,6 +3,7 @@ import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, UpdateCandidateCtcRequestSchema } from '../../lib/validation.js';
 import { updateCandidateCtc as updateCtcInDb } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import { logAuditEvent } from '../../lib/audit.js';
 
 async function handleRequest(
   event: AuthenticatedEvent
@@ -35,6 +36,13 @@ async function handleRequest(
     const { candidateId, expectedCtc, currentCtc } = validation.data;
 
     await updateCtcInDb(candidateId, expectedCtc, currentCtc);
+
+    logAuditEvent(event.auth, event, {
+      action: 'CANDIDATE_SCREEN',
+      entityType: 'candidate',
+      entityId: candidateId,
+      metadata: { candidateId, field: 'ctc' },
+    });
 
     return success({ candidateId, expectedCtc, currentCtc });
   } catch (err: unknown) {

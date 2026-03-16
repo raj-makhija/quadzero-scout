@@ -1337,3 +1337,46 @@ See `backend/src/data/skills_ontology.json` for the full list of mappings, categ
 | Check if email already processed | GetItem by internet_message_id | Primary |
 | Claim email for processing | PutItem with `attribute_not_exists` condition | Primary |
 | Update processing status | UpdateItem by internet_message_id | Primary |
+
+---
+
+### 12. AuditLog Table (`AuditLog-{stage}`)
+
+Centralized activity audit trail for all recruiter and admin actions.
+
+**Billing**: PAY_PER_REQUEST | **TTL**: 365 days on `ttl` attribute
+
+**Primary Key**: `pk` (S, HASH) + `sk` (S, RANGE)
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `pk` | S (PK) | `USER#{userId}` |
+| `sk` | S (SK) | `{ISO-timestamp}#{uuid}` |
+| `event_id` | S | UUID |
+| `user_id` | S | Actor's user ID |
+| `user_email` | S | Actor's email |
+| `user_role` | S | Actor's role at time of action |
+| `action` | S | Action enum (e.g. SIGN_IN_SUCCESS, RESUME_DOWNLOAD_FORMATTED) |
+| `entity_type` | S | session / search / candidate / shortlist / requirement / client / user / config |
+| `entity_id` | S | ID of the affected entity |
+| `entity_key` | S | `{ENTITY_TYPE}#{entityId}` (GSI-1 PK) |
+| `action_date` | S | `{action}#{YYYY-MM-DD}` (GSI-2 PK) |
+| `metadata` | M | Action-specific details |
+| `ip_address` | S | Source IP from API Gateway |
+| `user_agent` | S | Browser user-agent |
+| `timestamp` | S | ISO 8601 |
+| `ttl` | N | Unix epoch + 365 days (auto-expire) |
+
+**GSIs**:
+- **EntityIndex**: `entity_key` (PK) + `sk` (SK) — query by target entity
+- **ActionTypeIndex**: `action_date` (PK) + `sk` (SK) — query by action type + date
+
+**Tracked Actions**: SIGN_IN_SUCCESS, SIGN_IN_FAILURE, CANDIDATE_SEARCH, CANDIDATE_SEARCH_BY_NAME, RESUME_DOWNLOAD_FORMATTED, RESUME_DOWNLOAD_ORIGINAL, SHORTLIST_ADD, SHORTLIST_REMOVE, CANDIDATE_SCREEN, REQUIREMENT_CREATE, REQUIREMENT_UPDATE, REQUIREMENT_UPDATE_STATUS, REQUIREMENT_UPDATE_CRITERIA, REQUIREMENT_CONSOLIDATE, REQUIREMENT_TOGGLE_NOTIFY, REQUIREMENT_CHECK_DUPLICATE, CLIENT_CREATE, CLIENT_UPDATE, SEARCH_SAVE, SEARCH_DELETE, USER_APPROVE, USER_REJECT, PRICING_CONFIG_UPDATE, PROMPT_UPDATE, BULK_IMPORT_START
+
+**Access Patterns:**
+
+| Operation | Access Pattern | Index |
+|-----------|---------------|-------|
+| Get audit trail for a user | Query by pk = `USER#{userId}` | Primary |
+| Get audit trail for an entity | Query by entity_key | EntityIndex |
+| Get logs by action type + date | Query by action_date | ActionTypeIndex |

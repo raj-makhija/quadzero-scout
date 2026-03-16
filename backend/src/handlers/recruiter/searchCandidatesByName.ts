@@ -2,6 +2,7 @@ import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { searchCandidatesByName } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import { logAuditEvent } from '../../lib/audit.js';
 
 interface CandidateNameSearchResult {
   candidateId: string;
@@ -45,6 +46,14 @@ async function handleRequest(
     }));
 
     const response: CandidateNameSearchResponse = { candidates };
+
+    logAuditEvent(event.auth, event, {
+      action: 'CANDIDATE_SEARCH_BY_NAME',
+      entityType: 'search',
+      entityId: 'name-search',
+      metadata: { query: q.trim() },
+    });
+
     return success(response);
   } catch (err) {
     console.error('Error searching candidates by name:', err);

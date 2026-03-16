@@ -9,7 +9,7 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { config } from './config.js';
-import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, StatusHistoryEntry, RequirementChangeEntry, PricingConfig, PricingConfigItem, ShortlistItem, ClientItem, ScreeningItem } from '../types/index.js';
+import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, StatusHistoryEntry, RequirementChangeEntry, PricingConfig, PricingConfigItem, ShortlistItem, ClientItem, ScreeningItem, AuditLogItem, AuditLogEntry } from '../types/index.js';
 
 const client = new DynamoDBClient({ region: config.region });
 const docClient = DynamoDBDocumentClient.from(client, {
@@ -1461,4 +1461,133 @@ export async function getRecentProfiles(
   );
 
   return allItems.slice(0, limit);
+}
+
+// ─── Audit Log Operations ───────────────────────────────────────────────────
+
+function toAuditLogEntry(item: AuditLogItem): AuditLogEntry {
+  return {
+    eventId: item.event_id,
+    userId: item.user_id,
+    userEmail: item.user_email,
+    userRole: item.user_role,
+    action: item.action,
+    entityType: item.entity_type,
+    entityId: item.entity_id,
+    metadata: item.metadata,
+    ipAddress: item.ip_address,
+    timestamp: item.timestamp,
+  };
+}
+
+export async function putAuditLog(item: AuditLogItem): Promise<void> {
+  await docClient.send(
+    new PutCommand({
+      TableName: config.dynamodb.auditLogTable,
+      Item: item,
+    })
+  );
+}
+
+export async function queryAuditLogsByUser(
+  userId: string,
+  options?: { limit?: number; nextToken?: string; startDate?: string; endDate?: string }
+): Promise<{ logs: AuditLogEntry[]; nextToken?: string }> {
+  const limit = options?.limit || 50;
+
+  let keyCondition = 'pk = :pk';
+  const exprValues: Record<string, unknown> = { ':pk': `USER#${userId}` };
+
+  if (options?.startDate && options?.endDate) {
+    keyCondition = 'pk = :pk AND sk BETWEEN :start AND :end';
+    exprValues[':start'] = options.startDate;
+    exprValues[':end'] = options.endDate + '\uffff';
+  } else if (options?.startDate) {
+    keyCondition = 'pk = :pk AND sk >= :start';
+    exprValues[':start'] = options.startDate;
+  } else if (options?.endDate) {
+    keyCondition = 'pk = :pk AND sk <= :end';
+    exprValues[':end'] = options.endDate + '\uffff';
+  }
+
+  const params = {
+    TableName: config.dynamodb.auditLogTable,
+    KeyConditionExpression: keyCondition,
+    ExpressionAttributeValues: exprValues,
+    ScanIndexForward: false,
+    Limit: limit,
+    ExclusiveStartKey: options?.nextToken
+      ? JSON.parse(Buffer.from(options.nextToken, 'base64').toString())
+      : undefined,
+  };
+
+  const result = await docClient.send(new QueryCommand(params));
+  const items = (result.Items || []) as AuditLogItem[];
+
+  return {
+    logs: items.map(toAuditLogEntry),
+    nextToken: result.LastEvaluatedKey
+      ? Buffer.from(JSON.stringify(result.LastEvaluatedKey)).toString('base64')
+      : undefined,
+  };
+}
+
+export async function queryAuditLogsByEntity(
+  entityType: string,
+  entityId: string,
+  options?: { limit?: number; nextToken?: string }
+): Promise<{ logs: AuditLogEntry[]; nextToken?: string }> {
+  const limit = options?.limit || 50;
+
+  const params = {
+    TableName: config.dynamodb.auditLogTable,
+    IndexName: 'EntityIndex',
+    KeyConditionExpression: 'entity_key = :ek',
+    ExpressionAttributeValues: { ':ek': `${entityType.toUpperCase()}#${entityId}` },
+    ScanIndexForward: false,
+    Limit: limit,
+    ExclusiveStartKey: options?.nextToken
+      ? JSON.parse(Buffer.from(options.nextToken, 'base64').toString())
+      : undefined,
+  };
+
+  const result = await docClient.send(new QueryCommand(params));
+  const items = (result.Items || []) as AuditLogItem[];
+
+  return {
+    logs: items.map(toAuditLogEntry),
+    nextToken: result.LastEvaluatedKey
+      ? Buffer.from(JSON.stringify(result.LastEvaluatedKey)).toString('base64')
+      : undefined,
+  };
+}
+
+export async function queryAuditLogsByAction(
+  action: string,
+  date: string,
+  options?: { limit?: number; nextToken?: string }
+): Promise<{ logs: AuditLogEntry[]; nextToken?: string }> {
+  const limit = options?.limit || 50;
+
+  const params = {
+    TableName: config.dynamodb.auditLogTable,
+    IndexName: 'ActionTypeIndex',
+    KeyConditionExpression: 'action_date = :ad',
+    ExpressionAttributeValues: { ':ad': `${action}#${date}` },
+    ScanIndexForward: false,
+    Limit: limit,
+    ExclusiveStartKey: options?.nextToken
+      ? JSON.parse(Buffer.from(options.nextToken, 'base64').toString())
+      : undefined,
+  };
+
+  const result = await docClient.send(new QueryCommand(params));
+  const items = (result.Items || []) as AuditLogItem[];
+
+  return {
+    logs: items.map(toAuditLogEntry),
+    nextToken: result.LastEvaluatedKey
+      ? Buffer.from(JSON.stringify(result.LastEvaluatedKey)).toString('base64')
+      : undefined,
+  };
 }

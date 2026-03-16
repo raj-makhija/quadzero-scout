@@ -2,6 +2,7 @@ import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { z } from 'zod';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import { logAuditEvent } from '../../lib/audit.js';
 import { getUserById, updateUserStatus } from '../../lib/dynamodb.js';
 import { validate, formatZodErrors } from '../../lib/validation.js';
 
@@ -44,6 +45,13 @@ async function handleRequest(event: AuthenticatedEvent): Promise<APIGatewayProxy
     const newStatus = action === 'approve' ? 'approved' : 'rejected';
     const statusUpdatedAt = new Date().toISOString();
     await updateUserStatus(userId, newStatus, event.auth.userId);
+
+    logAuditEvent(event.auth, event, {
+      action: action === 'approve' ? 'USER_APPROVE' : 'USER_REJECT',
+      entityType: 'user',
+      entityId: userId,
+      metadata: { targetUserId: userId, targetEmail: user.email },
+    });
 
     return success({ userId, status: newStatus, statusUpdatedAt });
   } catch (err) {

@@ -311,6 +311,54 @@ Resources:
         - Key: Project
           Value: quadzero-scout
 
+  # AuditLog Table (centralized activity audit trail)
+  AuditLogTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: ${self:custom.auditLogTable}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+        - AttributeName: entity_key
+          AttributeType: S
+        - AttributeName: action_date
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: EntityIndex
+          KeySchema:
+            - AttributeName: entity_key
+              KeyType: HASH
+            - AttributeName: sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: ActionTypeIndex
+          KeySchema:
+            - AttributeName: action_date
+              KeyType: HASH
+            - AttributeName: sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Project
+          Value: quadzero-scout
+
   # EmailIngestLog Table (idempotency log for email-based resume ingestion)
   EmailIngestLogTable:
     Type: AWS::DynamoDB::Table
@@ -400,3 +448,9 @@ Outputs:
     Value: !GetAtt EmailIngestLogTable.Arn
     Export:
       Name: ${self:provider.stage}-EmailIngestLogTableArn
+
+  AuditLogTableArn:
+    Description: AuditLog table ARN
+    Value: !GetAtt AuditLogTable.Arn
+    Export:
+      Name: ${self:provider.stage}-AuditLogTableArn

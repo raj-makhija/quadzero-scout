@@ -2302,6 +2302,77 @@ Save a new version of the pricing configuration (becomes the active version).
 
 ---
 
+### Admin Audit Log Endpoints
+
+#### GET /admin/audit-logs
+
+List audit logs with filters. Requires admin role.
+
+**Query Parameters**:
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| userId | string | conditional | Filter by actor's user ID |
+| action | string | conditional | Filter by action type |
+| startDate | string | no | ISO date (YYYY-MM-DD), start of range |
+| endDate | string | no | ISO date (YYYY-MM-DD), end of range |
+| limit | number | no | Page size (default 50, max 100) |
+| nextToken | string | no | Base64-encoded pagination cursor |
+
+At least one of `userId` or `action` (with a date) is required.
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "logs": [
+      {
+        "eventId": "uuid",
+        "userId": "string",
+        "userEmail": "string",
+        "userRole": "string",
+        "action": "SIGN_IN_SUCCESS",
+        "entityType": "session",
+        "entityId": "string",
+        "metadata": {},
+        "ipAddress": "string",
+        "timestamp": "ISO 8601"
+      }
+    ],
+    "pagination": {
+      "count": 10,
+      "hasMore": true,
+      "nextToken": "base64string"
+    }
+  }
+}
+```
+
+---
+
+#### GET /admin/audit-logs/user/{userId}
+
+Get audit trail for a specific user. Requires admin role.
+
+**Path Parameters**: `userId` (string)
+**Query Parameters**: `limit`, `nextToken`, `startDate`, `endDate` (same as above)
+**Response**: Same structure as `/admin/audit-logs`
+
+---
+
+#### GET /admin/audit-logs/entity/{entityType}/{entityId}
+
+Get audit trail for a specific entity. Requires admin role.
+
+**Path Parameters**:
+- `entityType`: One of session, search, candidate, shortlist, requirement, client, user, config
+- `entityId`: The entity's ID
+
+**Query Parameters**: `limit`, `nextToken`
+**Response**: Same structure as `/admin/audit-logs`
+
+---
+
 ## Webhook Events (Future)
 
 For future integrations, the system can emit webhook events:

@@ -5,6 +5,7 @@ import { searchCandidates } from '../../lib/dynamodb.js';
 import { normalizeSkill, normalizeSkills } from '../../lib/skillNormalizer.js';
 import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, parseSearchLocations } from '../../lib/matchScoring.js';
 import { withOptionalAuth, type OptionalAuthEvent } from '../../lib/auth.js';
+import { logAuditEvent } from '../../lib/audit.js';
 import type { CandidateSearchResult, SearchResponse, SearchCriteria } from '../../types/index.js';
 
 async function handleRequest(
@@ -195,6 +196,15 @@ async function handleRequest(
       },
       totalMatches: scoredCandidates.length,
     };
+
+    if (event.auth) {
+      logAuditEvent(event.auth, event, {
+        action: 'CANDIDATE_SEARCH',
+        entityType: 'search',
+        entityId: 'search',
+        metadata: { resultCount: scoredCandidates.length },
+      });
+    }
 
     return success(response);
   } catch (err) {

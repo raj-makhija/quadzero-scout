@@ -4,6 +4,7 @@ import { validate, formatZodErrors, CheckDuplicateRequestSchema } from '../../li
 import { getActiveRequirementsByClient } from '../../lib/dynamodb.js';
 import { compareRequirements } from '../../lib/llm/index.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import { logAuditEvent } from '../../lib/audit.js';
 
 async function handleRequest(
   event: AuthenticatedEvent
@@ -67,6 +68,13 @@ async function handleRequest(
       },
       existingSummaries
     );
+
+    logAuditEvent(event.auth, event, {
+      action: 'REQUIREMENT_CHECK_DUPLICATE',
+      entityType: 'requirement',
+      entityId: 'check',
+      metadata: { clientName, duplicatesFound: duplicates.length },
+    });
 
     return success({ duplicates });
   } catch (err) {

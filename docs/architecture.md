@@ -788,3 +788,16 @@ The pricing engine is a deterministic module that generates recommended billing 
 - **Audit flags**: `marginUplifted`, `marginConstrained`, `contributionCapped`, `variableMarkupAdjusted` provide transparency into pricing decisions.
 - **4-band experience mapping**: Simplified from the 7-level ATS seniority system. Uses years as the primary discriminator (0-4: junior, 5-8: mid, 9-12: senior, 12+: architect).
 - **INR-centric**: All calculations in INR. CTC input is LPA (Lakhs Per Annum), converted to monthly (÷12). Hourly assumes 160 hours/month.
+
+## Audit Trail
+
+The platform includes a centralized audit trail that tracks all recruiter and admin actions in a dedicated `AuditLog` DynamoDB table. Key design decisions:
+
+- **Fire-and-forget logging**: Audit writes are non-blocking — the DynamoDB PutItem is initiated but not awaited, ensuring zero impact on API response latency.
+- **Partition strategy**: PK = `USER#{userId}` distributes writes across partitions. SK = `{timestamp}#{uuid}` provides chronological ordering.
+- **Three query patterns** via GSIs:
+  1. By user (primary key) — "show me everything this recruiter did"
+  2. By entity (EntityIndex GSI) — "who touched this candidate/requirement?"
+  3. By action+date (ActionTypeIndex GSI) — "all resume downloads on 2026-03-16"
+- **Auto-expiry**: TTL of 365 days automatically removes old audit records.
+- **25 tracked event types** covering sign-ins, searches, resume downloads, shortlisting, screening, requirement CRUD, client management, and admin actions.

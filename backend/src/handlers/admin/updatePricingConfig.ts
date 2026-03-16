@@ -3,6 +3,7 @@ import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, UpdatePricingConfigRequestSchema } from '../../lib/validation.js';
 import { savePricingConfig } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import { logAuditEvent } from '../../lib/audit.js';
 
 async function handleRequest(
   event: AuthenticatedEvent
@@ -32,6 +33,13 @@ async function handleRequest(
     const userId = event.auth.userId;
 
     const version = await savePricingConfig(pricingConfig, userId, description);
+
+    logAuditEvent(event.auth, event, {
+      action: 'PRICING_CONFIG_UPDATE',
+      entityType: 'config',
+      entityId: 'pricing',
+      metadata: { version },
+    });
 
     return success({ version });
   } catch (err) {
