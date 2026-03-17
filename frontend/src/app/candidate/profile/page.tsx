@@ -485,6 +485,22 @@ export default function ProfilePage() {
                           ))}
                         </div>
 
+                        {/* Roles */}
+                        {match.roles && match.roles.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mb-2">
+                            {match.roles.slice(0, 3).map((role) => (
+                              <span key={role} className="badge bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 text-xs">
+                                {role}
+                              </span>
+                            ))}
+                            {match.roles.length > 3 && (
+                              <span className="badge bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 text-xs">
+                                +{match.roles.length - 3} more
+                              </span>
+                            )}
+                          </div>
+                        )}
+
                         {/* Match indicators */}
                         <div className="flex flex-wrap gap-3 text-xs text-gray-500 dark:text-gray-400">
                           <span className={match.matchDetails.experienceMatch ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}>
@@ -639,6 +655,16 @@ export default function ProfilePage() {
                           <p className="font-medium text-gray-900 dark:text-gray-100">
                             {selectedRequirement.parsedCriteria.seniority.map(formatSeniority).join(', ')}
                           </p>
+                        </div>
+                      )}
+                      {selectedRequirement.parsedCriteria.roles && selectedRequirement.parsedCriteria.roles.length > 0 && (
+                        <div>
+                          <label className="text-gray-500 dark:text-gray-400">Roles</label>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {selectedRequirement.parsedCriteria.roles.map((role) => (
+                              <span key={role} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">{role}</span>
+                            ))}
+                          </div>
                         </div>
                       )}
                       {selectedRequirement.parsedCriteria.location && (

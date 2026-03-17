@@ -37,6 +37,7 @@ async function handleRequest(
       paymentTermsDays: item.payment_terms_days,
       jobTitle: item.job_title,
       mustHaveSkills: item.parsed_criteria?.mustHaveSkills || [],
+      roles: item.parsed_criteria?.roles || [],
       status: item.status,
       createdAt: item.created_at,
       requestCount: item.request_count || 1,

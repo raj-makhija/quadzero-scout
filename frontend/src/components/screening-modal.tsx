@@ -11,6 +11,7 @@ import {
   CANDIDATE_ENGAGEMENT_OPTIONS,
   formatDate,
 } from '@/lib/utils';
+import ScreeningHistoryPanel from '@/components/screening-history-panel';
 
 interface ScreeningModalProps {
   candidate?: CandidateSearchResult;
@@ -30,6 +31,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   // Core fields
   const [phone, setPhone] = useState('');
@@ -246,6 +248,15 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
   ]);
 
   return (
+    <>
+    {showHistory && (
+      <ScreeningHistoryPanel
+        candidateId={resolvedCandidateId}
+        candidateName={resolvedCandidateName}
+        mode="modal"
+        onClose={() => setShowHistory(false)}
+      />
+    )}
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black bg-opacity-50" onClick={onClose} />
@@ -263,6 +274,13 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
               {candidate?.lastScreenedAt && (
                 <span className="ml-2">
                   &middot; Last screened: {formatDate(candidate.lastScreenedAt)}
+                  <button
+                    type="button"
+                    onClick={() => setShowHistory(true)}
+                    className="ml-2 text-primary-600 dark:text-primary-400 hover:underline"
+                  >
+                    View History
+                  </button>
                 </span>
               )}
             </p>
@@ -659,6 +677,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
         </div>
       </div>
     </div>
+    </>
   );
 }
 

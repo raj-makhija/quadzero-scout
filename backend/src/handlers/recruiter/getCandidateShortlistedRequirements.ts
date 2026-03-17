@@ -11,6 +11,7 @@ interface ShortlistedRequirement {
   jobTitle?: string;
   engagementModel: string;
   mustHaveSkills: string[];
+  roles?: string[];
   taggedAt: string;
   taggedBy: string;
   notes?: string;
@@ -52,6 +53,7 @@ async function handleRequest(
           jobTitle: req.job_title ?? undefined,
           engagementModel: req.engagement_model,
           mustHaveSkills: req.parsed_criteria?.mustHaveSkills || [],
+          roles: req.parsed_criteria?.roles || [],
           taggedAt: entry.tagged_at,
           taggedBy: entry.tagged_by,
           notes: entry.notes ?? undefined,

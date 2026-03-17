@@ -60,6 +60,28 @@ vi.mock('../../lib/dynamodb.js', () => ({
     if (years <= 15) return '11-15';
     return '16+';
   }),
+  getRecentProfiles: vi.fn().mockResolvedValue([
+    {
+      candidate_id: 'cand_1',
+      full_name: 'Alice Smith',
+      primary_skills: ['react', 'nodejs'],
+      total_experience: 6,
+      seniority: 'senior',
+      location: 'Bangalore, India',
+      last_updated: '2026-03-17T10:00:00Z',
+      created_at: '2026-03-10T08:00:00Z',
+    },
+    {
+      candidate_id: 'cand_2',
+      full_name: 'Bob Jones',
+      primary_skills: ['python'],
+      total_experience: 2,
+      seniority: 'junior',
+      location: 'Mumbai, India',
+      last_updated: '2026-03-16T15:00:00Z',
+      created_at: '2026-03-11T09:00:00Z',
+    },
+  ]),
 }));
 
 vi.mock('../../lib/llm/index.js', () => ({
@@ -131,7 +153,8 @@ import { handler as originalResumeUrlHandler } from '../recruiter/originalResume
 import { handler as saveSearchHandler } from '../recruiter/saveSearch.js';
 import { handler as getSearchesHandler } from '../recruiter/getSearches.js';
 import { handler as deleteSearchHandler } from '../recruiter/deleteSearch.js';
-import { getCandidateById, getSavedSearches } from '../../lib/dynamodb.js';
+import { handler as listRecentProfilesHandler } from '../recruiter/listRecentProfiles.js';
+import { getCandidateById, getSavedSearches, getRecentProfiles } from '../../lib/dynamodb.js';
 import { parseJobDescription } from '../../lib/llm/index.js';
 import { generateDownloadUrl } from '../../lib/s3.js';
 
@@ -766,5 +789,55 @@ describe('DELETE /recruiter/search/{searchId}', () => {
     const event = makeEvent({ pathParameters: {} });
     const result = await deleteSearchHandler(event);
     expect(result.statusCode).toBe(400);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /recruiter/recent-profiles (listRecentProfiles handler)
+// ---------------------------------------------------------------------------
+
+describe('GET /recruiter/recent-profiles', () => {
+  beforeEach(() => {
+    vi.mocked(getRecentProfiles).mockClear();
+  });
+
+  it('returns the latest profiles sorted by lastUpdated descending', async () => {
+    const event = makeEvent({});
+    const result = await listRecentProfilesHandler(event);
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.data.profiles).toHaveLength(2);
+    expect(body.data.profiles[0].candidateId).toBe('cand_1');
+    expect(body.data.profiles[0].fullName).toBe('Alice Smith');
+    expect(body.data.profiles[0].lastUpdated).toBe('2026-03-17T10:00:00Z');
+    expect(body.data.profiles[1].candidateId).toBe('cand_2');
+    expect(getRecentProfiles).toHaveBeenCalledWith(10);
+  });
+
+  it('passes custom limit to getRecentProfiles (capped at 50)', async () => {
+    const event = makeEvent({
+      queryStringParameters: { limit: '25' },
+    });
+    await listRecentProfilesHandler(event);
+    expect(getRecentProfiles).toHaveBeenCalledWith(25);
+  });
+
+  it('caps limit at 50', async () => {
+    const event = makeEvent({
+      queryStringParameters: { limit: '100' },
+    });
+    await listRecentProfilesHandler(event);
+    expect(getRecentProfiles).toHaveBeenCalledWith(50);
+  });
+
+  it('returns empty array when no profiles exist', async () => {
+    vi.mocked(getRecentProfiles).mockResolvedValueOnce([]);
+    const event = makeEvent({});
+    const result = await listRecentProfilesHandler(event);
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.data.profiles).toHaveLength(0);
   });
 });

@@ -56,6 +56,7 @@ Stores candidate profile data extracted from resumes and edited by candidates.
 | formatted_at | String | No | ISO 8601 timestamp of formatting |
 | created_at | String | Yes | ISO 8601 timestamp |
 | last_updated | String | Yes | ISO 8601 timestamp |
+| _type | String | Yes | Fixed value `"PROFILE"` for RecentProfilesIndex GSI partitioning |
 
 **Example Item:**
 ```json
@@ -141,7 +142,15 @@ For filtering candidates by experience range.
 
 *Buckets: 0-2, 3-5, 6-10, 11-15, 16+*
 
-> **Recent Profiles Query Pattern:** The `GET /recruiter/recent-profiles` endpoint retrieves recently updated profiles via a full-table Scan, sorted client-side by `last_updated` descending, capped at 500 items scanned. This is adequate at current scale but should be replaced with a dedicated GSI (e.g., partition key `_type = "PROFILE"`, sort key `last_updated`) if the table exceeds ~1000 items.
+#### GSI: RecentProfilesIndex
+For retrieving the most recently updated profiles efficiently.
+
+| Attribute | Key Type |
+|-----------|----------|
+| _type | Partition Key |
+| last_updated | Sort Key |
+
+All items have `_type = "PROFILE"`, creating a single partition sorted by `last_updated`. The `GET /recruiter/recent-profiles` endpoint queries this index with `ScanIndexForward = false` to retrieve the N most recently updated profiles in a single query.
 
 ---
 
@@ -468,6 +477,7 @@ Each entry in the `change_history` array records a single update operation, capt
     "seniority": ["senior"],
     "location": null,
     "remote": false,
+    "roles": ["Senior React Developer"],
     "coreSkill": "React"
   },
   "status": "active",
@@ -1088,6 +1098,7 @@ export const SearchCriteriaSchema = z.object({
   location: z.string().optional(),
   remote: z.boolean().optional(),
   industries: z.array(z.string()).optional(),
+  roles: z.array(z.string()).optional(),
   maxBudgetLpa: z.number().min(0).optional()
 });
 ```

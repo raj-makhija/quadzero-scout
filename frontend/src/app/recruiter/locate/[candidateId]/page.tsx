@@ -36,6 +36,7 @@ import {
   getScreeningStatus,
   isScreeningExpired,
 } from '@/components/screening-modal';
+import ScreeningHistoryPanel from '@/components/screening-history-panel';
 
 export default function CandidateProfilePage() {
   const params = useParams();
@@ -483,6 +484,9 @@ export default function CandidateProfilePage() {
           )}
         </div>
 
+        {/* Screening History */}
+        <ScreeningHistoryPanel candidateId={candidateId} mode="inline" />
+
         {/* Shortlisted JDs */}
         <div className="card mb-4">
           <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
@@ -620,6 +624,20 @@ function ShortlistedRequirementRow({
               ))}
             </div>
           )}
+          {req.roles && req.roles.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {req.roles.slice(0, 3).map((role) => (
+                <span key={role} className="badge bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 text-xs">
+                  {role}
+                </span>
+              ))}
+              {req.roles.length > 3 && (
+                <span className="badge bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 text-xs">
+                  +{req.roles.length - 3} more
+                </span>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex-shrink-0">
           {isConfirming ? (
@@ -715,6 +733,20 @@ function SuitableRequirementRow({
                   {skill}
                 </span>
               ))}
+            </div>
+          )}
+          {req.roles && req.roles.length > 0 && (
+            <div className="flex flex-wrap gap-1 mb-2">
+              {req.roles.slice(0, 3).map((role) => (
+                <span key={role} className="badge bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 text-xs">
+                  {role}
+                </span>
+              ))}
+              {req.roles.length > 3 && (
+                <span className="badge bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 text-xs">
+                  +{req.roles.length - 3} more
+                </span>
+              )}
             </div>
           )}
           {/* Inline shortlist panel */}

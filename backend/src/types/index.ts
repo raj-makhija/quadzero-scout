@@ -120,6 +120,7 @@ export interface CandidateItem {
   last_screened_by_name?: string;
   custom_fields?: Record<string, string | number>;
   cover_letter?: string;
+  _type?: string;
   created_at: string;
   last_updated: string;
 }
@@ -487,6 +488,7 @@ export interface RequirementSummary {
   paymentTermsDays?: number;
   jobTitle?: string;
   mustHaveSkills: string[];
+  roles?: string[];
   status: string;
   createdAt: string;
   requestCount?: number;
@@ -675,6 +677,7 @@ export interface MatchedRequirement {
   budgetMaxLpa?: number;
   mustHaveSkills: string[];
   goodToHaveSkills: string[];
+  roles?: string[];
   matchScore: number;
   matchDetails: {
     mustHaveMatched: string[];
