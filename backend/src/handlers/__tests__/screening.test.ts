@@ -31,6 +31,11 @@ vi.mock('../../lib/dynamodb.js', () => ({
   getExperienceBucket: (...args: unknown[]) => mockGetExperienceBucket(...args),
 }));
 
+vi.mock('../../lib/ctcConversion.js', async () => {
+  const actual = await vi.importActual('../../lib/ctcConversion.js') as Record<string, unknown>;
+  return actual;
+});
+
 vi.mock('../../lib/skillNormalizer.js', () => ({
   normalizeSkills: vi.fn((skills: string[]) => skills.map(s => s.toLowerCase())),
 }));
@@ -191,6 +196,77 @@ describe('screenCandidate handler', () => {
       pan_number: 'ABCDE1234F',
       date_of_birth: '1990-05-15',
     });
+  });
+
+  it('should compute expectedCtc server-side when expectedCtcType is negotiable', async () => {
+    mockGetCandidateById.mockResolvedValue({
+      ...mockCandidate,
+      current_ctc: 10,
+      total_experience: 6,
+    });
+
+    const event = makeEvent({
+      candidateId: 'cand_1',
+      updatedValues: {
+        currentCtc: 10,
+        expectedCtcType: 'negotiable',
+      },
+      notes: 'Candidate open to negotiation',
+    });
+
+    const result = await handler(event);
+    const body = JSON.parse(result.body);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.data.fieldsUpdated).toContain('expected_ctc');
+    expect(body.data.fieldsUpdated).toContain('expected_ctc_type');
+
+    // 6 years experience → 25% increment: 10 * 1.25 = 12.5
+    const updateCall = mockUpdateCandidateProfileFields.mock.calls[0];
+    expect(updateCall[1].expected_ctc).toBe(12.5);
+    expect(updateCall[1].expected_ctc_type).toBe('negotiable');
+  });
+
+  it('should return 400 when negotiable expectedCtcType but no currentCtc', async () => {
+    mockGetCandidateById.mockResolvedValue({
+      ...mockCandidate,
+      current_ctc: undefined,
+    });
+
+    const event = makeEvent({
+      candidateId: 'cand_1',
+      updatedValues: {
+        expectedCtcType: 'negotiable',
+      },
+      notes: 'Missing CTC',
+    });
+
+    const result = await handler(event);
+    expect(result.statusCode).toBe(400);
+  });
+
+  it('should use existing candidate currentCtc for negotiable if not in updatedValues', async () => {
+    mockGetCandidateById.mockResolvedValue({
+      ...mockCandidate,
+      current_ctc: 15,
+      total_experience: 2,
+    });
+
+    const event = makeEvent({
+      candidateId: 'cand_1',
+      updatedValues: {
+        expectedCtcType: 'negotiable',
+      },
+      notes: 'Using existing CTC',
+    });
+
+    const result = await handler(event);
+    const body = JSON.parse(result.body);
+
+    expect(result.statusCode).toBe(200);
+    // 2 years experience → 20% increment: 15 * 1.20 = 18
+    const updateCall = mockUpdateCandidateProfileFields.mock.calls[0];
+    expect(updateCall[1].expected_ctc).toBe(18);
   });
 
   it('should update experience_bucket when totalExperience changes', async () => {

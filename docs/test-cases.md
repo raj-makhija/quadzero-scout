@@ -2461,6 +2461,68 @@ All functional and non-functional aspects of Quadzero Scout covering:
 
 ---
 
+## 22. Module 21: Negotiable Expected CTC in Screening
+
+### TC-NEGCTC-001: Screen candidate with explicit expectedCtcType
+- **Priority:** P0
+- **Type:** Integration
+- **Steps:** Call `POST /recruiter/screen-candidate` with `expectedCtcType: "explicit"` and `expectedCtc: 25.0`
+- **Expected:** Profile updated with `expected_ctc: 25.0` and `expected_ctc_type: "explicit"`
+
+### TC-NEGCTC-002: Screen candidate with negotiable expectedCtcType
+- **Priority:** P0
+- **Type:** Integration
+- **Steps:** Call `POST /recruiter/screen-candidate` with `expectedCtcType: "negotiable"`, `currentCtc: 10`, candidate has `total_experience: 6`
+- **Expected:** Server computes `expected_ctc: 12.5` (10 * 1.25 for 3-8 yrs bracket), stores `expected_ctc_type: "negotiable"`
+
+### TC-NEGCTC-003: Negotiable without currentCtc returns 400
+- **Priority:** P0
+- **Type:** Integration
+- **Steps:** Call `POST /recruiter/screen-candidate` with `expectedCtcType: "negotiable"` but no `currentCtc` and candidate has no existing `current_ctc`
+- **Expected:** 400 error — Current CTC is required for negotiable calculation
+
+### TC-NEGCTC-004: Negotiable uses existing candidate currentCtc if not in request
+- **Priority:** P1
+- **Type:** Integration
+- **Steps:** Candidate has `current_ctc: 15`, `total_experience: 2`. Call with `expectedCtcType: "negotiable"` without `currentCtc` in updatedValues
+- **Expected:** Server uses existing `current_ctc: 15`, computes `expected_ctc: 18` (15 * 1.20 for 0-3 yrs)
+
+### TC-NEGCTC-005: calculateNegotiableCtc bracket boundaries
+- **Priority:** P1
+- **Type:** Unit
+- **Steps:** Test `calculateNegotiableCtc()` at boundaries: 0 yrs (20%), 3 yrs (20%), 3.1 yrs (25%), 8 yrs (25%), 8.1 yrs (30%)
+- **Expected:** Correct increment applied at each boundary, rounded to 2 decimal places
+
+### TC-NEGCTC-006: Screening modal shows mode selector
+- **Priority:** P1
+- **Type:** UI Component
+- **Steps:** Open screening modal for a candidate
+- **Expected:** Expected CTC field shows a dropdown with "Enter amount" and "Negotiable (auto-calculate)" options
+
+### TC-NEGCTC-007: Negotiable mode shows computed preview
+- **Priority:** P1
+- **Type:** UI Component
+- **Steps:** Select "Negotiable" mode with current CTC = 10 and experience = 6 years
+- **Expected:** Shows read-only preview: "12.5 LPA (10 LPA + 25% based on experience)"
+
+### TC-NEGCTC-008: Screening history shows expectedCtcType changes
+- **Priority:** P2
+- **Type:** UI Component
+- **Steps:** View screening history for a candidate who was screened with negotiable CTC
+- **Expected:** Field change diff shows `Expected CTC Type: Negotiable (auto-calculated)`
+
+### TC-NEGCTC-009: PricingPanel shows auto-calculated badge
+- **Priority:** P2
+- **Type:** UI Component
+- **Steps:** Open pricing panel for a candidate with `expectedCtcType: "negotiable"`
+- **Expected:** "CTC auto-calculated" badge appears next to the Billing Rate Calculator heading
+
+### TC-NEGCTC-010: Search results include expectedCtcType
+- **Priority:** P2
+- **Type:** Integration
+- **Steps:** Search for candidates; one has `expected_ctc_type: "negotiable"`
+- **Expected:** Response includes `expectedCtcType: "negotiable"` in candidate result
+
 ## Traceability Matrix Summary
 
 | Module | Test Count | P0 | P1 | P2 | P3 |
@@ -2486,4 +2548,5 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | Notify Me — Notification Service | 20 | 5 | 8 | 7 | 0 |
 | Update Requirement with Audit Trail | 33 | 13 | 18 | 2 | 0 |
 | Session Timeout / Auto-Logout | 22 | 13 | 8 | 1 | 0 |
-| **Total** | **330** | **74** | **128** | **96** | **32** |
+| Negotiable Expected CTC | 10 | 3 | 4 | 3 | 0 |
+| **Total** | **340** | **77** | **132** | **99** | **32** |

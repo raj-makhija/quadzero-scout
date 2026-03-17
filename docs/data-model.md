@@ -46,6 +46,7 @@ Stores candidate profile data extracted from resumes and edited by candidates.
 | summary | String | No | Profile summary |
 | current_ctc | Number | No | Current CTC in LPA (Lakhs Per Annum) |
 | expected_ctc | Number | No | Expected CTC in LPA |
+| expected_ctc_type | String | No | How expected CTC was determined: `"explicit"` (entered manually) or `"negotiable"` (auto-calculated from current CTC + experience-based increment). Defaults to `"explicit"` if absent. |
 | custom_fields | Map\<String, String\|Number\> | No | Dynamic key-value pairs for additional data points (e.g., date_of_birth, pan_number). Populated by recruiters when requirements request additional candidate information. |
 | cover_letter | String | No | Cover letter or supplementary text. For email-ingested candidates, this is the plain-text email body (HTML stripped). |
 | last_screened_at | String | No | ISO 8601 timestamp of last screening |
@@ -92,6 +93,7 @@ Stores candidate profile data extracted from resumes and edited by candidates.
   "summary": "Experienced full-stack developer specializing in React and Node.js",
   "current_ctc": 18.5,
   "expected_ctc": 25.0,
+  "expected_ctc_type": "explicit",
   "custom_fields": {
     "date_of_birth": "1996-05-14",
     "pan_number": "ABCDE1234F"

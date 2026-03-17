@@ -14,6 +14,7 @@ interface PricingPanelProps {
   candidateExpectedCtcLpa: number | undefined;
   candidateCurrentCtcLpa: number | undefined;
   candidateExperienceYears: number;
+  expectedCtcType?: string;
   isInternalRecruiter?: boolean;
   onCtcUpdated?: (expectedCtc: number, currentCtc?: number) => void;
   requirementContext?: RequirementContext;
@@ -38,6 +39,7 @@ export function PricingPanel({
   candidateExpectedCtcLpa,
   candidateCurrentCtcLpa,
   candidateExperienceYears,
+  expectedCtcType,
   isInternalRecruiter,
   onCtcUpdated,
   requirementContext,
@@ -210,7 +212,14 @@ export function PricingPanel({
 
   return (
     <div>
-      <h3 className="font-medium text-gray-900 dark:text-gray-100 mb-4">Billing Rate Calculator</h3>
+      <h3 className="font-medium text-gray-900 dark:text-gray-100 mb-4">
+        Billing Rate Calculator
+        {expectedCtcType === 'negotiable' && (
+          <span className="ml-2 text-xs font-normal px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full">
+            CTC auto-calculated
+          </span>
+        )}
+      </h3>
 
       {/* Input Form */}
       <div className="grid grid-cols-2 gap-3 mb-4">

@@ -107,6 +107,7 @@ async function handleRequest(
           engagementModel: candidate.engagement_model || 'either',
           currentCtc: candidate.current_ctc,
           expectedCtc: candidate.expected_ctc,
+          expectedCtcType: candidate.expected_ctc_type,
           matchScore: score,
           matchDetails: details,
           lastUpdated: candidate.last_updated,

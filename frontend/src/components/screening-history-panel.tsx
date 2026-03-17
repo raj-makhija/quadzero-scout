@@ -30,6 +30,7 @@ const FIELD_LABELS: Record<string, string> = {
   summary: 'Summary',
   current_ctc: 'Current CTC',
   expected_ctc: 'Expected CTC',
+  expected_ctc_type: 'Expected CTC Type',
   custom_fields: 'Custom Fields',
 };
 
@@ -56,6 +57,7 @@ function formatFieldValue(key: string, value: unknown): string {
       .join(', ');
   }
 
+  if (key === 'expected_ctc_type') return value === 'negotiable' ? 'Negotiable (auto-calculated)' : 'Explicit';
   if (key === 'current_ctc' || key === 'expected_ctc') return `${value} LPA`;
   if (key === 'total_experience') return `${value} years`;
   if (key === 'seniority') return formatSeniority(String(value));

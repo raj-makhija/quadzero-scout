@@ -8,9 +8,11 @@ import {
   getMatchScoreColor,
   getMatchScoreBgColor,
   truncateText,
+  calculateNegotiableCtc,
   SUPPORTED_FILE_TYPES,
   SENIORITY_OPTIONS,
   AVAILABILITY_OPTIONS,
+  EXPECTED_CTC_MODE_OPTIONS,
 } from '../utils';
 
 // ---------------------------------------------------------------------------
@@ -241,5 +243,36 @@ describe('AVAILABILITY_OPTIONS', () => {
     expect(values).toEqual([
       'immediate', '1_week', '2_weeks', '1_month', '2_months', '3_months', 'negotiable',
     ]);
+  });
+});
+
+describe('EXPECTED_CTC_MODE_OPTIONS', () => {
+  it('has 2 options: explicit and negotiable', () => {
+    expect(EXPECTED_CTC_MODE_OPTIONS).toHaveLength(2);
+    const values = EXPECTED_CTC_MODE_OPTIONS.map((o) => o.value);
+    expect(values).toEqual(['explicit', 'negotiable']);
+  });
+});
+
+describe('calculateNegotiableCtc()', () => {
+  it('applies 20% increment for 0-3 years experience', () => {
+    expect(calculateNegotiableCtc(10, 0)).toBe(12);
+    expect(calculateNegotiableCtc(10, 2)).toBe(12);
+    expect(calculateNegotiableCtc(10, 3)).toBe(12);
+  });
+
+  it('applies 25% increment for 3-8 years experience', () => {
+    expect(calculateNegotiableCtc(10, 3.1)).toBe(12.5);
+    expect(calculateNegotiableCtc(10, 5)).toBe(12.5);
+    expect(calculateNegotiableCtc(10, 8)).toBe(12.5);
+  });
+
+  it('applies 30% increment for 8+ years experience', () => {
+    expect(calculateNegotiableCtc(10, 8.1)).toBe(13);
+    expect(calculateNegotiableCtc(10, 15)).toBe(13);
+  });
+
+  it('rounds to 2 decimal places', () => {
+    expect(calculateNegotiableCtc(7.3, 5)).toBe(9.13); // 7.3 * 1.25 = 9.125 → 9.13
   });
 });

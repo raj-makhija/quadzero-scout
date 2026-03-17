@@ -293,6 +293,7 @@ export const ScreenCandidateRequestSchema = z.object({
     summary: z.string().max(2000).optional(),
     currentCtc: z.number().min(0).max(500).nullable().optional(),
     expectedCtc: z.number().min(0).max(500).nullable().optional(),
+    expectedCtcType: z.enum(['explicit', 'negotiable']).optional(),
     customFields: z.record(
       z.string(),
       z.union([z.string().max(500), z.number()])
