@@ -432,6 +432,7 @@ Bulk Upload:
 - The 15-day expiry check is enforced on the backend in the `POST /recruiter/shortlist` handler
 - Screening records are immutable audit entries; each screening creates a new record
 - If a requirement defines `additional_fields`, these are rendered in the screening modal as "Requirement Data Points" and saved to the candidate's `custom_fields` via the `customFields` payload
+- **Screening History UI**: The `ScreeningHistoryPanel` component (`frontend/src/components/screening-history-panel.tsx`) displays the full audit trail of past screenings for a candidate. It operates in two modes: (1) **Inline mode** — rendered as a collapsible card on the Locate Profile page (`/recruiter/locate/[candidateId]`) between "Full Profile Details" and "Shortlisted For" sections; (2) **Modal mode** — accessible via a "View History" link in the screening modal header (next to the "Last screened" date). Each screening entry shows the timestamp, screener email, count of fields updated, and a truncated notes preview. Expanding an entry reveals full notes and a before/after diff table for all changed fields. Data is fetched via `GET /recruiter/screening-history/{candidateId}`.
 
 **Key Implementation Details:**
 
