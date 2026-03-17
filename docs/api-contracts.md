@@ -436,6 +436,7 @@ Authorization: Bearer <jwe_token>
     "roles": ["Full Stack Developer", "Frontend Lead"],
     "currentCtc": 18.5,
     "expectedCtc": 25.0,
+    "expectedCtcType": "explicit",
     "resumeS3Key": "resumes/2024/01/abc123-john_doe_resume.pdf",
     "formattedResumeS3Key": "formatted-resumes/abc123.pdf",
     "coverLetter": "Dear Hiring Manager, I am writing to express my interest in the Full Stack Developer position...",
@@ -637,6 +638,7 @@ Authorization: Bearer <jwe_token> (optional)
         "engagementModel": "either",
         "currentCtc": 18.5,
         "expectedCtc": 25.0,
+        "expectedCtcType": "explicit",
         "lastScreenedAt": "2024-01-14T09:00:00Z",
         "matchScore": 92,
         "matchDetails": {
@@ -1649,6 +1651,7 @@ Authorization: Bearer <jwe_token>
     "availability": "immediate",
     "primarySkills": ["javascript", "typescript", "react", "nodejs"],
     "expectedCtc": 25.0,
+    "expectedCtcType": "explicit",
     "customFields": {
       "date_of_joining": "2024-03-01"
     }
@@ -1671,7 +1674,8 @@ Authorization: Bearer <jwe_token>
 
 **Validation Rules:**
 - `candidateId`: Required, string
-- `updatedValues`: Required, object containing one or more of: `fullName`, `email`, `phone`, `location`, `primarySkills`, `primarySkillYears`, `secondarySkills`, `totalExperience`, `seniority`, `availability`, `engagementModel`, `industries`, `roles`, `education`, `certifications`, `summary`, `currentCtc`, `expectedCtc`, `customFields`
+- `updatedValues`: Required, object containing one or more of: `fullName`, `email`, `phone`, `location`, `primarySkills`, `primarySkillYears`, `secondarySkills`, `totalExperience`, `seniority`, `availability`, `engagementModel`, `industries`, `roles`, `education`, `certifications`, `summary`, `currentCtc`, `expectedCtc`, `expectedCtcType`, `customFields`
+- `updatedValues.expectedCtcType`: Optional, enum: `"explicit"` (default, manually entered) or `"negotiable"` (auto-calculated from current CTC + experience-based increment: 0-3 yrs +20%, 3-8 yrs +25%, 8+ yrs +30%). When `"negotiable"`, the server computes `expectedCtc` from `currentCtc` and `totalExperience` — requires both to be present.
 - `updatedValues.customFields`: Optional, `Record<string, string | number>` map of custom field key-value pairs to merge into the candidate's existing custom fields
 - `notes`: Optional, string, max 2000 characters
 

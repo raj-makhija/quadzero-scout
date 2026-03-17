@@ -4,6 +4,7 @@ import { validate, formatZodErrors, ScreenCandidateRequestSchema } from '../../l
 import { getCandidateById, saveScreening, updateCandidateProfileFields, getUserById } from '../../lib/dynamodb.js';
 import { getExperienceBucket } from '../../lib/dynamodb.js';
 import { normalizeSkills } from '../../lib/skillNormalizer.js';
+import { calculateNegotiableCtc } from '../../lib/ctcConversion.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
 import type { ScreeningItem, ScreeningProfileData } from '../../types/index.js';
@@ -28,6 +29,7 @@ const FIELD_MAP: Record<string, string> = {
   summary: 'summary',
   currentCtc: 'current_ctc',
   expectedCtc: 'expected_ctc',
+  expectedCtcType: 'expected_ctc_type',
 };
 
 async function handleRequest(
@@ -56,6 +58,19 @@ async function handleRequest(
     const candidate = await getCandidateById(candidateId);
     if (!candidate) {
       return error(ErrorCodes.NOT_FOUND, 'Candidate not found', 404);
+    }
+
+    // If expectedCtcType is 'negotiable', compute expectedCtc server-side
+    if (updatedValues.expectedCtcType === 'negotiable') {
+      const currentCtc = updatedValues.currentCtc ?? candidate.current_ctc;
+      const totalExp = updatedValues.totalExperience ?? candidate.total_experience;
+      if (currentCtc == null || currentCtc <= 0) {
+        return error(ErrorCodes.VALIDATION_ERROR, 'Current CTC is required to calculate negotiable expected CTC', 400);
+      }
+      if (totalExp == null) {
+        return error(ErrorCodes.VALIDATION_ERROR, 'Total experience is required to calculate negotiable expected CTC', 400);
+      }
+      updatedValues.expectedCtc = calculateNegotiableCtc(currentCtc, totalExp);
     }
 
     // Build previous values snapshot and DB update fields

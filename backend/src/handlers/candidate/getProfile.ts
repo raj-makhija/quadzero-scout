@@ -42,6 +42,7 @@ export async function handler(
       summary: candidate.summary,
       currentCtc: candidate.current_ctc,
       expectedCtc: candidate.expected_ctc,
+      expectedCtcType: candidate.expected_ctc_type,
       resumeS3Key: candidate.resume_s3_key,
       customFields: candidate.custom_fields || {},
       coverLetter: candidate.cover_letter,
