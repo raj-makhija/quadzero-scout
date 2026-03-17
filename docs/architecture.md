@@ -823,3 +823,17 @@ The platform includes a centralized audit trail that tracks all recruiter and ad
   3. By action+date (ActionTypeIndex GSI) — "all resume downloads on 2026-03-16"
 - **Auto-expiry**: TTL of 365 days automatically removes old audit records.
 - **25 tracked event types** covering sign-ins, searches, resume downloads, shortlisting, screening, requirement CRUD, client management, and admin actions.
+
+## CI/CD — Scheduled Deployment
+
+Automated daily deployment via GitHub Actions (`.github/workflows/scheduled-deploy.yml`).
+
+- **Schedule**: Runs at 1:00 AM IST (19:30 UTC) every day.
+- **Pipeline**: `check-changes` → `deploy-qa` → `deploy-prod` → `notify`
+  1. Compares branch HEADs; skips if no changes detected.
+  2. Merges `develop` → `qa`, pushes (Amplify auto-deploys frontend), then runs `npx serverless deploy --stage qa`.
+  3. Only if QA succeeds: merges `qa` → `main`, pushes, then runs `npx serverless deploy --stage prod`.
+  4. Reports deployment summary; fails the workflow if any deploy failed.
+- **Manual trigger**: Supports `workflow_dispatch` for on-demand runs from the GitHub Actions UI.
+- **Safety**: Sequential (prod blocked on QA success), concurrency group prevents overlapping runs, merge conflicts halt the pipeline.
+- **Secrets**: Requires `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` in GitHub repository secrets (IAM user with deploy permissions).

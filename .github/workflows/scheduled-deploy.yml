@@ -1,0 +1,127 @@
+name: Scheduled Deploy (QA + Prod)
+
+on:
+  schedule:
+    - cron: '30 19 * * *' # 19:30 UTC = 01:00 AM IST daily
+  workflow_dispatch: # Allow manual trigger
+
+concurrency:
+  group: scheduled-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  check-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      qa_has_changes: ${{ steps.check.outputs.qa_has_changes }}
+      prod_has_changes: ${{ steps.check.outputs.prod_has_changes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for changes between branches
+        id: check
+        run: |
+          git fetch origin develop qa main
+          QA_DIFF=$(git rev-list --count origin/develop...origin/qa)
+          PROD_DIFF=$(git rev-list --count origin/qa...origin/main)
+          echo "qa_has_changes=$( [ "$QA_DIFF" -gt 0 ] && echo true || echo false )" >> $GITHUB_OUTPUT
+          echo "prod_has_changes=$( [ "$PROD_DIFF" -gt 0 ] && echo true || echo false )" >> $GITHUB_OUTPUT
+          echo "QA changes: $QA_DIFF commits | Prod changes: $PROD_DIFF commits"
+
+  deploy-qa:
+    needs: check-changes
+    if: needs.check-changes.outputs.qa_has_changes == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: qa
+          fetch-depth: 0
+
+      - name: Merge develop into qa
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin develop
+          git merge origin/develop --no-edit
+          git push origin qa
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: infra/package-lock.json
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Deploy backend to QA
+        run: |
+          cd infra
+          npm ci
+          npx serverless deploy --stage qa
+
+  deploy-prod:
+    needs: [check-changes, deploy-qa]
+    if: |
+      always() &&
+      (needs.deploy-qa.result == 'success' || needs.deploy-qa.result == 'skipped') &&
+      needs.check-changes.outputs.prod_has_changes == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Merge qa into main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin qa
+          git merge origin/qa --no-edit
+          git push origin main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: infra/package-lock.json
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Deploy backend to Prod
+        run: |
+          cd infra
+          npm ci
+          npx serverless deploy --stage prod
+
+  notify:
+    needs: [check-changes, deploy-qa, deploy-prod]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deployment summary
+        run: |
+          echo "=== Scheduled Deployment Summary ==="
+          echo "QA changes detected: ${{ needs.check-changes.outputs.qa_has_changes }}"
+          echo "Prod changes detected: ${{ needs.check-changes.outputs.prod_has_changes }}"
+          echo "QA deploy result: ${{ needs.deploy-qa.result }}"
+          echo "Prod deploy result: ${{ needs.deploy-prod.result }}"
+
+          if [ "${{ needs.deploy-qa.result }}" = "failure" ] || [ "${{ needs.deploy-prod.result }}" = "failure" ]; then
+            echo "::error::Deployment failed! QA: ${{ needs.deploy-qa.result }}, Prod: ${{ needs.deploy-prod.result }}"
+            exit 1
+          fi
