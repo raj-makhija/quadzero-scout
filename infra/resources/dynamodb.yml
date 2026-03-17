@@ -20,6 +20,8 @@ Resources:
           AttributeType: S
         - AttributeName: email
           AttributeType: S
+        - AttributeName: _type
+          AttributeType: S
       KeySchema:
         - AttributeName: candidate_id
           KeyType: HASH
@@ -50,6 +52,14 @@ Resources:
           KeySchema:
             - AttributeName: email
               KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: RecentProfilesIndex
+          KeySchema:
+            - AttributeName: _type
+              KeyType: HASH
+            - AttributeName: last_updated
+              KeyType: RANGE
           Projection:
             ProjectionType: ALL
       Tags:

@@ -83,6 +83,7 @@ export async function handler(
         budgetMaxLpa: req.budget_max_lpa,
         mustHaveSkills: criteria.mustHaveSkills || [],
         goodToHaveSkills: criteria.goodToHaveSkills || [],
+        roles: criteria.roles || [],
         matchScore: score,
         matchDetails: {
           mustHaveMatched: details.mustHaveMatched,

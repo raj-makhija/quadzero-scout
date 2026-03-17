@@ -667,6 +667,7 @@ export interface SearchCriteria {
   location?: string;
   remote?: boolean;
   industries?: string[];
+  roles?: string[];
   maxBudgetLpa?: number;
 }
 
@@ -815,6 +816,7 @@ export interface RequirementSummary {
   paymentTermsDays?: number;
   jobTitle?: string;
   mustHaveSkills: string[];
+  roles?: string[];
   status: string;
   createdAt: string;
   requestCount?: number;
@@ -1037,6 +1039,7 @@ export interface MatchedRequirement {
   budgetMaxLpa?: number;
   mustHaveSkills: string[];
   goodToHaveSkills: string[];
+  roles?: string[];
   matchScore: number;
   matchDetails: {
     mustHaveMatched: string[];
@@ -1204,6 +1207,7 @@ export interface ShortlistedRequirement {
   jobTitle?: string;
   engagementModel: string;
   mustHaveSkills: string[];
+  roles?: string[];
   taggedAt: string;
   taggedBy: string;
   notes?: string;

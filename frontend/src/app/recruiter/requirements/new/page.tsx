@@ -560,6 +560,17 @@ export default function PostRequirementPage() {
                   </p>
                 </div>
                 <div>
+                  <label className="text-sm text-gray-500 dark:text-gray-400">Roles</label>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {parsedCriteria.roles && parsedCriteria.roles.length > 0
+                      ? parsedCriteria.roles.map((role) => (
+                          <span key={role} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">{role}</span>
+                        ))
+                      : <span className="text-sm text-gray-400">Not specified</span>
+                    }
+                  </div>
+                </div>
+                <div>
                   <label className="text-sm text-gray-500 dark:text-gray-400">Location</label>
                   <p className="text-sm mt-1">{parsedCriteria.location || 'Not specified'}</p>
                 </div>
