@@ -69,7 +69,7 @@ export async function saveCandidateProfile(candidate: CandidateItem): Promise<vo
   await docClient.send(
     new PutCommand({
       TableName: config.dynamodb.talentProfilesTable,
-      Item: candidate,
+      Item: { ...candidate, _type: 'PROFILE' },
     })
   );
 }
@@ -461,11 +461,13 @@ export async function updateCandidateFormattedResume(
       new UpdateCommand({
         TableName: config.dynamodb.talentProfilesTable,
         Key: { candidate_id: candidateId },
-        UpdateExpression: 'SET formatted_resume_s3_key = :key, formatted_at = :at, last_updated = :now',
+        UpdateExpression: 'SET formatted_resume_s3_key = :key, formatted_at = :at, last_updated = :now, #type = :type',
+        ExpressionAttributeNames: { '#type': '_type' },
         ExpressionAttributeValues: {
           ':key': formattedS3Key,
           ':at': now,
           ':now': now,
+          ':type': 'PROFILE',
         },
       })
     );
@@ -474,9 +476,11 @@ export async function updateCandidateFormattedResume(
       new UpdateCommand({
         TableName: config.dynamodb.talentProfilesTable,
         Key: { candidate_id: candidateId },
-        UpdateExpression: 'REMOVE formatted_resume_s3_key, formatted_at SET last_updated = :now',
+        UpdateExpression: 'REMOVE formatted_resume_s3_key, formatted_at SET last_updated = :now, #type = :type',
+        ExpressionAttributeNames: { '#type': '_type' },
         ExpressionAttributeValues: {
           ':now': now,
+          ':type': 'PROFILE',
         },
       })
     );
@@ -491,10 +495,11 @@ export async function updateCandidateCtc(
 ): Promise<void> {
   const now = new Date().toISOString();
 
-  const expressionParts = ['expected_ctc = :ectc', 'last_updated = :now'];
+  const expressionParts = ['expected_ctc = :ectc', 'last_updated = :now', '#type = :type'];
   const values: Record<string, unknown> = {
     ':ectc': expectedCtc,
     ':now': now,
+    ':type': 'PROFILE',
   };
 
   if (currentCtc !== undefined) {
@@ -507,6 +512,7 @@ export async function updateCandidateCtc(
       TableName: config.dynamodb.talentProfilesTable,
       Key: { candidate_id: candidateId },
       UpdateExpression: `SET ${expressionParts.join(', ')}`,
+      ExpressionAttributeNames: { '#type': '_type' },
       ExpressionAttributeValues: values,
       ConditionExpression: 'attribute_exists(candidate_id)',
     })
@@ -522,10 +528,12 @@ export async function updateCandidateCustomFields(
     new UpdateCommand({
       TableName: config.dynamodb.talentProfilesTable,
       Key: { candidate_id: candidateId },
-      UpdateExpression: 'SET custom_fields = :cf, last_updated = :now',
+      UpdateExpression: 'SET custom_fields = :cf, last_updated = :now, #type = :type',
+      ExpressionAttributeNames: { '#type': '_type' },
       ExpressionAttributeValues: {
         ':cf': customFields,
         ':now': now,
+        ':type': 'PROFILE',
       },
       ConditionExpression: 'attribute_exists(candidate_id)',
     })
@@ -1531,42 +1539,21 @@ export async function searchCandidatesByName(
 export async function getRecentProfiles(
   limit: number = 10
 ): Promise<CandidateItem[]> {
-  const PAGE_SIZE = 100;
-  const MAX_SCAN = 500;
-  const allItems: CandidateItem[] = [];
-  let currentKey: Record<string, unknown> | undefined;
-
-  do {
-    const scanParams: {
-      TableName: string;
-      Limit: number;
-      ProjectionExpression: string;
-      ExpressionAttributeNames: Record<string, string>;
-      ExclusiveStartKey?: Record<string, unknown>;
-    } = {
+  const result = await docClient.send(
+    new QueryCommand({
       TableName: config.dynamodb.talentProfilesTable,
-      Limit: PAGE_SIZE,
+      IndexName: 'RecentProfilesIndex',
+      KeyConditionExpression: '#type = :type',
+      ExpressionAttributeNames: { '#type': '_type', '#loc': 'location' },
+      ExpressionAttributeValues: { ':type': 'PROFILE' },
+      ScanIndexForward: false,
+      Limit: limit,
       ProjectionExpression:
         'candidate_id, full_name, primary_skills, total_experience, seniority, #loc, last_updated, created_at',
-      ExpressionAttributeNames: { '#loc': 'location' },
-    };
-
-    if (currentKey) {
-      scanParams.ExclusiveStartKey = currentKey;
-    }
-
-    const result = await docClient.send(new ScanCommand(scanParams));
-    allItems.push(...((result.Items || []) as CandidateItem[]));
-    currentKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (currentKey && allItems.length < MAX_SCAN);
-
-  // Sort by last_updated descending and return top N
-  allItems.sort(
-    (a, b) =>
-      new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime()
+    })
   );
 
-  return allItems.slice(0, limit);
+  return (result.Items || []) as CandidateItem[];
 }
 
 // ─── Audit Log Operations ───────────────────────────────────────────────────
