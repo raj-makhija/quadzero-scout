@@ -81,6 +81,7 @@ export default function RecruiterSearchPage() {
   // Skill input state for adding skills
   const [mustHaveSkillInput, setMustHaveSkillInput] = useState('');
   const [goodToHaveSkillInput, setGoodToHaveSkillInput] = useState('');
+  const [roleInput, setRoleInput] = useState('');
   const [savingCriteria, setSavingCriteria] = useState(false);
   const [criteriaSaveSuccess, setCriteriaSaveSuccess] = useState(false);
   const [locationInput, setLocationInput] = useState('');
@@ -265,6 +266,7 @@ export default function RecruiterSearchPage() {
         seniority: response.parsedCriteria.seniority,
         availability: response.parsedCriteria.availability,
         location: response.parsedCriteria.location || undefined,
+        roles: response.parsedCriteria.roles || [],
         maxBudgetLpa: response.parsedCriteria.rateLpa || undefined,
       });
 
@@ -633,6 +635,20 @@ export default function RecruiterSearchPage() {
     }
   };
 
+  const addRole = (role: string) => {
+    const trimmed = role.trim();
+    if (!trimmed) return;
+    const current = searchCriteria.roles || [];
+    if (!current.some(r => r.toLowerCase() === trimmed.toLowerCase())) {
+      updateCriteria('roles', [...current, trimmed]);
+    }
+    setRoleInput('');
+  };
+
+  const removeRole = (role: string) => {
+    updateCriteria('roles', (searchCriteria.roles || []).filter(r => r !== role));
+  };
+
   // Parse current location string into individual location tags
   const locationTags = (searchCriteria.location || '')
     .split(/[,;]/)
@@ -664,6 +680,7 @@ export default function RecruiterSearchPage() {
     seniority: pc.seniority,
     availability: pc.availability,
     location: pc.location || undefined,
+    roles: pc.roles || [],
     maxBudgetLpa: (budgetMaxLpa ? parseFloat(budgetMaxLpa) : undefined) || pc.rateLpa || undefined,
   });
 
@@ -693,6 +710,7 @@ export default function RecruiterSearchPage() {
         seniority: searchCriteria.seniority || [],
         availability: searchCriteria.availability || [],
         location: searchCriteria.location || null,
+        roles: searchCriteria.roles || [],
       };
       await api.updateRequirementCriteria(sourceRequirementId, updatedParsedCriteria, searchCriteria.maxBudgetLpa);
       setParsedCriteria(updatedParsedCriteria);
@@ -1108,6 +1126,48 @@ export default function RecruiterSearchPage() {
                     <button
                       onClick={() => addSkill(goodToHaveSkillInput, 'goodToHave')}
                       disabled={!goodToHaveSkillInput.trim()}
+                      className="btn-secondary px-3 py-2 disabled:opacity-50"
+                      type="button"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Roles */}
+                <div>
+                  <label className="label">Roles</label>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {(searchCriteria.roles || []).map((role) => (
+                      <span key={role} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">
+                        {role}
+                        <button onClick={() => removeRole(role)} className="ml-1">
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={roleInput}
+                      onChange={(e) => setRoleInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addRole(roleInput);
+                        }
+                      }}
+                      placeholder="Add a role and press Enter"
+                      className="input flex-1"
+                    />
+                    <button
+                      onClick={() => addRole(roleInput)}
+                      disabled={!roleInput.trim()}
                       className="btn-secondary px-3 py-2 disabled:opacity-50"
                       type="button"
                     >

@@ -186,6 +186,23 @@ export function RecruiterHome({ userName }: RecruiterHomeProps) {
                           )}
                         </div>
                       )}
+                      {req.roles && req.roles.length > 0 && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {req.roles.slice(0, 2).map((role) => (
+                            <span
+                              key={role}
+                              className="inline-block px-1.5 py-0.5 text-xs bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 rounded"
+                            >
+                              {role}
+                            </span>
+                          ))}
+                          {req.roles.length > 2 && (
+                            <span className="text-xs text-gray-400">
+                              +{req.roles.length - 2}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <span className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap flex-shrink-0">
                       {formatRelativeTime(req.createdAt)}

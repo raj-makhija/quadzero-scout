@@ -246,6 +246,7 @@ export default function RequirementDetailPage() {
       seniority: requirement.parsedCriteria.seniority,
       availability: requirement.parsedCriteria.availability,
       location: requirement.parsedCriteria.location || undefined,
+      roles: requirement.parsedCriteria.roles || [],
       maxBudgetLpa: requirement.budgetMaxLpa || undefined,
     };
 
@@ -610,6 +611,17 @@ export default function RequirementDetailPage() {
                         <p className="text-gray-900 dark:text-gray-100">
                           {requirement.parsedCriteria.seniority.map(formatSeniority).join(', ')}
                         </p>
+                      </div>
+                    )}
+
+                    {requirement.parsedCriteria.roles && requirement.parsedCriteria.roles.length > 0 && (
+                      <div>
+                        <label className="text-sm text-gray-500 dark:text-gray-400 block mb-1">Roles</label>
+                        <div className="flex flex-wrap gap-1">
+                          {requirement.parsedCriteria.roles.map((role) => (
+                            <span key={role} className="badge bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 text-xs">{role}</span>
+                          ))}
+                        </div>
                       </div>
                     )}
 

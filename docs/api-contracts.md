@@ -491,6 +491,7 @@ Content-Type: application/json
         "budgetMaxLpa": 30,
         "mustHaveSkills": ["react", "typescript"],
         "goodToHaveSkills": ["nodejs", "aws"],
+        "roles": ["Senior React Developer"],
         "matchScore": 92,
         "matchDetails": {
           "mustHaveMatched": ["react", "typescript"],
@@ -901,6 +902,7 @@ Authorization: Bearer <jwe_token>
         "budgetMaxLpa": 30,
         "jobTitle": "Senior React Developer",
         "mustHaveSkills": ["react", "typescript"],
+        "roles": ["Senior React Developer"],
         "status": "active",
         "createdAt": "2024-01-15T10:30:00Z",
         "requestCount": 3,
@@ -2536,6 +2538,7 @@ Returns all active requirements for which the given candidate has been shortlist
         "jobTitle": "Senior React Developer",
         "engagementModel": "full_time_contract",
         "mustHaveSkills": ["react", "typescript"],
+        "roles": ["Senior React Developer"],
         "taggedAt": "2026-02-20T14:00:00.000Z",
         "taggedBy": "recruiter-uuid",
         "notes": "Strong fit for the role",

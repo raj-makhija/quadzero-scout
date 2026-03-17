@@ -232,6 +232,21 @@ export default function RequirementsListPage() {
                       </span>
                     )}
                   </div>
+
+                  {req.roles && req.roles.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {req.roles.slice(0, 3).map((role) => (
+                        <span key={role} className="badge bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 text-xs">
+                          {role}
+                        </span>
+                      ))}
+                      {req.roles.length > 3 && (
+                        <span className="badge bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 text-xs">
+                          +{req.roles.length - 3} more
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2 self-start">
