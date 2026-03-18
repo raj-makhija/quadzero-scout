@@ -611,7 +611,8 @@ Authorization: Bearer <jwe_token> (optional)
     "availability": ["immediate", "1_week", "2_weeks"],
     "location": "Bangalore",
     "industries": ["fintech"],
-    "maxBudgetLpa": 30
+    "maxBudgetLpa": 30,
+    "engagementModel": "full_time"
   },
   "pagination": {
     "limit": 20,
@@ -706,6 +707,7 @@ Authorization: Bearer <jwe_token> (optional)
 - `criteria.seniority`: Optional, array of seniority enums
 - `criteria.availability`: Optional, array of availability enums
 - `criteria.maxBudgetLpa`: Optional, number, min 0 (in LPA)
+- `criteria.engagementModel`: Optional, enum: `contract`, `full_time`, `either`. When set (and not `either`), candidates with an incompatible engagement model are hard-filtered out. Candidates with `either` always pass.
 - `pagination.lastEvaluatedKey`: Optional, base64-encoded cursor for DynamoDB pagination (only needed when database has >500 candidates)
 - `sortBy`: Optional, enum: `matchScore` (default), `experience`, `lastUpdated`. Each option uses composite sorting with tiebreakers (all descending): `matchScore` → lastUpdated → experience; `lastUpdated` → matchScore → experience; `experience` → matchScore → lastUpdated
 
@@ -939,7 +941,7 @@ Returns the most recently updated candidate profiles (sorted by `lastUpdated` de
 
 | Param | Type   | Default | Description                    |
 |-------|--------|---------|--------------------------------|
-| limit | number | 10      | Max profiles to return (1–50)  |
+| limit | number | 10      | Max profiles to return (1–100) |
 
 **Response:**
 ```json
@@ -955,7 +957,8 @@ Returns the most recently updated candidate profiles (sorted by `lastUpdated` de
         "seniority": "senior",
         "location": "Bangalore, India",
         "lastUpdated": "2026-03-12T10:30:00.000Z",
-        "createdAt": "2026-03-10T08:00:00.000Z"
+        "createdAt": "2026-03-10T08:00:00.000Z",
+        "lastScreenedAt": "2026-03-11T14:00:00.000Z"
       }
     ]
   }

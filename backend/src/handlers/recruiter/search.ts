@@ -67,6 +67,7 @@ async function handleRequest(
       remote: criteria.remote,
       industries: criteria.industries,
       maxBudgetLpa: criteria.maxBudgetLpa,
+      engagementModel: criteria.engagementModel,
     };
 
     // Search candidates
@@ -125,6 +126,13 @@ async function handleRequest(
         }
         if (criteria.maxBudgetLpa != null && !c.matchDetails.ctcMatch) {
           return false;
+        }
+        // Hard filter: engagement model must be compatible
+        if (criteria.engagementModel && criteria.engagementModel !== 'either') {
+          const candidateModel = c.engagementModel || 'either';
+          if (candidateModel !== criteria.engagementModel && candidateModel !== 'either') {
+            return false;
+          }
         }
         return true;
       });
