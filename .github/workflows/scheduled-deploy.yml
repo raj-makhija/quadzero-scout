@@ -37,6 +37,7 @@ jobs:
     needs: check-changes
     if: needs.check-changes.outputs.qa_has_changes == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -54,8 +55,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: infra/package-lock.json
+
+      - name: Restore symlink
+        run: ln -sfn $GITHUB_WORKSPACE/backend/src $GITHUB_WORKSPACE/infra/src
+
+      - name: Install backend dependencies
+        run: cd backend && npm ci --ignore-scripts
+
+      - name: Install infra dependencies
+        run: cd infra && npm ci
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -63,16 +71,8 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-1
 
-      - name: Restore symlink and install dependencies
-        run: |
-          ln -sfn $GITHUB_WORKSPACE/backend/src $GITHUB_WORKSPACE/infra/src
-          cd backend && npm ci
-          cd ../infra && npm ci
-
       - name: Deploy backend to QA
-        run: |
-          cd infra
-          npx serverless deploy --stage qa
+        run: cd infra && npx serverless deploy --stage qa
 
   deploy-prod:
     needs: [check-changes, deploy-qa]
@@ -81,6 +81,7 @@ jobs:
       (needs.deploy-qa.result == 'success' || needs.deploy-qa.result == 'skipped') &&
       needs.check-changes.outputs.prod_has_changes == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -98,8 +99,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: infra/package-lock.json
+
+      - name: Restore symlink
+        run: ln -sfn $GITHUB_WORKSPACE/backend/src $GITHUB_WORKSPACE/infra/src
+
+      - name: Install backend dependencies
+        run: cd backend && npm ci --ignore-scripts
+
+      - name: Install infra dependencies
+        run: cd infra && npm ci
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -107,16 +115,8 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-1
 
-      - name: Restore symlink and install dependencies
-        run: |
-          ln -sfn $GITHUB_WORKSPACE/backend/src $GITHUB_WORKSPACE/infra/src
-          cd backend && npm ci
-          cd ../infra && npm ci
-
       - name: Deploy backend to Prod
-        run: |
-          cd infra
-          npx serverless deploy --stage prod
+        run: cd infra && npx serverless deploy --stage prod
 
   notify:
     needs: [check-changes, deploy-qa, deploy-prod]
