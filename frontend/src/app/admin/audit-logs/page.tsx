@@ -62,11 +62,12 @@ export default function AuditLogsPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
-  // Filters
+  // Filters — default to today's date for proper timestamp-descending sorting
+  const today = new Date().toISOString().slice(0, 10);
   const [email, setEmail] = useState('');
   const [action, setAction] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [startDate, setStartDate] = useState(today);
+  const [endDate, setEndDate] = useState(today);
 
   const fetchLogs = useCallback(async (append = false, token?: string) => {
     if (append) {
@@ -189,10 +190,10 @@ export default function AuditLogsPage() {
             onClick={() => {
               setEmail('');
               setAction('');
-              setStartDate('');
-              setEndDate('');
+              setStartDate(today);
+              setEndDate(today);
               setNextToken(undefined);
-              // Re-fetch all logs with no filters
+              // Re-fetch logs with today's date
               setTimeout(() => fetchLogs(false), 0);
             }}
             className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"

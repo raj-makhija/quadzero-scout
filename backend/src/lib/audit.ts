@@ -48,6 +48,7 @@ function buildAuditItem(
     entity_id: auditEvent.entityId,
     entity_key: `${auditEvent.entityType.toUpperCase()}#${auditEvent.entityId}`,
     action_date: `${auditEvent.action}#${dateStr}`,
+    log_date: dateStr,
     metadata: auditEvent.metadata,
     ip_address: ipAddress,
     user_agent: userAgent,

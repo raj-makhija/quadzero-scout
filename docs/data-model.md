@@ -1403,6 +1403,7 @@ Centralized activity audit trail for all recruiter and admin actions.
 | `entity_id` | S | ID of the affected entity |
 | `entity_key` | S | `{ENTITY_TYPE}#{entityId}` (GSI-1 PK) |
 | `action_date` | S | `{action}#{YYYY-MM-DD}` (GSI-2 PK) |
+| `log_date` | S | `YYYY-MM-DD` (GSI-3 PK) — date partition for chronological queries |
 | `metadata` | M | Action-specific details |
 | `ip_address` | S | Source IP from API Gateway |
 | `user_agent` | S | Browser user-agent |
@@ -1412,6 +1413,7 @@ Centralized activity audit trail for all recruiter and admin actions.
 **GSIs**:
 - **EntityIndex**: `entity_key` (PK) + `sk` (SK) — query by target entity
 - **ActionTypeIndex**: `action_date` (PK) + `sk` (SK) — query by action type + date
+- **DateIndex**: `log_date` (PK) + `sk` (SK) — query all logs by date, sorted by timestamp descending
 
 **Tracked Actions**: SIGN_IN_SUCCESS, SIGN_IN_FAILURE, CANDIDATE_SEARCH, CANDIDATE_SEARCH_BY_NAME, RESUME_DOWNLOAD_FORMATTED, RESUME_DOWNLOAD_ORIGINAL, SHORTLIST_ADD, SHORTLIST_REMOVE, CANDIDATE_SCREEN, REQUIREMENT_CREATE, REQUIREMENT_UPDATE, REQUIREMENT_UPDATE_STATUS, REQUIREMENT_UPDATE_CRITERIA, REQUIREMENT_CONSOLIDATE, REQUIREMENT_TOGGLE_NOTIFY, REQUIREMENT_CHECK_DUPLICATE, CLIENT_CREATE, CLIENT_UPDATE, SEARCH_SAVE, SEARCH_DELETE, USER_APPROVE, USER_REJECT, PRICING_CONFIG_UPDATE, PROMPT_UPDATE, BULK_IMPORT_START
 
@@ -1422,3 +1424,4 @@ Centralized activity audit trail for all recruiter and admin actions.
 | Get audit trail for a user | Query by pk = `USER#{userId}` | Primary |
 | Get audit trail for an entity | Query by entity_key | EntityIndex |
 | Get logs by action type + date | Query by action_date | ActionTypeIndex |
+| Get all logs for a date (default view) | Query by log_date | DateIndex |
