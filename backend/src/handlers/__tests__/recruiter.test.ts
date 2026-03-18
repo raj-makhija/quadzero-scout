@@ -60,28 +60,33 @@ vi.mock('../../lib/dynamodb.js', () => ({
     if (years <= 15) return '11-15';
     return '16+';
   }),
-  getRecentProfiles: vi.fn().mockResolvedValue([
-    {
-      candidate_id: 'cand_1',
-      full_name: 'Alice Smith',
-      primary_skills: ['react', 'nodejs'],
-      total_experience: 6,
-      seniority: 'senior',
-      location: 'Bangalore, India',
-      last_updated: '2026-03-17T10:00:00Z',
-      created_at: '2026-03-10T08:00:00Z',
-    },
-    {
-      candidate_id: 'cand_2',
-      full_name: 'Bob Jones',
-      primary_skills: ['python'],
-      total_experience: 2,
-      seniority: 'junior',
-      location: 'Mumbai, India',
-      last_updated: '2026-03-16T15:00:00Z',
-      created_at: '2026-03-11T09:00:00Z',
-    },
-  ]),
+  getRecentProfiles: vi.fn().mockResolvedValue({
+    items: [
+      {
+        candidate_id: 'cand_1',
+        full_name: 'Alice Smith',
+        primary_skills: ['react', 'nodejs'],
+        total_experience: 6,
+        seniority: 'senior',
+        location: 'Bangalore, India',
+        last_updated: '2026-03-17T10:00:00Z',
+        created_at: '2026-03-10T08:00:00Z',
+        roles: ['Full Stack Developer'],
+      },
+      {
+        candidate_id: 'cand_2',
+        full_name: 'Bob Jones',
+        primary_skills: ['python'],
+        total_experience: 2,
+        seniority: 'junior',
+        location: 'Mumbai, India',
+        last_updated: '2026-03-16T15:00:00Z',
+        created_at: '2026-03-11T09:00:00Z',
+        roles: ['Backend Developer'],
+      },
+    ],
+    lastKey: undefined,
+  }),
 }));
 
 vi.mock('../../lib/llm/index.js', () => ({
@@ -891,8 +896,12 @@ describe('GET /recruiter/recent-profiles', () => {
     expect(body.data.profiles[0].candidateId).toBe('cand_1');
     expect(body.data.profiles[0].fullName).toBe('Alice Smith');
     expect(body.data.profiles[0].lastUpdated).toBe('2026-03-17T10:00:00Z');
+    expect(body.data.profiles[0].roles).toEqual(['Full Stack Developer']);
     expect(body.data.profiles[1].candidateId).toBe('cand_2');
-    expect(getRecentProfiles).toHaveBeenCalledWith(10);
+    expect(body.data.profiles[1].roles).toEqual(['Backend Developer']);
+    expect(body.data.pagination).toBeDefined();
+    expect(body.data.pagination.hasMore).toBe(false);
+    expect(getRecentProfiles).toHaveBeenCalledWith(10, undefined);
   });
 
   it('passes custom limit to getRecentProfiles (capped at 50)', async () => {
@@ -900,7 +909,7 @@ describe('GET /recruiter/recent-profiles', () => {
       queryStringParameters: { limit: '25' },
     });
     await listRecentProfilesHandler(event);
-    expect(getRecentProfiles).toHaveBeenCalledWith(25);
+    expect(getRecentProfiles).toHaveBeenCalledWith(25, undefined);
   });
 
   it('caps limit at 100', async () => {
@@ -908,16 +917,38 @@ describe('GET /recruiter/recent-profiles', () => {
       queryStringParameters: { limit: '200' },
     });
     await listRecentProfilesHandler(event);
-    expect(getRecentProfiles).toHaveBeenCalledWith(100);
+    expect(getRecentProfiles).toHaveBeenCalledWith(100, undefined);
   });
 
   it('returns empty array when no profiles exist', async () => {
-    vi.mocked(getRecentProfiles).mockResolvedValueOnce([]);
+    vi.mocked(getRecentProfiles).mockResolvedValueOnce({ items: [], lastKey: undefined });
     const event = makeEvent({});
     const result = await listRecentProfilesHandler(event);
     const body = parseBody(result);
 
     expect(result.statusCode).toBe(200);
     expect(body.data.profiles).toHaveLength(0);
+    expect(body.data.pagination.hasMore).toBe(false);
+  });
+
+  it('passes pagination key to getRecentProfiles', async () => {
+    const paginationKey = { _type: 'PROFILE', last_updated: '2026-03-15T00:00:00Z', candidate_id: 'cand_50' };
+    const encoded = Buffer.from(JSON.stringify(paginationKey)).toString('base64');
+    const event = makeEvent({
+      queryStringParameters: { limit: '50', lastEvaluatedKey: encoded },
+    });
+    await listRecentProfilesHandler(event);
+    expect(getRecentProfiles).toHaveBeenCalledWith(50, paginationKey);
+  });
+
+  it('returns 400 for invalid pagination key', async () => {
+    const event = makeEvent({
+      queryStringParameters: { lastEvaluatedKey: 'not-valid-base64!' },
+    });
+    const result = await listRecentProfilesHandler(event);
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(400);
+    expect(body.error.message).toContain('Invalid pagination key');
   });
 });

@@ -30,6 +30,7 @@ const FIELD_MAP: Record<string, string> = {
   currentCtc: 'current_ctc',
   expectedCtc: 'expected_ctc',
   expectedCtcType: 'expected_ctc_type',
+  headline: 'headline',
 };
 
 async function handleRequest(

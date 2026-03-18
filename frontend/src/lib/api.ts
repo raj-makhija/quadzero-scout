@@ -268,11 +268,12 @@ class ApiClient {
     );
   }
 
-  async listRecentProfiles(limit?: number) {
+  async listRecentProfiles(limit?: number, lastEvaluatedKey?: string) {
     const params = new URLSearchParams();
     if (limit) params.set('limit', String(limit));
+    if (lastEvaluatedKey) params.set('lastEvaluatedKey', lastEvaluatedKey);
     const qs = params.toString();
-    return this.request<{ profiles: RecentProfileSummary[] }>(
+    return this.request<{ profiles: RecentProfileSummary[]; pagination: { count: number; hasMore: boolean; lastEvaluatedKey?: string } }>(
       `/recruiter/recent-profiles${qs ? `?${qs}` : ''}`
     );
   }
@@ -630,6 +631,7 @@ export interface CandidateProfile extends ExtractedProfile {
   lastUpdated?: string;
   lastScreenedAt?: string;
   lastScreenedBy?: string;
+  headline?: string;
 }
 
 export interface ParsedCriteria {
@@ -707,6 +709,8 @@ export interface CandidateSearchResult {
   lastScreenedAt?: string;
   lastScreenedBy?: string;
   isShortlisted?: boolean;
+  roles?: string[];
+  headline?: string;
 }
 
 export interface SearchResponse {
@@ -838,6 +842,8 @@ export interface RecentProfileSummary {
   lastUpdated: string;
   createdAt?: string;
   lastScreenedAt?: string;
+  roles?: string[];
+  headline?: string;
 }
 
 export interface RequestHistoryEntry {
@@ -1144,6 +1150,7 @@ export interface ScreeningUpdatedValues {
   currentCtc?: number | null;
   expectedCtc?: number | null;
   expectedCtcType?: 'explicit' | 'negotiable';
+  headline?: string;
   customFields?: Record<string, string | number>;
 }
 

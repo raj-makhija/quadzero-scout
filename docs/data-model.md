@@ -49,6 +49,7 @@ Stores candidate profile data extracted from resumes and edited by candidates.
 | expected_ctc_type | String | No | How expected CTC was determined: `"explicit"` (entered manually) or `"negotiable"` (auto-calculated from current CTC + experience-based increment). Defaults to `"explicit"` if absent. |
 | custom_fields | Map\<String, String\|Number\> | No | Dynamic key-value pairs for additional data points (e.g., date_of_birth, pan_number). Populated by recruiters when requirements request additional candidate information. |
 | cover_letter | String | No | Cover letter or supplementary text. For email-ingested candidates, this is the plain-text email body (HTML stripped). |
+| headline | String | No | Short recruiter-validated title for the candidate (e.g., "Sr. Python Developer"). Set during screening; auto-generated from seniority + roles/skills if absent. Max 200 chars. |
 | last_screened_at | String | No | ISO 8601 timestamp of last screening |
 | last_screened_by | String | No | User ID of recruiter who last screened |
 | experience_bucket | String | Yes | Bucketed experience for GSI (e.g., "0-2", "3-5") |
