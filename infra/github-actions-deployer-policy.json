@@ -2,7 +2,7 @@
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "CloudFormationFullAccess",
+      "Sid": "CloudFormationStackAccess",
       "Effect": "Allow",
       "Action": [
         "cloudformation:CreateStack",
@@ -14,7 +14,6 @@
         "cloudformation:DescribeStackResources",
         "cloudformation:ListStackResources",
         "cloudformation:GetTemplate",
-        "cloudformation:ValidateTemplate",
         "cloudformation:CreateChangeSet",
         "cloudformation:DeleteChangeSet",
         "cloudformation:DescribeChangeSet",
@@ -24,6 +23,14 @@
       "Resource": [
         "arn:aws:cloudformation:ap-south-1:*:stack/quadzero-scout-*/*"
       ]
+    },
+    {
+      "Sid": "CloudFormationValidateTemplate",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:ValidateTemplate"
+      ],
+      "Resource": "*"
     },
     {
       "Sid": "LambdaManagement",
