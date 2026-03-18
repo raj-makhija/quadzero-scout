@@ -63,10 +63,15 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-1
 
+      - name: Restore symlink and install dependencies
+        run: |
+          ln -sfn $GITHUB_WORKSPACE/backend/src $GITHUB_WORKSPACE/infra/src
+          cd backend && npm ci
+          cd ../infra && npm ci
+
       - name: Deploy backend to QA
         run: |
           cd infra
-          npm ci
           npx serverless deploy --stage qa
 
   deploy-prod:
@@ -102,10 +107,15 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-1
 
+      - name: Restore symlink and install dependencies
+        run: |
+          ln -sfn $GITHUB_WORKSPACE/backend/src $GITHUB_WORKSPACE/infra/src
+          cd backend && npm ci
+          cd ../infra && npm ci
+
       - name: Deploy backend to Prod
         run: |
           cd infra
-          npm ci
           npx serverless deploy --stage prod
 
   notify:

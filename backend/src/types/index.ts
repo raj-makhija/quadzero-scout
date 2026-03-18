@@ -111,6 +111,7 @@ export interface CandidateItem {
   summary?: string;
   current_ctc?: number;
   expected_ctc?: number;
+  expected_ctc_type?: string;
   experience_bucket: string;
   resume_s3_key: string;
   formatted_resume_s3_key?: string;
@@ -790,6 +791,7 @@ export interface ScreeningProfileData {
   summary?: string;
   current_ctc?: number;
   expected_ctc?: number;
+  expected_ctc_type?: string;
   custom_fields?: Record<string, string | number>;
 }
 

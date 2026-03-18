@@ -55,6 +55,23 @@ export function convertToLpa(rateValue: number, unit: RateUnit): number | null {
  * Check if a candidate's expected CTC is within the recruiter's budget.
  * Rule: expectedCtc <= maxBudgetLpa × 0.85 (15% margin for recruiter).
  */
+/**
+ * Calculate expected CTC for candidates who marked it as "negotiable".
+ * Uses experience-based increment brackets:
+ *   0-3 yrs → +20%, 3-8 yrs → +25%, 8+ yrs → +30%
+ */
+export function calculateNegotiableCtc(currentCtc: number, totalExperience: number): number {
+  let incrementPct: number;
+  if (totalExperience <= 3) {
+    incrementPct = 0.20;
+  } else if (totalExperience <= 8) {
+    incrementPct = 0.25;
+  } else {
+    incrementPct = 0.30;
+  }
+  return Math.round(currentCtc * (1 + incrementPct) * 100) / 100;
+}
+
 export function isCandidateWithinBudget(
   expectedCtc: number | undefined | null,
   maxBudgetLpa: number | undefined | null
