@@ -366,6 +366,7 @@ export function ShortlistModal({
               candidateExpectedCtcLpa={candidate.expectedCtc}
               candidateCurrentCtcLpa={candidate.currentCtc}
               candidateExperienceYears={candidate.totalExperience}
+              expectedCtcType={candidate.expectedCtcType}
               isInternalRecruiter={isInternalRecruiter}
               onCtcUpdated={onCtcUpdated}
               requirementContext={requirementContext ? {

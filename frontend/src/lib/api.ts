@@ -618,6 +618,7 @@ export interface ExtractedProfile {
   summary?: string | null;
   currentCtc?: number | null;
   expectedCtc?: number | null;
+  expectedCtcType?: string;
   customFields?: Record<string, string | number>;
   coverLetter?: string | null;
 }
@@ -687,6 +688,7 @@ export interface CandidateSearchResult {
   engagementModel: string;
   currentCtc?: number;
   expectedCtc?: number;
+  expectedCtcType?: string;
   matchScore: number;
   matchDetails: {
     mustHaveMatched: string[];
@@ -1139,6 +1141,7 @@ export interface ScreeningUpdatedValues {
   summary?: string;
   currentCtc?: number | null;
   expectedCtc?: number | null;
+  expectedCtcType?: 'explicit' | 'negotiable';
   customFields?: Record<string, string | number>;
 }
 

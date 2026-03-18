@@ -99,6 +99,23 @@ export const SENIORITY_OPTIONS = [
   { value: 'executive', label: 'Executive' },
 ];
 
+export const EXPECTED_CTC_MODE_OPTIONS = [
+  { value: 'explicit', label: 'Enter amount' },
+  { value: 'negotiable', label: 'Negotiable (auto-calculate)' },
+];
+
+export function calculateNegotiableCtc(currentCtc: number, totalExperience: number): number {
+  let incrementPct: number;
+  if (totalExperience <= 3) {
+    incrementPct = 0.20;
+  } else if (totalExperience <= 8) {
+    incrementPct = 0.25;
+  } else {
+    incrementPct = 0.30;
+  }
+  return Math.round(currentCtc * (1 + incrementPct) * 100) / 100;
+}
+
 export const AVAILABILITY_OPTIONS = [
   { value: 'immediate', label: 'Immediate' },
   { value: '1_week', label: '1 Week' },

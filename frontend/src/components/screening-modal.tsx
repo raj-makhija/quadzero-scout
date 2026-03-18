@@ -9,6 +9,8 @@ import {
   SENIORITY_OPTIONS,
   AVAILABILITY_OPTIONS,
   CANDIDATE_ENGAGEMENT_OPTIONS,
+  EXPECTED_CTC_MODE_OPTIONS,
+  calculateNegotiableCtc,
   formatDate,
 } from '@/lib/utils';
 import ScreeningHistoryPanel from '@/components/screening-history-panel';
@@ -38,6 +40,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
   const [location, setLocation] = useState('');
   const [currentCtc, setCurrentCtc] = useState('');
   const [expectedCtc, setExpectedCtc] = useState('');
+  const [expectedCtcMode, setExpectedCtcMode] = useState<'explicit' | 'negotiable'>('explicit');
   const [availability, setAvailability] = useState('');
   const [engagementModel, setEngagementModel] = useState('');
   const [totalExperience, setTotalExperience] = useState('');
@@ -76,6 +79,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
         setLocation(profile.location || '');
         setCurrentCtc(profile.currentCtc != null ? String(profile.currentCtc) : '');
         setExpectedCtc(profile.expectedCtc != null ? String(profile.expectedCtc) : '');
+        setExpectedCtcMode((profile.expectedCtcType as 'explicit' | 'negotiable') || 'explicit');
         setAvailability(profile.availability || '');
         setEngagementModel(profile.engagementModel || 'either');
         setTotalExperience(profile.totalExperience != null ? String(profile.totalExperience) : '');
@@ -133,7 +137,11 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
     // Validate required fields
     const missingFields: string[] = [];
     if (currentCtc === '') missingFields.push('Current CTC');
-    if (expectedCtc === '') missingFields.push('Expected CTC');
+    if (expectedCtcMode === 'explicit' && expectedCtc === '') missingFields.push('Expected CTC');
+    if (expectedCtcMode === 'negotiable') {
+      if (currentCtc === '') missingFields.push('Current CTC (needed for negotiable calculation)');
+      if (totalExperience === '') missingFields.push('Total Experience (needed for negotiable calculation)');
+    }
     if (!availability) missingFields.push('Notice Period');
     if (!engagementModel) missingFields.push('Engagement Preference');
     if (!notes.trim()) missingFields.push('Screening Notes');
@@ -166,8 +174,14 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
       updatedValues.location = location || null;
       if (currentCtc !== '') updatedValues.currentCtc = parseFloat(currentCtc);
       else updatedValues.currentCtc = null;
-      if (expectedCtc !== '') updatedValues.expectedCtc = parseFloat(expectedCtc);
-      else updatedValues.expectedCtc = null;
+      updatedValues.expectedCtcType = expectedCtcMode;
+      if (expectedCtcMode === 'negotiable') {
+        updatedValues.expectedCtc = calculateNegotiableCtc(parseFloat(currentCtc), parseFloat(totalExperience));
+      } else if (expectedCtc !== '') {
+        updatedValues.expectedCtc = parseFloat(expectedCtc);
+      } else {
+        updatedValues.expectedCtc = null;
+      }
       if (availability) updatedValues.availability = availability;
       if (engagementModel) updatedValues.engagementModel = engagementModel;
       if (totalExperience !== '') updatedValues.totalExperience = parseFloat(totalExperience);
@@ -210,7 +224,10 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
       // Build updated candidate fields to pass back to the caller
       const refreshedFields: Partial<CandidateSearchResult> = {
         currentCtc: currentCtc !== '' ? parseFloat(currentCtc) : undefined,
-        expectedCtc: expectedCtc !== '' ? parseFloat(expectedCtc) : undefined,
+        expectedCtc: expectedCtcMode === 'negotiable'
+          ? calculateNegotiableCtc(parseFloat(currentCtc), parseFloat(totalExperience))
+          : expectedCtc !== '' ? parseFloat(expectedCtc) : undefined,
+        expectedCtcType: expectedCtcMode,
         availability: availability || undefined,
         engagementModel: (engagementModel as CandidateSearchResult['engagementModel']) || undefined,
         totalExperience: totalExperience !== '' ? parseFloat(totalExperience) : undefined,
@@ -241,7 +258,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
     }
   }, [
     resolvedCandidateId, fullName, email, phone, location,
-    currentCtc, expectedCtc, availability, engagementModel,
+    currentCtc, expectedCtc, expectedCtcMode, availability, engagementModel,
     totalExperience, seniority, primarySkillsText, secondarySkillsText,
     industries, roles, certifications, summary, notes, onScreeningComplete,
     isShortlistFlow, additionalFields, customFieldValues,
@@ -353,26 +370,50 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                       hasError={submitAttempted && currentCtc === ''}
                     />
                   </FormField>
-                  <FormField
-                    label="Expected CTC (LPA)"
-                    htmlFor="expectedCtc"
-                    required
-                    touched={submitAttempted}
-                    error={expectedCtc === '' ? 'Required' : undefined}
-                    className={emptyFields.has('expectedCtc') && !expectedCtc ? 'bg-amber-50 dark:bg-amber-900/10 p-2 rounded' : ''}
-                  >
-                    <FormInput
-                      id="expectedCtc"
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max="500"
-                      value={expectedCtc}
-                      onChange={(e) => setExpectedCtc(e.target.value)}
-                      placeholder="e.g. 15.0"
-                      hasError={submitAttempted && expectedCtc === ''}
-                    />
-                  </FormField>
+                  <div>
+                    <FormField
+                      label="Expected CTC (LPA)"
+                      htmlFor="expectedCtcMode"
+                      required
+                    >
+                      <FormSelect
+                        id="expectedCtcMode"
+                        value={expectedCtcMode}
+                        onChange={(e) => setExpectedCtcMode(e.target.value as 'explicit' | 'negotiable')}
+                        options={EXPECTED_CTC_MODE_OPTIONS}
+                      />
+                    </FormField>
+                    {expectedCtcMode === 'explicit' ? (
+                      <div className={`mt-2 ${emptyFields.has('expectedCtc') && !expectedCtc ? 'bg-amber-50 dark:bg-amber-900/10 p-2 rounded' : ''}`}>
+                        <FormInput
+                          id="expectedCtc"
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="500"
+                          value={expectedCtc}
+                          onChange={(e) => setExpectedCtc(e.target.value)}
+                          placeholder="e.g. 15.0"
+                          hasError={submitAttempted && expectedCtc === ''}
+                        />
+                      </div>
+                    ) : (
+                      <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded text-sm">
+                        {currentCtc && totalExperience ? (
+                          <p className="text-blue-700 dark:text-blue-300">
+                            <span className="font-medium">
+                              {calculateNegotiableCtc(parseFloat(currentCtc), parseFloat(totalExperience))} LPA
+                            </span>
+                            {' '}({currentCtc} LPA + {parseFloat(totalExperience) <= 3 ? '20' : parseFloat(totalExperience) <= 8 ? '25' : '30'}% based on experience)
+                          </p>
+                        ) : (
+                          <p className="text-amber-600 dark:text-amber-400">
+                            Enter current CTC and total experience above to auto-calculate.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
