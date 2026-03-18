@@ -421,6 +421,86 @@ describe('POST /recruiter/search', () => {
     const result = await searchHandler(event);
     expect(result.statusCode).toBe(400);
   });
+
+  // TC-SEARCH-018: engagementModel filter
+  it('accepts engagementModel in search criteria', async () => {
+    const event = makeEvent({
+      body: JSON.stringify({
+        criteria: { engagementModel: 'contract' },
+      }),
+    });
+    const result = await searchHandler(event);
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.success).toBe(true);
+    // Mock candidates have no engagement_model set (defaults to 'either'),
+    // so they should pass the filter (either is compatible with any)
+    expect(Array.isArray(body.data.candidates)).toBe(true);
+  });
+
+  // TC-SEARCH-019: engagementModel hard-filters incompatible candidates
+  it('filters out candidates with incompatible engagement model', async () => {
+    // Override mock to include candidates with specific engagement models
+    const { searchCandidates } = await import('../../lib/dynamodb.js');
+    vi.mocked(searchCandidates).mockResolvedValueOnce({
+      items: [
+        {
+          candidate_id: 'cand_contract',
+          user_id: 'user_c',
+          full_name: 'Contract Carol',
+          email: 'carol@example.com',
+          primary_skills: ['react'],
+          primary_skill_years: { react: 3 },
+          secondary_skills: [],
+          total_experience: 3,
+          seniority: 'mid',
+          availability: 'immediate',
+          engagement_model: 'contract',
+          industries: [],
+          roles: [],
+          experience_bucket: '3-5',
+          resume_s3_key: 'resumes/carol.pdf',
+          created_at: '2024-01-10T00:00:00Z',
+          last_updated: '2024-01-15T00:00:00Z',
+        },
+        {
+          candidate_id: 'cand_fulltime',
+          user_id: 'user_f',
+          full_name: 'Fulltime Frank',
+          email: 'frank@example.com',
+          primary_skills: ['react'],
+          primary_skill_years: { react: 5 },
+          secondary_skills: [],
+          total_experience: 5,
+          seniority: 'senior',
+          availability: '1_month',
+          engagement_model: 'full_time',
+          industries: [],
+          roles: [],
+          experience_bucket: '3-5',
+          resume_s3_key: 'resumes/frank.pdf',
+          created_at: '2024-01-10T00:00:00Z',
+          last_updated: '2024-01-14T00:00:00Z',
+        },
+      ],
+      lastKey: undefined,
+    });
+
+    const event = makeEvent({
+      body: JSON.stringify({
+        criteria: { engagementModel: 'contract' },
+      }),
+    });
+    const result = await searchHandler(event);
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    // Frank (full_time) should be filtered out, Carol (contract) should remain
+    const ids = body.data.candidates.map((c: { candidateId: string }) => c.candidateId);
+    expect(ids).toContain('cand_contract');
+    expect(ids).not.toContain('cand_fulltime');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -823,12 +903,12 @@ describe('GET /recruiter/recent-profiles', () => {
     expect(getRecentProfiles).toHaveBeenCalledWith(25);
   });
 
-  it('caps limit at 50', async () => {
+  it('caps limit at 100', async () => {
     const event = makeEvent({
-      queryStringParameters: { limit: '100' },
+      queryStringParameters: { limit: '200' },
     });
     await listRecentProfilesHandler(event);
-    expect(getRecentProfiles).toHaveBeenCalledWith(50);
+    expect(getRecentProfiles).toHaveBeenCalledWith(100);
   });
 
   it('returns empty array when no profiles exist', async () => {

@@ -68,6 +68,7 @@ export const SearchRequestSchema = z.object({
     remote: z.boolean().optional(),
     industries: z.array(z.string()).optional(),
     maxBudgetLpa: z.number().min(0).optional(),
+    engagementModel: z.enum(['contract', 'full_time', 'either']).optional(),
   }),
   pagination: z.object({
     limit: z.number().min(1).max(100).optional().default(20),
