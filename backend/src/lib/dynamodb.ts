@@ -1544,12 +1544,12 @@ export async function getRecentProfiles(
     TableName: config.dynamodb.talentProfilesTable,
     IndexName: 'RecentProfilesIndex',
     KeyConditionExpression: '#type = :type',
-    ExpressionAttributeNames: { '#type': '_type', '#loc': 'location' },
+    ExpressionAttributeNames: { '#type': '_type', '#loc': 'location', '#roles': 'roles' },
     ExpressionAttributeValues: { ':type': 'PROFILE' },
     ScanIndexForward: false,
     Limit: limit,
     ProjectionExpression:
-      'candidate_id, full_name, primary_skills, total_experience, seniority, #loc, last_updated, created_at, last_screened_at, roles',
+      'candidate_id, full_name, primary_skills, total_experience, seniority, #loc, last_updated, created_at, last_screened_at, #roles',
   };
 
   if (lastEvaluatedKey) {
