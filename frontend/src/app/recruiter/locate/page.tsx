@@ -112,6 +112,8 @@ export default function LocateProfilePage() {
   // Recent profiles state (default mode)
   const [recentProfiles, setRecentProfiles] = useState<ProfileListItem[]>([]);
   const [loadingRecent, setLoadingRecent] = useState(true);
+  const [recentPagination, setRecentPagination] = useState<{ hasMore: boolean; lastKey?: string }>({ hasMore: false });
+  const [loadingMoreRecent, setLoadingMoreRecent] = useState(false);
 
   // Filter state
   const [filtersExpanded, setFiltersExpanded] = useState(false);
@@ -135,6 +137,10 @@ export default function LocateProfilePage() {
         const res = await api.listRecentProfiles(50);
         if (!cancelled) {
           setRecentProfiles(res.profiles.map(mapRecentToListItem));
+          setRecentPagination({
+            hasMore: res.pagination?.hasMore ?? false,
+            lastKey: res.pagination?.lastEvaluatedKey,
+          });
         }
       } catch (err) {
         if (!cancelled) {
@@ -295,6 +301,23 @@ export default function LocateProfilePage() {
     setQuery('');
     setErrorMessage('');
   };
+
+  const loadMoreRecent = useCallback(async () => {
+    if (!recentPagination.lastKey || loadingMoreRecent) return;
+    setLoadingMoreRecent(true);
+    try {
+      const res = await api.listRecentProfiles(50, recentPagination.lastKey);
+      setRecentProfiles(prev => [...prev, ...res.profiles.map(mapRecentToListItem)]);
+      setRecentPagination({
+        hasMore: res.pagination?.hasMore ?? false,
+        lastKey: res.pagination?.lastEvaluatedKey,
+      });
+    } catch (err) {
+      console.error('Failed to load more profiles:', err);
+    } finally {
+      setLoadingMoreRecent(false);
+    }
+  }, [recentPagination.lastKey, loadingMoreRecent]);
 
   const clearNameSearch = () => {
     setQuery('');
@@ -694,7 +717,27 @@ export default function LocateProfilePage() {
               </div>
             )}
 
-            {/* Load more (filtered mode only) */}
+            {/* Load more (recent mode) */}
+            {mode === 'recent' && recentPagination.hasMore && !isLoading && (
+              <div className="mt-4 text-center">
+                <button
+                  onClick={loadMoreRecent}
+                  disabled={loadingMoreRecent}
+                  className="btn-secondary px-6"
+                >
+                  {loadingMoreRecent ? (
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Loading...
+                    </span>
+                  ) : (
+                    'Load More'
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* Load more (filtered mode) */}
             {mode === 'filtered' && filterPagination.hasMore && !isLoading && (
               <div className="mt-4 text-center">
                 <button

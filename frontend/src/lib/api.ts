@@ -268,11 +268,12 @@ class ApiClient {
     );
   }
 
-  async listRecentProfiles(limit?: number) {
+  async listRecentProfiles(limit?: number, lastEvaluatedKey?: string) {
     const params = new URLSearchParams();
     if (limit) params.set('limit', String(limit));
+    if (lastEvaluatedKey) params.set('lastEvaluatedKey', lastEvaluatedKey);
     const qs = params.toString();
-    return this.request<{ profiles: RecentProfileSummary[] }>(
+    return this.request<{ profiles: RecentProfileSummary[]; pagination: { count: number; hasMore: boolean; lastEvaluatedKey?: string } }>(
       `/recruiter/recent-profiles${qs ? `?${qs}` : ''}`
     );
   }

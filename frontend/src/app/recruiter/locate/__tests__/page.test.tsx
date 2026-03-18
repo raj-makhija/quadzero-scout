@@ -120,7 +120,7 @@ const mockSearchResponse = {
 describe('LocateProfilePage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockListRecentProfiles.mockResolvedValue({ profiles: mockRecentProfiles });
+    mockListRecentProfiles.mockResolvedValue({ profiles: mockRecentProfiles, pagination: { count: 2, hasMore: false } });
     mockSearchCandidates.mockResolvedValue(mockSearchResponse);
     mockSearchCandidatesByName.mockResolvedValue({ candidates: mockRecentProfiles });
   });

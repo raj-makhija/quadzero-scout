@@ -942,6 +942,7 @@ Returns the most recently updated candidate profiles (sorted by `lastUpdated` de
 | Param | Type   | Default | Description                    |
 |-------|--------|---------|--------------------------------|
 | limit | number | 10      | Max profiles to return (1–100) |
+| lastEvaluatedKey | string | — | Base64-encoded pagination cursor from previous response |
 
 **Response:**
 ```json
@@ -960,7 +961,12 @@ Returns the most recently updated candidate profiles (sorted by `lastUpdated` de
         "createdAt": "2026-03-10T08:00:00.000Z",
         "lastScreenedAt": "2026-03-11T14:00:00.000Z"
       }
-    ]
+    ],
+    "pagination": {
+      "count": 1,
+      "hasMore": true,
+      "lastEvaluatedKey": "base64-encoded-key"
+    }
   }
 }
 ```

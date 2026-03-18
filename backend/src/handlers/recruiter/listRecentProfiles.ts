@@ -10,9 +10,21 @@ async function handleRequest(
     const params = event.queryStringParameters || {};
     const limit = params.limit ? Math.min(parseInt(params.limit, 10), 100) : 10;
 
-    const items = await getRecentProfiles(limit);
+    // Decode pagination key if provided
+    let lastEvaluatedKey: Record<string, unknown> | undefined;
+    if (params.lastEvaluatedKey) {
+      try {
+        lastEvaluatedKey = JSON.parse(
+          Buffer.from(params.lastEvaluatedKey, 'base64').toString()
+        );
+      } catch {
+        return error(ErrorCodes.VALIDATION_ERROR, 'Invalid pagination key', 400);
+      }
+    }
 
-    const profiles = items.map((item) => ({
+    const result = await getRecentProfiles(limit, lastEvaluatedKey);
+
+    const profiles = result.items.map((item) => ({
       candidateId: item.candidate_id,
       fullName: item.full_name,
       primarySkills: item.primary_skills || [],
@@ -24,7 +36,20 @@ async function handleRequest(
       lastScreenedAt: item.last_screened_at,
     }));
 
-    return success({ profiles });
+    // Encode next page key
+    let encodedLastKey: string | undefined;
+    if (result.lastKey) {
+      encodedLastKey = Buffer.from(JSON.stringify(result.lastKey)).toString('base64');
+    }
+
+    return success({
+      profiles,
+      pagination: {
+        count: profiles.length,
+        hasMore: !!result.lastKey,
+        lastEvaluatedKey: encodedLastKey,
+      },
+    });
   } catch (err) {
     console.error('Error listing recent profiles:', err);
     return error(
