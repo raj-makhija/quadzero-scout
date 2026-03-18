@@ -2325,7 +2325,7 @@ List audit logs with filters. Requires admin role.
 | limit | number | no | Page size (default 50, max 100) |
 | nextToken | string | no | Base64-encoded pagination cursor |
 
-At least one of `userId` or `action` (with a date) is required.
+When no filters are provided, defaults to querying today's date via `DateIndex`, returning logs sorted by timestamp descending. The `email` filter queries by user; `action` + date uses `ActionTypeIndex`; date-only filters use `DateIndex`.
 
 **Response**:
 ```json

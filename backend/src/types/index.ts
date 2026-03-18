@@ -948,6 +948,7 @@ export interface AuditLogItem {
   entity_id: string;
   entity_key: string;
   action_date: string;
+  log_date: string;
   metadata?: Record<string, unknown>;
   ip_address?: string;
   user_agent?: string;
