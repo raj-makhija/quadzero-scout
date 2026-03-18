@@ -1682,6 +1682,71 @@ export async function scanRecentAuditLogs(
   };
 }
 
+export async function queryAuditLogsByDate(
+  startDate: string,
+  endDate: string,
+  options?: { limit?: number; nextToken?: string }
+): Promise<{ logs: AuditLogEntry[]; nextToken?: string }> {
+  const limit = options?.limit || 50;
+
+  // Query each date partition in the range and merge results
+  const dates: string[] = [];
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    dates.push(d.toISOString().slice(0, 10));
+  }
+
+  // If single date, do a simple query
+  if (dates.length === 1) {
+    const params = {
+      TableName: config.dynamodb.auditLogTable,
+      IndexName: 'DateIndex',
+      KeyConditionExpression: 'log_date = :ld',
+      ExpressionAttributeValues: { ':ld': dates[0] },
+      ScanIndexForward: false,
+      Limit: limit,
+      ExclusiveStartKey: options?.nextToken
+        ? JSON.parse(Buffer.from(options.nextToken, 'base64').toString())
+        : undefined,
+    };
+
+    const result = await docClient.send(new QueryCommand(params));
+    const items = (result.Items || []) as AuditLogItem[];
+
+    return {
+      logs: items.map(toAuditLogEntry),
+      nextToken: result.LastEvaluatedKey
+        ? Buffer.from(JSON.stringify(result.LastEvaluatedKey)).toString('base64')
+        : undefined,
+    };
+  }
+
+  // For multi-date ranges, query each date partition and merge
+  const allItems: AuditLogItem[] = [];
+  for (const date of dates) {
+    const params = {
+      TableName: config.dynamodb.auditLogTable,
+      IndexName: 'DateIndex',
+      KeyConditionExpression: 'log_date = :ld',
+      ExpressionAttributeValues: { ':ld': date },
+      ScanIndexForward: false,
+    };
+
+    const result = await docClient.send(new QueryCommand(params));
+    allItems.push(...((result.Items || []) as AuditLogItem[]));
+  }
+
+  // Sort all items descending by timestamp and apply limit
+  allItems.sort((a, b) => b.sk.localeCompare(a.sk));
+  const sliced = allItems.slice(0, limit);
+
+  return {
+    logs: sliced.map(toAuditLogEntry),
+    nextToken: undefined,
+  };
+}
+
 export async function queryAuditLogsByAction(
   action: string,
   date: string,

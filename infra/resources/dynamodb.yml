@@ -338,6 +338,8 @@ Resources:
           AttributeType: S
         - AttributeName: action_date
           AttributeType: S
+        - AttributeName: log_date
+          AttributeType: S
       KeySchema:
         - AttributeName: pk
           KeyType: HASH
@@ -355,6 +357,14 @@ Resources:
         - IndexName: ActionTypeIndex
           KeySchema:
             - AttributeName: action_date
+              KeyType: HASH
+            - AttributeName: sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: DateIndex
+          KeySchema:
+            - AttributeName: log_date
               KeyType: HASH
             - AttributeName: sk
               KeyType: RANGE
