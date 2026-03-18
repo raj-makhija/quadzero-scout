@@ -3,7 +3,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Search, ArrowLeft, Loader2, User, ChevronDown, ChevronUp, X, Filter, Plus } from 'lucide-react';
+import { Search, ArrowLeft, Loader2, User, ChevronDown, ChevronUp, X, Filter, Plus, Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { Header } from '@/components/Header';
 import { api, ApiError } from '@/lib/api';
 import type { CandidateNameSearchResult, RecentProfileSummary, CandidateSearchResult, SearchCriteria } from '@/lib/api';
@@ -20,6 +21,7 @@ type ProfileListItem = {
   location?: string;
   lastUpdated: string;
   lastScreenedAt?: string;
+  roles?: string[];
 };
 
 const SCREENING_STATUS_OPTIONS = [
@@ -44,6 +46,7 @@ function mapRecentToListItem(p: RecentProfileSummary): ProfileListItem {
     location: p.location,
     lastUpdated: p.lastUpdated,
     lastScreenedAt: p.lastScreenedAt,
+    roles: p.roles,
   };
 }
 
@@ -57,6 +60,7 @@ function mapSearchResultToListItem(c: CandidateSearchResult): ProfileListItem {
     location: c.location,
     lastUpdated: c.lastUpdated,
     lastScreenedAt: c.lastScreenedAt,
+    roles: c.roles,
   };
 }
 
@@ -96,6 +100,56 @@ function hasActiveFilters(f: FilterState): boolean {
   return countActiveFilters(f) > 0;
 }
 
+function getDateStamp(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function buildExportRows(profiles: ProfileListItem[]): string[][] {
+  const headers = ['Name', 'Location', 'Experience (yrs)', 'Seniority', 'Primary Skills', 'Roles', 'Last Updated'];
+  const rows = profiles.map(p => [
+    p.fullName,
+    p.location || '',
+    String(p.totalExperience),
+    formatSeniority(p.seniority),
+    p.primarySkills.join(', '),
+    (p.roles || []).join(', '),
+    formatDate(p.lastUpdated),
+  ]);
+  return [headers, ...rows];
+}
+
+function escapeCsvField(field: string): string {
+  if (field.includes(',') || field.includes('"') || field.includes('\n')) {
+    return `"${field.replace(/"/g, '""')}"`;
+  }
+  return field;
+}
+
+function exportCsv(profiles: ProfileListItem[]) {
+  const rows = buildExportRows(profiles);
+  const csv = rows.map(row => row.map(escapeCsvField).join(',')).join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `bench-report-${getDateStamp()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportExcel(profiles: ProfileListItem[]) {
+  const rows = buildExportRows(profiles);
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  // Auto-size columns
+  ws['!cols'] = rows[0].map((_, i) => ({
+    wch: Math.max(...rows.map(r => (r[i] || '').length), 10),
+  }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Bench Report');
+  XLSX.writeFile(wb, `bench-report-${getDateStamp()}.xlsx`);
+}
+
 export default function LocateProfilePage() {
   const router = useRouter();
 
@@ -126,6 +180,8 @@ export default function LocateProfilePage() {
   const [loadingFiltered, setLoadingFiltered] = useState(false);
   const [filterPagination, setFilterPagination] = useState<{ hasMore: boolean; lastKey?: string }>({ hasMore: false });
   const [loadingMore, setLoadingMore] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
 
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -151,6 +207,17 @@ export default function LocateProfilePage() {
       }
     })();
     return () => { cancelled = true; };
+  }, []);
+
+  // Close export menu on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   // Typeahead
@@ -676,16 +743,41 @@ export default function LocateProfilePage() {
         {/* Profile listing (recent or filtered) */}
         {mode !== 'nameSearch' && (
           <div className="mt-6">
-            {/* Header */}
-            {mode === 'recent' && !isLoading && displayProfiles && displayProfiles.length > 0 && (
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-                Recently updated profiles ({displayProfiles.length})
-              </p>
-            )}
-            {mode === 'filtered' && !isLoading && displayProfiles && displayProfiles.length > 0 && (
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-                {displayProfiles.length} candidate{displayProfiles.length !== 1 ? 's' : ''} match your filters
-              </p>
+            {/* Header with export */}
+            {!isLoading && displayProfiles && displayProfiles.length > 0 && (
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  {mode === 'recent'
+                    ? `Recently updated profiles (${displayProfiles.length})`
+                    : `${displayProfiles.length} candidate${displayProfiles.length !== 1 ? 's' : ''} match your filters`}
+                </p>
+                <div className="relative" ref={exportMenuRef}>
+                  <button
+                    onClick={() => setShowExportMenu(!showExportMenu)}
+                    className="btn-secondary flex items-center gap-1.5 text-sm px-3 py-1.5"
+                  >
+                    <Download className="w-4 h-4" />
+                    Export
+                    <ChevronDown className="w-3 h-3" />
+                  </button>
+                  {showExportMenu && (
+                    <div className="absolute right-0 mt-1 w-44 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-10">
+                      <button
+                        onClick={() => { exportCsv(displayProfiles); setShowExportMenu(false); }}
+                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-t-lg"
+                      >
+                        Export as CSV
+                      </button>
+                      <button
+                        onClick={() => { exportExcel(displayProfiles); setShowExportMenu(false); }}
+                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-b-lg"
+                      >
+                        Export as Excel
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
 
             {/* Loading skeleton */}

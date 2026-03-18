@@ -708,6 +708,7 @@ export interface CandidateSearchResult {
   lastScreenedAt?: string;
   lastScreenedBy?: string;
   isShortlisted?: boolean;
+  roles?: string[];
 }
 
 export interface SearchResponse {
@@ -839,6 +840,7 @@ export interface RecentProfileSummary {
   lastUpdated: string;
   createdAt?: string;
   lastScreenedAt?: string;
+  roles?: string[];
 }
 
 export interface RequestHistoryEntry {

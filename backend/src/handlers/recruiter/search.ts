@@ -114,6 +114,7 @@ async function handleRequest(
           lastUpdated: candidate.last_updated,
           lastScreenedAt: candidate.last_screened_at,
           lastScreenedBy: candidate.last_screened_by_name || candidate.last_screened_by,
+          roles: candidate.roles || [],
         };
       })
       // Filter out candidates below minimum must-have exact match ratio

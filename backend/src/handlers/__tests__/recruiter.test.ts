@@ -71,6 +71,7 @@ vi.mock('../../lib/dynamodb.js', () => ({
         location: 'Bangalore, India',
         last_updated: '2026-03-17T10:00:00Z',
         created_at: '2026-03-10T08:00:00Z',
+        roles: ['Full Stack Developer'],
       },
       {
         candidate_id: 'cand_2',
@@ -81,6 +82,7 @@ vi.mock('../../lib/dynamodb.js', () => ({
         location: 'Mumbai, India',
         last_updated: '2026-03-16T15:00:00Z',
         created_at: '2026-03-11T09:00:00Z',
+        roles: ['Backend Developer'],
       },
     ],
     lastKey: undefined,
@@ -894,7 +896,9 @@ describe('GET /recruiter/recent-profiles', () => {
     expect(body.data.profiles[0].candidateId).toBe('cand_1');
     expect(body.data.profiles[0].fullName).toBe('Alice Smith');
     expect(body.data.profiles[0].lastUpdated).toBe('2026-03-17T10:00:00Z');
+    expect(body.data.profiles[0].roles).toEqual(['Full Stack Developer']);
     expect(body.data.profiles[1].candidateId).toBe('cand_2');
+    expect(body.data.profiles[1].roles).toEqual(['Backend Developer']);
     expect(body.data.pagination).toBeDefined();
     expect(body.data.pagination.hasMore).toBe(false);
     expect(getRecentProfiles).toHaveBeenCalledWith(10, undefined);
