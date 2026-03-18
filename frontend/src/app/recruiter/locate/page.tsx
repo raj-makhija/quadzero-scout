@@ -263,7 +263,30 @@ export default function LocateProfilePage() {
       const pagination = lastKey ? { limit: 20, lastEvaluatedKey: lastKey } : { limit: 20 };
       const res = await api.searchCandidates(criteria, pagination, 'lastUpdated');
 
-      let items = res.candidates.map(mapSearchResultToListItem);
+      // Client-side hard filters (backend treats these as soft scoring factors)
+      let candidates = res.candidates;
+      if (filters.minExperience != null) {
+        candidates = candidates.filter(c => c.totalExperience >= filters.minExperience!);
+      }
+      if (filters.maxExperience != null) {
+        candidates = candidates.filter(c => c.totalExperience <= filters.maxExperience!);
+      }
+      if (filters.seniority.length > 0) {
+        candidates = candidates.filter(c => filters.seniority.includes(c.seniority));
+      }
+      if (filters.availability.length > 0) {
+        candidates = candidates.filter(c => filters.availability.includes(c.availability));
+      }
+      if (filters.location.trim()) {
+        const searchLocs = filters.location.split(/[,;]/).map(l => l.trim().toLowerCase()).filter(Boolean);
+        candidates = candidates.filter(c => {
+          if (!c.location) return false;
+          const candidateLoc = c.location.toLowerCase();
+          return searchLocs.some(loc => candidateLoc.includes(loc));
+        });
+      }
+
+      let items = candidates.map(mapSearchResultToListItem);
 
       // Client-side screening status filter
       if (filters.screeningStatus.length > 0) {
