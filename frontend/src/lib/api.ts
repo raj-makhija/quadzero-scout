@@ -631,6 +631,7 @@ export interface CandidateProfile extends ExtractedProfile {
   lastUpdated?: string;
   lastScreenedAt?: string;
   lastScreenedBy?: string;
+  headline?: string;
 }
 
 export interface ParsedCriteria {
@@ -709,6 +710,7 @@ export interface CandidateSearchResult {
   lastScreenedBy?: string;
   isShortlisted?: boolean;
   roles?: string[];
+  headline?: string;
 }
 
 export interface SearchResponse {
@@ -841,6 +843,7 @@ export interface RecentProfileSummary {
   createdAt?: string;
   lastScreenedAt?: string;
   roles?: string[];
+  headline?: string;
 }
 
 export interface RequestHistoryEntry {
@@ -1147,6 +1150,7 @@ export interface ScreeningUpdatedValues {
   currentCtc?: number | null;
   expectedCtc?: number | null;
   expectedCtcType?: 'explicit' | 'negotiable';
+  headline?: string;
   customFields?: Record<string, string | number>;
 }
 

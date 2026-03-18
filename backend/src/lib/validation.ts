@@ -44,6 +44,7 @@ export const SaveProfileRequestSchema = z.object({
     expectedCtc: z.number().min(0).max(500).optional(),
     customFields: z.record(z.string(), z.union([z.string(), z.number()])).optional().default({}),
     coverLetter: z.string().max(10000).optional(),
+    headline: z.string().max(200).optional(),
   }),
   resumeS3Key: z.string().min(1).max(500),
 });
@@ -295,6 +296,7 @@ export const ScreenCandidateRequestSchema = z.object({
     currentCtc: z.number().min(0).max(500).nullable().optional(),
     expectedCtc: z.number().min(0).max(500).nullable().optional(),
     expectedCtcType: z.enum(['explicit', 'negotiable']).optional(),
+    headline: z.string().max(200).optional(),
     customFields: z.record(
       z.string(),
       z.union([z.string().max(500), z.number()])

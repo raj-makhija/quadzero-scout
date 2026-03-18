@@ -642,6 +642,7 @@ Authorization: Bearer <jwe_token> (optional)
         "expectedCtcType": "explicit",
         "lastScreenedAt": "2024-01-14T09:00:00Z",
         "roles": ["Full Stack Developer", "Frontend Lead"],
+        "headline": "Sr. Full Stack Developer",
         "matchScore": 92,
         "matchDetails": {
           "mustHaveMatched": ["react", "nodejs"],
@@ -961,7 +962,8 @@ Returns the most recently updated candidate profiles (sorted by `lastUpdated` de
         "lastUpdated": "2026-03-12T10:30:00.000Z",
         "createdAt": "2026-03-10T08:00:00.000Z",
         "lastScreenedAt": "2026-03-11T14:00:00.000Z",
-        "roles": ["Full Stack Developer"]
+        "roles": ["Full Stack Developer"],
+        "headline": "Sr. Full Stack Developer"
       }
     ],
     "pagination": {

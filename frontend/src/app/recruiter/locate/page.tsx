@@ -8,7 +8,7 @@ import * as XLSX from 'xlsx';
 import { Header } from '@/components/Header';
 import { api, ApiError } from '@/lib/api';
 import type { CandidateNameSearchResult, RecentProfileSummary, CandidateSearchResult, SearchCriteria } from '@/lib/api';
-import { formatDate, formatSeniority, formatAvailability, formatCandidateEngagement, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS, CANDIDATE_ENGAGEMENT_OPTIONS } from '@/lib/utils';
+import { formatDate, formatSeniority, formatAvailability, formatCandidateEngagement, generateHeadline, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS, CANDIDATE_ENGAGEMENT_OPTIONS } from '@/lib/utils';
 import { getScreeningStatus } from '@/components/screening-modal';
 
 // Unified type for displaying profiles from different sources
@@ -22,6 +22,7 @@ type ProfileListItem = {
   lastUpdated: string;
   lastScreenedAt?: string;
   roles?: string[];
+  headline?: string;
 };
 
 const SCREENING_STATUS_OPTIONS = [
@@ -47,6 +48,7 @@ function mapRecentToListItem(p: RecentProfileSummary): ProfileListItem {
     lastUpdated: p.lastUpdated,
     lastScreenedAt: p.lastScreenedAt,
     roles: p.roles,
+    headline: p.headline,
   };
 }
 
@@ -61,6 +63,7 @@ function mapSearchResultToListItem(c: CandidateSearchResult): ProfileListItem {
     lastUpdated: c.lastUpdated,
     lastScreenedAt: c.lastScreenedAt,
     roles: c.roles,
+    headline: c.headline,
   };
 }
 
@@ -105,10 +108,15 @@ function getDateStamp(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+function getDisplayHeadline(p: ProfileListItem): string {
+  return p.headline || generateHeadline(p.seniority, p.roles, p.primarySkills);
+}
+
 function buildExportRows(profiles: ProfileListItem[]): string[][] {
-  const headers = ['Name', 'Location', 'Experience (yrs)', 'Seniority', 'Primary Skills', 'Roles', 'Last Updated'];
+  const headers = ['Name', 'Headline', 'Location', 'Experience (yrs)', 'Seniority', 'Primary Skills', 'Roles', 'Last Updated'];
   const rows = profiles.map(p => [
     p.fullName,
+    getDisplayHeadline(p),
     p.location || '',
     String(p.totalExperience),
     formatSeniority(p.seniority),
@@ -890,10 +898,11 @@ function CandidateCard({ candidate }: { candidate: ProfileListItem }) {
         <User className="w-5 h-5 text-primary-600" />
       </div>
       <div className="flex-1 min-w-0">
-        <div className="flex flex-wrap items-center gap-2 mb-1">
+        <div className="flex flex-wrap items-center gap-2 mb-0.5">
           <span className="text-base font-semibold text-gray-900 dark:text-gray-100">{candidate.fullName}</span>
           <span className={`badge text-xs ${screeningStatus.className}`}>{screeningStatus.label}</span>
         </div>
+        <p className="text-sm text-primary-600 dark:text-primary-400 mb-1.5">{getDisplayHeadline(candidate)}</p>
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-sm text-gray-500 dark:text-gray-400 mb-2">
           <span>{candidate.totalExperience} yrs exp</span>
           <span>{formatSeniority(candidate.seniority)}</span>

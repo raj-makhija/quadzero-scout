@@ -12,6 +12,7 @@ import {
   EXPECTED_CTC_MODE_OPTIONS,
   calculateNegotiableCtc,
   formatDate,
+  generateHeadline,
 } from '@/lib/utils';
 import ScreeningHistoryPanel from '@/components/screening-history-panel';
 
@@ -45,6 +46,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
   const [engagementModel, setEngagementModel] = useState('');
   const [totalExperience, setTotalExperience] = useState('');
   const [seniority, setSeniority] = useState('');
+  const [headline, setHeadline] = useState('');
 
   // Advanced fields
   const [fullName, setFullName] = useState('');
@@ -90,6 +92,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
         setRoles((profile.roles || []).join(', '));
         setCertifications((profile.certifications || []).join(', '));
         setSummary(profile.summary || '');
+        setHeadline(profile.headline || generateHeadline(profile.seniority || '', profile.roles, profile.primarySkills));
 
         // Pre-fill custom fields from candidate profile
         if (additionalFields && additionalFields.length > 0) {
@@ -186,6 +189,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
       if (engagementModel) updatedValues.engagementModel = engagementModel;
       if (totalExperience !== '') updatedValues.totalExperience = parseFloat(totalExperience);
       if (seniority) updatedValues.seniority = seniority;
+      if (headline) updatedValues.headline = headline;
 
       // Parse comma-separated fields
       if (primarySkillsText) {
@@ -457,6 +461,25 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                     />
                   </FormField>
                 </div>
+              </div>
+
+              {/* Section: Headline */}
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                  Headline
+                </h3>
+                <FormField
+                  label="Headline"
+                  htmlFor="headline"
+                  hint="A short title for the candidate, e.g. &quot;Sr. Python Developer&quot;"
+                >
+                  <FormInput
+                    id="headline"
+                    value={headline}
+                    onChange={(e) => setHeadline(e.target.value)}
+                    placeholder="e.g. Sr. Python Developer"
+                  />
+                </FormField>
               </div>
 
               {/* Section: Contact & Location */}

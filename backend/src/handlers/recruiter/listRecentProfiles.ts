@@ -35,6 +35,7 @@ async function handleRequest(
       createdAt: item.created_at,
       lastScreenedAt: item.last_screened_at,
       roles: item.roles || [],
+      headline: item.headline,
     }));
 
     // Encode next page key

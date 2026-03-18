@@ -141,6 +141,24 @@ export function formatCandidateEngagement(value: string): string {
   return map[value] || capitalizeFirst(value);
 }
 
+const SENIORITY_PREFIX: Record<string, string> = {
+  senior: 'Sr.',
+  junior: 'Jr.',
+  lead: 'Lead',
+  principal: 'Principal',
+  executive: 'Exec.',
+};
+
+export function generateHeadline(seniority: string, roles?: string[], primarySkills?: string[]): string {
+  const prefix = SENIORITY_PREFIX[seniority] || '';
+  const title = roles && roles.length > 0
+    ? roles[0]
+    : primarySkills && primarySkills.length > 0
+      ? capitalizeFirst(primarySkills[0]) + ' Professional'
+      : 'Professional';
+  return prefix ? `${prefix} ${title}` : title;
+}
+
 export function formatEngagementModel(value: string): string {
   const map: Record<string, string> = {
     full_time_regular: 'Full-time (Regular)',
