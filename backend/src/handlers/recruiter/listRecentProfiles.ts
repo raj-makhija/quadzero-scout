@@ -8,7 +8,7 @@ async function handleRequest(
 ): Promise<APIGatewayProxyResultV2> {
   try {
     const params = event.queryStringParameters || {};
-    const limit = params.limit ? Math.min(parseInt(params.limit, 10), 50) : 10;
+    const limit = params.limit ? Math.min(parseInt(params.limit, 10), 100) : 10;
 
     const items = await getRecentProfiles(limit);
 
@@ -21,6 +21,7 @@ async function handleRequest(
       location: item.location,
       lastUpdated: item.last_updated,
       createdAt: item.created_at,
+      lastScreenedAt: item.last_screened_at,
     }));
 
     return success({ profiles });

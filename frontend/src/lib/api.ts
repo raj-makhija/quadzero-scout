@@ -670,6 +670,7 @@ export interface SearchCriteria {
   industries?: string[];
   roles?: string[];
   maxBudgetLpa?: number;
+  engagementModel?: 'contract' | 'full_time' | 'either';
 }
 
 export interface PaginationOptions {
@@ -836,6 +837,7 @@ export interface RecentProfileSummary {
   location?: string;
   lastUpdated: string;
   createdAt?: string;
+  lastScreenedAt?: string;
 }
 
 export interface RequestHistoryEntry {

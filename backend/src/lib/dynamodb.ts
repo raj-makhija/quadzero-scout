@@ -1549,7 +1549,7 @@ export async function getRecentProfiles(
       ScanIndexForward: false,
       Limit: limit,
       ProjectionExpression:
-        'candidate_id, full_name, primary_skills, total_experience, seniority, #loc, last_updated, created_at',
+        'candidate_id, full_name, primary_skills, total_experience, seniority, #loc, last_updated, created_at, last_screened_at',
     })
   );
 

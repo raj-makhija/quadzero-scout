@@ -138,7 +138,8 @@ export const SearchCriteriaSchema = z.object({
   location: z.string().optional(),
   remote: z.boolean().optional(),
   industries: z.array(z.string()).optional(),
-  maxBudgetLpa: z.number().min(0).optional()
+  maxBudgetLpa: z.number().min(0).optional(),
+  engagementModel: z.enum(['contract', 'full_time', 'either']).optional()
 });
 export type SearchCriteria = z.infer<typeof SearchCriteriaSchema>;
 
