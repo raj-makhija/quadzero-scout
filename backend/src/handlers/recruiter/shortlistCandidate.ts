@@ -81,7 +81,7 @@ async function handleRequest(
       action: 'SHORTLIST_ADD',
       entityType: 'shortlist',
       entityId: `${requirementId}:${candidateId}`,
-      metadata: { requirementId, candidateId },
+      metadata: { requirementId, candidateId, candidateName: candidate.full_name },
     });
 
     return success({ success: true });
