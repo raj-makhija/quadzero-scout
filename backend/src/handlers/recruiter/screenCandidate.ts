@@ -163,7 +163,7 @@ async function handleRequest(
       action: 'CANDIDATE_SCREEN',
       entityType: 'candidate',
       entityId: candidateId,
-      metadata: { candidateId, fieldsUpdated, notes },
+      metadata: { candidateId, candidateName: candidate.full_name, fieldsUpdated, notes },
     });
 
     return success({

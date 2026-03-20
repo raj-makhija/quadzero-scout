@@ -213,7 +213,15 @@ async function handleRequest(
         action: 'CANDIDATE_SEARCH',
         entityType: 'search',
         entityId: 'search',
-        metadata: { resultCount: scoredCandidates.length },
+        metadata: {
+          resultCount: scoredCandidates.length,
+          mustHaveSkills: criteria.mustHaveSkills || [],
+          goodToHaveSkills: criteria.goodToHaveSkills || [],
+          minExperience: criteria.minExperience,
+          maxExperience: criteria.maxExperience,
+          seniority: criteria.seniority,
+          location: criteria.location,
+        },
       });
     }
 
