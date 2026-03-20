@@ -55,6 +55,7 @@ async function handleRequest(
           action: 'RESUME_DOWNLOAD_FORMATTED',
           entityType: 'candidate',
           entityId: candidateId,
+          metadata: { candidateId, candidateName: candidate.full_name },
         });
         return success(response);
       } catch (err) {
@@ -91,6 +92,7 @@ async function handleRequest(
             action: 'RESUME_DOWNLOAD_FORMATTED',
             entityType: 'candidate',
             entityId: candidateId,
+            metadata: { candidateId, candidateName: updatedCandidate.full_name },
           });
           return success(response);
         } catch (err) {
