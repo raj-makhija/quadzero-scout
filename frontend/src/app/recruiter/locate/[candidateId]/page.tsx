@@ -30,6 +30,7 @@ import {
   formatSeniority,
   formatAvailability,
   formatCandidateEngagement,
+  generateHeadline,
 } from '@/lib/utils';
 import {
   ScreeningModal,
@@ -287,10 +288,13 @@ export default function CandidateProfilePage() {
               <User className="w-7 h-7 text-primary-600" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="flex flex-wrap items-center gap-2 mb-1">
+              <div className="flex flex-wrap items-center gap-2 mb-0.5">
                 <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">{profile.fullName}</h1>
                 <span className={`badge text-xs ${screeningStatus.className}`}>{screeningStatus.label}</span>
               </div>
+              <p className="text-sm text-primary-600 dark:text-primary-400 mb-2">
+                {profile.headline || generateHeadline(profile.seniority || '', profile.roles, profile.primarySkills)}
+              </p>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-gray-400 mb-3">
                 <span className="flex items-center gap-1">
                   <Briefcase className="w-3.5 h-3.5" />

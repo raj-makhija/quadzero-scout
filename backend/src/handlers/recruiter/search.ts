@@ -114,6 +114,8 @@ async function handleRequest(
           lastUpdated: candidate.last_updated,
           lastScreenedAt: candidate.last_screened_at,
           lastScreenedBy: candidate.last_screened_by_name || candidate.last_screened_by,
+          roles: candidate.roles || [],
+          headline: candidate.headline,
         };
       })
       // Filter out candidates below minimum must-have exact match ratio
@@ -211,7 +213,15 @@ async function handleRequest(
         action: 'CANDIDATE_SEARCH',
         entityType: 'search',
         entityId: 'search',
-        metadata: { resultCount: scoredCandidates.length },
+        metadata: {
+          resultCount: scoredCandidates.length,
+          mustHaveSkills: criteria.mustHaveSkills || [],
+          goodToHaveSkills: criteria.goodToHaveSkills || [],
+          minExperience: criteria.minExperience,
+          maxExperience: criteria.maxExperience,
+          seniority: criteria.seniority,
+          location: criteria.location,
+        },
       });
     }
 

@@ -87,7 +87,7 @@ export async function searchCandidates(
   const expressionAttributeValues: Record<string, unknown> = {};
 
   const PAGE_SIZE = 100;
-  const MAX_ITEMS = 500;
+  const MAX_ITEMS = 2000;
 
   const baseScanParams: {
     TableName: string;
@@ -1537,23 +1537,31 @@ export async function searchCandidatesByName(
 // TODO: If TalentProfiles table grows beyond ~1000 items, add a GSI with
 // partition key = "ALL" and sort key = last_updated for efficient queries.
 export async function getRecentProfiles(
-  limit: number = 10
-): Promise<CandidateItem[]> {
-  const result = await docClient.send(
-    new QueryCommand({
-      TableName: config.dynamodb.talentProfilesTable,
-      IndexName: 'RecentProfilesIndex',
-      KeyConditionExpression: '#type = :type',
-      ExpressionAttributeNames: { '#type': '_type', '#loc': 'location' },
-      ExpressionAttributeValues: { ':type': 'PROFILE' },
-      ScanIndexForward: false,
-      Limit: limit,
-      ProjectionExpression:
-        'candidate_id, full_name, primary_skills, total_experience, seniority, #loc, last_updated, created_at, last_screened_at',
-    })
-  );
+  limit: number = 10,
+  lastEvaluatedKey?: Record<string, unknown>
+): Promise<{ items: CandidateItem[]; lastKey?: Record<string, unknown> }> {
+  const params: Record<string, unknown> = {
+    TableName: config.dynamodb.talentProfilesTable,
+    IndexName: 'RecentProfilesIndex',
+    KeyConditionExpression: '#type = :type',
+    ExpressionAttributeNames: { '#type': '_type', '#loc': 'location', '#roles': 'roles' },
+    ExpressionAttributeValues: { ':type': 'PROFILE' },
+    ScanIndexForward: false,
+    Limit: limit,
+    ProjectionExpression:
+      'candidate_id, full_name, primary_skills, total_experience, seniority, #loc, last_updated, created_at, last_screened_at, #roles, headline',
+  };
 
-  return (result.Items || []) as CandidateItem[];
+  if (lastEvaluatedKey) {
+    params.ExclusiveStartKey = lastEvaluatedKey;
+  }
+
+  const result = await docClient.send(new QueryCommand(params));
+
+  return {
+    items: (result.Items || []) as CandidateItem[],
+    lastKey: result.LastEvaluatedKey as Record<string, unknown> | undefined,
+  };
 }
 
 // ─── Audit Log Operations ───────────────────────────────────────────────────

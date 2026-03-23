@@ -32,7 +32,7 @@ export const SaveProfileRequestSchema = z.object({
     availability: z.enum(['immediate', '1_week', '2_weeks', '1_month', '2_months', '3_months', 'negotiable']),
     engagementModel: z.enum(['contract', 'full_time', 'either']).optional().default('either'),
     industries: z.array(z.string()).max(10).optional(),
-    roles: z.array(z.string()).max(10).optional(),
+    roles: z.array(z.string()).optional(),
     education: z.array(z.object({
       degree: z.string(),
       institution: z.string(),
@@ -44,6 +44,7 @@ export const SaveProfileRequestSchema = z.object({
     expectedCtc: z.number().min(0).max(500).optional(),
     customFields: z.record(z.string(), z.union([z.string(), z.number()])).optional().default({}),
     coverLetter: z.string().max(10000).optional(),
+    headline: z.string().max(200).optional(),
   }),
   resumeS3Key: z.string().min(1).max(500),
 });
@@ -284,7 +285,7 @@ export const ScreenCandidateRequestSchema = z.object({
     availability: z.enum(['immediate', '1_week', '2_weeks', '1_month', '2_months', '3_months', 'negotiable']).optional(),
     engagementModel: z.enum(['contract', 'full_time', 'either']).optional(),
     industries: z.array(z.string()).max(10).optional(),
-    roles: z.array(z.string()).max(10).optional(),
+    roles: z.array(z.string()).optional(),
     education: z.array(z.object({
       degree: z.string(),
       institution: z.string(),
@@ -295,6 +296,7 @@ export const ScreenCandidateRequestSchema = z.object({
     currentCtc: z.number().min(0).max(500).nullable().optional(),
     expectedCtc: z.number().min(0).max(500).nullable().optional(),
     expectedCtcType: z.enum(['explicit', 'negotiable']).optional(),
+    headline: z.string().max(200).optional(),
     customFields: z.record(
       z.string(),
       z.union([z.string().max(500), z.number()])

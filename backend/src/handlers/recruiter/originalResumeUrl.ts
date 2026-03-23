@@ -38,6 +38,7 @@ async function handleRequest(
       action: 'RESUME_DOWNLOAD_ORIGINAL',
       entityType: 'candidate',
       entityId: candidateId,
+      metadata: { candidateId, candidateName: candidate.full_name },
     });
 
     return success({

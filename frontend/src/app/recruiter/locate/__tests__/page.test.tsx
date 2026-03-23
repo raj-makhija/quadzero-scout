@@ -120,7 +120,7 @@ const mockSearchResponse = {
 describe('LocateProfilePage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockListRecentProfiles.mockResolvedValue({ profiles: mockRecentProfiles });
+    mockListRecentProfiles.mockResolvedValue({ profiles: mockRecentProfiles, pagination: { count: 2, hasMore: false } });
     mockSearchCandidates.mockResolvedValue(mockSearchResponse);
     mockSearchCandidatesByName.mockResolvedValue({ candidates: mockRecentProfiles });
   });
@@ -289,5 +289,28 @@ describe('LocateProfilePage', () => {
   it('shows description text for the page', () => {
     render(<LocateProfilePage />);
     expect(screen.getByText('Search for a candidate by name or use filters to browse profiles')).toBeInTheDocument();
+  });
+
+  it('shows export button when profiles are displayed', async () => {
+    render(<LocateProfilePage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Export')).toBeInTheDocument();
+    });
+  });
+
+  it('shows export dropdown with CSV and Excel options', async () => {
+    render(<LocateProfilePage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Export')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Export'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Export as CSV')).toBeInTheDocument();
+      expect(screen.getByText('Export as Excel')).toBeInTheDocument();
+    });
   });
 });

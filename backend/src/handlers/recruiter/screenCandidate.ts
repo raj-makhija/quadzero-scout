@@ -30,6 +30,7 @@ const FIELD_MAP: Record<string, string> = {
   currentCtc: 'current_ctc',
   expectedCtc: 'expected_ctc',
   expectedCtcType: 'expected_ctc_type',
+  headline: 'headline',
 };
 
 async function handleRequest(
@@ -162,7 +163,7 @@ async function handleRequest(
       action: 'CANDIDATE_SCREEN',
       entityType: 'candidate',
       entityId: candidateId,
-      metadata: { candidateId, fieldsUpdated, notes },
+      metadata: { candidateId, candidateName: candidate.full_name, fieldsUpdated, notes },
     });
 
     return success({
