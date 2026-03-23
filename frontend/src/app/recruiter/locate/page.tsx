@@ -3,11 +3,12 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Search, ArrowLeft, Loader2, User, ChevronDown, ChevronUp, X, Filter, Plus } from 'lucide-react';
+import { Search, ArrowLeft, Loader2, User, ChevronDown, ChevronUp, X, Filter, Plus, Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { Header } from '@/components/Header';
 import { api, ApiError } from '@/lib/api';
 import type { CandidateNameSearchResult, RecentProfileSummary, CandidateSearchResult, SearchCriteria } from '@/lib/api';
-import { formatDate, formatSeniority, formatAvailability, formatCandidateEngagement, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS, CANDIDATE_ENGAGEMENT_OPTIONS } from '@/lib/utils';
+import { formatDate, formatSeniority, formatAvailability, formatCandidateEngagement, generateHeadline, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS, CANDIDATE_ENGAGEMENT_OPTIONS } from '@/lib/utils';
 import { getScreeningStatus } from '@/components/screening-modal';
 
 // Unified type for displaying profiles from different sources
@@ -20,6 +21,8 @@ type ProfileListItem = {
   location?: string;
   lastUpdated: string;
   lastScreenedAt?: string;
+  roles?: string[];
+  headline?: string;
 };
 
 const SCREENING_STATUS_OPTIONS = [
@@ -44,6 +47,8 @@ function mapRecentToListItem(p: RecentProfileSummary): ProfileListItem {
     location: p.location,
     lastUpdated: p.lastUpdated,
     lastScreenedAt: p.lastScreenedAt,
+    roles: p.roles,
+    headline: p.headline,
   };
 }
 
@@ -57,6 +62,8 @@ function mapSearchResultToListItem(c: CandidateSearchResult): ProfileListItem {
     location: c.location,
     lastUpdated: c.lastUpdated,
     lastScreenedAt: c.lastScreenedAt,
+    roles: c.roles,
+    headline: c.headline,
   };
 }
 
@@ -96,6 +103,61 @@ function hasActiveFilters(f: FilterState): boolean {
   return countActiveFilters(f) > 0;
 }
 
+function getDateStamp(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function getDisplayHeadline(p: ProfileListItem): string {
+  return p.headline || generateHeadline(p.seniority, p.roles, p.primarySkills);
+}
+
+function buildExportRows(profiles: ProfileListItem[]): string[][] {
+  const headers = ['Name', 'Headline', 'Location', 'Experience (yrs)', 'Seniority', 'Primary Skills', 'Roles', 'Last Updated'];
+  const rows = profiles.map(p => [
+    p.fullName,
+    getDisplayHeadline(p),
+    p.location || '',
+    String(p.totalExperience),
+    formatSeniority(p.seniority),
+    p.primarySkills.join(', '),
+    (p.roles || []).join(', '),
+    formatDate(p.lastUpdated),
+  ]);
+  return [headers, ...rows];
+}
+
+function escapeCsvField(field: string): string {
+  if (field.includes(',') || field.includes('"') || field.includes('\n')) {
+    return `"${field.replace(/"/g, '""')}"`;
+  }
+  return field;
+}
+
+function exportCsv(profiles: ProfileListItem[]) {
+  const rows = buildExportRows(profiles);
+  const csv = rows.map(row => row.map(escapeCsvField).join(',')).join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `bench-report-${getDateStamp()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportExcel(profiles: ProfileListItem[]) {
+  const rows = buildExportRows(profiles);
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  // Auto-size columns
+  ws['!cols'] = rows[0].map((_, i) => ({
+    wch: Math.max(...rows.map(r => (r[i] || '').length), 10),
+  }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Bench Report');
+  XLSX.writeFile(wb, `bench-report-${getDateStamp()}.xlsx`);
+}
+
 export default function LocateProfilePage() {
   const router = useRouter();
 
@@ -112,6 +174,8 @@ export default function LocateProfilePage() {
   // Recent profiles state (default mode)
   const [recentProfiles, setRecentProfiles] = useState<ProfileListItem[]>([]);
   const [loadingRecent, setLoadingRecent] = useState(true);
+  const [recentPagination, setRecentPagination] = useState<{ hasMore: boolean; lastKey?: string }>({ hasMore: false });
+  const [loadingMoreRecent, setLoadingMoreRecent] = useState(false);
 
   // Filter state
   const [filtersExpanded, setFiltersExpanded] = useState(false);
@@ -124,6 +188,8 @@ export default function LocateProfilePage() {
   const [loadingFiltered, setLoadingFiltered] = useState(false);
   const [filterPagination, setFilterPagination] = useState<{ hasMore: boolean; lastKey?: string }>({ hasMore: false });
   const [loadingMore, setLoadingMore] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
 
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -135,6 +201,10 @@ export default function LocateProfilePage() {
         const res = await api.listRecentProfiles(50);
         if (!cancelled) {
           setRecentProfiles(res.profiles.map(mapRecentToListItem));
+          setRecentPagination({
+            hasMore: res.pagination?.hasMore ?? false,
+            lastKey: res.pagination?.lastEvaluatedKey,
+          });
         }
       } catch (err) {
         if (!cancelled) {
@@ -145,6 +215,17 @@ export default function LocateProfilePage() {
       }
     })();
     return () => { cancelled = true; };
+  }, []);
+
+  // Close export menu on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   // Typeahead
@@ -257,7 +338,30 @@ export default function LocateProfilePage() {
       const pagination = lastKey ? { limit: 20, lastEvaluatedKey: lastKey } : { limit: 20 };
       const res = await api.searchCandidates(criteria, pagination, 'lastUpdated');
 
-      let items = res.candidates.map(mapSearchResultToListItem);
+      // Client-side hard filters (backend treats these as soft scoring factors)
+      let candidates = res.candidates;
+      if (filters.minExperience != null) {
+        candidates = candidates.filter(c => c.totalExperience >= filters.minExperience!);
+      }
+      if (filters.maxExperience != null) {
+        candidates = candidates.filter(c => c.totalExperience <= filters.maxExperience!);
+      }
+      if (filters.seniority.length > 0) {
+        candidates = candidates.filter(c => filters.seniority.includes(c.seniority));
+      }
+      if (filters.availability.length > 0) {
+        candidates = candidates.filter(c => filters.availability.includes(c.availability));
+      }
+      if (filters.location.trim()) {
+        const searchLocs = filters.location.split(/[,;]/).map(l => l.trim().toLowerCase()).filter(Boolean);
+        candidates = candidates.filter(c => {
+          if (!c.location) return false;
+          const candidateLoc = c.location.toLowerCase();
+          return searchLocs.some(loc => candidateLoc.includes(loc));
+        });
+      }
+
+      let items = candidates.map(mapSearchResultToListItem);
 
       // Client-side screening status filter
       if (filters.screeningStatus.length > 0) {
@@ -295,6 +399,23 @@ export default function LocateProfilePage() {
     setQuery('');
     setErrorMessage('');
   };
+
+  const loadMoreRecent = useCallback(async () => {
+    if (!recentPagination.lastKey || loadingMoreRecent) return;
+    setLoadingMoreRecent(true);
+    try {
+      const res = await api.listRecentProfiles(50, recentPagination.lastKey);
+      setRecentProfiles(prev => [...prev, ...res.profiles.map(mapRecentToListItem)]);
+      setRecentPagination({
+        hasMore: res.pagination?.hasMore ?? false,
+        lastKey: res.pagination?.lastEvaluatedKey,
+      });
+    } catch (err) {
+      console.error('Failed to load more profiles:', err);
+    } finally {
+      setLoadingMoreRecent(false);
+    }
+  }, [recentPagination.lastKey, loadingMoreRecent]);
 
   const clearNameSearch = () => {
     setQuery('');
@@ -630,16 +751,41 @@ export default function LocateProfilePage() {
         {/* Profile listing (recent or filtered) */}
         {mode !== 'nameSearch' && (
           <div className="mt-6">
-            {/* Header */}
-            {mode === 'recent' && !isLoading && displayProfiles && displayProfiles.length > 0 && (
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-                Recently updated profiles ({displayProfiles.length})
-              </p>
-            )}
-            {mode === 'filtered' && !isLoading && displayProfiles && displayProfiles.length > 0 && (
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-                {displayProfiles.length} candidate{displayProfiles.length !== 1 ? 's' : ''} match your filters
-              </p>
+            {/* Header with export */}
+            {!isLoading && displayProfiles && displayProfiles.length > 0 && (
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  {mode === 'recent'
+                    ? `Recently updated profiles (${displayProfiles.length})`
+                    : `${displayProfiles.length} candidate${displayProfiles.length !== 1 ? 's' : ''} match your filters`}
+                </p>
+                <div className="relative" ref={exportMenuRef}>
+                  <button
+                    onClick={() => setShowExportMenu(!showExportMenu)}
+                    className="btn-secondary flex items-center gap-1.5 text-sm px-3 py-1.5"
+                  >
+                    <Download className="w-4 h-4" />
+                    Export
+                    <ChevronDown className="w-3 h-3" />
+                  </button>
+                  {showExportMenu && (
+                    <div className="absolute right-0 mt-1 w-44 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-10">
+                      <button
+                        onClick={() => { exportCsv(displayProfiles); setShowExportMenu(false); }}
+                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-t-lg"
+                      >
+                        Export as CSV
+                      </button>
+                      <button
+                        onClick={() => { exportExcel(displayProfiles); setShowExportMenu(false); }}
+                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-b-lg"
+                      >
+                        Export as Excel
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
 
             {/* Loading skeleton */}
@@ -694,7 +840,27 @@ export default function LocateProfilePage() {
               </div>
             )}
 
-            {/* Load more (filtered mode only) */}
+            {/* Load more (recent mode) */}
+            {mode === 'recent' && recentPagination.hasMore && !isLoading && (
+              <div className="mt-4 text-center">
+                <button
+                  onClick={loadMoreRecent}
+                  disabled={loadingMoreRecent}
+                  className="btn-secondary px-6"
+                >
+                  {loadingMoreRecent ? (
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Loading...
+                    </span>
+                  ) : (
+                    'Load More'
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* Load more (filtered mode) */}
             {mode === 'filtered' && filterPagination.hasMore && !isLoading && (
               <div className="mt-4 text-center">
                 <button
@@ -732,10 +898,11 @@ function CandidateCard({ candidate }: { candidate: ProfileListItem }) {
         <User className="w-5 h-5 text-primary-600" />
       </div>
       <div className="flex-1 min-w-0">
-        <div className="flex flex-wrap items-center gap-2 mb-1">
+        <div className="flex flex-wrap items-center gap-2 mb-0.5">
           <span className="text-base font-semibold text-gray-900 dark:text-gray-100">{candidate.fullName}</span>
           <span className={`badge text-xs ${screeningStatus.className}`}>{screeningStatus.label}</span>
         </div>
+        <p className="text-sm text-primary-600 dark:text-primary-400 mb-1.5">{getDisplayHeadline(candidate)}</p>
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-sm text-gray-500 dark:text-gray-400 mb-2">
           <span>{candidate.totalExperience} yrs exp</span>
           <span>{formatSeniority(candidate.seniority)}</span>

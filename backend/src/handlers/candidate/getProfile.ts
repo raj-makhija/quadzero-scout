@@ -46,6 +46,7 @@ export async function handler(
       resumeS3Key: candidate.resume_s3_key,
       customFields: candidate.custom_fields || {},
       coverLetter: candidate.cover_letter,
+      headline: candidate.headline,
       createdAt: candidate.created_at,
       lastUpdated: candidate.last_updated,
       lastScreenedAt: candidate.last_screened_at,

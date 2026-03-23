@@ -79,7 +79,7 @@ export const CandidateProfileSchema = z.object({
   availability: AvailabilityEnum,
   engagementModel: CandidateEngagementModelEnum.optional().default('either'),
   industries: z.array(z.string()).max(10).optional().default([]),
-  roles: z.array(z.string()).max(10).optional().default([]),
+  roles: z.array(z.string()).optional().default([]),
   education: z.array(EducationSchema).optional().default([]),
   certifications: z.array(z.string()).max(20).optional().default([]),
   summary: z.string().max(2000).optional(),
@@ -121,6 +121,7 @@ export interface CandidateItem {
   last_screened_by_name?: string;
   custom_fields?: Record<string, string | number>;
   cover_letter?: string;
+  headline?: string;
   _type?: string;
   created_at: string;
   last_updated: string;
