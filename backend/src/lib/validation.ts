@@ -32,7 +32,7 @@ export const SaveProfileRequestSchema = z.object({
     availability: z.enum(['immediate', '1_week', '2_weeks', '1_month', '2_months', '3_months', 'negotiable']),
     engagementModel: z.enum(['contract', 'full_time', 'either']).optional().default('either'),
     industries: z.array(z.string()).max(10).optional(),
-    roles: z.array(z.string()).max(10).optional(),
+    roles: z.array(z.string()).optional(),
     education: z.array(z.object({
       degree: z.string(),
       institution: z.string(),
@@ -285,7 +285,7 @@ export const ScreenCandidateRequestSchema = z.object({
     availability: z.enum(['immediate', '1_week', '2_weeks', '1_month', '2_months', '3_months', 'negotiable']).optional(),
     engagementModel: z.enum(['contract', 'full_time', 'either']).optional(),
     industries: z.array(z.string()).max(10).optional(),
-    roles: z.array(z.string()).max(10).optional(),
+    roles: z.array(z.string()).optional(),
     education: z.array(z.object({
       degree: z.string(),
       institution: z.string(),
