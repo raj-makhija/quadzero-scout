@@ -169,6 +169,8 @@ export default function LocateProfilePage() {
 
   // Bench list state
   const [showBenchList, setShowBenchList] = useState(false);
+  const [loadingBenchList, setLoadingBenchList] = useState(false);
+  const [benchListProfiles, setBenchListProfiles] = useState<ProfileListItem[] | null>(null);
 
   // Name search state
   const [query, setQuery] = useState('');
@@ -431,6 +433,46 @@ export default function LocateProfilePage() {
     setNameResults(null);
     setMode(hasActiveFilters(filters) ? 'filtered' : 'recent');
   };
+
+  const generateBenchList = useCallback(async () => {
+    // In filtered mode, use current results directly
+    if (mode === 'filtered' && filteredResults.length > 0) {
+      setBenchListProfiles(filteredResults);
+      setShowBenchList(true);
+      return;
+    }
+
+    // In recent/other modes, run a search with bench list preset filters
+    setLoadingBenchList(true);
+    setErrorMessage('');
+    try {
+      const benchCriteria: SearchCriteria = {
+        availability: ['immediate', '1_week', '2_weeks'],
+      };
+      const res = await api.searchCandidates(benchCriteria, { limit: 100 }, 'lastUpdated');
+
+      // Client-side hard filters matching the bench list preset
+      let candidates = res.candidates.filter(c =>
+        ['immediate', '1_week', '2_weeks'].includes(c.availability)
+      );
+
+      let items = candidates.map(mapSearchResultToListItem);
+
+      // Only screened candidates (screened within 15 days)
+      items = items.filter(item => getScreeningStatusValue(item.lastScreenedAt) === 'screened');
+
+      setBenchListProfiles(items);
+      setShowBenchList(true);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setErrorMessage(err.message);
+      } else {
+        setErrorMessage('Failed to generate bench list. Please try again.');
+      }
+    } finally {
+      setLoadingBenchList(false);
+    }
+  }, [mode, filteredResults]);
 
   const activeFilterCount = countActiveFilters(filters);
 
@@ -769,13 +811,14 @@ export default function LocateProfilePage() {
                     : `${displayProfiles.length} candidate${displayProfiles.length !== 1 ? 's' : ''} match your filters`}
                 </p>
                 <div className="flex items-center gap-2">
-                  {isInternal && mode === 'filtered' && (
+                  {isInternal && (
                     <button
-                      onClick={() => setShowBenchList(true)}
+                      onClick={generateBenchList}
+                      disabled={loadingBenchList}
                       className="btn-secondary flex items-center gap-1.5 text-sm px-3 py-1.5"
                     >
-                      <ClipboardList className="w-4 h-4" />
-                      Bench List
+                      {loadingBenchList ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardList className="w-4 h-4" />}
+                      {loadingBenchList ? 'Preparing...' : 'Bench List'}
                     </button>
                   )}
                   <div className="relative" ref={exportMenuRef}>
@@ -903,10 +946,10 @@ export default function LocateProfilePage() {
         )}
       </div>
 
-      {showBenchList && displayProfiles && displayProfiles.length > 0 && (
+      {showBenchList && benchListProfiles && benchListProfiles.length > 0 && (
         <BenchListModal
-          profiles={displayProfiles}
-          onClose={() => setShowBenchList(false)}
+          profiles={benchListProfiles}
+          onClose={() => { setShowBenchList(false); setBenchListProfiles(null); }}
         />
       )}
     </div>

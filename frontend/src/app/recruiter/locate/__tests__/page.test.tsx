@@ -383,25 +383,47 @@ describe('LocateProfilePage', () => {
       expect(screen.queryByText('Bench List')).not.toBeInTheDocument();
     });
 
-    it('hides bench list button in recent mode', async () => {
+    it('shows bench list button in recent mode', async () => {
       render(<LocateProfilePage />);
 
       await waitFor(() => {
         expect(screen.getByText('Alice Smith')).toBeInTheDocument();
       });
 
-      // In recent mode, bench list button should not appear
-      expect(screen.queryByText('Bench List')).not.toBeInTheDocument();
+      // In recent mode, bench list button should also be visible
+      expect(screen.getByText('Bench List')).toBeInTheDocument();
     });
 
-    it('opens bench list modal when button is clicked', async () => {
+    it('opens bench list modal from recent mode after fetching filtered data', async () => {
       render(<LocateProfilePage />);
 
       await waitFor(() => {
         expect(screen.getByText('Alice Smith')).toBeInTheDocument();
       });
 
-      // Switch to filtered mode
+      // Click bench list from recent mode — triggers a search with preset filters
+      fireEvent.click(screen.getByText('Bench List'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('bench-list-modal')).toBeInTheDocument();
+      });
+
+      // Verify the search was called with bench list preset criteria
+      expect(mockSearchCandidates).toHaveBeenCalledWith(
+        { availability: ['immediate', '1_week', '2_weeks'] },
+        { limit: 100 },
+        'lastUpdated',
+      );
+    });
+
+    it('opens bench list modal from filtered mode with current results', async () => {
+      render(<LocateProfilePage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Alice Smith')).toBeInTheDocument();
+      });
+
+      // Switch to filtered mode first
       fireEvent.click(screen.getByText('Filters'));
       await waitFor(() => {
         expect(screen.getByText('Apply Filters')).toBeInTheDocument();
@@ -412,11 +434,17 @@ describe('LocateProfilePage', () => {
         expect(screen.getByText(/candidate.*match your filters/)).toBeInTheDocument();
       });
 
+      // Reset mock call count to verify bench list doesn't trigger another search
+      mockSearchCandidates.mockClear();
+
       fireEvent.click(screen.getByText('Bench List'));
 
       await waitFor(() => {
         expect(screen.getByTestId('bench-list-modal')).toBeInTheDocument();
       });
+
+      // Should NOT call searchCandidates again — uses existing filtered results
+      expect(mockSearchCandidates).not.toHaveBeenCalled();
     });
   });
 });
