@@ -342,9 +342,9 @@ Detailed test cases are in [test-cases.md](test-cases.md). Summary below:
 | seniority | SaveProfile | enum | enum | enum(7) | TC-PROFILE-017 |
 | availability | SaveProfile | enum | enum | enum(7) | TC-PROFILE-018 |
 | secondarySkills | SaveProfile | 0 | — | array | TC-VALID-003 |
-| industries | SaveProfile | 0 | 10 | array | TC-VALID-003 |
+| industries | SaveProfile | 0 | — | array | TC-VALID-003 |
 | roles | SaveProfile | 0 | — | array | TC-VALID-003 |
-| certifications | SaveProfile | 0 | 20 | array | TC-VALID-012 |
+| certifications | SaveProfile | 0 | — | array | TC-VALID-012 |
 | summary | SaveProfile | 0 | 2000 | string | TC-PROFILE-021 |
 | jobDescription | ParseJd | 50 | 10000 | string | TC-PARSEJD-006, TC-PARSEJD-007 |
 | jobTitle | ParseJd | 0 | 200 | string (auto-generated on frontend; API-only validation) | TC-PARSEJD-008 |
