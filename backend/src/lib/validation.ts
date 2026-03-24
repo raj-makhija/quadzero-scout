@@ -20,10 +20,10 @@ export const AnalyzeRequestSchema = z.object({
 export const SaveProfileRequestSchema = z.object({
   candidateId: z.string().uuid().optional(),
   profile: z.object({
-    fullName: z.string().min(2).max(100),
+    fullName: z.string().min(2),
     email: z.string().email(),
     phone: z.string().optional(),
-    location: z.string().max(200).nullable().optional(),
+    location: z.string().nullable().optional(),
     primarySkills: z.array(z.string().min(1)).min(1),
     primarySkillYears: z.record(z.string(), z.number().min(0).max(50)),
     secondarySkills: z.array(z.string()).optional(),
@@ -39,12 +39,12 @@ export const SaveProfileRequestSchema = z.object({
       year: z.number().optional(),
     })).optional(),
     certifications: z.array(z.string()).optional(),
-    summary: z.string().max(2000).optional(),
+    summary: z.string().optional(),
     currentCtc: z.number().min(0).max(500).optional(),
     expectedCtc: z.number().min(0).max(500).optional(),
     customFields: z.record(z.string(), z.union([z.string(), z.number()])).optional().default({}),
-    coverLetter: z.string().max(10000).optional(),
-    headline: z.string().max(200).optional(),
+    coverLetter: z.string().optional(),
+    headline: z.string().optional(),
   }),
   resumeS3Key: z.string().min(1).max(500),
 });
@@ -273,10 +273,10 @@ export const UpdateClientRequestSchema = z.object({
 export const ScreenCandidateRequestSchema = z.object({
   candidateId: z.string().min(1),
   updatedValues: z.object({
-    fullName: z.string().min(2).max(100).optional(),
+    fullName: z.string().min(2).optional(),
     email: z.string().email().optional(),
     phone: z.string().optional(),
-    location: z.string().max(200).nullable().optional(),
+    location: z.string().nullable().optional(),
     primarySkills: z.array(z.string().min(1)).min(1).optional(),
     primarySkillYears: z.record(z.string(), z.number().min(0).max(50)).optional(),
     secondarySkills: z.array(z.string()).optional(),
@@ -292,17 +292,17 @@ export const ScreenCandidateRequestSchema = z.object({
       year: z.number().optional(),
     })).optional(),
     certifications: z.array(z.string()).optional(),
-    summary: z.string().max(2000).optional(),
+    summary: z.string().optional(),
     currentCtc: z.number().min(0).max(500).nullable().optional(),
     expectedCtc: z.number().min(0).max(500).nullable().optional(),
     expectedCtcType: z.enum(['explicit', 'negotiable']).optional(),
-    headline: z.string().max(200).optional(),
+    headline: z.string().optional(),
     customFields: z.record(
       z.string(),
-      z.union([z.string().max(500), z.number()])
+      z.union([z.string(), z.number()])
     ).optional(),
   }),
-  notes: z.string().max(2000).optional(),
+  notes: z.string().optional(),
 });
 
 // Update Candidate Custom Fields Request Validation

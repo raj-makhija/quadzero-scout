@@ -345,7 +345,7 @@ Detailed test cases are in [test-cases.md](test-cases.md). Summary below:
 | industries | SaveProfile | 0 | — | array | TC-VALID-003 |
 | roles | SaveProfile | 0 | — | array | TC-VALID-003 |
 | certifications | SaveProfile | 0 | — | array | TC-VALID-012 |
-| summary | SaveProfile | 0 | 2000 | string | TC-PROFILE-021 |
+| summary | SaveProfile | 0 | — | string | TC-PROFILE-021 |
 | jobDescription | ParseJd | 50 | 10000 | string | TC-PARSEJD-006, TC-PARSEJD-007 |
 | jobTitle | ParseJd | 0 | 200 | string (auto-generated on frontend; API-only validation) | TC-PARSEJD-008 |
 | pagination.limit | Search | 1 | 100 | number | TC-SEARCH-010 to TC-SEARCH-012 |
