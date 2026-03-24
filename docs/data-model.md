@@ -1079,10 +1079,10 @@ export const CandidateProfileSchema = z.object({
   seniority: SeniorityEnum,
   availability: AvailabilityEnum,
   engagementModel: z.enum(['contract', 'full_time', 'either']).optional().default('either'),
-  industries: z.array(z.string()).max(10).optional().default([]),
+  industries: z.array(z.string()).optional().default([]),
   roles: z.array(z.string()).optional().default([]),
   education: z.array(EducationSchema).optional().default([]),
-  certifications: z.array(z.string()).max(20).optional().default([]),
+  certifications: z.array(z.string()).optional().default([]),
   summary: z.string().max(2000).optional(),
   currentCtc: z.number().min(0).max(500).optional(),
   expectedCtc: z.number().min(0).max(500).optional()
