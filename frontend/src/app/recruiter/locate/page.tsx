@@ -2,17 +2,19 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import Link from 'next/link';
-import { Search, ArrowLeft, Loader2, User, ChevronDown, ChevronUp, X, Filter, Plus, Download } from 'lucide-react';
+import { Search, ArrowLeft, Loader2, User, ChevronDown, ChevronUp, X, Filter, Plus, Download, ClipboardList } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Header } from '@/components/Header';
+import { BenchListModal } from '@/components/bench-list-modal';
 import { api, ApiError } from '@/lib/api';
 import type { CandidateNameSearchResult, RecentProfileSummary, CandidateSearchResult, SearchCriteria } from '@/lib/api';
 import { formatDate, formatSeniority, formatAvailability, formatCandidateEngagement, generateHeadline, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS, CANDIDATE_ENGAGEMENT_OPTIONS } from '@/lib/utils';
 import { getScreeningStatus } from '@/components/screening-modal';
 
 // Unified type for displaying profiles from different sources
-type ProfileListItem = {
+export type ProfileListItem = {
   candidateId: string;
   fullName: string;
   primarySkills: string[];
@@ -23,6 +25,7 @@ type ProfileListItem = {
   lastScreenedAt?: string;
   roles?: string[];
   headline?: string;
+  availability?: string;
 };
 
 const SCREENING_STATUS_OPTIONS = [
@@ -64,6 +67,7 @@ function mapSearchResultToListItem(c: CandidateSearchResult): ProfileListItem {
     lastScreenedAt: c.lastScreenedAt,
     roles: c.roles,
     headline: c.headline,
+    availability: c.availability,
   };
 }
 
@@ -160,6 +164,13 @@ function exportExcel(profiles: ProfileListItem[]) {
 
 export default function LocateProfilePage() {
   const router = useRouter();
+  const { data: session } = useSession();
+  const isInternal = (session?.user as { isInternal?: boolean } | undefined)?.isInternal === true;
+
+  // Bench list state
+  const [showBenchList, setShowBenchList] = useState(false);
+  const [loadingBenchList, setLoadingBenchList] = useState(false);
+  const [benchListProfiles, setBenchListProfiles] = useState<ProfileListItem[] | null>(null);
 
   // Name search state
   const [query, setQuery] = useState('');
@@ -422,6 +433,46 @@ export default function LocateProfilePage() {
     setNameResults(null);
     setMode(hasActiveFilters(filters) ? 'filtered' : 'recent');
   };
+
+  const generateBenchList = useCallback(async () => {
+    // In filtered mode, use current results directly
+    if (mode === 'filtered' && filteredResults.length > 0) {
+      setBenchListProfiles(filteredResults);
+      setShowBenchList(true);
+      return;
+    }
+
+    // In recent/other modes, run a search with bench list preset filters
+    setLoadingBenchList(true);
+    setErrorMessage('');
+    try {
+      const benchCriteria: SearchCriteria = {
+        availability: ['immediate', '1_week', '2_weeks'],
+      };
+      const res = await api.searchCandidates(benchCriteria, { limit: 100 }, 'lastUpdated');
+
+      // Client-side hard filters matching the bench list preset
+      let candidates = res.candidates.filter(c =>
+        ['immediate', '1_week', '2_weeks'].includes(c.availability)
+      );
+
+      let items = candidates.map(mapSearchResultToListItem);
+
+      // Only screened candidates (screened within 15 days)
+      items = items.filter(item => getScreeningStatusValue(item.lastScreenedAt) === 'screened');
+
+      setBenchListProfiles(items);
+      setShowBenchList(true);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setErrorMessage(err.message);
+      } else {
+        setErrorMessage('Failed to generate bench list. Please try again.');
+      }
+    } finally {
+      setLoadingBenchList(false);
+    }
+  }, [mode, filteredResults]);
 
   const activeFilterCount = countActiveFilters(filters);
 
@@ -759,7 +810,18 @@ export default function LocateProfilePage() {
                     ? `Recently updated profiles (${displayProfiles.length})`
                     : `${displayProfiles.length} candidate${displayProfiles.length !== 1 ? 's' : ''} match your filters`}
                 </p>
-                <div className="relative" ref={exportMenuRef}>
+                <div className="flex items-center gap-2">
+                  {isInternal && (
+                    <button
+                      onClick={generateBenchList}
+                      disabled={loadingBenchList}
+                      className="btn-secondary flex items-center gap-1.5 text-sm px-3 py-1.5"
+                    >
+                      {loadingBenchList ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardList className="w-4 h-4" />}
+                      {loadingBenchList ? 'Preparing...' : 'Bench List'}
+                    </button>
+                  )}
+                  <div className="relative" ref={exportMenuRef}>
                   <button
                     onClick={() => setShowExportMenu(!showExportMenu)}
                     className="btn-secondary flex items-center gap-1.5 text-sm px-3 py-1.5"
@@ -784,6 +846,7 @@ export default function LocateProfilePage() {
                       </button>
                     </div>
                   )}
+                </div>
                 </div>
               </div>
             )}
@@ -882,6 +945,13 @@ export default function LocateProfilePage() {
           </div>
         )}
       </div>
+
+      {showBenchList && benchListProfiles && benchListProfiles.length > 0 && (
+        <BenchListModal
+          profiles={benchListProfiles}
+          onClose={() => { setShowBenchList(false); setBenchListProfiles(null); }}
+        />
+      )}
     </div>
   );
 }

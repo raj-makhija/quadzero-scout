@@ -16,8 +16,13 @@ vi.mock('next/navigation', () => ({
   useSearchParams: vi.fn(() => new URLSearchParams()),
 }));
 
+const mockUseSession = vi.fn(() => ({
+  data: { user: { role: 'recruiter', isInternal: true } },
+  status: 'authenticated' as const,
+}));
+
 vi.mock('next-auth/react', () => ({
-  useSession: () => ({ data: { user: { role: 'recruiter' } }, status: 'authenticated' }),
+  useSession: () => mockUseSession(),
   signOut: vi.fn(),
   signIn: vi.fn(),
   SessionProvider: ({ children }: any) => children,
@@ -44,6 +49,14 @@ vi.mock('@/lib/api', () => ({
 
 vi.mock('@/components/Header', () => ({
   Header: () => <div data-testid="header">Header</div>,
+}));
+
+vi.mock('@/components/bench-list-modal', () => ({
+  BenchListModal: ({ onClose }: { onClose: () => void }) => (
+    <div data-testid="bench-list-modal">
+      <button onClick={onClose}>Close</button>
+    </div>
+  ),
 }));
 
 vi.mock('@/components/screening-modal', () => ({
@@ -120,6 +133,10 @@ const mockSearchResponse = {
 describe('LocateProfilePage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseSession.mockReturnValue({
+      data: { user: { role: 'recruiter', isInternal: true } },
+      status: 'authenticated' as const,
+    });
     mockListRecentProfiles.mockResolvedValue({ profiles: mockRecentProfiles, pagination: { count: 2, hasMore: false } });
     mockSearchCandidates.mockResolvedValue(mockSearchResponse);
     mockSearchCandidatesByName.mockResolvedValue({ candidates: mockRecentProfiles });
@@ -311,6 +328,123 @@ describe('LocateProfilePage', () => {
     await waitFor(() => {
       expect(screen.getByText('Export as CSV')).toBeInTheDocument();
       expect(screen.getByText('Export as Excel')).toBeInTheDocument();
+    });
+  });
+
+  describe('Bench List button', () => {
+    it('shows bench list button for internal recruiters in filtered mode', async () => {
+      render(<LocateProfilePage />);
+
+      // Wait for recent profiles to load
+      await waitFor(() => {
+        expect(screen.getByText('Alice Smith')).toBeInTheDocument();
+      });
+
+      // Open filters and apply to switch to filtered mode
+      fireEvent.click(screen.getByText('Filters'));
+      await waitFor(() => {
+        expect(screen.getByText('Apply Filters')).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByText('Apply Filters'));
+
+      // Wait for the filtered results text to appear (indicates mode switched)
+      await waitFor(() => {
+        expect(screen.getByText(/candidate.*match your filters/)).toBeInTheDocument();
+      });
+
+      expect(screen.getByText('Bench List')).toBeInTheDocument();
+    });
+
+    it('hides bench list button for external recruiters', async () => {
+      mockUseSession.mockReturnValue({
+        data: { user: { role: 'recruiter', isInternal: false } },
+        status: 'authenticated' as const,
+      });
+
+      render(<LocateProfilePage />);
+
+      // Wait for recent profiles to load
+      await waitFor(() => {
+        expect(screen.getByText('Alice Smith')).toBeInTheDocument();
+      });
+
+      // Open filters and apply
+      fireEvent.click(screen.getByText('Filters'));
+      await waitFor(() => {
+        expect(screen.getByText('Apply Filters')).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByText('Apply Filters'));
+
+      // Wait for the filtered results to show
+      await waitFor(() => {
+        expect(screen.getByText(/candidate.*match your filters/)).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText('Bench List')).not.toBeInTheDocument();
+    });
+
+    it('shows bench list button in recent mode', async () => {
+      render(<LocateProfilePage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Alice Smith')).toBeInTheDocument();
+      });
+
+      // In recent mode, bench list button should also be visible
+      expect(screen.getByText('Bench List')).toBeInTheDocument();
+    });
+
+    it('opens bench list modal from recent mode after fetching filtered data', async () => {
+      render(<LocateProfilePage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Alice Smith')).toBeInTheDocument();
+      });
+
+      // Click bench list from recent mode — triggers a search with preset filters
+      fireEvent.click(screen.getByText('Bench List'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('bench-list-modal')).toBeInTheDocument();
+      });
+
+      // Verify the search was called with bench list preset criteria
+      expect(mockSearchCandidates).toHaveBeenCalledWith(
+        { availability: ['immediate', '1_week', '2_weeks'] },
+        { limit: 100 },
+        'lastUpdated',
+      );
+    });
+
+    it('opens bench list modal from filtered mode with current results', async () => {
+      render(<LocateProfilePage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Alice Smith')).toBeInTheDocument();
+      });
+
+      // Switch to filtered mode first
+      fireEvent.click(screen.getByText('Filters'));
+      await waitFor(() => {
+        expect(screen.getByText('Apply Filters')).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByText('Apply Filters'));
+
+      await waitFor(() => {
+        expect(screen.getByText(/candidate.*match your filters/)).toBeInTheDocument();
+      });
+
+      // Reset mock call count to verify bench list doesn't trigger another search
+      mockSearchCandidates.mockClear();
+
+      fireEvent.click(screen.getByText('Bench List'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('bench-list-modal')).toBeInTheDocument();
+      });
+
+      // Should NOT call searchCandidates again — uses existing filtered results
+      expect(mockSearchCandidates).not.toHaveBeenCalled();
     });
   });
 });
