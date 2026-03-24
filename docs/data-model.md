@@ -1068,10 +1068,10 @@ import { z } from 'zod';
 export const CandidateProfileSchema = z.object({
   candidateId: z.string().uuid().optional(),
   userId: z.string().optional(),
-  fullName: z.string().min(2).max(100),
+  fullName: z.string().min(2),
   email: z.string().email(),
   phone: z.string().optional(),
-  location: z.string().max(200).optional(),
+  location: z.string().optional(),
   primarySkills: z.array(z.string()).min(1),
   primarySkillYears: z.record(z.string(), z.number().min(0).max(50)),
   secondarySkills: z.array(z.string()).optional().default([]),
@@ -1083,7 +1083,7 @@ export const CandidateProfileSchema = z.object({
   roles: z.array(z.string()).optional().default([]),
   education: z.array(EducationSchema).optional().default([]),
   certifications: z.array(z.string()).optional().default([]),
-  summary: z.string().max(2000).optional(),
+  summary: z.string().optional(),
   currentCtc: z.number().min(0).max(500).optional(),
   expectedCtc: z.number().min(0).max(500).optional()
 });
