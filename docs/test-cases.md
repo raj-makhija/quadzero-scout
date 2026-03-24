@@ -2523,6 +2523,68 @@ All functional and non-functional aspects of Quadzero Scout covering:
 - **Steps:** Search for candidates; one has `expected_ctc_type: "negotiable"`
 - **Expected:** Response includes `expectedCtcType: "negotiable"` in candidate result
 
+## 23. Module 22: Bench List
+
+### TC-BENCH-001: Bench list button visible for internal recruiters in filtered mode
+- **Priority:** P0
+- **Type:** UI Component
+- **Steps:** Log in as internal recruiter (@quadzero.com). On Locate page, apply filters. Verify "Bench List" button appears.
+- **Expected:** Button is visible in the header bar next to Export dropdown
+
+### TC-BENCH-002: Bench list button hidden for external recruiters
+- **Priority:** P0
+- **Type:** UI Component
+- **Steps:** Log in as external approved recruiter. On Locate page, apply filters.
+- **Expected:** "Bench List" button is NOT visible
+
+### TC-BENCH-003: Bench list button hidden in recent mode
+- **Priority:** P1
+- **Type:** UI Component
+- **Steps:** Log in as internal recruiter. View Locate page without applying filters (recent mode).
+- **Expected:** "Bench List" button is NOT visible
+
+### TC-BENCH-004: Grouping algorithm groups by primary role
+- **Priority:** P0
+- **Type:** Unit
+- **Steps:** Call `buildBenchGroups()` with profiles having roles `["Salesforce Developer"]` and `["DevOps Engineer"]`
+- **Expected:** Two groups created, sorted by count descending
+
+### TC-BENCH-005: Candidates with no roles grouped under "Other"
+- **Priority:** P1
+- **Type:** Unit
+- **Steps:** Call `buildBenchGroups()` with a profile that has empty roles array
+- **Expected:** Profile grouped under "Other"
+
+### TC-BENCH-006: Experience range formatting
+- **Priority:** P1
+- **Type:** Unit
+- **Steps:** Group with candidates having 4 and 8 years experience
+- **Expected:** `experienceRange` is "4–8 years". Single candidate shows "4 years" not "4–4 years"
+
+### TC-BENCH-007: Location shows "Not specified" when empty
+- **Priority:** P1
+- **Type:** Unit
+- **Steps:** Call `buildBenchGroups()` with a profile that has no location
+- **Expected:** Location shows "Not specified"
+
+### TC-BENCH-008: Copy for Email copies HTML table
+- **Priority:** P0
+- **Type:** UI Component
+- **Steps:** Open bench list modal, click "Copy for Email", paste into email client
+- **Expected:** Styled HTML table with inline CSS renders correctly
+
+### TC-BENCH-009: Copy for LinkedIn copies plain text
+- **Priority:** P0
+- **Type:** UI Component
+- **Steps:** Open bench list modal, click "Copy for LinkedIn", paste into text editor
+- **Expected:** Clean plain-text formatted bench list
+
+### TC-BENCH-010: Modal opens and closes correctly
+- **Priority:** P1
+- **Type:** UI Component
+- **Steps:** Click "Bench List" button, verify modal opens. Click X or backdrop, verify modal closes.
+- **Expected:** Modal opens/closes correctly with proper backdrop
+
 ## Traceability Matrix Summary
 
 | Module | Test Count | P0 | P1 | P2 | P3 |
@@ -2549,4 +2611,5 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | Update Requirement with Audit Trail | 33 | 13 | 18 | 2 | 0 |
 | Session Timeout / Auto-Logout | 22 | 13 | 8 | 1 | 0 |
 | Negotiable Expected CTC | 10 | 3 | 4 | 3 | 0 |
-| **Total** | **340** | **77** | **132** | **99** | **32** |
+| Bench List | 10 | 4 | 5 | 1 | 0 |
+| **Total** | **350** | **81** | **137** | **100** | **32** |
