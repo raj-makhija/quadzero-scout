@@ -31,14 +31,14 @@ export const SaveProfileRequestSchema = z.object({
     seniority: z.enum(['intern', 'junior', 'mid', 'senior', 'lead', 'principal', 'executive']),
     availability: z.enum(['immediate', '1_week', '2_weeks', '1_month', '2_months', '3_months', 'negotiable']),
     engagementModel: z.enum(['contract', 'full_time', 'either']).optional().default('either'),
-    industries: z.array(z.string()).max(10).optional(),
+    industries: z.array(z.string()).optional(),
     roles: z.array(z.string()).optional(),
     education: z.array(z.object({
       degree: z.string(),
       institution: z.string(),
       year: z.number().optional(),
     })).optional(),
-    certifications: z.array(z.string()).max(20).optional(),
+    certifications: z.array(z.string()).optional(),
     summary: z.string().max(2000).optional(),
     currentCtc: z.number().min(0).max(500).optional(),
     expectedCtc: z.number().min(0).max(500).optional(),
@@ -125,7 +125,7 @@ export const SaveRequirementRequestSchema = z.object({
   parsedCriteria: LLMJDOutputSchema,
   status: z.enum(['active', 'duplicate']).optional().default('active'),
   duplicateOf: z.string().uuid().optional(),
-  additionalFields: z.array(AdditionalFieldDefinitionSchema).max(20).optional().default([]),
+  additionalFields: z.array(AdditionalFieldDefinitionSchema).optional().default([]),
 });
 
 // Check Duplicate Request Validation
@@ -182,7 +182,7 @@ export const UpdateRequirementRequestSchema = z.object({
   jobTitle: z.string().max(200).optional(),
   jdText: z.string().min(50).max(10000).optional(),
   parsedCriteria: LLMJDOutputSchema.optional(),
-  additionalFields: z.array(AdditionalFieldDefinitionSchema).max(20).optional(),
+  additionalFields: z.array(AdditionalFieldDefinitionSchema).optional(),
 }).refine(data => Object.values(data).some(v => v !== undefined), {
   message: 'At least one field must be provided for update',
 });
@@ -284,14 +284,14 @@ export const ScreenCandidateRequestSchema = z.object({
     seniority: z.enum(['intern', 'junior', 'mid', 'senior', 'lead', 'principal', 'executive']).optional(),
     availability: z.enum(['immediate', '1_week', '2_weeks', '1_month', '2_months', '3_months', 'negotiable']).optional(),
     engagementModel: z.enum(['contract', 'full_time', 'either']).optional(),
-    industries: z.array(z.string()).max(10).optional(),
+    industries: z.array(z.string()).optional(),
     roles: z.array(z.string()).optional(),
     education: z.array(z.object({
       degree: z.string(),
       institution: z.string(),
       year: z.number().optional(),
     })).optional(),
-    certifications: z.array(z.string()).max(20).optional(),
+    certifications: z.array(z.string()).optional(),
     summary: z.string().max(2000).optional(),
     currentCtc: z.number().min(0).max(500).nullable().optional(),
     expectedCtc: z.number().min(0).max(500).nullable().optional(),
