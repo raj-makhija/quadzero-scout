@@ -196,12 +196,9 @@ functions:
           path: /candidate/upload-and-analyze
           method: POST
 
-  candidateCheckDuplicate:
-    handler: src/handlers/candidate/checkDuplicate.handler
-    events:
-      - httpApi:
-          path: /candidate/check-duplicate
-          method: POST
+  # candidateCheckDuplicate: removed — handler file does not exist
+  # (stale reference from a previous commit; candidate duplicate check
+  #  is handled by recruiter/checkDuplicate instead)
 
   candidateSaveProfile:
     handler: src/handlers/candidate/saveProfile.handler
