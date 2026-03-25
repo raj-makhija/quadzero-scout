@@ -153,6 +153,8 @@ async function processOneResume(
     current_ctc: profile.currentCtc ?? undefined,
     expected_ctc: profile.expectedCtc ?? undefined,
     resume_s3_key: s3Key,
+    linkedin_url: profile.linkedinUrl ?? undefined,
+    github_url: profile.githubUrl ?? undefined,
     ...(preserveFormattedResume || {}),
     created_at: existingCandidate?.created_at || now,
     last_updated: now,

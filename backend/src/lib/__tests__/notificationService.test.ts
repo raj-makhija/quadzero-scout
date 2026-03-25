@@ -17,11 +17,12 @@ vi.mock('../dynamodb.js', () => ({
 const mockCalculateMatchScore = vi.fn();
 vi.mock('../matchScoring.js', () => ({
   calculateMatchScore: (...args: unknown[]) => mockCalculateMatchScore(...args),
-  MIN_MUST_HAVE_MATCH_RATIO: 0.25,
-  MUST_HAVE_RELATED_WEIGHT: 0.3,
+  MIN_MUST_HAVE_MATCH_RATIO: 0.40,
+  parseSearchLocations: (loc?: string) => loc ? loc.split(/[,;]/).map((s: string) => s.trim().toLowerCase()).filter(Boolean) : [],
 }));
 
 vi.mock('../skillNormalizer.js', () => ({
+  normalizeSkill: (skill: string) => skill.toLowerCase(),
   normalizeSkills: (skills: string[]) => skills.map(s => s.toLowerCase()),
 }));
 
@@ -227,6 +228,90 @@ describe('notifyMatchingRecruiters', () => {
     (isCandidateWithinBudget as ReturnType<typeof vi.fn>).mockReturnValue(false);
 
     await notifyMatchingRecruiters(['cand_1']);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
+  it('TC-NOTIFY-011: skips candidate when requirement has coreSkill and candidate lacks it', async () => {
+    const candidateNoCoreSkill = {
+      ...candidateA,
+      primary_skills: ['angular'],
+      secondary_skills: ['css'],
+    };
+    const reqWithCoreSkill = {
+      ...requirementActive,
+      parsed_criteria: {
+        ...requirementActive.parsed_criteria,
+        coreSkill: 'react',
+      },
+    };
+    mockGetCandidateById.mockResolvedValue(candidateNoCoreSkill);
+    mockGetAllActiveRequirements.mockResolvedValue([reqWithCoreSkill]);
+    mockCalculateMatchScore.mockReturnValue(goodMatchScore);
+
+    await notifyMatchingRecruiters(['cand_1']);
+    expect(mockCalculateMatchScore).not.toHaveBeenCalled();
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
+  it('TC-NOTIFY-012: includes candidate when requirement has coreSkill and candidate has it', async () => {
+    const reqWithCoreSkill = {
+      ...requirementActive,
+      parsed_criteria: {
+        ...requirementActive.parsed_criteria,
+        coreSkill: 'react',
+      },
+    };
+    mockGetCandidateById.mockResolvedValue(candidateA);
+    mockGetAllActiveRequirements.mockResolvedValue([reqWithCoreSkill]);
+    mockCalculateMatchScore.mockReturnValue(goodMatchScore);
+
+    await notifyMatchingRecruiters(['cand_1']);
+    expect(mockSendEmail).toHaveBeenCalledOnce();
+  });
+
+  it('TC-NOTIFY-013: skips candidate when budget exceeds max', async () => {
+    const reqWithBudget = {
+      ...requirementActive,
+      budget_max_lpa: 10,
+    };
+    mockGetCandidateById.mockResolvedValue(candidateA);
+    mockGetAllActiveRequirements.mockResolvedValue([reqWithBudget]);
+    mockCalculateMatchScore.mockReturnValue(goodMatchScore);
+    const { isCandidateWithinBudget } = await import('../ctcConversion.js');
+    (isCandidateWithinBudget as ReturnType<typeof vi.fn>).mockReturnValue(false);
+
+    await notifyMatchingRecruiters(['cand_1']);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
+  it('TC-NOTIFY-014: skips candidate when engagement model is incompatible', async () => {
+    const candidateContract = {
+      ...candidateA,
+      engagement_model: 'contract',
+    };
+    const reqFullTime = {
+      ...requirementActive,
+      engagement_model: 'full_time',
+    };
+    mockGetCandidateById.mockResolvedValue(candidateContract);
+    mockGetAllActiveRequirements.mockResolvedValue([reqFullTime]);
+    mockCalculateMatchScore.mockReturnValue(goodMatchScore);
+
+    await notifyMatchingRecruiters(['cand_1']);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
+  it('TC-NOTIFY-015: uses exact-only ratio (not effective ratio with related matches)', async () => {
+    mockGetCandidateById.mockResolvedValue(candidateA);
+    mockGetAllActiveRequirements.mockResolvedValue([requirementActive]);
+    // 0 exact matches but 1 related match — previously would have passed with effectiveRatio
+    mockCalculateMatchScore.mockReturnValue({
+      score: 30,
+      details: { mustHaveMatched: [], mustHaveRelated: ['react'], mustHaveMissing: [] },
+    });
+
+    await notifyMatchingRecruiters(['cand_1']);
+    // exactRatio = 0/1 = 0 < 0.40 → filtered out
     expect(mockSendEmail).not.toHaveBeenCalled();
   });
 });

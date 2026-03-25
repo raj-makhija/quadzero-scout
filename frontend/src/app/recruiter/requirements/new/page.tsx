@@ -176,7 +176,7 @@ export default function PostRequirementPage() {
       setError(null);
 
       const generatedTitle = generateJobTitle(clientName, endClient, coreSkill);
-      const response = await api.checkDuplicate(clientName, parsedCriteria, generatedTitle || undefined);
+      const response = await api.checkRequirementDuplicate(clientName, parsedCriteria, generatedTitle || undefined);
 
       if (response.duplicates.length > 0) {
         setDuplicates(response.duplicates);

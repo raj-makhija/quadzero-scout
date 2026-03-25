@@ -13,6 +13,10 @@ interface CandidateNameSearchResult {
   location?: string;
   lastUpdated: string;
   lastScreenedAt?: string;
+  linkedinUrl?: string;
+  githubUrl?: string;
+  notInterested?: boolean;
+  notInterestedAt?: string;
 }
 
 interface CandidateNameSearchResponse {
@@ -43,6 +47,10 @@ async function handleRequest(
       location: item.location ?? undefined,
       lastUpdated: item.last_updated,
       lastScreenedAt: item.last_screened_at ?? undefined,
+      linkedinUrl: item.linkedin_url,
+      githubUrl: item.github_url,
+      notInterested: item.not_interested || false,
+      notInterestedAt: item.not_interested_at ?? undefined,
     }));
 
     const response: CandidateNameSearchResponse = { candidates };

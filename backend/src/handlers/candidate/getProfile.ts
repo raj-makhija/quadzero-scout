@@ -45,12 +45,16 @@ export async function handler(
       expectedCtcType: candidate.expected_ctc_type,
       resumeS3Key: candidate.resume_s3_key,
       customFields: candidate.custom_fields || {},
+      linkedinUrl: candidate.linkedin_url,
+      githubUrl: candidate.github_url,
       coverLetter: candidate.cover_letter,
       headline: candidate.headline,
       createdAt: candidate.created_at,
       lastUpdated: candidate.last_updated,
       lastScreenedAt: candidate.last_screened_at,
       lastScreenedBy: candidate.last_screened_by_name,
+      notInterested: candidate.not_interested || false,
+      notInterestedAt: candidate.not_interested_at,
     };
 
     return success(response);

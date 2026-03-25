@@ -419,4 +419,160 @@ describe('shortlistCandidate handler (screening rule)', () => {
     expect(body.success).toBe(true);
     expect(mockSaveShortlist).toHaveBeenCalledOnce();
   });
+
+  it('should allow shortlisting a not-interested candidate with warning', async () => {
+    const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+    mockGetRequirementById.mockResolvedValue({ requirement_id: 'req_1' });
+    mockGetCandidateById.mockResolvedValue({
+      ...mockCandidate,
+      last_screened_at: fiveDaysAgo,
+      not_interested: true,
+      not_interested_at: fiveDaysAgo,
+    });
+    mockGetShortlistEntry.mockResolvedValue(null);
+
+    const event = makeEvent({
+      requirementId: 'req_1',
+      candidateId: 'cand_1',
+    });
+
+    const result = await handler(event);
+    const body = JSON.parse(result.body);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.data.warning).toBe('NOT_INTERESTED');
+    expect(body.data.notInterestedAt).toBe(fiveDaysAgo);
+    expect(mockSaveShortlist).toHaveBeenCalledOnce();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: Not Interested Candidate Screening
+// ---------------------------------------------------------------------------
+
+describe('screenCandidate handler (not interested)', () => {
+  let handler: Function;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const mod = await import('../recruiter/screenCandidate.js');
+    handler = mod.handler;
+  });
+
+  it('should set not_interested flag and timestamps', async () => {
+    mockGetCandidateById.mockResolvedValue(mockCandidate);
+
+    const event = makeEvent({
+      candidateId: 'cand_1',
+      updatedValues: { notInterested: true },
+      notes: 'Candidate declined the opportunity',
+    });
+
+    const result = await handler(event);
+    const body = JSON.parse(result.body);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.data.notInterested).toBe(true);
+    expect(body.data.fieldsUpdated).toContain('not_interested');
+
+    // Verify updateCandidateProfileFields was called with not_interested fields
+    const updateCall = mockUpdateCandidateProfileFields.mock.calls[0];
+    expect(updateCall[1].not_interested).toBe(true);
+    expect(updateCall[1].not_interested_at).toBeDefined();
+    expect(updateCall[1].not_interested_by).toBe('recruiter_1');
+  });
+
+  it('should clear not_interested flag and remove timestamps', async () => {
+    mockGetCandidateById.mockResolvedValue({
+      ...mockCandidate,
+      not_interested: true,
+      not_interested_at: '2026-03-20T10:00:00Z',
+      not_interested_by: 'recruiter_1',
+    });
+
+    const event = makeEvent({
+      candidateId: 'cand_1',
+      updatedValues: { notInterested: false },
+      notes: 'Candidate is now interested',
+    });
+
+    const result = await handler(event);
+    const body = JSON.parse(result.body);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.data.notInterested).toBe(false);
+
+    // Verify timestamps are nulled (triggers DynamoDB REMOVE)
+    const updateCall = mockUpdateCandidateProfileFields.mock.calls[0];
+    expect(updateCall[1].not_interested).toBe(false);
+    expect(updateCall[1].not_interested_at).toBeNull();
+    expect(updateCall[1].not_interested_by).toBeNull();
+  });
+
+  it('should allow screening with minimal fields when notInterested is true', async () => {
+    mockGetCandidateById.mockResolvedValue(mockCandidate);
+
+    const event = makeEvent({
+      candidateId: 'cand_1',
+      updatedValues: { notInterested: true },
+      notes: 'Not interested, no compensation details available',
+    });
+
+    const result = await handler(event);
+    const body = JSON.parse(result.body);
+
+    // Backend allows all fields optional — this should succeed
+    expect(result.statusCode).toBe(200);
+    expect(body.success).toBe(true);
+    expect(mockSaveScreening).toHaveBeenCalledOnce();
+  });
+
+  it('should include not_interested in screening audit record', async () => {
+    mockGetCandidateById.mockResolvedValue(mockCandidate);
+
+    const event = makeEvent({
+      candidateId: 'cand_1',
+      updatedValues: { notInterested: true },
+      notes: 'Candidate not interested',
+    });
+
+    await handler(event);
+
+    // Verify the screening item saved includes not_interested in updated_values
+    const screeningCall = mockSaveScreening.mock.calls[0][0];
+    expect(screeningCall.updated_values.not_interested).toBe(true);
+    expect(screeningCall.fields_updated).toContain('not_interested');
+  });
+
+  it('should update linkedinUrl and githubUrl via FIELD_MAP', async () => {
+    mockGetCandidateById.mockResolvedValue(mockCandidate);
+
+    const event = makeEvent({
+      candidateId: 'cand_1',
+      updatedValues: {
+        linkedinUrl: 'https://linkedin.com/in/alicesmith',
+        githubUrl: 'https://github.com/alicesmith',
+      },
+      notes: 'Added profile URLs',
+    });
+
+    const result = await handler(event);
+    const body = JSON.parse(result.body);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.data.fieldsUpdated).toContain('linkedin_url');
+    expect(body.data.fieldsUpdated).toContain('github_url');
+
+    // Verify DynamoDB update received the snake_case keys
+    const updateCall = mockUpdateCandidateProfileFields.mock.calls[0];
+    const fields = updateCall[1];
+    expect(fields.linkedin_url).toBe('https://linkedin.com/in/alicesmith');
+    expect(fields.github_url).toBe('https://github.com/alicesmith');
+
+    // Verify screening audit record
+    const screeningCall = mockSaveScreening.mock.calls[0][0];
+    expect(screeningCall.updated_values.linkedin_url).toBe('https://linkedin.com/in/alicesmith');
+    expect(screeningCall.updated_values.github_url).toBe('https://github.com/alicesmith');
+  });
 });

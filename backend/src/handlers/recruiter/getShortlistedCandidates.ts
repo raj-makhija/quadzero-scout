@@ -31,6 +31,10 @@ async function handleRequest(
           notes: entry.notes,
           status: entry.status,
           customFields: candidate.custom_fields || {},
+          linkedinUrl: candidate.linkedin_url,
+          githubUrl: candidate.github_url,
+          notInterested: candidate.not_interested || false,
+          notInterestedAt: candidate.not_interested_at,
         });
       }
     });

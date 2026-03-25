@@ -32,10 +32,12 @@ const FIELD_LABELS: Record<string, string> = {
   expected_ctc: 'Expected CTC',
   expected_ctc_type: 'Expected CTC Type',
   custom_fields: 'Custom Fields',
+  not_interested: 'Not Interested',
 };
 
 function formatFieldValue(key: string, value: unknown): string {
   if (value === null || value === undefined) return 'Not set';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
 
   if (Array.isArray(value)) {
     if (value.length === 0) return 'None';

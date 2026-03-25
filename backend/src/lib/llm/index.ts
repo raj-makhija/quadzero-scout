@@ -60,7 +60,9 @@ You MUST respond with valid JSON matching this exact schema:
   "certifications": ["array of certifications"],
   "summary": "string - brief professional summary",
   "currentCtc": number or null - current CTC (Cost to Company) in LPA (Lakhs Per Annum). Look for phrases like "current CTC", "current salary", "present compensation". If given monthly, multiply by 12 and divide by 100000 for LPA. If not found, use null,
-  "expectedCtc": number or null - expected CTC in LPA. Look for phrases like "expected CTC", "expected salary", "desired compensation". If not found, use null
+  "expectedCtc": number or null - expected CTC in LPA. Look for phrases like "expected CTC", "expected salary", "desired compensation". If not found, use null,
+  "linkedinUrl": "string or null - LinkedIn profile URL (e.g. https://linkedin.com/in/username)",
+  "githubUrl": "string or null - GitHub profile URL (e.g. https://github.com/username)"
 }
 
 Rules:
@@ -70,7 +72,8 @@ Rules:
 4. If information is not available, use null or empty arrays
 5. ONLY output valid JSON, no additional text
 6. For CTC values, always convert to LPA (Lakhs Per Annum). If given as monthly, multiply by 12. If given in absolute rupees, divide by 100000. Round to 2 decimal places
-7. If supplementary information (email body / cover letter) is provided after the resume, use it to fill in missing fields — especially currentCtc, expectedCtc, and availability (notice period). Resume data takes precedence; supplementary data fills gaps`;
+7. If supplementary information (email body / cover letter) is provided after the resume, use it to fill in missing fields — especially currentCtc, expectedCtc, and availability (notice period). Resume data takes precedence; supplementary data fills gaps
+8. For linkedinUrl and githubUrl, extract any LinkedIn or GitHub profile URLs found in the resume text or supplementary information. Look for patterns like linkedin.com/in/..., github.com/..., or explicit labels like "LinkedIn:" or "GitHub:". Return null if not found`;
 
 const FALLBACK_RESUME_FORMATTER_PROMPT = `Format the provided resume into a clean, professional Markdown document.
 Use # for the candidate name, ## for major sections (Summary, Experience, Education, Skills, Certifications), ### for job titles.

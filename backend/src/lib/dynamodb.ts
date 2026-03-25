@@ -9,7 +9,7 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { config } from './config.js';
-import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, StatusHistoryEntry, RequirementChangeEntry, PricingConfig, PricingConfigItem, SessionSettings, SessionSettingsItem, ShortlistItem, ClientItem, ScreeningItem, AuditLogItem, AuditLogEntry } from '../types/index.js';
+import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, StatusHistoryEntry, RequirementChangeEntry, PricingConfig, PricingConfigItem, SessionSettings, SessionSettingsItem, ShortlistItem, ClientItem, ScreeningItem, ScreeningLockItem, AuditLogItem, AuditLogEntry } from '../types/index.js';
 import { DEFAULT_SESSION_TIMEOUT_SECONDS } from '../types/index.js';
 
 const client = new DynamoDBClient({ region: config.region });
@@ -18,6 +18,11 @@ const docClient = DynamoDBDocumentClient.from(client, {
     removeUndefinedValues: true,
   },
 });
+
+// Name normalization helper for dedup matching
+export function normalizeName(name: string): string {
+  return name.toLowerCase().trim().replace(/\s+/g, ' ');
+}
 
 // Experience bucket helper
 export function getExperienceBucket(years: number): string {
@@ -50,6 +55,18 @@ export async function getCandidateByEmail(email: string): Promise<CandidateItem 
     })
   );
   return (result.Items?.[0] as CandidateItem) || null;
+}
+
+export async function getCandidatesByNormalizedName(normalizedName: string): Promise<CandidateItem[]> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: config.dynamodb.talentProfilesTable,
+      IndexName: 'FullNameNormalizedIndex',
+      KeyConditionExpression: 'full_name_normalized = :name',
+      ExpressionAttributeValues: { ':name': normalizedName },
+    })
+  );
+  return (result.Items as CandidateItem[]) || [];
 }
 
 export async function getCandidateByUserId(userId: string): Promise<CandidateItem | null> {
@@ -129,6 +146,63 @@ export async function searchCandidates(
     items: allItems,
     lastKey: currentKey,
   };
+}
+
+const SCREENING_EXPIRY_DAYS = 15;
+
+export async function getBenchListCandidates(): Promise<{ items: CandidateItem[] }> {
+  const PAGE_SIZE = 100;
+  const MAX_ITEMS = 2000;
+
+  const scanParams: {
+    TableName: string;
+    Limit: number;
+    FilterExpression: string;
+    ExpressionAttributeValues: Record<string, unknown>;
+    ProjectionExpression: string;
+    ExclusiveStartKey?: Record<string, unknown>;
+  } = {
+    TableName: config.dynamodb.talentProfilesTable,
+    Limit: PAGE_SIZE,
+    FilterExpression:
+      '(availability = :a1 OR availability = :a2 OR availability = :a3) AND attribute_exists(last_screened_at)',
+    ExpressionAttributeValues: {
+      ':a1': 'immediate',
+      ':a2': '1_week',
+      ':a3': '2_weeks',
+    },
+    ProjectionExpression:
+      'candidate_id, full_name, total_experience, #loc, roles, availability, last_screened_at',
+  };
+
+  // 'location' is a DynamoDB reserved word — must use an alias
+  (scanParams as Record<string, unknown>).ExpressionAttributeNames = { '#loc': 'location' };
+
+  const allItems: CandidateItem[] = [];
+  let currentKey: Record<string, unknown> | undefined;
+
+  do {
+    const params = { ...scanParams };
+    if (currentKey) {
+      params.ExclusiveStartKey = currentKey;
+    }
+
+    const result = await docClient.send(new ScanCommand(params));
+    const items = (result.Items || []) as CandidateItem[];
+    allItems.push(...items);
+
+    currentKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (currentKey && allItems.length < MAX_ITEMS);
+
+  // Post-filter: screening must be within 15 days (DynamoDB can't do date arithmetic)
+  const now = Date.now();
+  const filtered = allItems.filter((item) => {
+    if (!item.last_screened_at) return false;
+    const daysSince = (now - new Date(item.last_screened_at).getTime()) / (1000 * 60 * 60 * 24);
+    return daysSince <= SCREENING_EXPIRY_DAYS;
+  });
+
+  return { items: filtered };
 }
 
 // User Operations
@@ -1784,3 +1858,89 @@ export async function queryAuditLogsByAction(
       : undefined,
   };
 }
+
+// ─── Screening Lock Operations ──────────────────────────────────────────────
+
+const SCREENING_LOCK_TTL_SECONDS = 600; // 10 minutes
+
+export async function acquireScreeningLock(item: ScreeningLockItem): Promise<void> {
+  await docClient.send(
+    new PutCommand({
+      TableName: config.dynamodb.screeningLocksTable,
+      Item: item,
+      ConditionExpression: 'attribute_not_exists(candidate_id) OR #ttl < :now OR locked_by = :userId',
+      ExpressionAttributeNames: { '#ttl': 'ttl' },
+      ExpressionAttributeValues: {
+        ':now': Math.floor(Date.now() / 1000),
+        ':userId': item.locked_by,
+      },
+    })
+  );
+}
+
+export async function releaseScreeningLock(
+  candidateId: string,
+  userId: string
+): Promise<void> {
+  await docClient.send(
+    new DeleteCommand({
+      TableName: config.dynamodb.screeningLocksTable,
+      Key: { candidate_id: candidateId },
+      ConditionExpression: 'locked_by = :userId',
+      ExpressionAttributeValues: { ':userId': userId },
+    })
+  );
+}
+
+export async function releaseScreeningLockByToken(
+  candidateId: string,
+  lockToken: string
+): Promise<void> {
+  await docClient.send(
+    new DeleteCommand({
+      TableName: config.dynamodb.screeningLocksTable,
+      Key: { candidate_id: candidateId },
+      ConditionExpression: 'lock_token = :token',
+      ExpressionAttributeValues: { ':token': lockToken },
+    })
+  );
+}
+
+export async function heartbeatScreeningLock(
+  candidateId: string,
+  userId: string
+): Promise<void> {
+  const newTtl = Math.floor(Date.now() / 1000) + SCREENING_LOCK_TTL_SECONDS;
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.screeningLocksTable,
+      Key: { candidate_id: candidateId },
+      UpdateExpression: 'SET #ttl = :newTtl',
+      ConditionExpression: 'locked_by = :userId AND #ttl >= :now',
+      ExpressionAttributeNames: { '#ttl': 'ttl' },
+      ExpressionAttributeValues: {
+        ':newTtl': newTtl,
+        ':userId': userId,
+        ':now': Math.floor(Date.now() / 1000),
+      },
+    })
+  );
+}
+
+export async function getScreeningLock(
+  candidateId: string
+): Promise<ScreeningLockItem | null> {
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: config.dynamodb.screeningLocksTable,
+      Key: { candidate_id: candidateId },
+    })
+  );
+  const item = result.Item as ScreeningLockItem | undefined;
+  if (!item) return null;
+  // Soft TTL check: treat expired locks as non-existent
+  if (item.ttl < Math.floor(Date.now() / 1000)) return null;
+  return item;
+}
+
+export { SCREENING_LOCK_TTL_SECONDS };

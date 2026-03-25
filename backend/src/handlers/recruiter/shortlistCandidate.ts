@@ -84,7 +84,12 @@ async function handleRequest(
       metadata: { requirementId, candidateId, candidateName: candidate.full_name },
     });
 
-    return success({ success: true });
+    const result: Record<string, unknown> = { success: true };
+    if (candidate.not_interested) {
+      result.warning = 'NOT_INTERESTED';
+      result.notInterestedAt = candidate.not_interested_at;
+    }
+    return success(result);
   } catch (err) {
     console.error('Error shortlisting candidate:', err);
     return error(

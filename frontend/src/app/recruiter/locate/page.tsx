@@ -23,6 +23,7 @@ export type ProfileListItem = {
   location?: string;
   lastUpdated: string;
   lastScreenedAt?: string;
+  notInterested?: boolean;
   roles?: string[];
   headline?: string;
   availability?: string;
@@ -32,9 +33,11 @@ const SCREENING_STATUS_OPTIONS = [
   { value: 'screened', label: 'Screened' },
   { value: 'expired', label: 'Expired' },
   { value: 'not_screened', label: 'Not Screened' },
+  { value: 'not_interested', label: 'Not Interested' },
 ];
 
-function getScreeningStatusValue(lastScreenedAt?: string): string {
+function getScreeningStatusValue(lastScreenedAt?: string, notInterested?: boolean): string {
+  if (notInterested) return 'not_interested';
   if (!lastScreenedAt) return 'not_screened';
   const daysSince = (Date.now() - new Date(lastScreenedAt).getTime()) / (1000 * 60 * 60 * 24);
   return daysSince > 15 ? 'expired' : 'screened';
@@ -50,6 +53,7 @@ function mapRecentToListItem(p: RecentProfileSummary): ProfileListItem {
     location: p.location,
     lastUpdated: p.lastUpdated,
     lastScreenedAt: p.lastScreenedAt,
+    notInterested: p.notInterested,
     roles: p.roles,
     headline: p.headline,
   };
@@ -65,6 +69,7 @@ function mapSearchResultToListItem(c: CandidateSearchResult): ProfileListItem {
     location: c.location,
     lastUpdated: c.lastUpdated,
     lastScreenedAt: c.lastScreenedAt,
+    notInterested: c.notInterested,
     roles: c.roles,
     headline: c.headline,
     availability: c.availability,
@@ -376,7 +381,7 @@ export default function LocateProfilePage() {
 
       // Client-side screening status filter
       if (filters.screeningStatus.length > 0) {
-        items = items.filter(item => filters.screeningStatus.includes(getScreeningStatusValue(item.lastScreenedAt)));
+        items = items.filter(item => filters.screeningStatus.includes(getScreeningStatusValue(item.lastScreenedAt, item.notInterested)));
       }
 
       if (isLoadMore && existingResults) {
@@ -435,32 +440,23 @@ export default function LocateProfilePage() {
   };
 
   const generateBenchList = useCallback(async () => {
-    // In filtered mode, use current results directly
-    if (mode === 'filtered' && filteredResults.length > 0) {
-      setBenchListProfiles(filteredResults);
-      setShowBenchList(true);
-      return;
-    }
-
-    // In recent/other modes, run a search with bench list preset filters
     setLoadingBenchList(true);
     setErrorMessage('');
     try {
-      const benchCriteria: SearchCriteria = {
-        availability: ['immediate', '1_week', '2_weeks'],
-      };
-      const res = await api.searchCandidates(benchCriteria, { limit: 100 }, 'lastUpdated');
-
-      // Client-side hard filters matching the bench list preset
-      let candidates = res.candidates.filter(c =>
-        ['immediate', '1_week', '2_weeks'].includes(c.availability)
-      );
-
-      let items = candidates.map(mapSearchResultToListItem);
-
-      // Only screened candidates (screened within 15 days)
-      items = items.filter(item => getScreeningStatusValue(item.lastScreenedAt) === 'screened');
-
+      const res = await api.getBenchList();
+      const items: ProfileListItem[] = res.candidates.map((c) => ({
+        candidateId: c.candidateId,
+        fullName: c.fullName,
+        primarySkills: [],
+        totalExperience: c.totalExperience,
+        seniority: '',
+        location: c.location,
+        lastUpdated: '',
+        lastScreenedAt: c.lastScreenedAt,
+        notInterested: c.notInterested,
+        roles: c.roles,
+        availability: c.availability,
+      }));
       setBenchListProfiles(items);
       setShowBenchList(true);
     } catch (err) {
@@ -472,7 +468,7 @@ export default function LocateProfilePage() {
     } finally {
       setLoadingBenchList(false);
     }
-  }, [mode, filteredResults]);
+  }, []);
 
   const activeFilterCount = countActiveFilters(filters);
 
@@ -957,12 +953,12 @@ export default function LocateProfilePage() {
 }
 
 function CandidateCard({ candidate }: { candidate: ProfileListItem }) {
-  const screeningStatus = getScreeningStatus(candidate.lastScreenedAt);
+  const screeningStatus = getScreeningStatus(candidate.lastScreenedAt, candidate.notInterested);
 
   return (
     <Link
       href={`/recruiter/locate/${candidate.candidateId}`}
-      className="card p-5 flex items-start gap-4 hover:shadow-md transition-shadow"
+      className={`card p-5 flex items-start gap-4 hover:shadow-md transition-shadow ${candidate.notInterested ? 'opacity-60 border-l-4 border-l-red-400' : ''}`}
     >
       <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
         <User className="w-5 h-5 text-primary-600" />
