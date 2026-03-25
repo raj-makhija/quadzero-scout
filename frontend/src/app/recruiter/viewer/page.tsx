@@ -7,7 +7,6 @@ import { Loader2, AlertCircle } from 'lucide-react';
 function ViewerContent() {
   const searchParams = useSearchParams();
   const url = searchParams.get('url');
-  const type = searchParams.get('type')?.toLowerCase() || 'pdf';
 
   if (!url) {
     return (
@@ -20,25 +19,13 @@ function ViewerContent() {
     );
   }
 
-  const isWordDoc = type === 'docx' || type === 'doc';
+  const googleViewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(url)}&embedded=true`;
 
-  if (isWordDoc) {
-    const googleViewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(url)}&embedded=true`;
-    return (
-      <iframe
-        src={googleViewerUrl}
-        className="w-full h-screen border-0"
-        title="Document Viewer"
-      />
-    );
-  }
-
-  // PDF and other files — render natively
   return (
-    <embed
-      src={url}
-      type="application/pdf"
-      className="w-full h-screen"
+    <iframe
+      src={googleViewerUrl}
+      className="w-full h-screen border-0"
+      title="Document Viewer"
     />
   );
 }
