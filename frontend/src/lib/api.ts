@@ -157,7 +157,7 @@ class ApiClient {
     });
   }
 
-  async checkDuplicate(data: {
+  async checkCandidateDuplicate(data: {
     email: string;
     fullName: string;
     phone?: string;
@@ -307,7 +307,7 @@ class ApiClient {
     return this.request<RequirementDetail>(`/recruiter/requirements/${requirementId}`);
   }
 
-  async checkDuplicate(clientName: string, parsedCriteria: ParsedCriteria, jobTitle?: string) {
+  async checkRequirementDuplicate(clientName: string, parsedCriteria: ParsedCriteria, jobTitle?: string) {
     return this.request<{
       duplicates: DuplicateMatch[];
     }>('/recruiter/requirements/check-duplicate', {

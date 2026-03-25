@@ -459,7 +459,7 @@ export default function RecruiterSearchPage() {
 
       // Check for duplicates first
       const generatedTitle = generateJobTitle(clientName, endClient, coreSkill);
-      const dupResponse = await api.checkDuplicate(clientName, parsedCriteria, generatedTitle || undefined);
+      const dupResponse = await api.checkRequirementDuplicate(clientName, parsedCriteria, generatedTitle || undefined);
 
       if (dupResponse.duplicates.length > 0) {
         setDuplicates(dupResponse.duplicates);
