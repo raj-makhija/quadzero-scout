@@ -350,6 +350,7 @@ Bulk Upload:
 **Key behaviors:**
 - One email per (requirement × recruiter) per upload event regardless of how many candidates matched
 - Only active requirements are evaluated
+- Applies the same unified filtering as recruiter search: core skill pre-filter, 40% exact must-have match ratio, budget hard filter, engagement model compatibility, and location/availability scoring
 - Email errors are non-fatal — never block the upload response
 - Notification toggle stored in `notify_recruiter_ids` on the `Requirements` table item
 - Creator is opted in by default; any recruiter can opt in/out via `PUT /recruiter/requirements/{id}/notify`
@@ -436,7 +437,7 @@ Bulk Upload:
 
 **Key Implementation Details:**
 
-- **Shared scoring module**: The `calculateMatchScore()` function is extracted into `backend/src/lib/matchScoring.ts`, shared by both the recruiter search handler and the candidate match-requirements handler.
+- **Shared scoring module**: The `calculateMatchScore()` function is extracted into `backend/src/lib/matchScoring.ts`, shared by the recruiter search handler, the candidate match-requirements handler, and the notification service. All three consumers apply the same unified filtering: core skill pre-filter, 40% exact must-have match ratio, budget hard filter, and engagement model compatibility check. Location and availability from requirements are passed to scoring in all paths.
 - **Shortlists table**: Uses a composite primary key (`requirement_id` + `candidate_id`) with a `CandidateIndex` GSI for reverse lookups by candidate.
 - **Candidate profile page**: After profile save, the frontend calls `POST /candidate/match-requirements` to display matching opportunities.
 - **Recruiter requirement detail page** (`/recruiter/requirements/[id]`): Shows a candidate pipeline with all shortlisted candidates for that requirement. The "Search Candidates" button writes stored criteria + requirement metadata (client name, engagement model, contract duration, payment terms, budget) to `sessionStorage` with `viewMode: 'results'` and navigates to `/recruiter/search`, which auto-executes the search and displays results directly (bypassing JD input and criteria views).

@@ -1,6 +1,6 @@
 import { getCandidateById, getAllActiveRequirements, getUserById } from './dynamodb.js';
-import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, MUST_HAVE_RELATED_WEIGHT } from './matchScoring.js';
-import { normalizeSkills } from './skillNormalizer.js';
+import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, parseSearchLocations } from './matchScoring.js';
+import { normalizeSkill, normalizeSkills } from './skillNormalizer.js';
 import { isCandidateWithinBudget } from './ctcConversion.js';
 import { sendNewProfilesNotificationEmail, type MatchedProfile } from './emailService.js';
 import { config } from './config.js';
@@ -45,9 +45,17 @@ export async function notifyMatchingRecruiters(candidateIds: string[]): Promise<
     const criteria = req.parsed_criteria;
     const normalizedMustHave = normalizeSkills(criteria.mustHaveSkills || []);
     const normalizedGoodToHave = normalizeSkills(criteria.goodToHaveSkills || []);
+    const normalizedCoreSkill = criteria.coreSkill ? normalizeSkill(criteria.coreSkill) : null;
+    const searchLocations = parseSearchLocations(criteria.location ?? undefined);
 
     const matchedProfiles: MatchedProfile[] = [];
     for (const candidate of candidates) {
+      // Core skill pre-filter: skip candidate if requirement has a coreSkill and candidate lacks it
+      if (normalizedCoreSkill) {
+        const allSkills = new Set(normalizeSkills([...candidate.primary_skills, ...candidate.secondary_skills]));
+        if (!allSkills.has(normalizedCoreSkill)) continue;
+      }
+
       const { score, details } = calculateMatchScore(
         candidate,
         normalizedMustHave,
@@ -55,16 +63,29 @@ export async function notifyMatchingRecruiters(candidateIds: string[]): Promise<
         criteria.minExperience ?? undefined,
         criteria.maxExperience ?? undefined,
         criteria.seniority?.length ? criteria.seniority : undefined,
-        req.budget_max_lpa ?? undefined
+        req.budget_max_lpa ?? undefined,
+        searchLocations,
+        criteria.availability
       );
 
-      // Apply the same min-match-ratio filter as matchRequirements.ts
+      // Apply minimum must-have exact match ratio filter (exact matches only)
       if (normalizedMustHave.length > 0) {
-        const effectiveRatio = (details.mustHaveMatched.length + details.mustHaveRelated.length * MUST_HAVE_RELATED_WEIGHT) / normalizedMustHave.length;
-        if (effectiveRatio < MIN_MUST_HAVE_MATCH_RATIO) continue;
+        const exactRatio = details.mustHaveMatched.length / normalizedMustHave.length;
+        if (exactRatio < MIN_MUST_HAVE_MATCH_RATIO) continue;
       }
 
       const budgetFit = isCandidateWithinBudget(candidate.expected_ctc, req.budget_max_lpa);
+
+      // Hard filter: budget must fit if requirement specifies max budget
+      if (req.budget_max_lpa != null && !budgetFit) continue;
+
+      // Hard filter: engagement model must be compatible
+      const reqEngagementModel = req.engagement_model || criteria.engagementModel;
+      if (reqEngagementModel && reqEngagementModel !== 'either') {
+        const candidateModel = candidate.engagement_model || 'either';
+        if (candidateModel !== reqEngagementModel && candidateModel !== 'either') continue;
+      }
+
       if (score > 0 || budgetFit) {
         matchedProfiles.push({
           candidateId: candidate.candidate_id,

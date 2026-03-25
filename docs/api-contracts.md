@@ -569,6 +569,12 @@ Content-Type: application/json
 - Scans all active requirements and scores them against the candidate profile using the shared `calculateMatchScore()` function
 - Returns the top 20 matches sorted by match score descending
 - `isShortlisted` indicates whether the candidate has already been shortlisted for that requirement
+- **Unified filtering** — applies the same hard filters as `POST /recruiter/search`:
+  - **Core skill pre-filter:** If a requirement has a `coreSkill`, the candidate must possess that skill (primary or secondary) to be considered
+  - **Budget hard filter:** If the requirement specifies `budgetMaxLpa`, candidates whose expected CTC exceeds it are excluded
+  - **Engagement model hard filter:** If the requirement specifies a model other than `either`, candidates with an incompatible model are excluded
+  - **Must-have match ratio:** Candidates must match at least 40% of must-have skills (exact matches only)
+- Location and availability from the requirement's parsed criteria are passed to scoring for accurate match scores
 
 ---
 
@@ -769,8 +775,9 @@ Authorization: Bearer <jwe_token> (optional)
 
 **Notes:**
 - Unauthenticated users see redacted results (names hidden, skills hidden, CTC hidden)
-- Candidates with 0% match on must-have skills are filtered out
+- Candidates below 40% exact must-have match ratio are filtered out
 - Candidates exceeding `maxBudgetLpa` are filtered out
+- **Core skill pre-filter:** If the search criteria includes a `coreSkill`, only candidates possessing that exact normalized skill (primary or secondary) are scored
 - Skills are normalized using the skill normalizer before matching (supports CRM, marketing, design, and HR/finance skills in addition to engineering skills)
 - The backend returns **all** scored candidates in a single response (up to 500 scanned from DynamoDB). Pagination is handled client-side on the frontend (page size: 20)
 - `hasMore` is true only when DynamoDB has more unscanned records beyond the 500 cap
@@ -779,8 +786,8 @@ Authorization: Bearer <jwe_token> (optional)
 - **Availability** is a soft scoring factor. `availabilityMatch` values: `"full"` (matches or available earlier, +7pts), `"partial"` (1–2 steps later, +3pts), `"none"` (3+ steps later, +0pts)
 - **Seniority** is a soft scoring factor (not a hard filter). Matched candidates get +5pts
 - Match score weights: must-have skills (45%), good-to-have skills (25%), experience (8%), seniority (5%), location (10%), availability (7%)
-- Related skills in the same ontology category count at 0.3x weight for both must-have and good-to-have scoring
-- Minimum effective must-have match ratio threshold: 0.25 (effective = exact matches + related matches × 0.3)
+- Related skills in the same ontology category count at 0.3x weight for good-to-have scoring (must-have scoring uses exact matches only)
+- Minimum must-have match ratio threshold: 0.40 (exact matches only; related matches do not count toward this ratio)
 
 ---
 

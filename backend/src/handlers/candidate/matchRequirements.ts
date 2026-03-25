@@ -2,8 +2,8 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, MatchRequirementsRequestSchema } from '../../lib/validation.js';
 import { getCandidateById, getAllActiveRequirements, getShortlistsForCandidate } from '../../lib/dynamodb.js';
-import { normalizeSkills } from '../../lib/skillNormalizer.js';
-import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO } from '../../lib/matchScoring.js';
+import { normalizeSkill, normalizeSkills } from '../../lib/skillNormalizer.js';
+import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, parseSearchLocations } from '../../lib/matchScoring.js';
 import { isCandidateWithinBudget } from '../../lib/ctcConversion.js';
 import type { MatchedRequirement, MatchRequirementsResponse } from '../../types/index.js';
 
@@ -46,11 +46,21 @@ export async function handler(
     // Score candidate against each requirement
     const matches: MatchedRequirement[] = [];
 
+    // Normalize candidate skills once for coreSkill pre-filter
+    const candidateAllSkills = new Set(normalizeSkills([...candidate.primary_skills, ...candidate.secondary_skills]));
+
     for (const req of requirements) {
       const criteria = req.parsed_criteria;
 
+      // Core skill pre-filter: skip requirement if it has a coreSkill and candidate lacks it
+      const normalizedCoreSkill = criteria.coreSkill ? normalizeSkill(criteria.coreSkill) : null;
+      if (normalizedCoreSkill && !candidateAllSkills.has(normalizedCoreSkill)) {
+        continue;
+      }
+
       const normalizedMustHave = normalizeSkills(criteria.mustHaveSkills || []);
       const normalizedGoodToHave = normalizeSkills(criteria.goodToHaveSkills || []);
+      const searchLocations = parseSearchLocations(criteria.location ?? undefined);
 
       const { score, details } = calculateMatchScore(
         candidate,
@@ -59,7 +69,9 @@ export async function handler(
         criteria.minExperience ?? undefined,
         criteria.maxExperience ?? undefined,
         criteria.seniority?.length ? criteria.seniority : undefined,
-        req.budget_max_lpa ?? undefined
+        req.budget_max_lpa ?? undefined,
+        searchLocations,
+        criteria.availability
       );
 
       // Filter out requirements below minimum must-have exact match ratio
@@ -71,6 +83,20 @@ export async function handler(
       }
 
       const budgetFit = isCandidateWithinBudget(candidate.expected_ctc, req.budget_max_lpa);
+
+      // Hard filter: budget must fit if requirement specifies max budget
+      if (req.budget_max_lpa != null && !budgetFit) {
+        continue;
+      }
+
+      // Hard filter: engagement model must be compatible
+      const reqEngagementModel = req.engagement_model || criteria.engagementModel;
+      if (reqEngagementModel && reqEngagementModel !== 'either') {
+        const candidateModel = candidate.engagement_model || 'either';
+        if (candidateModel !== reqEngagementModel && candidateModel !== 'either') {
+          continue;
+        }
+      }
 
       matches.push({
         requirementId: req.requirement_id,
