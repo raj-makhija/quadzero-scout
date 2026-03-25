@@ -19,6 +19,11 @@ const docClient = DynamoDBDocumentClient.from(client, {
   },
 });
 
+// Name normalization helper for dedup matching
+export function normalizeName(name: string): string {
+  return name.toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
 // Experience bucket helper
 export function getExperienceBucket(years: number): string {
   if (years <= 2) return '0-2';
@@ -50,6 +55,18 @@ export async function getCandidateByEmail(email: string): Promise<CandidateItem 
     })
   );
   return (result.Items?.[0] as CandidateItem) || null;
+}
+
+export async function getCandidatesByNormalizedName(normalizedName: string): Promise<CandidateItem[]> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: config.dynamodb.talentProfilesTable,
+      IndexName: 'FullNameNormalizedIndex',
+      KeyConditionExpression: 'full_name_normalized = :name',
+      ExpressionAttributeValues: { ':name': normalizedName },
+    })
+  );
+  return (result.Items as CandidateItem[]) || [];
 }
 
 export async function getCandidateByUserId(userId: string): Promise<CandidateItem | null> {
@@ -129,6 +146,63 @@ export async function searchCandidates(
     items: allItems,
     lastKey: currentKey,
   };
+}
+
+const SCREENING_EXPIRY_DAYS = 15;
+
+export async function getBenchListCandidates(): Promise<{ items: CandidateItem[] }> {
+  const PAGE_SIZE = 100;
+  const MAX_ITEMS = 2000;
+
+  const scanParams: {
+    TableName: string;
+    Limit: number;
+    FilterExpression: string;
+    ExpressionAttributeValues: Record<string, unknown>;
+    ProjectionExpression: string;
+    ExclusiveStartKey?: Record<string, unknown>;
+  } = {
+    TableName: config.dynamodb.talentProfilesTable,
+    Limit: PAGE_SIZE,
+    FilterExpression:
+      '(availability = :a1 OR availability = :a2 OR availability = :a3) AND attribute_exists(last_screened_at)',
+    ExpressionAttributeValues: {
+      ':a1': 'immediate',
+      ':a2': '1_week',
+      ':a3': '2_weeks',
+    },
+    ProjectionExpression:
+      'candidate_id, full_name, total_experience, #loc, roles, availability, last_screened_at',
+  };
+
+  // 'location' is a DynamoDB reserved word — must use an alias
+  (scanParams as Record<string, unknown>).ExpressionAttributeNames = { '#loc': 'location' };
+
+  const allItems: CandidateItem[] = [];
+  let currentKey: Record<string, unknown> | undefined;
+
+  do {
+    const params = { ...scanParams };
+    if (currentKey) {
+      params.ExclusiveStartKey = currentKey;
+    }
+
+    const result = await docClient.send(new ScanCommand(params));
+    const items = (result.Items || []) as CandidateItem[];
+    allItems.push(...items);
+
+    currentKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (currentKey && allItems.length < MAX_ITEMS);
+
+  // Post-filter: screening must be within 15 days (DynamoDB can't do date arithmetic)
+  const now = Date.now();
+  const filtered = allItems.filter((item) => {
+    if (!item.last_screened_at) return false;
+    const daysSince = (now - new Date(item.last_screened_at).getTime()) / (1000 * 60 * 60 * 24);
+    return daysSince <= SCREENING_EXPIRY_DAYS;
+  });
+
+  return { items: filtered };
 }
 
 // User Operations

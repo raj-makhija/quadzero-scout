@@ -435,32 +435,22 @@ export default function LocateProfilePage() {
   };
 
   const generateBenchList = useCallback(async () => {
-    // In filtered mode, use current results directly
-    if (mode === 'filtered' && filteredResults.length > 0) {
-      setBenchListProfiles(filteredResults);
-      setShowBenchList(true);
-      return;
-    }
-
-    // In recent/other modes, run a search with bench list preset filters
     setLoadingBenchList(true);
     setErrorMessage('');
     try {
-      const benchCriteria: SearchCriteria = {
-        availability: ['immediate', '1_week', '2_weeks'],
-      };
-      const res = await api.searchCandidates(benchCriteria, { limit: 100 }, 'lastUpdated');
-
-      // Client-side hard filters matching the bench list preset
-      let candidates = res.candidates.filter(c =>
-        ['immediate', '1_week', '2_weeks'].includes(c.availability)
-      );
-
-      let items = candidates.map(mapSearchResultToListItem);
-
-      // Only screened candidates (screened within 15 days)
-      items = items.filter(item => getScreeningStatusValue(item.lastScreenedAt) === 'screened');
-
+      const res = await api.getBenchList();
+      const items: ProfileListItem[] = res.candidates.map((c) => ({
+        candidateId: c.candidateId,
+        fullName: c.fullName,
+        primarySkills: [],
+        totalExperience: c.totalExperience,
+        seniority: '',
+        location: c.location,
+        lastUpdated: '',
+        lastScreenedAt: c.lastScreenedAt,
+        roles: c.roles,
+        availability: c.availability,
+      }));
       setBenchListProfiles(items);
       setShowBenchList(true);
     } catch (err) {
@@ -472,7 +462,7 @@ export default function LocateProfilePage() {
     } finally {
       setLoadingBenchList(false);
     }
-  }, [mode, filteredResults]);
+  }, []);
 
   const activeFilterCount = countActiveFilters(filters);
 

@@ -194,6 +194,13 @@ functions:
           path: /candidate/upload-and-analyze
           method: POST
 
+  candidateCheckDuplicate:
+    handler: src/handlers/candidate/checkDuplicate.handler
+    events:
+      - httpApi:
+          path: /candidate/check-duplicate
+          method: POST
+
   candidateSaveProfile:
     handler: src/handlers/candidate/saveProfile.handler
     events:
@@ -312,6 +319,13 @@ functions:
     events:
       - httpApi:
           path: /recruiter/recent-profiles
+          method: GET
+
+  recruiterBenchList:
+    handler: src/handlers/recruiter/benchList.handler
+    events:
+      - httpApi:
+          path: /recruiter/bench-list
           method: GET
 
   recruiterGetRequirement:

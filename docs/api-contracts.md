@@ -324,9 +324,59 @@ Authorization: Bearer <jwe_token>
 
 ---
 
+### POST /candidate/check-duplicate
+
+Check if a candidate with matching email, name, or name+phone already exists. Called by the frontend before saving to warn users about potential duplicates.
+
+**Request Headers:**
+```
+Content-Type: application/json
+Authorization: Bearer <jwe_token>
+```
+
+**Request Body:**
+```json
+{
+  "email": "john.doe@example.com",
+  "fullName": "John Doe",
+  "phone": "+91-9876543210"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "hasDuplicates": true,
+    "matches": [
+      {
+        "candidateId": "cand_abc123",
+        "fullName": "John Doe",
+        "email": "john.doe@example.com",
+        "matchedOn": "email"
+      }
+    ]
+  }
+}
+```
+
+**Match Logic:**
+1. Primary: exact email match via EmailIndex GSI
+2. Fallback (if no email match): normalized name match via FullNameNormalizedIndex GSI
+   - If phone is provided, results indicate `name+phone` vs `name` match strength
+3. `matchedOn` values: `email`, `name+phone`, `name`
+
+**Validation Rules:**
+- `email`: Required, string
+- `fullName`: Required, string
+- `phone`: Optional, string
+
+---
+
 ### POST /candidate/save-profile
 
-Save or update candidate profile after review/editing.
+Save or update candidate profile after review/editing. Includes multi-signal deduplication: first checks by email, then falls back to normalized name + phone matching.
 
 **Request Headers:**
 ```
@@ -974,6 +1024,39 @@ Returns the most recently updated candidate profiles (sorted by `lastUpdated` de
   }
 }
 ```
+
+---
+
+### GET /recruiter/bench-list
+
+Returns all bench-eligible candidates: availability in (immediate, 1_week, 2_weeks) and screened within 15 days. No pagination — returns all matches in a single response (up to 2000 candidates scanned).
+
+**Auth:** Requires `recruiter` role. Internal recruiters only (`isInternal: true`). Returns 403 for external recruiters.
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "candidates": [
+      {
+        "candidateId": "uuid",
+        "fullName": "string",
+        "totalExperience": 6,
+        "location": "Bangalore, India",
+        "roles": ["Senior Developer", "Architect"],
+        "availability": "immediate",
+        "lastScreenedAt": "2026-03-20T14:00:00.000Z"
+      }
+    ],
+    "totalCount": 17
+  }
+}
+```
+
+**Errors:**
+- 401 `UNAUTHORIZED` — Not authenticated
+- 403 `FORBIDDEN` — Not an internal recruiter
 
 ---
 

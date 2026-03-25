@@ -627,6 +627,54 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | **Steps** | 1. On review page, modify `fullName` and add a skill 2. Click Save |
 | **Expected Result** | API called with updated profile; success confirmation shown; profile saved |
 
+### TC-PROFILE-027: Dedup by email reuses existing candidate ID
+| Field | Value |
+|-------|-------|
+| **ID** | TC-PROFILE-027 |
+| **Priority** | P0 |
+| **Steps** | 1. Save profile with email `john@example.com` 2. Save another profile with same email |
+| **Expected Result** | Second save reuses existing `candidate_id`; no duplicate created |
+
+### TC-PROFILE-028: Dedup by name (unique match) reuses existing candidate ID
+| Field | Value |
+|-------|-------|
+| **ID** | TC-PROFILE-028 |
+| **Priority** | P0 |
+| **Steps** | 1. Save profile "John Doe" with email A 2. Save profile "John Doe" with email B (no email match) |
+| **Expected Result** | If only one candidate named "john doe" exists, second save reuses that candidate_id |
+
+### TC-PROFILE-029: Dedup by name+phone when multiple name matches exist
+| Field | Value |
+|-------|-------|
+| **ID** | TC-PROFILE-029 |
+| **Priority** | P0 |
+| **Steps** | 1. Two candidates exist with name "John Doe" 2. Save profile "John Doe" with phone matching one of them |
+| **Expected Result** | Save reuses the candidate_id of the phone-matched profile |
+
+### TC-PROFILE-030: Creates new profile when multiple name matches and no phone
+| Field | Value |
+|-------|-------|
+| **ID** | TC-PROFILE-030 |
+| **Priority** | P1 |
+| **Steps** | 1. Two candidates exist with name "John Doe" 2. Save profile "John Doe" without phone |
+| **Expected Result** | New candidate_id generated (ambiguous — does not merge) |
+
+### TC-PROFILE-031: Saved profile includes full_name_normalized
+| Field | Value |
+|-------|-------|
+| **ID** | TC-PROFILE-031 |
+| **Priority** | P1 |
+| **Steps** | 1. Save profile with fullName "Darisi Venkata Satyanarayana" |
+| **Expected Result** | DynamoDB item has `full_name_normalized: "darisi venkata satyanarayana"` |
+
+### TC-PROFILE-032: Frontend duplicate warning before save
+| Field | Value |
+|-------|-------|
+| **ID** | TC-PROFILE-032 |
+| **Priority** | P1 |
+| **Steps** | 1. Upload a resume that matches an existing candidate by name 2. Click Save on review page |
+| **Expected Result** | Warning shown with options to "Update This Profile" or "Create New Anyway" |
+
 ---
 
 ## 6. Module 5: Recruiter - Job Description Parsing
@@ -2585,6 +2633,36 @@ All functional and non-functional aspects of Quadzero Scout covering:
 - **Steps:** Click "Bench List" button, verify modal opens. Click X or backdrop, verify modal closes.
 - **Expected:** Modal opens/closes correctly with proper backdrop
 
+### TC-BENCH-011: Backend returns only screened candidates with qualifying availability
+- **Priority:** P0
+- **Type:** Integration
+- **Steps:** Call `GET /recruiter/bench-list` as internal recruiter. DB contains candidates with various availability and screening states.
+- **Expected:** Only candidates with availability in (immediate, 1_week, 2_weeks) AND last_screened_at within 15 days are returned
+
+### TC-BENCH-012: Backend rejects non-internal recruiters
+- **Priority:** P0
+- **Type:** API
+- **Steps:** Call `GET /recruiter/bench-list` as an external approved recruiter
+- **Expected:** 403 FORBIDDEN response
+
+### TC-BENCH-013: Backend rejects unauthenticated requests
+- **Priority:** P0
+- **Type:** API
+- **Steps:** Call `GET /recruiter/bench-list` without auth token
+- **Expected:** 401 UNAUTHORIZED response
+
+### TC-BENCH-014: Consistent results regardless of page mode
+- **Priority:** P1
+- **Type:** E2E
+- **Steps:** Click "Bench List" from recent mode, note results. Apply filters, click "Bench List" again.
+- **Expected:** Same results both times (dedicated endpoint always returns all eligible candidates)
+
+### TC-BENCH-015: Backend returns all matches up to scan limit
+- **Priority:** P1
+- **Type:** Integration
+- **Steps:** Call `GET /recruiter/bench-list` with large dataset (>100 eligible candidates)
+- **Expected:** All eligible candidates returned in single response (no pagination needed)
+
 ## Traceability Matrix Summary
 
 | Module | Test Count | P0 | P1 | P2 | P3 |
@@ -2611,5 +2689,5 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | Update Requirement with Audit Trail | 33 | 13 | 18 | 2 | 0 |
 | Session Timeout / Auto-Logout | 22 | 13 | 8 | 1 | 0 |
 | Negotiable Expected CTC | 10 | 3 | 4 | 3 | 0 |
-| Bench List | 10 | 4 | 5 | 1 | 0 |
-| **Total** | **350** | **81** | **137** | **100** | **32** |
+| Bench List | 15 | 7 | 7 | 1 | 0 |
+| **Total** | **355** | **84** | **139** | **100** | **32** |

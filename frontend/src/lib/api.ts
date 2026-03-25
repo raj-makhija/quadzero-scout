@@ -157,6 +157,25 @@ class ApiClient {
     });
   }
 
+  async checkDuplicate(data: {
+    email: string;
+    fullName: string;
+    phone?: string;
+  }) {
+    return this.request<{
+      hasDuplicates: boolean;
+      matches: Array<{
+        candidateId: string;
+        fullName: string;
+        email: string;
+        matchedOn: 'email' | 'name+phone' | 'name';
+      }>;
+    }>('/candidate/check-duplicate', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
   async saveProfile(data: {
     candidateId?: string;
     profile: CandidateProfile;
@@ -275,6 +294,12 @@ class ApiClient {
     const qs = params.toString();
     return this.request<{ profiles: RecentProfileSummary[]; pagination: { count: number; hasMore: boolean; lastEvaluatedKey?: string } }>(
       `/recruiter/recent-profiles${qs ? `?${qs}` : ''}`
+    );
+  }
+
+  async getBenchList() {
+    return this.request<{ candidates: BenchListCandidate[]; totalCount: number }>(
+      '/recruiter/bench-list'
     );
   }
 
@@ -830,6 +855,16 @@ export interface RequirementSummary {
   demandScore?: number;
   notifyRecruiterIds?: string[];
   additionalFields?: AdditionalFieldDefinition[];
+}
+
+export interface BenchListCandidate {
+  candidateId: string;
+  fullName: string;
+  totalExperience: number;
+  location?: string;
+  roles: string[];
+  availability: string;
+  lastScreenedAt?: string;
 }
 
 export interface RecentProfileSummary {
