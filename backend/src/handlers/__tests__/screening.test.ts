@@ -544,4 +544,35 @@ describe('screenCandidate handler (not interested)', () => {
     expect(screeningCall.updated_values.not_interested).toBe(true);
     expect(screeningCall.fields_updated).toContain('not_interested');
   });
+
+  it('should update linkedinUrl and githubUrl via FIELD_MAP', async () => {
+    mockGetCandidateById.mockResolvedValue(mockCandidate);
+
+    const event = makeEvent({
+      candidateId: 'cand_1',
+      updatedValues: {
+        linkedinUrl: 'https://linkedin.com/in/alicesmith',
+        githubUrl: 'https://github.com/alicesmith',
+      },
+      notes: 'Added profile URLs',
+    });
+
+    const result = await handler(event);
+    const body = JSON.parse(result.body);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.data.fieldsUpdated).toContain('linkedin_url');
+    expect(body.data.fieldsUpdated).toContain('github_url');
+
+    // Verify DynamoDB update received the snake_case keys
+    const updateCall = mockUpdateCandidateProfileFields.mock.calls[0];
+    const fields = updateCall[1];
+    expect(fields.linkedin_url).toBe('https://linkedin.com/in/alicesmith');
+    expect(fields.github_url).toBe('https://github.com/alicesmith');
+
+    // Verify screening audit record
+    const screeningCall = mockSaveScreening.mock.calls[0][0];
+    expect(screeningCall.updated_values.linkedin_url).toBe('https://linkedin.com/in/alicesmith');
+    expect(screeningCall.updated_values.github_url).toBe('https://github.com/alicesmith');
+  });
 });

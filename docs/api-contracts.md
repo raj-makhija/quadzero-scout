@@ -411,6 +411,8 @@ Authorization: Bearer <jwe_token>
     "roles": ["Full Stack Developer", "Frontend Lead"],
     "currentCtc": 18.5,
     "expectedCtc": 25.0,
+    "linkedinUrl": "https://linkedin.com/in/johndoe",
+    "githubUrl": "https://github.com/johndoe",
     "coverLetter": "Dear Hiring Manager, I am writing to express my interest in the Full Stack Developer position...",
     "customFields": {
       "date_of_joining": "2024-03-01",
@@ -443,6 +445,8 @@ Authorization: Bearer <jwe_token>
 - `profile.engagementModel`: Optional, enum: `contract`, `full_time`, `either` (default: `either`)
 - `profile.currentCtc`: Optional, number, min 0, max 500 (in LPA)
 - `profile.expectedCtc`: Optional, number, min 0, max 500 (in LPA)
+- `profile.linkedinUrl`: Optional, string (URL), LinkedIn profile URL
+- `profile.githubUrl`: Optional, string (URL), GitHub profile URL
 - `profile.coverLetter`: Optional, string, cover letter or email body text
 - `profile.customFields`: Optional, `Record<string, string | number>` map of custom field key-value pairs
 - `resumeS3Key`: Required, string, min 1, max 500
@@ -491,6 +495,8 @@ Authorization: Bearer <jwe_token>
     "expectedCtcType": "explicit",
     "resumeS3Key": "resumes/2024/01/abc123-john_doe_resume.pdf",
     "formattedResumeS3Key": "formatted-resumes/abc123.pdf",
+    "linkedinUrl": "https://linkedin.com/in/johndoe",
+    "githubUrl": "https://github.com/johndoe",
     "coverLetter": "Dear Hiring Manager, I am writing to express my interest in the Full Stack Developer position...",
     "customFields": {
       "date_of_joining": "2024-03-01",
@@ -503,6 +509,8 @@ Authorization: Bearer <jwe_token>
 ```
 
 **Notes:**
+- `linkedinUrl`: Optional string containing the candidate's LinkedIn profile URL. Auto-extracted from resume/email body by LLM; can be manually set during screening. May be absent if not found.
+- `githubUrl`: Optional string containing the candidate's GitHub profile URL. Auto-extracted from resume/email body by LLM; can be manually set during screening. May be absent if not found.
 - `coverLetter`: Optional string containing the candidate's cover letter or supplementary text. For email-ingested candidates, this is the plain-text email body (HTML stripped). May be absent if no cover letter was provided.
 - `customFields`: Optional map of key-value pairs representing recruiter-defined custom fields for this candidate. Keys correspond to `AdditionalFieldDefinition.key` values. May be empty or absent if no custom fields have been set.
 
@@ -1792,9 +1800,11 @@ Authorization: Bearer <jwe_token>
 
 **Validation Rules:**
 - `candidateId`: Required, string
-- `updatedValues`: Required, object containing one or more of: `fullName`, `email`, `phone`, `location`, `primarySkills`, `primarySkillYears`, `secondarySkills`, `totalExperience`, `seniority`, `availability`, `engagementModel`, `industries`, `roles`, `education`, `certifications`, `summary`, `currentCtc`, `expectedCtc`, `expectedCtcType`, `customFields`, `notInterested`
+- `updatedValues`: Required, object containing one or more of: `fullName`, `email`, `phone`, `location`, `primarySkills`, `primarySkillYears`, `secondarySkills`, `totalExperience`, `seniority`, `availability`, `engagementModel`, `industries`, `roles`, `education`, `certifications`, `summary`, `currentCtc`, `expectedCtc`, `expectedCtcType`, `linkedinUrl`, `githubUrl`, `customFields`, `notInterested`
 - `updatedValues.notInterested`: Optional, boolean. When `true`, marks the candidate as not interested in joining. When `false`, clears the not-interested flag. Setting this updates `not_interested`, `not_interested_at`, and `not_interested_by` on the candidate profile.
 - `updatedValues.expectedCtcType`: Optional, enum: `"explicit"` (default, manually entered) or `"negotiable"` (auto-calculated from current CTC + experience-based increment: 0-3 yrs +20%, 3-8 yrs +25%, 8+ yrs +30%). When `"negotiable"`, the server computes `expectedCtc` from `currentCtc` and `totalExperience` — requires both to be present.
+- `updatedValues.linkedinUrl`: Optional, string (URL), LinkedIn profile URL
+- `updatedValues.githubUrl`: Optional, string (URL), GitHub profile URL
 - `updatedValues.customFields`: Optional, `Record<string, string | number>` map of custom field key-value pairs to merge into the candidate's existing custom fields
 - `notes`: Optional, string, max 2000 characters
 

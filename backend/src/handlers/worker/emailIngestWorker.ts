@@ -338,6 +338,8 @@ async function processAttachment(
       current_ctc: profile.currentCtc ?? undefined,
       expected_ctc: profile.expectedCtc ?? undefined,
       resume_s3_key: s3Key,
+      linkedin_url: profile.linkedinUrl ?? undefined,
+      github_url: profile.githubUrl ?? undefined,
       cover_letter: emailBodyText || undefined,
       ...(preserveFormattedResume || {}),
       created_at: existingCandidate?.created_at || nowIso,

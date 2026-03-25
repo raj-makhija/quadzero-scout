@@ -48,6 +48,8 @@ Stores candidate profile data extracted from resumes and edited by candidates.
 | expected_ctc | Number | No | Expected CTC in LPA |
 | expected_ctc_type | String | No | How expected CTC was determined: `"explicit"` (entered manually) or `"negotiable"` (auto-calculated from current CTC + experience-based increment). Defaults to `"explicit"` if absent. |
 | custom_fields | Map\<String, String\|Number\> | No | Dynamic key-value pairs for additional data points (e.g., date_of_birth, pan_number). Populated by recruiters when requirements request additional candidate information. |
+| linkedin_url | String | No | LinkedIn profile URL. Auto-extracted from resume/email body by LLM; can be manually set during screening. |
+| github_url | String | No | GitHub profile URL. Auto-extracted from resume/email body by LLM; can be manually set during screening. |
 | cover_letter | String | No | Cover letter or supplementary text. For email-ingested candidates, this is the plain-text email body (HTML stripped). |
 | headline | String | No | Short recruiter-validated title for the candidate (e.g., "Sr. Python Developer"). Set during screening; auto-generated from seniority + roles/skills if absent. Max 200 chars. |
 | last_screened_at | String | No | ISO 8601 timestamp of last screening |
@@ -102,6 +104,8 @@ Stores candidate profile data extracted from resumes and edited by candidates.
     "date_of_birth": "1996-05-14",
     "pan_number": "ABCDE1234F"
   },
+  "linkedin_url": "https://linkedin.com/in/johndoe",
+  "github_url": "https://github.com/johndoe",
   "cover_letter": "Dear Hiring Manager, I am writing to express my interest in the Full Stack Developer position...",
   "not_interested": false,
   "last_screened_at": "2024-01-14T09:00:00Z",

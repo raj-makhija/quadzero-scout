@@ -86,6 +86,8 @@ export const CandidateProfileSchema = z.object({
   currentCtc: z.number().min(0).max(500).optional(),
   expectedCtc: z.number().min(0).max(500).optional(),
   customFields: z.record(z.string(), z.union([z.string(), z.number()])).optional().default({}),
+  linkedinUrl: z.string().url().optional(),
+  githubUrl: z.string().url().optional(),
 });
 export type CandidateProfile = z.infer<typeof CandidateProfileSchema>;
 
@@ -120,6 +122,8 @@ export interface CandidateItem {
   last_screened_by?: string;
   last_screened_by_name?: string;
   custom_fields?: Record<string, string | number>;
+  linkedin_url?: string;
+  github_url?: string;
   cover_letter?: string;
   headline?: string;
   not_interested?: boolean;
@@ -166,7 +170,9 @@ export const LLMResumeOutputSchema = z.object({
   certifications: z.array(z.string()).nullable().optional().transform(v => v ?? []),
   summary: z.string().optional().nullable(),
   currentCtc: z.number().nullable().optional().transform(v => v ?? null),
-  expectedCtc: z.number().nullable().optional().transform(v => v ?? null)
+  expectedCtc: z.number().nullable().optional().transform(v => v ?? null),
+  linkedinUrl: z.string().url().nullable().optional().transform(v => v ?? null),
+  githubUrl: z.string().url().nullable().optional().transform(v => v ?? null),
 });
 export type LLMResumeOutput = z.infer<typeof LLMResumeOutputSchema>;
 
@@ -277,6 +283,8 @@ export interface CandidateSearchResult {
   lastUpdated: string;
   lastScreenedAt?: string;
   lastScreenedBy?: string;
+  linkedinUrl?: string;
+  githubUrl?: string;
   notInterested?: boolean;
   notInterestedAt?: string;
 }
@@ -802,6 +810,8 @@ export interface ScreeningProfileData {
   expected_ctc?: number;
   expected_ctc_type?: string;
   custom_fields?: Record<string, string | number>;
+  linkedin_url?: string;
+  github_url?: string;
   not_interested?: boolean;
 }
 
@@ -838,6 +848,8 @@ export interface ScreenCandidateRequest {
     currentCtc?: number;
     expectedCtc?: number;
     customFields?: Record<string, string | number>;
+    linkedinUrl?: string;
+    githubUrl?: string;
     notInterested?: boolean;
   };
   notes?: string;

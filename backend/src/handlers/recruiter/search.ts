@@ -114,6 +114,8 @@ async function handleRequest(
           lastUpdated: candidate.last_updated,
           lastScreenedAt: candidate.last_screened_at,
           lastScreenedBy: candidate.last_screened_by_name || candidate.last_screened_by,
+          linkedinUrl: candidate.linkedin_url,
+          githubUrl: candidate.github_url,
           notInterested: candidate.not_interested || false,
           notInterestedAt: candidate.not_interested_at,
           roles: candidate.roles || [],

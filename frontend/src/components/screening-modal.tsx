@@ -47,6 +47,8 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
   const [totalExperience, setTotalExperience] = useState('');
   const [seniority, setSeniority] = useState('');
   const [headline, setHeadline] = useState('');
+  const [linkedinUrl, setLinkedinUrl] = useState('');
+  const [githubUrl, setGithubUrl] = useState('');
   const [notInterested, setNotInterested] = useState(false);
 
   // Advanced fields
@@ -122,6 +124,8 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
         setCertifications((profile.certifications || []).join(', '));
         setSummary(profile.summary || '');
         setHeadline(profile.headline || generateHeadline(profile.seniority || '', profile.roles, profile.primarySkills));
+        setLinkedinUrl(profile.linkedinUrl || '');
+        setGithubUrl(profile.githubUrl || '');
         setNotInterested(profile.notInterested || false);
 
         // Pre-fill custom fields from candidate profile
@@ -141,6 +145,8 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
         if (profile.currentCtc == null) empty.add('currentCtc');
         if (profile.expectedCtc == null) empty.add('expectedCtc');
         if (!profile.availability) empty.add('availability');
+        if (!profile.linkedinUrl) empty.add('linkedinUrl');
+        if (!profile.githubUrl) empty.add('githubUrl');
         setEmptyFields(empty);
       } catch {
         // Fall back to search result data if available
@@ -280,6 +286,8 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
       if (totalExperience !== '') updatedValues.totalExperience = parseFloat(totalExperience);
       if (seniority) updatedValues.seniority = seniority;
       if (headline) updatedValues.headline = headline;
+      if (linkedinUrl) updatedValues.linkedinUrl = linkedinUrl;
+      if (githubUrl) updatedValues.githubUrl = githubUrl;
 
       // Parse comma-separated fields
       if (primarySkillsText) {
@@ -662,6 +670,34 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                       value={location}
                       onChange={(e) => setLocation(e.target.value)}
                       placeholder="e.g. Bangalore, India"
+                    />
+                  </FormField>
+                </div>
+                <div className="grid grid-cols-2 gap-4 mt-3">
+                  <FormField
+                    label="LinkedIn URL"
+                    htmlFor="linkedinUrl"
+                    className={emptyFields.has('linkedinUrl') && !linkedinUrl ? 'bg-amber-50 dark:bg-amber-900/10 p-2 rounded' : ''}
+                  >
+                    <FormInput
+                      id="linkedinUrl"
+                      type="url"
+                      value={linkedinUrl}
+                      onChange={(e) => setLinkedinUrl(e.target.value)}
+                      placeholder="https://linkedin.com/in/username"
+                    />
+                  </FormField>
+                  <FormField
+                    label="GitHub URL"
+                    htmlFor="githubUrl"
+                    className={emptyFields.has('githubUrl') && !githubUrl ? 'bg-amber-50 dark:bg-amber-900/10 p-2 rounded' : ''}
+                  >
+                    <FormInput
+                      id="githubUrl"
+                      type="url"
+                      value={githubUrl}
+                      onChange={(e) => setGithubUrl(e.target.value)}
+                      placeholder="https://github.com/username"
                     />
                   </FormField>
                 </div>

@@ -31,6 +31,8 @@ const FIELD_MAP: Record<string, string> = {
   expectedCtc: 'expected_ctc',
   expectedCtcType: 'expected_ctc_type',
   headline: 'headline',
+  linkedinUrl: 'linkedin_url',
+  githubUrl: 'github_url',
   notInterested: 'not_interested',
 };
 

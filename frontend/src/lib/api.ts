@@ -672,6 +672,8 @@ export interface ExtractedProfile {
   expectedCtc?: number | null;
   expectedCtcType?: string;
   customFields?: Record<string, string | number>;
+  linkedinUrl?: string | null;
+  githubUrl?: string | null;
   coverLetter?: string | null;
 }
 
@@ -761,6 +763,8 @@ export interface CandidateSearchResult {
   lastUpdated: string;
   lastScreenedAt?: string;
   lastScreenedBy?: string;
+  linkedinUrl?: string;
+  githubUrl?: string;
   notInterested?: boolean;
   notInterestedAt?: string;
   isShortlisted?: boolean;
@@ -1219,6 +1223,8 @@ export interface ScreeningUpdatedValues {
   expectedCtcType?: 'explicit' | 'negotiable';
   headline?: string;
   customFields?: Record<string, string | number>;
+  linkedinUrl?: string;
+  githubUrl?: string;
   notInterested?: boolean;
 }
 
