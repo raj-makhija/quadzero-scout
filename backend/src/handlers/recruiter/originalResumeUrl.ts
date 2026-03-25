@@ -32,7 +32,7 @@ async function handleRequest(
     const match = fullName.match(/^[a-f0-9-]+-(.+)$/);
     const originalFilename = match ? match[1] : fullName;
 
-    const result = await generateDownloadUrl(candidate.resume_s3_key, { fileName: originalFilename });
+    const result = await generateDownloadUrl(candidate.resume_s3_key);
 
     logAuditEvent(event.auth, event, {
       action: 'RESUME_DOWNLOAD_ORIGINAL',

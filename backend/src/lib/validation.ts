@@ -43,6 +43,8 @@ export const SaveProfileRequestSchema = z.object({
     currentCtc: z.number().min(0).max(500).optional(),
     expectedCtc: z.number().min(0).max(500).optional(),
     customFields: z.record(z.string(), z.union([z.string(), z.number()])).optional().default({}),
+    linkedinUrl: z.string().url().optional(),
+    githubUrl: z.string().url().optional(),
     coverLetter: z.string().optional(),
     headline: z.string().optional(),
   }),
@@ -301,8 +303,21 @@ export const ScreenCandidateRequestSchema = z.object({
       z.string(),
       z.union([z.string(), z.number()])
     ).optional(),
+    linkedinUrl: z.string().url().optional(),
+    githubUrl: z.string().url().optional(),
+    notInterested: z.boolean().optional(),
   }),
   notes: z.string().optional(),
+});
+
+// Screening Lock Request Validation
+export const ScreeningLockRequestSchema = z.object({
+  candidateId: z.string().min(1),
+});
+
+export const ReleaseScreeningLockRequestSchema = z.object({
+  candidateId: z.string().min(1),
+  lockToken: z.string().optional(),
 });
 
 // Update Candidate Custom Fields Request Validation

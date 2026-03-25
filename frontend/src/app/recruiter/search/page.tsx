@@ -332,7 +332,7 @@ export default function RecruiterSearchPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleDownloadResume = async (candidateId: string) => {
+  const handleViewResume = async (candidateId: string) => {
     if (!isAuthenticated) {
       handleLoginRequired();
       return;
@@ -346,7 +346,8 @@ export default function RecruiterSearchPage() {
         const response = await api.getResumeUrl(candidateId);
 
         if (response.status === 'ready' && response.downloadUrl) {
-          window.open(response.downloadUrl, '_blank');
+          const ext = response.fileName?.split('.').pop()?.toLowerCase() || 'pdf';
+          window.open(`/recruiter/viewer?url=${encodeURIComponent(response.downloadUrl)}&type=${ext}`, '_blank');
           setFormattingCandidateId(null);
           return;
         }
@@ -365,7 +366,7 @@ export default function RecruiterSearchPage() {
     }
   };
 
-  const handleDownloadOriginalResume = async (candidateId: string) => {
+  const handleViewOriginalResume = async (candidateId: string) => {
     if (!isAuthenticated) {
       handleLoginRequired();
       return;
@@ -373,7 +374,8 @@ export default function RecruiterSearchPage() {
     try {
       setError(null);
       const response = await api.getOriginalResumeUrl(candidateId);
-      window.open(response.downloadUrl, '_blank');
+      const ext = response.fileName?.split('.').pop()?.toLowerCase() || 'pdf';
+      window.open(`/recruiter/viewer?url=${encodeURIComponent(response.downloadUrl)}&type=${ext}`, '_blank');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to get original resume');
     }
@@ -457,7 +459,7 @@ export default function RecruiterSearchPage() {
 
       // Check for duplicates first
       const generatedTitle = generateJobTitle(clientName, endClient, coreSkill);
-      const dupResponse = await api.checkDuplicate(clientName, parsedCriteria, generatedTitle || undefined);
+      const dupResponse = await api.checkRequirementDuplicate(clientName, parsedCriteria, generatedTitle || undefined);
 
       if (dupResponse.duplicates.length > 0) {
         setDuplicates(dupResponse.duplicates);
@@ -1383,7 +1385,7 @@ export default function RecruiterSearchPage() {
               <div className="mb-6 p-4 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <p className="font-medium text-primary-800 dark:text-primary-200">Sign in to view full candidate details</p>
-                  <p className="text-sm text-primary-600 dark:text-primary-400">Names, skills, CTC, and resume downloads are available after sign-in.</p>
+                  <p className="text-sm text-primary-600 dark:text-primary-400">Names, skills, CTC, and resume viewing are available after sign-in.</p>
                 </div>
                 <button onClick={handleLoginRequired} className="btn-primary whitespace-nowrap self-start sm:self-auto">
                   Sign In
@@ -1407,7 +1409,7 @@ export default function RecruiterSearchPage() {
               {results.map((candidate, index) => (
                 <div
                   key={candidate.candidateId}
-                  className="card p-6 hover:shadow-md transition-shadow cursor-pointer"
+                  className={`card p-6 hover:shadow-md transition-shadow cursor-pointer ${candidate.notInterested ? 'opacity-60 border-l-4 border-l-red-400' : ''}`}
                   onClick={() => {
                     if (!isAuthenticated) { handleLoginRequired(); return; }
                     // Smart routing when requirement exists and candidate not yet shortlisted
@@ -1428,7 +1430,7 @@ export default function RecruiterSearchPage() {
                           {candidate.matchScore}% Match
                         </span>
                         {isAuthenticated && (() => {
-                          const status = getScreeningStatus(candidate.lastScreenedAt);
+                          const status = getScreeningStatus(candidate.lastScreenedAt, candidate.notInterested);
                           return (
                             <span className={`badge text-xs ${status.className}`}>
                               {status.label}
@@ -1551,21 +1553,21 @@ export default function RecruiterSearchPage() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleDownloadResume(candidate.candidateId);
+                            handleViewResume(candidate.candidateId);
                           }}
                           disabled={formattingCandidateId === candidate.candidateId}
                           className="btn-outline text-sm self-start whitespace-nowrap"
                         >
-                          {formattingCandidateId === candidate.candidateId ? 'Formatting...' : 'Download Resume'}
+                          {formattingCandidateId === candidate.candidateId ? 'Formatting...' : 'View Resume'}
                         </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleDownloadOriginalResume(candidate.candidateId);
+                            handleViewOriginalResume(candidate.candidateId);
                           }}
                           className="text-xs text-primary-600 dark:text-primary-400 hover:underline"
                         >
-                          Download Original
+                          View Original
                         </button>
                         <span className="text-xs text-gray-400 dark:text-gray-500">
                           Updated {formatRelativeTime(candidate.lastUpdated)}
@@ -1654,8 +1656,8 @@ export default function RecruiterSearchPage() {
               c.candidateId === shortlistModalCandidate.candidateId ? { ...c, expectedCtc, currentCtc } : c
             ));
           }}
-          onDownloadResume={handleDownloadResume}
-          onDownloadOriginalResume={handleDownloadOriginalResume}
+          onViewResume={handleViewResume}
+          onViewOriginalResume={handleViewOriginalResume}
           formattingCandidateId={formattingCandidateId}
           onSaveRequirement={() => { setShortlistModalCandidate(null); setViewMode('requirement_details'); }}
         />

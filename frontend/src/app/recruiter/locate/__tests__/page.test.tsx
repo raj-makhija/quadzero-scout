@@ -31,12 +31,14 @@ vi.mock('next-auth/react', () => ({
 const mockListRecentProfiles = vi.fn();
 const mockSearchCandidates = vi.fn();
 const mockSearchCandidatesByName = vi.fn();
+const mockGetBenchList = vi.fn();
 
 vi.mock('@/lib/api', () => ({
   api: {
     listRecentProfiles: (...args: any[]) => mockListRecentProfiles(...args),
     searchCandidates: (...args: any[]) => mockSearchCandidates(...args),
     searchCandidatesByName: (...args: any[]) => mockSearchCandidatesByName(...args),
+    getBenchList: (...args: any[]) => mockGetBenchList(...args),
   },
   ApiError: class extends Error {
     code: string;
@@ -140,6 +142,20 @@ describe('LocateProfilePage', () => {
     mockListRecentProfiles.mockResolvedValue({ profiles: mockRecentProfiles, pagination: { count: 2, hasMore: false } });
     mockSearchCandidates.mockResolvedValue(mockSearchResponse);
     mockSearchCandidatesByName.mockResolvedValue({ candidates: mockRecentProfiles });
+    mockGetBenchList.mockResolvedValue({
+      candidates: [
+        {
+          candidateId: 'cand_1',
+          fullName: 'Alice Smith',
+          totalExperience: 6,
+          location: 'Bangalore, India',
+          roles: ['Senior Developer'],
+          availability: 'immediate',
+          lastScreenedAt: new Date().toISOString(),
+        },
+      ],
+      totalCount: 1,
+    });
   });
 
   it('renders recent profiles on page load', async () => {
@@ -394,29 +410,24 @@ describe('LocateProfilePage', () => {
       expect(screen.getByText('Bench List')).toBeInTheDocument();
     });
 
-    it('opens bench list modal from recent mode after fetching filtered data', async () => {
+    it('opens bench list modal by calling dedicated endpoint', async () => {
       render(<LocateProfilePage />);
 
       await waitFor(() => {
         expect(screen.getByText('Alice Smith')).toBeInTheDocument();
       });
 
-      // Click bench list from recent mode — triggers a search with preset filters
       fireEvent.click(screen.getByText('Bench List'));
 
       await waitFor(() => {
         expect(screen.getByTestId('bench-list-modal')).toBeInTheDocument();
       });
 
-      // Verify the search was called with bench list preset criteria
-      expect(mockSearchCandidates).toHaveBeenCalledWith(
-        { availability: ['immediate', '1_week', '2_weeks'] },
-        { limit: 100 },
-        'lastUpdated',
-      );
+      // Verify it called the dedicated bench list endpoint
+      expect(mockGetBenchList).toHaveBeenCalledTimes(1);
     });
 
-    it('opens bench list modal from filtered mode with current results', async () => {
+    it('always calls dedicated endpoint regardless of mode', async () => {
       render(<LocateProfilePage />);
 
       await waitFor(() => {
@@ -434,8 +445,7 @@ describe('LocateProfilePage', () => {
         expect(screen.getByText(/candidate.*match your filters/)).toBeInTheDocument();
       });
 
-      // Reset mock call count to verify bench list doesn't trigger another search
-      mockSearchCandidates.mockClear();
+      mockGetBenchList.mockClear();
 
       fireEvent.click(screen.getByText('Bench List'));
 
@@ -443,8 +453,8 @@ describe('LocateProfilePage', () => {
         expect(screen.getByTestId('bench-list-modal')).toBeInTheDocument();
       });
 
-      // Should NOT call searchCandidates again — uses existing filtered results
-      expect(mockSearchCandidates).not.toHaveBeenCalled();
+      // Should call the dedicated endpoint, not reuse filtered results
+      expect(mockGetBenchList).toHaveBeenCalledTimes(1);
     });
   });
 });

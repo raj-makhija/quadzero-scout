@@ -157,6 +157,25 @@ class ApiClient {
     });
   }
 
+  async checkCandidateDuplicate(data: {
+    email: string;
+    fullName: string;
+    phone?: string;
+  }) {
+    return this.request<{
+      hasDuplicates: boolean;
+      matches: Array<{
+        candidateId: string;
+        fullName: string;
+        email: string;
+        matchedOn: 'email' | 'name+phone' | 'name';
+      }>;
+    }>('/candidate/check-duplicate', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
   async saveProfile(data: {
     candidateId?: string;
     profile: CandidateProfile;
@@ -278,11 +297,17 @@ class ApiClient {
     );
   }
 
+  async getBenchList() {
+    return this.request<{ candidates: BenchListCandidate[]; totalCount: number }>(
+      '/recruiter/bench-list'
+    );
+  }
+
   async getRequirement(requirementId: string) {
     return this.request<RequirementDetail>(`/recruiter/requirements/${requirementId}`);
   }
 
-  async checkDuplicate(clientName: string, parsedCriteria: ParsedCriteria, jobTitle?: string) {
+  async checkRequirementDuplicate(clientName: string, parsedCriteria: ParsedCriteria, jobTitle?: string) {
     return this.request<{
       duplicates: DuplicateMatch[];
     }>('/recruiter/requirements/check-duplicate', {
@@ -509,6 +534,32 @@ class ApiClient {
     return this.request<ScreeningHistoryResponse>(`/recruiter/screening-history/${candidateId}`);
   }
 
+  // Screening Lock endpoints
+  async acquireScreeningLock(candidateId: string) {
+    return this.request<AcquireScreeningLockResponse>('/recruiter/screening-lock/acquire', {
+      method: 'POST',
+      body: JSON.stringify({ candidateId }),
+    });
+  }
+
+  async releaseScreeningLock(candidateId: string, lockToken?: string) {
+    return this.request<ReleaseScreeningLockResponse>('/recruiter/screening-lock/release', {
+      method: 'POST',
+      body: JSON.stringify({ candidateId, lockToken }),
+    });
+  }
+
+  async heartbeatScreeningLock(candidateId: string) {
+    return this.request<HeartbeatScreeningLockResponse>('/recruiter/screening-lock/heartbeat', {
+      method: 'POST',
+      body: JSON.stringify({ candidateId }),
+    });
+  }
+
+  getApiUrl() {
+    return this.baseUrl;
+  }
+
   // Client Master endpoints
   async saveClient(data: SaveClientPayload) {
     return this.request<ClientSummary>('/recruiter/clients', {
@@ -621,6 +672,8 @@ export interface ExtractedProfile {
   expectedCtc?: number | null;
   expectedCtcType?: string;
   customFields?: Record<string, string | number>;
+  linkedinUrl?: string | null;
+  githubUrl?: string | null;
   coverLetter?: string | null;
 }
 
@@ -631,6 +684,8 @@ export interface CandidateProfile extends ExtractedProfile {
   lastUpdated?: string;
   lastScreenedAt?: string;
   lastScreenedBy?: string;
+  notInterested?: boolean;
+  notInterestedAt?: string;
   headline?: string;
 }
 
@@ -708,6 +763,10 @@ export interface CandidateSearchResult {
   lastUpdated: string;
   lastScreenedAt?: string;
   lastScreenedBy?: string;
+  linkedinUrl?: string;
+  githubUrl?: string;
+  notInterested?: boolean;
+  notInterestedAt?: string;
   isShortlisted?: boolean;
   roles?: string[];
   headline?: string;
@@ -832,6 +891,17 @@ export interface RequirementSummary {
   additionalFields?: AdditionalFieldDefinition[];
 }
 
+export interface BenchListCandidate {
+  candidateId: string;
+  fullName: string;
+  totalExperience: number;
+  location?: string;
+  roles: string[];
+  availability: string;
+  lastScreenedAt?: string;
+  notInterested?: boolean;
+}
+
 export interface RecentProfileSummary {
   candidateId: string;
   fullName: string;
@@ -842,6 +912,7 @@ export interface RecentProfileSummary {
   lastUpdated: string;
   createdAt?: string;
   lastScreenedAt?: string;
+  notInterested?: boolean;
   roles?: string[];
   headline?: string;
 }
@@ -1152,12 +1223,16 @@ export interface ScreeningUpdatedValues {
   expectedCtcType?: 'explicit' | 'negotiable';
   headline?: string;
   customFields?: Record<string, string | number>;
+  linkedinUrl?: string;
+  githubUrl?: string;
+  notInterested?: boolean;
 }
 
 export interface ScreenCandidateResponse {
   candidateId: string;
   screenedAt: string;
   fieldsUpdated: string[];
+  notInterested?: boolean;
 }
 
 export interface ScreeningProfileData {
@@ -1196,6 +1271,28 @@ export interface ScreeningHistoryResponse {
   screenings: ScreeningHistoryEntry[];
 }
 
+// Screening Lock types
+export interface AcquireScreeningLockResponse {
+  acquired: boolean;
+  expiresAt: string;
+  lockToken: string;
+}
+
+export interface ReleaseScreeningLockResponse {
+  released: boolean;
+}
+
+export interface HeartbeatScreeningLockResponse {
+  extended: boolean;
+  expiresAt: string;
+}
+
+export interface ScreeningLockConflict {
+  lockedBy: string;
+  lockedByEmail: string;
+  lockedAt: string;
+}
+
 // Locate Profile types
 export interface CandidateNameSearchResult {
   candidateId: string;
@@ -1206,6 +1303,8 @@ export interface CandidateNameSearchResult {
   location?: string;
   lastUpdated: string;
   lastScreenedAt?: string;
+  notInterested?: boolean;
+  notInterestedAt?: string;
 }
 
 export interface CandidateNameSearchResponse {

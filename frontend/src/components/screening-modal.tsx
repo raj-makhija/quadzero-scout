@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
-import { X, AlertCircle, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { X, AlertCircle, Loader2, ChevronDown, ChevronUp, Lock } from 'lucide-react';
 import { api } from '@/lib/api';
-import type { CandidateSearchResult, ScreeningUpdatedValues, AdditionalFieldDefinition } from '@/lib/api';
+import type { CandidateSearchResult, ScreeningUpdatedValues, AdditionalFieldDefinition, ScreeningLockConflict } from '@/lib/api';
 import { FormField, FormInput, FormSelect, FormTextarea } from '@/components/ui/form-field';
 import {
   SENIORITY_OPTIONS,
@@ -47,6 +47,9 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
   const [totalExperience, setTotalExperience] = useState('');
   const [seniority, setSeniority] = useState('');
   const [headline, setHeadline] = useState('');
+  const [linkedinUrl, setLinkedinUrl] = useState('');
+  const [githubUrl, setGithubUrl] = useState('');
+  const [notInterested, setNotInterested] = useState(false);
 
   // Advanced fields
   const [fullName, setFullName] = useState('');
@@ -70,9 +73,37 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
   // Validation: track whether user attempted submit
   const [submitAttempted, setSubmitAttempted] = useState(false);
 
-  // Fetch full profile data on mount
+  // Screening lock state
+  const [lockAcquired, setLockAcquired] = useState(false);
+  const [lockConflict, setLockConflict] = useState<ScreeningLockConflict | null>(null);
+  const [lockExpired, setLockExpired] = useState(false);
+  const lockAcquiredRef = useRef(false);
+  const lockTokenRef = useRef<string | null>(null);
+  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Acquire lock and fetch profile on mount
   useEffect(() => {
-    async function fetchProfile() {
+    async function acquireLockAndFetchProfile() {
+      // Step 1: Acquire the screening lock
+      try {
+        const lockResult = await api.acquireScreeningLock(resolvedCandidateId);
+        setLockAcquired(true);
+        lockAcquiredRef.current = true;
+        lockTokenRef.current = lockResult.lockToken;
+      } catch (err: unknown) {
+        const apiError = err as { code?: string; details?: ScreeningLockConflict; name?: string };
+        if (apiError.name === 'ApiError' && apiError.code === 'SCREENING_LOCKED' && apiError.details) {
+          setLockConflict(apiError.details);
+          setFetchingProfile(false);
+          return; // Don't fetch profile — show conflict UI
+        }
+        // Non-lock errors: proceed anyway (lock is best-effort UX improvement)
+        console.warn('Failed to acquire screening lock:', err);
+        setLockAcquired(true);
+        lockAcquiredRef.current = true;
+      }
+
+      // Step 2: Fetch the candidate profile
       try {
         const profile = await api.getProfile(resolvedCandidateId);
         setFullName(profile.fullName || '');
@@ -93,6 +124,9 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
         setCertifications((profile.certifications || []).join(', '));
         setSummary(profile.summary || '');
         setHeadline(profile.headline || generateHeadline(profile.seniority || '', profile.roles, profile.primarySkills));
+        setLinkedinUrl(profile.linkedinUrl || '');
+        setGithubUrl(profile.githubUrl || '');
+        setNotInterested(profile.notInterested || false);
 
         // Pre-fill custom fields from candidate profile
         if (additionalFields && additionalFields.length > 0) {
@@ -111,6 +145,8 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
         if (profile.currentCtc == null) empty.add('currentCtc');
         if (profile.expectedCtc == null) empty.add('expectedCtc');
         if (!profile.availability) empty.add('availability');
+        if (!profile.linkedinUrl) empty.add('linkedinUrl');
+        if (!profile.githubUrl) empty.add('githubUrl');
         setEmptyFields(empty);
       } catch {
         // Fall back to search result data if available
@@ -131,22 +167,79 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
         setFetchingProfile(false);
       }
     }
-    fetchProfile();
+    acquireLockAndFetchProfile();
+
+    // Cleanup: release lock on unmount
+    return () => {
+      if (lockAcquiredRef.current && resolvedCandidateId) {
+        api.releaseScreeningLock(resolvedCandidateId, lockTokenRef.current || undefined).catch(() => {});
+      }
+      if (heartbeatRef.current) {
+        clearInterval(heartbeatRef.current);
+      }
+    };
   }, [resolvedCandidateId]);
+
+  // Heartbeat: keep lock alive every 4 minutes
+  useEffect(() => {
+    if (!lockAcquired || !resolvedCandidateId) return;
+
+    heartbeatRef.current = setInterval(async () => {
+      try {
+        await api.heartbeatScreeningLock(resolvedCandidateId);
+      } catch {
+        // Lock expired — disable save and warn user
+        setLockExpired(true);
+        lockAcquiredRef.current = false;
+        if (heartbeatRef.current) clearInterval(heartbeatRef.current);
+      }
+    }, 4 * 60 * 1000); // 4 minutes
+
+    return () => {
+      if (heartbeatRef.current) clearInterval(heartbeatRef.current);
+    };
+  }, [lockAcquired, resolvedCandidateId]);
+
+  // Wrapper for onClose that releases the lock first
+  const handleClose = useCallback(() => {
+    if (lockAcquiredRef.current && resolvedCandidateId) {
+      lockAcquiredRef.current = false;
+      api.releaseScreeningLock(resolvedCandidateId, lockTokenRef.current || undefined).catch(() => {});
+    }
+    onClose();
+  }, [onClose, resolvedCandidateId]);
+
+  // Release lock on page unload (browser close, navigation, refresh)
+  useEffect(() => {
+    if (!lockAcquired || !resolvedCandidateId) return;
+
+    const handleBeforeUnload = () => {
+      if (lockAcquiredRef.current && lockTokenRef.current) {
+        const url = `${api.getApiUrl()}/recruiter/screening-lock/release-beacon`;
+        const body = JSON.stringify({ candidateId: resolvedCandidateId, lockToken: lockTokenRef.current });
+        navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }));
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [lockAcquired, resolvedCandidateId]);
 
   const handleSubmit = useCallback(async () => {
     setSubmitAttempted(true);
 
-    // Validate required fields
+    // Validate required fields (CTC, availability, engagement optional when not interested)
     const missingFields: string[] = [];
-    if (currentCtc === '') missingFields.push('Current CTC');
-    if (expectedCtcMode === 'explicit' && expectedCtc === '') missingFields.push('Expected CTC');
-    if (expectedCtcMode === 'negotiable') {
-      if (currentCtc === '') missingFields.push('Current CTC (needed for negotiable calculation)');
-      if (totalExperience === '') missingFields.push('Total Experience (needed for negotiable calculation)');
+    if (!notInterested) {
+      if (currentCtc === '') missingFields.push('Current CTC');
+      if (expectedCtcMode === 'explicit' && expectedCtc === '') missingFields.push('Expected CTC');
+      if (expectedCtcMode === 'negotiable') {
+        if (currentCtc === '') missingFields.push('Current CTC (needed for negotiable calculation)');
+        if (totalExperience === '') missingFields.push('Total Experience (needed for negotiable calculation)');
+      }
+      if (!availability) missingFields.push('Notice Period');
+      if (!engagementModel) missingFields.push('Engagement Preference');
     }
-    if (!availability) missingFields.push('Notice Period');
-    if (!engagementModel) missingFields.push('Engagement Preference');
     if (!notes.trim()) missingFields.push('Screening Notes');
 
     // Validate required additional fields
@@ -170,6 +263,9 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
     try {
       const updatedValues: ScreeningUpdatedValues = {};
 
+      // Always include not-interested flag
+      updatedValues.notInterested = notInterested;
+
       // Only include fields that have values
       if (fullName) updatedValues.fullName = fullName;
       if (email) updatedValues.email = email;
@@ -190,6 +286,8 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
       if (totalExperience !== '') updatedValues.totalExperience = parseFloat(totalExperience);
       if (seniority) updatedValues.seniority = seniority;
       if (headline) updatedValues.headline = headline;
+      if (linkedinUrl) updatedValues.linkedinUrl = linkedinUrl;
+      if (githubUrl) updatedValues.githubUrl = githubUrl;
 
       // Parse comma-separated fields
       if (primarySkillsText) {
@@ -225,6 +323,12 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
 
       await api.screenCandidate(resolvedCandidateId, updatedValues, notes || undefined);
 
+      // Release the screening lock (fire-and-forget)
+      if (lockAcquiredRef.current) {
+        lockAcquiredRef.current = false;
+        api.releaseScreeningLock(resolvedCandidateId, lockTokenRef.current || undefined).catch(() => {});
+      }
+
       // Build updated candidate fields to pass back to the caller
       const refreshedFields: Partial<CandidateSearchResult> = {
         currentCtc: currentCtc !== '' ? parseFloat(currentCtc) : undefined,
@@ -239,6 +343,8 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
       };
       if (fullName) refreshedFields.fullName = fullName;
       if (location) refreshedFields.location = location;
+      refreshedFields.notInterested = notInterested;
+      refreshedFields.notInterestedAt = notInterested ? new Date().toISOString() : undefined;
 
       if (isShortlistFlow) {
         // Show success message briefly, then close
@@ -264,7 +370,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
     resolvedCandidateId, fullName, email, phone, location,
     currentCtc, expectedCtc, expectedCtcMode, availability, engagementModel,
     totalExperience, seniority, primarySkillsText, secondarySkillsText,
-    industries, roles, certifications, summary, notes, onScreeningComplete,
+    industries, roles, certifications, summary, notes, notInterested, onScreeningComplete,
     isShortlistFlow, additionalFields, customFieldValues,
   ]);
 
@@ -280,7 +386,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
     )}
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black bg-opacity-50" onClick={onClose} />
+      <div className="absolute inset-0 bg-black bg-opacity-50" onClick={handleClose} />
 
       {/* Modal */}
       <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col mx-4">
@@ -307,7 +413,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
             </p>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
           >
             <X className="h-5 w-5" />
@@ -316,7 +422,25 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
-          {successMessage ? (
+          {lockConflict ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center mb-4">
+                <Lock className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+              </div>
+              <p className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
+                Candidate is being screened
+              </p>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+                <strong>{lockConflict.lockedBy}</strong> ({lockConflict.lockedByEmail})
+              </p>
+              <p className="text-sm text-gray-500 dark:text-gray-500 mb-6">
+                Started screening {formatDate(lockConflict.lockedAt)}
+              </p>
+              <button onClick={handleClose} className="btn-secondary">
+                Close
+              </button>
+            </div>
+          ) : successMessage ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <div className="w-12 h-12 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-4">
                 <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -332,6 +456,16 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
             </div>
           ) : (
             <>
+              {/* Lock expired warning */}
+              {lockExpired && (
+                <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg flex items-start gap-2">
+                  <Lock className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                  <p className="text-sm text-amber-700 dark:text-amber-300">
+                    Your screening lock has expired. Another recruiter may now be able to screen this candidate. Please save or cancel promptly.
+                  </p>
+                </div>
+              )}
+
               {/* Error message */}
               {errorMessage && (
                 <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-2">
@@ -348,18 +482,43 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                 </div>
               )}
 
+              {/* Not Interested Toggle */}
+              <div className={`p-3 rounded-lg flex items-center justify-between ${notInterested ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
+                <div>
+                  <label className="font-medium text-sm text-gray-900 dark:text-gray-100">
+                    Candidate not interested in joining
+                  </label>
+                  {notInterested && (
+                    <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">
+                      CTC, notice period, and engagement are optional for not-interested candidates
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setNotInterested(!notInterested)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0 ${
+                    notInterested ? 'bg-red-500' : 'bg-gray-300 dark:bg-gray-600'
+                  }`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    notInterested ? 'translate-x-6' : 'translate-x-1'
+                  }`} />
+                </button>
+              </div>
+
               {/* Section: Compensation */}
               <div>
                 <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                  Compensation
+                  Compensation{notInterested ? ' — optional' : ''}
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
                     label="Current CTC (LPA)"
                     htmlFor="currentCtc"
-                    required
+                    required={!notInterested}
                     touched={submitAttempted}
-                    error={currentCtc === '' ? 'Required' : undefined}
+                    error={!notInterested && currentCtc === '' ? 'Required' : undefined}
                     className={emptyFields.has('currentCtc') && !currentCtc ? 'bg-amber-50 dark:bg-amber-900/10 p-2 rounded' : ''}
                   >
                     <FormInput
@@ -371,14 +530,14 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                       value={currentCtc}
                       onChange={(e) => setCurrentCtc(e.target.value)}
                       placeholder="e.g. 12.5"
-                      hasError={submitAttempted && currentCtc === ''}
+                      hasError={submitAttempted && !notInterested && currentCtc === ''}
                     />
                   </FormField>
                   <div>
                     <FormField
                       label="Expected CTC (LPA)"
                       htmlFor="expectedCtcMode"
-                      required
+                      required={!notInterested}
                     >
                       <FormSelect
                         id="expectedCtcMode"
@@ -398,7 +557,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                           value={expectedCtc}
                           onChange={(e) => setExpectedCtc(e.target.value)}
                           placeholder="e.g. 15.0"
-                          hasError={submitAttempted && expectedCtc === ''}
+                          hasError={submitAttempted && !notInterested && expectedCtc === ''}
                         />
                       </div>
                     ) : (
@@ -424,15 +583,15 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
               {/* Section: Availability */}
               <div>
                 <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                  Availability
+                  Availability{notInterested ? ' — optional' : ''}
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
                     label="Notice Period"
                     htmlFor="availability"
-                    required
+                    required={!notInterested}
                     touched={submitAttempted}
-                    error={!availability ? 'Required' : undefined}
+                    error={!notInterested && !availability ? 'Required' : undefined}
                     className={emptyFields.has('availability') && !availability ? 'bg-amber-50 dark:bg-amber-900/10 p-2 rounded' : ''}
                   >
                     <FormSelect
@@ -441,15 +600,15 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                       onChange={(e) => setAvailability(e.target.value)}
                       options={AVAILABILITY_OPTIONS}
                       placeholder="Select notice period"
-                      hasError={submitAttempted && !availability}
+                      hasError={submitAttempted && !notInterested && !availability}
                     />
                   </FormField>
                   <FormField
                     label="Engagement Preference"
                     htmlFor="engagementModel"
-                    required
+                    required={!notInterested}
                     touched={submitAttempted}
-                    error={!engagementModel ? 'Required' : undefined}
+                    error={!notInterested && !engagementModel ? 'Required' : undefined}
                   >
                     <FormSelect
                       id="engagementModel"
@@ -457,7 +616,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                       onChange={(e) => setEngagementModel(e.target.value)}
                       options={CANDIDATE_ENGAGEMENT_OPTIONS}
                       placeholder="Select preference"
-                      hasError={submitAttempted && !engagementModel}
+                      hasError={submitAttempted && !notInterested && !engagementModel}
                     />
                   </FormField>
                 </div>
@@ -511,6 +670,34 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                       value={location}
                       onChange={(e) => setLocation(e.target.value)}
                       placeholder="e.g. Bangalore, India"
+                    />
+                  </FormField>
+                </div>
+                <div className="grid grid-cols-2 gap-4 mt-3">
+                  <FormField
+                    label="LinkedIn URL"
+                    htmlFor="linkedinUrl"
+                    className={emptyFields.has('linkedinUrl') && !linkedinUrl ? 'bg-amber-50 dark:bg-amber-900/10 p-2 rounded' : ''}
+                  >
+                    <FormInput
+                      id="linkedinUrl"
+                      type="url"
+                      value={linkedinUrl}
+                      onChange={(e) => setLinkedinUrl(e.target.value)}
+                      placeholder="https://linkedin.com/in/username"
+                    />
+                  </FormField>
+                  <FormField
+                    label="GitHub URL"
+                    htmlFor="githubUrl"
+                    className={emptyFields.has('githubUrl') && !githubUrl ? 'bg-amber-50 dark:bg-amber-900/10 p-2 rounded' : ''}
+                  >
+                    <FormInput
+                      id="githubUrl"
+                      type="url"
+                      value={githubUrl}
+                      onChange={(e) => setGithubUrl(e.target.value)}
+                      placeholder="https://github.com/username"
                     />
                   </FormField>
                 </div>
@@ -721,24 +908,26 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
           )}
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 dark:border-gray-700">
-          <button
-            onClick={onClose}
-            disabled={loading}
-            className="btn-secondary"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={loading || fetchingProfile}
-            className="btn-primary flex items-center gap-2"
-          >
-            {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-            {loading ? 'Saving...' : 'Save Screening'}
-          </button>
-        </div>
+        {/* Footer — hidden when lock conflict is shown */}
+        {!lockConflict && (
+          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 dark:border-gray-700">
+            <button
+              onClick={handleClose}
+              disabled={loading}
+              className="btn-secondary"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={loading || fetchingProfile || lockExpired}
+              className="btn-primary flex items-center gap-2"
+            >
+              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+              {loading ? 'Saving...' : lockExpired ? 'Lock Expired' : 'Save Screening'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
     </>
@@ -753,10 +942,16 @@ export function isScreeningExpired(lastScreenedAt?: string): boolean {
 }
 
 // Helper to get screening status badge info
-export function getScreeningStatus(lastScreenedAt?: string): {
+export function getScreeningStatus(lastScreenedAt?: string, notInterested?: boolean): {
   label: string;
   className: string;
 } {
+  if (notInterested) {
+    return {
+      label: 'Not Interested',
+      className: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    };
+  }
   if (!lastScreenedAt) {
     return {
       label: 'Not Screened',

@@ -112,6 +112,8 @@ export async function handler(
         ...(existingCandidate?.custom_fields || {}),
         ...(profile.customFields || {}),
       },
+      linkedin_url: profile.linkedinUrl || existingCandidate?.linkedin_url,
+      github_url: profile.githubUrl || existingCandidate?.github_url,
       cover_letter: profile.coverLetter || existingCandidate?.cover_letter,
       ...(preserveFormattedResume ? preserveFormattedResume : {}),
       created_at: existingCandidate?.created_at || now,

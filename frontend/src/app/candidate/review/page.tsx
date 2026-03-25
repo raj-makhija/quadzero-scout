@@ -192,6 +192,26 @@ export default function ReviewPage() {
                   placeholder="City, Country"
                 />
               </div>
+              <div>
+                <label className="label">LinkedIn URL</label>
+                <input
+                  type="url"
+                  value={profile.linkedinUrl || ''}
+                  onChange={(e) => updateProfile({ linkedinUrl: e.target.value || null })}
+                  className="input mt-1"
+                  placeholder="https://linkedin.com/in/username"
+                />
+              </div>
+              <div>
+                <label className="label">GitHub URL</label>
+                <input
+                  type="url"
+                  value={profile.githubUrl || ''}
+                  onChange={(e) => updateProfile({ githubUrl: e.target.value || null })}
+                  className="input mt-1"
+                  placeholder="https://github.com/username"
+                />
+              </div>
             </div>
           </div>
 

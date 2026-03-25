@@ -14,7 +14,7 @@ import {
   CheckCircle,
   AlertCircle,
   X,
-  Download,
+  ExternalLink,
   FileText,
   Mail,
 } from 'lucide-react';
@@ -62,10 +62,10 @@ export default function CandidateProfilePage() {
   const [removeConfirmId, setRemoveConfirmId] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
 
-  // Resume download state
-  const [downloadingFormatted, setDownloadingFormatted] = useState(false);
-  const [downloadingOriginal, setDownloadingOriginal] = useState(false);
-  const [downloadError, setDownloadError] = useState('');
+  // Resume view state
+  const [loadingFormatted, setLoadingFormatted] = useState(false);
+  const [loadingOriginal, setLoadingOriginal] = useState(false);
+  const [viewError, setViewError] = useState('');
 
   // Cover letter / email body viewer
   const [showCoverLetter, setShowCoverLetter] = useState(false);
@@ -182,39 +182,41 @@ export default function CandidateProfilePage() {
     [candidateId]
   );
 
-  const handleDownloadResume = async () => {
+  const handleViewResume = async () => {
     try {
-      setDownloadingFormatted(true);
-      setDownloadError('');
+      setLoadingFormatted(true);
+      setViewError('');
       const maxRetries = 20;
       for (let attempt = 0; attempt < maxRetries; attempt++) {
         const response = await api.getResumeUrl(candidateId);
         if (response.status === 'ready' && response.downloadUrl) {
-          window.open(response.downloadUrl, '_blank');
+          const ext = response.fileName?.split('.').pop()?.toLowerCase() || 'pdf';
+          window.open(`/recruiter/viewer?url=${encodeURIComponent(response.downloadUrl)}&type=${ext}`, '_blank');
           return;
         }
         if (attempt < maxRetries - 1) {
           await new Promise((resolve) => setTimeout(resolve, 3000));
         }
       }
-      setDownloadError('Resume formatting is taking longer than expected. Please try again.');
+      setViewError('Resume formatting is taking longer than expected. Please try again.');
     } catch (err) {
-      setDownloadError(err instanceof Error ? err.message : 'Failed to get formatted resume');
+      setViewError(err instanceof Error ? err.message : 'Failed to get formatted resume');
     } finally {
-      setDownloadingFormatted(false);
+      setLoadingFormatted(false);
     }
   };
 
-  const handleDownloadOriginal = async () => {
+  const handleViewOriginal = async () => {
     try {
-      setDownloadingOriginal(true);
-      setDownloadError('');
+      setLoadingOriginal(true);
+      setViewError('');
       const response = await api.getOriginalResumeUrl(candidateId);
-      window.open(response.downloadUrl, '_blank');
+      const ext = response.fileName?.split('.').pop()?.toLowerCase() || 'pdf';
+      window.open(`/recruiter/viewer?url=${encodeURIComponent(response.downloadUrl)}&type=${ext}`, '_blank');
     } catch (err) {
-      setDownloadError(err instanceof Error ? err.message : 'Failed to get original resume');
+      setViewError(err instanceof Error ? err.message : 'Failed to get original resume');
     } finally {
-      setDownloadingOriginal(false);
+      setLoadingOriginal(false);
     }
   };
 
@@ -246,7 +248,7 @@ export default function CandidateProfilePage() {
     );
   }
 
-  const screeningStatus = getScreeningStatus(profile.lastScreenedAt ?? undefined);
+  const screeningStatus = getScreeningStatus(profile.lastScreenedAt ?? undefined, profile.notInterested);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -282,7 +284,7 @@ export default function CandidateProfilePage() {
         </div>
 
         {/* Profile Header */}
-        <div className="card p-6 mb-4">
+        <div className={`card p-6 mb-4 ${profile.notInterested ? 'border-l-4 border-l-red-400' : ''}`}>
           <div className="flex items-start gap-4">
             <div className="w-14 h-14 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center flex-shrink-0">
               <User className="w-7 h-7 text-primary-600" />
@@ -333,28 +335,28 @@ export default function CandidateProfilePage() {
         <div className="card p-4 mb-4">
           <div className="flex flex-wrap items-center gap-3">
             <button
-              onClick={handleDownloadResume}
-              disabled={downloadingFormatted}
+              onClick={handleViewResume}
+              disabled={loadingFormatted}
               className="btn-primary text-sm flex items-center gap-1.5"
             >
-              {downloadingFormatted ? (
+              {loadingFormatted ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
-                <Download className="w-4 h-4" />
+                <ExternalLink className="w-4 h-4" />
               )}
-              {downloadingFormatted ? 'Formatting...' : 'Download Resume'}
+              {loadingFormatted ? 'Formatting...' : 'View Resume'}
             </button>
             <button
-              onClick={handleDownloadOriginal}
-              disabled={downloadingOriginal}
+              onClick={handleViewOriginal}
+              disabled={loadingOriginal}
               className="btn-secondary text-sm flex items-center gap-1.5"
             >
-              {downloadingOriginal ? (
+              {loadingOriginal ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
                 <FileText className="w-4 h-4" />
               )}
-              {downloadingOriginal ? 'Downloading...' : 'Download Original'}
+              {loadingOriginal ? 'Loading...' : 'View Original'}
             </button>
             {profile.coverLetter && (
               <button
@@ -366,10 +368,10 @@ export default function CandidateProfilePage() {
               </button>
             )}
           </div>
-          {downloadError && (
+          {viewError && (
             <div className="mt-3 flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              {downloadError}
+              {viewError}
             </div>
           )}
           {showCoverLetter && profile.coverLetter && (

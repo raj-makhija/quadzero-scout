@@ -48,6 +48,8 @@ Stores candidate profile data extracted from resumes and edited by candidates.
 | expected_ctc | Number | No | Expected CTC in LPA |
 | expected_ctc_type | String | No | How expected CTC was determined: `"explicit"` (entered manually) or `"negotiable"` (auto-calculated from current CTC + experience-based increment). Defaults to `"explicit"` if absent. |
 | custom_fields | Map\<String, String\|Number\> | No | Dynamic key-value pairs for additional data points (e.g., date_of_birth, pan_number). Populated by recruiters when requirements request additional candidate information. |
+| linkedin_url | String | No | LinkedIn profile URL. Auto-extracted from resume/email body by LLM; can be manually set during screening. |
+| github_url | String | No | GitHub profile URL. Auto-extracted from resume/email body by LLM; can be manually set during screening. |
 | cover_letter | String | No | Cover letter or supplementary text. For email-ingested candidates, this is the plain-text email body (HTML stripped). |
 | headline | String | No | Short recruiter-validated title for the candidate (e.g., "Sr. Python Developer"). Set during screening; auto-generated from seniority + roles/skills if absent. Max 200 chars. |
 | last_screened_at | String | No | ISO 8601 timestamp of last screening |
@@ -58,6 +60,9 @@ Stores candidate profile data extracted from resumes and edited by candidates.
 | formatted_at | String | No | ISO 8601 timestamp of formatting |
 | created_at | String | Yes | ISO 8601 timestamp |
 | last_updated | String | Yes | ISO 8601 timestamp |
+| not_interested | Boolean | No | When true, indicates the candidate is not interested in joining |
+| not_interested_at | String (ISO 8601) | No | Timestamp when not-interested was marked |
+| not_interested_by | String | No | User ID of the recruiter who marked the candidate |
 | _type | String | Yes | Fixed value `"PROFILE"` for RecentProfilesIndex GSI partitioning |
 
 **Example Item:**
@@ -99,7 +104,10 @@ Stores candidate profile data extracted from resumes and edited by candidates.
     "date_of_birth": "1996-05-14",
     "pan_number": "ABCDE1234F"
   },
+  "linkedin_url": "https://linkedin.com/in/johndoe",
+  "github_url": "https://github.com/johndoe",
   "cover_letter": "Dear Hiring Manager, I am writing to express my interest in the Full Stack Developer position...",
+  "not_interested": false,
   "last_screened_at": "2024-01-14T09:00:00Z",
   "last_screened_by": "user_r1e2c3",
   "experience_bucket": "6-10",
@@ -886,7 +894,59 @@ Stores audit records of recruiter screening actions on candidate profiles. Each 
 
 ---
 
-### 11. EmailIngestLog
+### 11. ScreeningLocks
+
+Provides distributed locking for candidate screening to prevent two recruiters from screening the same candidate simultaneously.
+
+**Table Configuration:**
+- Table Name: `ScreeningLocks-{stage}`
+- Billing Mode: PAY_PER_REQUEST
+- TTL: Enabled on `ttl` attribute (10-minute auto-expiry)
+
+**Primary Key:**
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| candidate_id | String (S) | Partition Key - Candidate being locked |
+
+**Attributes:**
+
+| Attribute | Type | Required | Description |
+|-----------|------|----------|-------------|
+| candidate_id | String | Yes | Candidate being locked (PK) |
+| locked_by | String | Yes | User ID of the recruiter holding the lock |
+| locked_by_email | String | Yes | Email of the lock holder (for display) |
+| locked_by_name | String | Yes | Display name of the lock holder |
+| locked_at | String | Yes | ISO 8601 timestamp when lock was acquired |
+| lock_token | String | Yes | Random UUID for token-based release (used by sendBeacon) |
+| ttl | Number | Yes | Unix epoch seconds for DynamoDB auto-expiry |
+
+**Example Item:**
+```json
+{
+  "candidate_id": "cand_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "locked_by": "user_r1e2c3",
+  "locked_by_email": "recruiter@quadzero.com",
+  "locked_by_name": "Jane Smith",
+  "locked_at": "2024-01-15T10:30:00Z",
+  "lock_token": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "ttl": 1705313400
+}
+```
+
+**Global Secondary Indexes:** None
+
+**Access Patterns:**
+
+| Operation | Access Pattern | Index |
+|-----------|---------------|-------|
+| Acquire lock | PutItem with `attribute_not_exists` condition on candidate_id | Primary |
+| Check lock status | GetItem by candidate_id | Primary |
+| Release lock (owner) | DeleteItem by candidate_id with condition on locked_by | Primary |
+| Release lock (token) | DeleteItem by candidate_id with condition on lock_token | Primary |
+
+---
+
+### 12. EmailIngestLog
 
 Idempotency log for email-based resume ingestion. Prevents duplicate processing of the same email when the `emailIngestWorker` Lambda polls the M365 shared mailbox.
 

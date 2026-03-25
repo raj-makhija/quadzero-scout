@@ -30,8 +30,14 @@ describe('LLMResumeOutputSchema', () => {
       education: [{ degree: 'B.Tech', institution: 'IIT', year: 2018 }],
       certifications: ['AWS SA'],
       summary: 'Experienced developer',
+      linkedinUrl: 'https://linkedin.com/in/johndoe',
+      githubUrl: 'https://github.com/johndoe',
     });
     expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.linkedinUrl).toBe('https://linkedin.com/in/johndoe');
+      expect(result.data.githubUrl).toBe('https://github.com/johndoe');
+    }
   });
 
   it('handles null fields gracefully (LLM may return nulls)', () => {
@@ -51,6 +57,8 @@ describe('LLMResumeOutputSchema', () => {
       education: null,
       certifications: null,
       summary: null,
+      linkedinUrl: null,
+      githubUrl: null,
     });
     expect(result.success).toBe(true);
     if (result.success) {
@@ -59,6 +67,8 @@ describe('LLMResumeOutputSchema', () => {
       expect(result.data.primarySkillYears).toEqual({});   // default
       expect(result.data.totalExperience).toBe(0);         // default
       expect(result.data.seniority).toBe('mid');           // default
+      expect(result.data.linkedinUrl).toBeNull();           // null preserved
+      expect(result.data.githubUrl).toBeNull();             // null preserved
     }
   });
 

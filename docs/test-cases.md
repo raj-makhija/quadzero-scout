@@ -2,7 +2,7 @@
 
 **Document Version:** 1.0
 **Application:** Quadzero Scout - AI-powered Talent Matching Platform
-**Last Updated:** 2026-03-12
+**Last Updated:** 2026-03-25
 
 ---
 
@@ -29,6 +29,10 @@
 19. [Module 18: Requirement Status Management](#19-module-18-requirement-status-management)
 20. [Module 19: Update Requirement with Audit Trail](#20-module-19-update-requirement-with-audit-trail)
 21. [Module 20: Session Timeout / Auto-Logout](#21-module-20-session-timeout--auto-logout)
+22. [Module 21: Negotiable Expected CTC in Screening](#22-module-21-negotiable-expected-ctc-in-screening)
+23. [Module 22: Bench List](#23-module-22-bench-list)
+24. [Module 23: Screening Lock](#24-module-23-screening-lock)
+25. [Module 24: Not Interested Candidate](#25-module-24-not-interested-candidate)
 
 ---
 
@@ -627,6 +631,54 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | **Steps** | 1. On review page, modify `fullName` and add a skill 2. Click Save |
 | **Expected Result** | API called with updated profile; success confirmation shown; profile saved |
 
+### TC-PROFILE-027: Dedup by email reuses existing candidate ID
+| Field | Value |
+|-------|-------|
+| **ID** | TC-PROFILE-027 |
+| **Priority** | P0 |
+| **Steps** | 1. Save profile with email `john@example.com` 2. Save another profile with same email |
+| **Expected Result** | Second save reuses existing `candidate_id`; no duplicate created |
+
+### TC-PROFILE-028: Dedup by name (unique match) reuses existing candidate ID
+| Field | Value |
+|-------|-------|
+| **ID** | TC-PROFILE-028 |
+| **Priority** | P0 |
+| **Steps** | 1. Save profile "John Doe" with email A 2. Save profile "John Doe" with email B (no email match) |
+| **Expected Result** | If only one candidate named "john doe" exists, second save reuses that candidate_id |
+
+### TC-PROFILE-029: Dedup by name+phone when multiple name matches exist
+| Field | Value |
+|-------|-------|
+| **ID** | TC-PROFILE-029 |
+| **Priority** | P0 |
+| **Steps** | 1. Two candidates exist with name "John Doe" 2. Save profile "John Doe" with phone matching one of them |
+| **Expected Result** | Save reuses the candidate_id of the phone-matched profile |
+
+### TC-PROFILE-030: Creates new profile when multiple name matches and no phone
+| Field | Value |
+|-------|-------|
+| **ID** | TC-PROFILE-030 |
+| **Priority** | P1 |
+| **Steps** | 1. Two candidates exist with name "John Doe" 2. Save profile "John Doe" without phone |
+| **Expected Result** | New candidate_id generated (ambiguous — does not merge) |
+
+### TC-PROFILE-031: Saved profile includes full_name_normalized
+| Field | Value |
+|-------|-------|
+| **ID** | TC-PROFILE-031 |
+| **Priority** | P1 |
+| **Steps** | 1. Save profile with fullName "Darisi Venkata Satyanarayana" |
+| **Expected Result** | DynamoDB item has `full_name_normalized: "darisi venkata satyanarayana"` |
+
+### TC-PROFILE-032: Frontend duplicate warning before save
+| Field | Value |
+|-------|-------|
+| **ID** | TC-PROFILE-032 |
+| **Priority** | P1 |
+| **Steps** | 1. Upload a resume that matches an existing candidate by name 2. Click Save on review page |
+| **Expected Result** | Warning shown with options to "Update This Profile" or "Create New Anyway" |
+
 ---
 
 ## 6. Module 5: Recruiter - Job Description Parsing
@@ -1096,29 +1148,29 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | **Precondition** | S3 key: `resumes/2024/01/abc123-john_doe_resume.pdf` |
 | **Expected Result** | `fileName: "john_doe_resume.pdf"` (UUID prefix stripped) |
 
-### TC-DOWNLOAD-005: Frontend resume download action
+### TC-DOWNLOAD-005: Frontend resume view action
 | Field | Value |
 |-------|-------|
 | **ID** | TC-DOWNLOAD-005 |
 | **Priority** | P1 |
-| **Steps** | 1. From search results, click download on a candidate 2. Browser initiates download |
-| **Expected Result** | File downloads with original filename; correct content type |
+| **Steps** | 1. From search results, click "View Resume" on a candidate 2. New tab opens with viewer page |
+| **Expected Result** | Resume opens in a new browser tab via the `/recruiter/viewer` page; PDFs render natively, DOCX files render via Google Docs Viewer |
 
-### TC-DOWNLOAD-006: Formatted resume download from candidate detail page
+### TC-DOWNLOAD-006: Formatted resume view from candidate detail page
 | Field | Value |
 |-------|-------|
 | **ID** | TC-DOWNLOAD-006 |
 | **Priority** | P1 |
-| **Steps** | 1. Navigate to `/recruiter/locate/{candidateId}` 2. Click "Download Resume" button |
-| **Expected Result** | Calls `GET /recruiter/resume-url/{candidateId}`; browser downloads the formatted resume with correct filename and content type |
+| **Steps** | 1. Navigate to `/recruiter/locate/{candidateId}` 2. Click "View Resume" button |
+| **Expected Result** | Calls `GET /recruiter/resume-url/{candidateId}`; opens formatted resume in a new tab via the viewer page |
 
-### TC-DOWNLOAD-007: Original resume download from candidate detail page
+### TC-DOWNLOAD-007: Original resume view from candidate detail page
 | Field | Value |
 |-------|-------|
 | **ID** | TC-DOWNLOAD-007 |
 | **Priority** | P1 |
-| **Steps** | 1. Navigate to `/recruiter/locate/{candidateId}` 2. Click "Download Original" button |
-| **Expected Result** | Calls `GET /recruiter/original-resume-url/{candidateId}`; browser downloads the original resume with correct filename and content type |
+| **Steps** | 1. Navigate to `/recruiter/locate/{candidateId}` 2. Click "View Original" button |
+| **Expected Result** | Calls `GET /recruiter/original-resume-url/{candidateId}`; opens original resume in a new tab via the viewer page |
 
 ### TC-DOWNLOAD-008: Cover letter viewer toggle on candidate detail page
 | Field | Value |
@@ -1134,15 +1186,15 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | **ID** | TC-DOWNLOAD-009 |
 | **Priority** | P1 |
 | **Steps** | Navigate to `/recruiter/locate/{candidateId}` for a candidate without a `coverLetter` field |
-| **Expected Result** | "View Email / Cover Letter" button is not rendered; resume download buttons are still visible |
+| **Expected Result** | "View Email / Cover Letter" button is not rendered; resume view buttons are still visible |
 
-### TC-DOWNLOAD-010: Resume download error handling on candidate detail page
+### TC-DOWNLOAD-010: Resume view error handling on candidate detail page
 | Field | Value |
 |-------|-------|
 | **ID** | TC-DOWNLOAD-010 |
 | **Priority** | P2 |
-| **Steps** | 1. Navigate to `/recruiter/locate/{candidateId}` 2. Simulate a failed resume download (e.g., network error or 500 response) |
-| **Expected Result** | Error toast/notification displayed to the user; page remains functional; no unhandled exceptions |
+| **Steps** | 1. Navigate to `/recruiter/locate/{candidateId}` 2. Simulate a failed resume URL fetch (e.g., network error or 500 response) |
+| **Expected Result** | Error message displayed to the user; page remains functional; no unhandled exceptions |
 
 ---
 
@@ -2585,6 +2637,194 @@ All functional and non-functional aspects of Quadzero Scout covering:
 - **Steps:** Click "Bench List" button, verify modal opens. Click X or backdrop, verify modal closes.
 - **Expected:** Modal opens/closes correctly with proper backdrop
 
+### TC-BENCH-011: Backend returns only screened candidates with qualifying availability
+- **Priority:** P0
+- **Type:** Integration
+- **Steps:** Call `GET /recruiter/bench-list` as internal recruiter. DB contains candidates with various availability and screening states.
+- **Expected:** Only candidates with availability in (immediate, 1_week, 2_weeks) AND last_screened_at within 15 days are returned
+
+### TC-BENCH-012: Backend rejects non-internal recruiters
+- **Priority:** P0
+- **Type:** API
+- **Steps:** Call `GET /recruiter/bench-list` as an external approved recruiter
+- **Expected:** 403 FORBIDDEN response
+
+### TC-BENCH-013: Backend rejects unauthenticated requests
+- **Priority:** P0
+- **Type:** API
+- **Steps:** Call `GET /recruiter/bench-list` without auth token
+- **Expected:** 401 UNAUTHORIZED response
+
+### TC-BENCH-014: Consistent results regardless of page mode
+- **Priority:** P1
+- **Type:** E2E
+- **Steps:** Click "Bench List" from recent mode, note results. Apply filters, click "Bench List" again.
+- **Expected:** Same results both times (dedicated endpoint always returns all eligible candidates)
+
+### TC-BENCH-015: Backend returns all matches up to scan limit
+- **Priority:** P1
+- **Type:** Integration
+- **Steps:** Call `GET /recruiter/bench-list` with large dataset (>100 eligible candidates)
+- **Expected:** All eligible candidates returned in single response (no pagination needed)
+
+## 24. Module 23: Screening Lock
+
+### Acquire Lock
+
+### TC-LOCK-001: Acquire lock on unlocked candidate
+- **Priority:** P0
+- **Type:** Integration
+- **Steps:** Call `POST /recruiter/screening-lock/acquire` with valid `candidateId` for a candidate not currently locked
+- **Expected:** Returns 200 with `acquired: true` and a `lockToken`
+
+### TC-LOCK-002: Acquire lock when another recruiter holds it
+- **Priority:** P0
+- **Type:** Integration
+- **Steps:** Call `POST /recruiter/screening-lock/acquire` with a `candidateId` that is currently locked by a different recruiter
+- **Expected:** Returns 409 with lock holder info (`lockedBy`, `lockedByEmail`, `lockedAt`)
+
+### TC-LOCK-003: Retry acquire when lock expired between conditional check and read
+- **Priority:** P1
+- **Type:** Integration
+- **Steps:** Simulate a scenario where the lock expires between the conditional check and the subsequent read, then retry the acquire
+- **Expected:** Returns 200 on retry
+
+### TC-LOCK-004: Acquire lock with missing candidateId
+- **Priority:** P1
+- **Type:** Integration
+- **Steps:** Call `POST /recruiter/screening-lock/acquire` without `candidateId` in the request body
+- **Expected:** Returns 400
+
+### TC-LOCK-005: Acquire lock with invalid JSON body
+- **Priority:** P1
+- **Type:** Integration
+- **Steps:** Call `POST /recruiter/screening-lock/acquire` with malformed JSON in the request body
+- **Expected:** Returns 400
+
+### TC-LOCK-006: Acquire lock with missing body
+- **Priority:** P1
+- **Type:** Integration
+- **Steps:** Call `POST /recruiter/screening-lock/acquire` with no request body
+- **Expected:** Returns 400
+
+### Release Lock
+
+### TC-LOCK-007: Release lock by lock holder (userId match)
+- **Priority:** P0
+- **Type:** Integration
+- **Steps:** Call `POST /recruiter/screening-lock/release` as the user who currently holds the lock (matched by `userId`)
+- **Expected:** Returns 200 with `released: true`
+
+### TC-LOCK-008: Release lock by token
+- **Priority:** P0
+- **Type:** Integration
+- **Steps:** Call `POST /recruiter/screening-lock/release` with the correct `lockToken`
+- **Expected:** Returns 200 with `released: true`
+
+### TC-LOCK-009: Release lock when ConditionalCheckFailedException (idempotent)
+- **Priority:** P1
+- **Type:** Integration
+- **Steps:** Call `POST /recruiter/screening-lock/release` when the lock has already been released or expired (triggers `ConditionalCheckFailedException`)
+- **Expected:** Returns 200 (idempotent — no error)
+
+### TC-LOCK-010: Release lock with missing candidateId
+- **Priority:** P1
+- **Type:** Integration
+- **Steps:** Call `POST /recruiter/screening-lock/release` without `candidateId` in the request body
+- **Expected:** Returns 400
+
+### Heartbeat Lock
+
+### TC-LOCK-011: Heartbeat extends lock TTL
+- **Priority:** P0
+- **Type:** Integration
+- **Steps:** Call `POST /recruiter/screening-lock/heartbeat` with a valid `candidateId` and `lockToken` for an active lock held by the current user
+- **Expected:** Returns 200 with `extended: true` and updated `expiresAt`
+
+### TC-LOCK-012: Heartbeat on expired lock
+- **Priority:** P0
+- **Type:** Integration
+- **Steps:** Call `POST /recruiter/screening-lock/heartbeat` for a lock that has already expired
+- **Expected:** Returns 410 with `SCREENING_LOCK_EXPIRED` error code
+
+### TC-LOCK-013: Heartbeat by non-holder
+- **Priority:** P1
+- **Type:** Integration
+- **Steps:** Call `POST /recruiter/screening-lock/heartbeat` as a user who does not hold the lock on the candidate
+- **Expected:** Returns 410 with `SCREENING_LOCK_EXPIRED` error code
+
+### TC-LOCK-014: Heartbeat with missing candidateId
+- **Priority:** P1
+- **Type:** Integration
+- **Steps:** Call `POST /recruiter/screening-lock/heartbeat` without `candidateId` in the request body
+- **Expected:** Returns 400
+
+### Release Beacon (public endpoint)
+
+### TC-LOCK-015: Release lock by token without auth
+- **Priority:** P0
+- **Type:** API
+- **Steps:** Call `POST /public/screening-lock/release-beacon` with a valid `lockToken` and no authentication header
+- **Expected:** Returns 200
+
+### TC-LOCK-016: Release beacon with missing lockToken
+- **Priority:** P1
+- **Type:** API
+- **Steps:** Call `POST /public/screening-lock/release-beacon` without `lockToken` in the request body
+- **Expected:** Returns 400
+
+### TC-LOCK-017: Release beacon when ConditionalCheckFailedException (idempotent)
+- **Priority:** P1
+- **Type:** API
+- **Steps:** Call `POST /public/screening-lock/release-beacon` with a `lockToken` for a lock that has already been released or expired
+- **Expected:** Returns 200 (idempotent — no error)
+
+## 25. Module 24: Not Interested Candidate
+
+### TC-NI-001: Screen candidate with notInterested toggle enabled
+- **Priority:** P0
+- **Type:** API / Integration
+- **Precondition:** Candidate exists in TalentProfiles; recruiter holds screening lock
+- **Steps:** Call `POST /recruiter/screen-candidate` with `updatedValues.notInterested: true`
+- **Expected:** Candidate profile updated with `not_interested: true`, `not_interested_at` set to current ISO 8601 timestamp, `not_interested_by` set to recruiter's user ID. Screening audit record includes `notInterested` in `fields_updated`.
+
+### TC-NI-002: CTC and availability become optional when not-interested is set
+- **Priority:** P1
+- **Type:** API / Validation
+- **Precondition:** Candidate exists; recruiter holds screening lock
+- **Steps:** Call `POST /recruiter/screen-candidate` with `updatedValues.notInterested: true` and omit `currentCtc`, `expectedCtc`, and `availability`
+- **Expected:** Screening succeeds without validation errors for missing CTC or availability fields
+
+### TC-NI-003: Not-interested badge appears in search results
+- **Priority:** P1
+- **Type:** API / UI
+- **Precondition:** Candidate has `not_interested: true` in their profile
+- **Steps:** Call `POST /recruiter/search` with criteria matching the candidate
+- **Expected:** Search result for the candidate includes `notInterested: true` and `notInterestedAt` with the ISO 8601 timestamp
+
+### TC-NI-004: Shortlist confirmation warning for not-interested candidate
+- **Priority:** P0
+- **Type:** API / Integration
+- **Precondition:** Candidate has `not_interested: true` and a valid screening (within 15 days)
+- **Steps:** Call `POST /recruiter/shortlist` with the candidate's ID
+- **Expected:** Response returns 200 with `success: true` and `warning: "NOT_INTERESTED"`. Shortlist entry is created successfully.
+
+### TC-NI-005: Clear not-interested flag via re-screening
+- **Priority:** P1
+- **Type:** API / Integration
+- **Precondition:** Candidate has `not_interested: true`; recruiter holds screening lock
+- **Steps:** Call `POST /recruiter/screen-candidate` with `updatedValues.notInterested: false`
+- **Expected:** Candidate profile updated with `not_interested: false`, `not_interested_at` and `not_interested_by` removed. Screening audit record reflects the change.
+
+### TC-NI-006: Screening history shows not-interested changes
+- **Priority:** P1
+- **Type:** API
+- **Precondition:** Candidate has been screened with `notInterested` toggled on and then off
+- **Steps:** Call `GET /recruiter/screening-history/{candidateId}`
+- **Expected:** Screening records include `notInterested` in `fieldsUpdated` with correct `previousValues` and `updatedValues` for each toggle
+
+---
+
 ## Traceability Matrix Summary
 
 | Module | Test Count | P0 | P1 | P2 | P3 |
@@ -2611,5 +2851,7 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | Update Requirement with Audit Trail | 33 | 13 | 18 | 2 | 0 |
 | Session Timeout / Auto-Logout | 22 | 13 | 8 | 1 | 0 |
 | Negotiable Expected CTC | 10 | 3 | 4 | 3 | 0 |
-| Bench List | 10 | 4 | 5 | 1 | 0 |
-| **Total** | **350** | **81** | **137** | **100** | **32** |
+| Bench List | 15 | 7 | 7 | 1 | 0 |
+| Screening Lock | 17 | 7 | 10 | 0 | 0 |
+| Not Interested Candidate | 6 | 2 | 4 | 0 | 0 |
+| **Total** | **378** | **93** | **153** | **100** | **32** |

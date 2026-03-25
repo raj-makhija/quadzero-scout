@@ -58,6 +58,8 @@ The backend decrypts NextAuth.js JWE tokens using HKDF-derived encryption keys f
 | TEXTRACT_ERROR | 422/500 | Text extraction error |
 | DYNAMODB_ERROR | 500 | Database error |
 | SCREENING_REQUIRED | 409 | Candidate must be screened (or re-screened) before shortlisting |
+| SCREENING_LOCKED | 409 | Candidate is currently being screened by another recruiter |
+| SCREENING_LOCK_EXPIRED | 410 | Screening lock has expired or is held by another user |
 | SESSION_EXPIRED | 401 | Session has exceeded the configured timeout duration |
 
 ### Shared Types
@@ -324,9 +326,59 @@ Authorization: Bearer <jwe_token>
 
 ---
 
+### POST /candidate/check-duplicate
+
+Check if a candidate with matching email, name, or name+phone already exists. Called by the frontend before saving to warn users about potential duplicates.
+
+**Request Headers:**
+```
+Content-Type: application/json
+Authorization: Bearer <jwe_token>
+```
+
+**Request Body:**
+```json
+{
+  "email": "john.doe@example.com",
+  "fullName": "John Doe",
+  "phone": "+91-9876543210"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "hasDuplicates": true,
+    "matches": [
+      {
+        "candidateId": "cand_abc123",
+        "fullName": "John Doe",
+        "email": "john.doe@example.com",
+        "matchedOn": "email"
+      }
+    ]
+  }
+}
+```
+
+**Match Logic:**
+1. Primary: exact email match via EmailIndex GSI
+2. Fallback (if no email match): normalized name match via FullNameNormalizedIndex GSI
+   - If phone is provided, results indicate `name+phone` vs `name` match strength
+3. `matchedOn` values: `email`, `name+phone`, `name`
+
+**Validation Rules:**
+- `email`: Required, string
+- `fullName`: Required, string
+- `phone`: Optional, string
+
+---
+
 ### POST /candidate/save-profile
 
-Save or update candidate profile after review/editing.
+Save or update candidate profile after review/editing. Includes multi-signal deduplication: first checks by email, then falls back to normalized name + phone matching.
 
 **Request Headers:**
 ```
@@ -359,6 +411,8 @@ Authorization: Bearer <jwe_token>
     "roles": ["Full Stack Developer", "Frontend Lead"],
     "currentCtc": 18.5,
     "expectedCtc": 25.0,
+    "linkedinUrl": "https://linkedin.com/in/johndoe",
+    "githubUrl": "https://github.com/johndoe",
     "coverLetter": "Dear Hiring Manager, I am writing to express my interest in the Full Stack Developer position...",
     "customFields": {
       "date_of_joining": "2024-03-01",
@@ -391,6 +445,8 @@ Authorization: Bearer <jwe_token>
 - `profile.engagementModel`: Optional, enum: `contract`, `full_time`, `either` (default: `either`)
 - `profile.currentCtc`: Optional, number, min 0, max 500 (in LPA)
 - `profile.expectedCtc`: Optional, number, min 0, max 500 (in LPA)
+- `profile.linkedinUrl`: Optional, string (URL), LinkedIn profile URL
+- `profile.githubUrl`: Optional, string (URL), GitHub profile URL
 - `profile.coverLetter`: Optional, string, cover letter or email body text
 - `profile.customFields`: Optional, `Record<string, string | number>` map of custom field key-value pairs
 - `resumeS3Key`: Required, string, min 1, max 500
@@ -439,6 +495,8 @@ Authorization: Bearer <jwe_token>
     "expectedCtcType": "explicit",
     "resumeS3Key": "resumes/2024/01/abc123-john_doe_resume.pdf",
     "formattedResumeS3Key": "formatted-resumes/abc123.pdf",
+    "linkedinUrl": "https://linkedin.com/in/johndoe",
+    "githubUrl": "https://github.com/johndoe",
     "coverLetter": "Dear Hiring Manager, I am writing to express my interest in the Full Stack Developer position...",
     "customFields": {
       "date_of_joining": "2024-03-01",
@@ -451,6 +509,8 @@ Authorization: Bearer <jwe_token>
 ```
 
 **Notes:**
+- `linkedinUrl`: Optional string containing the candidate's LinkedIn profile URL. Auto-extracted from resume/email body by LLM; can be manually set during screening. May be absent if not found.
+- `githubUrl`: Optional string containing the candidate's GitHub profile URL. Auto-extracted from resume/email body by LLM; can be manually set during screening. May be absent if not found.
 - `coverLetter`: Optional string containing the candidate's cover letter or supplementary text. For email-ingested candidates, this is the plain-text email body (HTML stripped). May be absent if no cover letter was provided.
 - `customFields`: Optional map of key-value pairs representing recruiter-defined custom fields for this candidate. Keys correspond to `AdditionalFieldDefinition.key` values. May be empty or absent if no custom fields have been set.
 
@@ -517,6 +577,12 @@ Content-Type: application/json
 - Scans all active requirements and scores them against the candidate profile using the shared `calculateMatchScore()` function
 - Returns the top 20 matches sorted by match score descending
 - `isShortlisted` indicates whether the candidate has already been shortlisted for that requirement
+- **Unified filtering** — applies the same hard filters as `POST /recruiter/search`:
+  - **Core skill pre-filter:** If a requirement has a `coreSkill`, the candidate must possess that skill (primary or secondary) to be considered
+  - **Budget hard filter:** If the requirement specifies `budgetMaxLpa`, candidates whose expected CTC exceeds it are excluded
+  - **Engagement model hard filter:** If the requirement specifies a model other than `either`, candidates with an incompatible model are excluded
+  - **Must-have match ratio:** Candidates must match at least 40% of must-have skills (exact matches only)
+- Location and availability from the requirement's parsed criteria are passed to scoring for accurate match scores
 
 ---
 
@@ -643,6 +709,8 @@ Authorization: Bearer <jwe_token> (optional)
         "lastScreenedAt": "2024-01-14T09:00:00Z",
         "roles": ["Full Stack Developer", "Frontend Lead"],
         "headline": "Sr. Full Stack Developer",
+        "notInterested": false,
+        "notInterestedAt": null,
         "matchScore": 92,
         "matchDetails": {
           "mustHaveMatched": ["react", "nodejs"],
@@ -715,8 +783,9 @@ Authorization: Bearer <jwe_token> (optional)
 
 **Notes:**
 - Unauthenticated users see redacted results (names hidden, skills hidden, CTC hidden)
-- Candidates with 0% match on must-have skills are filtered out
+- Candidates below 40% exact must-have match ratio are filtered out
 - Candidates exceeding `maxBudgetLpa` are filtered out
+- **Core skill pre-filter:** If the search criteria includes a `coreSkill`, only candidates possessing that exact normalized skill (primary or secondary) are scored
 - Skills are normalized using the skill normalizer before matching (supports CRM, marketing, design, and HR/finance skills in addition to engineering skills)
 - The backend returns **all** scored candidates in a single response (up to 500 scanned from DynamoDB). Pagination is handled client-side on the frontend (page size: 20)
 - `hasMore` is true only when DynamoDB has more unscanned records beyond the 500 cap
@@ -725,14 +794,14 @@ Authorization: Bearer <jwe_token> (optional)
 - **Availability** is a soft scoring factor. `availabilityMatch` values: `"full"` (matches or available earlier, +7pts), `"partial"` (1–2 steps later, +3pts), `"none"` (3+ steps later, +0pts)
 - **Seniority** is a soft scoring factor (not a hard filter). Matched candidates get +5pts
 - Match score weights: must-have skills (45%), good-to-have skills (25%), experience (8%), seniority (5%), location (10%), availability (7%)
-- Related skills in the same ontology category count at 0.3x weight for both must-have and good-to-have scoring
-- Minimum effective must-have match ratio threshold: 0.25 (effective = exact matches + related matches × 0.3)
+- Related skills in the same ontology category count at 0.3x weight for good-to-have scoring (must-have scoring uses exact matches only)
+- Minimum must-have match ratio threshold: 0.40 (exact matches only; related matches do not count toward this ratio)
 
 ---
 
 ### GET /recruiter/resume-url/{candidateId}
 
-Generate a pre-signed URL to download a candidate's formatted resume.
+Generate a pre-signed URL to view a candidate's formatted resume.
 
 **Request Headers:**
 ```
@@ -762,7 +831,7 @@ Authorization: Bearer <jwe_token>
 
 ### GET /recruiter/original-resume-url/{candidateId}
 
-Generate a pre-signed URL to download a candidate's original uploaded resume.
+Generate a pre-signed URL to view a candidate's original uploaded resume.
 
 **Request Headers:**
 ```
@@ -786,7 +855,7 @@ Authorization: Bearer <jwe_token>
 
 **Notes:**
 - The pre-signed URL uses the correct `Content-Type` based on the original file extension (PDF, DOCX, or DOC)
-- The `Content-Disposition` is set to `attachment` with the original filename, prompting a download rather than inline display
+- The `Content-Disposition` is set to `inline`, allowing the browser to display the file directly
 
 ---
 
@@ -974,6 +1043,39 @@ Returns the most recently updated candidate profiles (sorted by `lastUpdated` de
   }
 }
 ```
+
+---
+
+### GET /recruiter/bench-list
+
+Returns all bench-eligible candidates: availability in (immediate, 1_week, 2_weeks) and screened within 15 days. No pagination — returns all matches in a single response (up to 2000 candidates scanned).
+
+**Auth:** Requires `recruiter` role. Internal recruiters only (`isInternal: true`). Returns 403 for external recruiters.
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "candidates": [
+      {
+        "candidateId": "uuid",
+        "fullName": "string",
+        "totalExperience": 6,
+        "location": "Bangalore, India",
+        "roles": ["Senior Developer", "Architect"],
+        "availability": "immediate",
+        "lastScreenedAt": "2026-03-20T14:00:00.000Z"
+      }
+    ],
+    "totalCount": 17
+  }
+}
+```
+
+**Errors:**
+- 401 `UNAUTHORIZED` — Not authenticated
+- 403 `FORBIDDEN` — Not an internal recruiter
 
 ---
 
@@ -1560,6 +1662,15 @@ Authorization: Bearer <jwe_token>
 **Notes:**
 - Returns 409 (`ALREADY_SHORTLISTED`) if the candidate is already shortlisted for the requirement
 - Returns 409 (`SCREENING_REQUIRED`) if the candidate has never been screened (`last_screened_at` is missing) or was last screened more than 15 days ago. The candidate must be screened (or re-screened) via `POST /recruiter/screen-candidate` before shortlisting.
+- When shortlisting a candidate who has `not_interested: true`, the response includes a `warning: "NOT_INTERESTED"` field to alert the recruiter. The shortlist still succeeds (it is not blocked).
+
+**Warning Response (200 OK with warning):**
+```json
+{
+  "success": true,
+  "warning": "NOT_INTERESTED"
+}
+```
 
 **Error Response (409 Screening Required):**
 ```json
@@ -1667,7 +1778,8 @@ Authorization: Bearer <jwe_token>
     "expectedCtcType": "explicit",
     "customFields": {
       "date_of_joining": "2024-03-01"
-    }
+    },
+    "notInterested": false
   },
   "notes": "Verified experience via phone screening, candidate confirmed immediate availability"
 }
@@ -1680,15 +1792,19 @@ Authorization: Bearer <jwe_token>
   "data": {
     "candidateId": "cand_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "screenedAt": "2024-01-14T09:00:00Z",
-    "fieldsUpdated": ["totalExperience", "seniority", "availability", "primarySkills", "expectedCtc"]
+    "fieldsUpdated": ["totalExperience", "seniority", "availability", "primarySkills", "expectedCtc"],
+    "notInterested": false
   }
 }
 ```
 
 **Validation Rules:**
 - `candidateId`: Required, string
-- `updatedValues`: Required, object containing one or more of: `fullName`, `email`, `phone`, `location`, `primarySkills`, `primarySkillYears`, `secondarySkills`, `totalExperience`, `seniority`, `availability`, `engagementModel`, `industries`, `roles`, `education`, `certifications`, `summary`, `currentCtc`, `expectedCtc`, `expectedCtcType`, `customFields`
+- `updatedValues`: Required, object containing one or more of: `fullName`, `email`, `phone`, `location`, `primarySkills`, `primarySkillYears`, `secondarySkills`, `totalExperience`, `seniority`, `availability`, `engagementModel`, `industries`, `roles`, `education`, `certifications`, `summary`, `currentCtc`, `expectedCtc`, `expectedCtcType`, `linkedinUrl`, `githubUrl`, `customFields`, `notInterested`
+- `updatedValues.notInterested`: Optional, boolean. When `true`, marks the candidate as not interested in joining. When `false`, clears the not-interested flag. Setting this updates `not_interested`, `not_interested_at`, and `not_interested_by` on the candidate profile.
 - `updatedValues.expectedCtcType`: Optional, enum: `"explicit"` (default, manually entered) or `"negotiable"` (auto-calculated from current CTC + experience-based increment: 0-3 yrs +20%, 3-8 yrs +25%, 8+ yrs +30%). When `"negotiable"`, the server computes `expectedCtc` from `currentCtc` and `totalExperience` — requires both to be present.
+- `updatedValues.linkedinUrl`: Optional, string (URL), LinkedIn profile URL
+- `updatedValues.githubUrl`: Optional, string (URL), GitHub profile URL
 - `updatedValues.customFields`: Optional, `Record<string, string | number>` map of custom field key-value pairs to merge into the candidate's existing custom fields
 - `notes`: Optional, string, max 2000 characters
 
@@ -1751,6 +1867,195 @@ Authorization: Bearer <jwe_token>
 **Notes:**
 - Screenings are returned in reverse chronological order (most recent first)
 - Returns empty `screenings` array if no screening history exists
+
+---
+
+## Recruiter Screening Lock Endpoints
+
+### POST /recruiter/screening-lock/acquire
+
+Acquire a distributed lock before screening a candidate. Uses DynamoDB conditional writes for atomicity. Lock auto-expires after 10 minutes.
+
+**Auth:** Requires `recruiter` role.
+
+**Request Headers:**
+```
+Content-Type: application/json
+Authorization: Bearer <jwe_token>
+```
+
+**Request Body:**
+```json
+{
+  "candidateId": "cand_a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "acquired": true,
+    "expiresAt": "2024-01-14T09:10:00Z",
+    "lockToken": "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+  }
+}
+```
+
+**Response (409 Conflict):**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "SCREENING_LOCKED",
+    "message": "Candidate is currently being screened by another recruiter",
+    "details": {
+      "lockedBy": "user_r1e2c3",
+      "lockedByEmail": "recruiter@quadzero.com",
+      "lockedAt": "2024-01-14T09:00:00Z"
+    }
+  }
+}
+```
+
+**Validation Rules:**
+- `candidateId`: Required, string
+
+**Notes:**
+- Returns 409 if the candidate is already locked by another recruiter
+- If the same recruiter already holds the lock, a new lock token is issued and the TTL is reset
+- Lock auto-expires after 10 minutes if not released or extended via heartbeat
+
+---
+
+### POST /recruiter/screening-lock/release
+
+Release the screening lock for a candidate. Idempotent — returns success even if the lock has already been released.
+
+**Auth:** Requires `recruiter` role.
+
+**Request Headers:**
+```
+Content-Type: application/json
+Authorization: Bearer <jwe_token>
+```
+
+**Request Body:**
+```json
+{
+  "candidateId": "cand_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "lockToken": "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "released": true
+  }
+}
+```
+
+**Validation Rules:**
+- `candidateId`: Required, string
+- `lockToken`: Optional, string (UUID). When provided, the lock is released by token match instead of userId match.
+
+**Notes:**
+- Idempotent: returns success even if the lock was already released or does not exist
+- Supports two release modes: userId-based (default, from auth token) or token-based (when `lockToken` is provided)
+
+---
+
+### POST /recruiter/screening-lock/heartbeat
+
+Extend the screening lock TTL by another 10 minutes. Frontend calls this every 4 minutes to keep the lock alive.
+
+**Auth:** Requires `recruiter` role.
+
+**Request Headers:**
+```
+Content-Type: application/json
+Authorization: Bearer <jwe_token>
+```
+
+**Request Body:**
+```json
+{
+  "candidateId": "cand_a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "extended": true,
+    "expiresAt": "2024-01-14T09:20:00Z"
+  }
+}
+```
+
+**Response (410 Gone):**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "SCREENING_LOCK_EXPIRED",
+    "message": "Screening lock has expired or is held by another user"
+  }
+}
+```
+
+**Validation Rules:**
+- `candidateId`: Required, string
+
+**Notes:**
+- Returns 410 if the lock has expired or is held by another user
+- Frontend should call this endpoint every 4 minutes to prevent lock expiration
+
+---
+
+### POST /recruiter/screening-lock/release-beacon
+
+Public endpoint for `sendBeacon`-based lock release during browser close or navigation. Secured by requiring the `lockToken` UUID that was returned at acquire time.
+
+**Auth:** None (public endpoint) — secured by `lockToken`.
+
+**Request Headers:**
+```
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "candidateId": "cand_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "lockToken": "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "released": true
+  }
+}
+```
+
+**Validation Rules:**
+- `candidateId`: Required, string
+- `lockToken`: Required, string (UUID)
+
+**Notes:**
+- This is a public endpoint with no auth header required; security is provided by the `lockToken` UUID which is only known to the client that acquired the lock
+- Designed for use with the browser `navigator.sendBeacon()` API to release locks when the user closes or navigates away from the page
+- Idempotent: returns success even if the lock was already released
 
 ---
 
@@ -2483,9 +2788,9 @@ For future integrations, the system can emit webhook events:
 
 The candidate detail page displays the full candidate profile. Between the profile header and the expandable profile details section, a card section provides:
 
-- **Resume Download Buttons** — Two buttons for downloading the candidate's resume:
-  - "Download Resume" — downloads the formatted (LLM-reformatted) resume via `GET /recruiter/resume-url/{candidateId}`
-  - "Download Original" — downloads the original uploaded resume via `GET /recruiter/original-resume-url/{candidateId}`
+- **Resume View Buttons** — Two buttons for viewing the candidate's resume in a new browser tab:
+  - "View Resume" — opens the formatted (LLM-reformatted) resume via `GET /recruiter/resume-url/{candidateId}` in a viewer page. PDFs render natively; DOCX files use Google Docs Viewer.
+  - "View Original" — opens the original uploaded resume via `GET /recruiter/original-resume-url/{candidateId}` in a viewer page.
 - **Email Body / Cover Letter Viewer** — A "View Email / Cover Letter" toggle button that expands to show the candidate's cover letter text. This button is only visible when the candidate record includes a `coverLetter` field.
 
 ---
@@ -2517,7 +2822,9 @@ Searches candidate profiles by name (case-insensitive partial match). Used for t
         "seniority": "senior",
         "location": "Bangalore, India",
         "lastUpdated": "2026-03-01T10:00:00.000Z",
-        "lastScreenedAt": "2026-02-25T09:00:00.000Z"
+        "lastScreenedAt": "2026-02-25T09:00:00.000Z",
+        "notInterested": false,
+        "notInterestedAt": null
       }
     ]
   }
