@@ -2,7 +2,7 @@
 
 import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { Loader2, AlertCircle, Download } from 'lucide-react';
 
 function ViewerContent() {
   const searchParams = useSearchParams();
@@ -22,11 +22,23 @@ function ViewerContent() {
   const googleViewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(url)}&embedded=true`;
 
   return (
-    <iframe
-      src={googleViewerUrl}
-      className="w-full h-screen border-0"
-      title="Document Viewer"
-    />
+    <div className="flex flex-col h-screen">
+      <div className="flex items-center justify-end px-4 py-2 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+        <a
+          href={url}
+          download
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600"
+        >
+          <Download className="w-4 h-4" />
+          Download
+        </a>
+      </div>
+      <iframe
+        src={googleViewerUrl}
+        className="flex-1 w-full border-0"
+        title="Document Viewer"
+      />
+    </div>
   );
 }
 
