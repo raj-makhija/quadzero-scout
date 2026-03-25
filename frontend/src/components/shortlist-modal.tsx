@@ -35,8 +35,8 @@ interface ShortlistModalProps {
   onShortlisted: (candidateId: string) => void;
   onRescreen: (candidate: CandidateSearchResult) => void;
   onCtcUpdated?: (expectedCtc: number, currentCtc?: number) => void;
-  onDownloadResume?: (candidateId: string) => void;
-  onDownloadOriginalResume?: (candidateId: string) => void;
+  onViewResume?: (candidateId: string) => void;
+  onViewOriginalResume?: (candidateId: string) => void;
   formattingCandidateId?: string | null;
   onSaveRequirement?: () => void;
 }
@@ -50,8 +50,8 @@ export function ShortlistModal({
   onShortlisted,
   onRescreen,
   onCtcUpdated,
-  onDownloadResume,
-  onDownloadOriginalResume,
+  onViewResume,
+  onViewOriginalResume,
   formattingCandidateId,
   onSaveRequirement,
 }: ShortlistModalProps) {
@@ -476,23 +476,23 @@ export function ShortlistModal({
             </div>
           )}
 
-          {/* Download Resume — both modes */}
-          {onDownloadResume && (
+          {/* View Resume — both modes */}
+          {onViewResume && (
             <button
-              onClick={() => onDownloadResume(candidate.candidateId)}
+              onClick={() => onViewResume(candidate.candidateId)}
               disabled={formattingCandidateId === candidate.candidateId}
               className={`w-full ${isShortlistMode ? 'btn-secondary' : 'btn-primary'}`}
             >
-              {formattingCandidateId === candidate.candidateId ? 'Formatting resume...' : 'Download Resume'}
+              {formattingCandidateId === candidate.candidateId ? 'Formatting resume...' : 'View Resume'}
             </button>
           )}
-          {onDownloadOriginalResume && (
+          {onViewOriginalResume && (
             <div className="text-center">
               <button
-                onClick={() => onDownloadOriginalResume(candidate.candidateId)}
+                onClick={() => onViewOriginalResume(candidate.candidateId)}
                 className="text-sm text-primary-600 dark:text-primary-400 hover:underline"
               >
-                Download Original Resume
+                View Original Resume
               </button>
             </div>
           )}

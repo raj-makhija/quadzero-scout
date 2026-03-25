@@ -1148,29 +1148,29 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | **Precondition** | S3 key: `resumes/2024/01/abc123-john_doe_resume.pdf` |
 | **Expected Result** | `fileName: "john_doe_resume.pdf"` (UUID prefix stripped) |
 
-### TC-DOWNLOAD-005: Frontend resume download action
+### TC-DOWNLOAD-005: Frontend resume view action
 | Field | Value |
 |-------|-------|
 | **ID** | TC-DOWNLOAD-005 |
 | **Priority** | P1 |
-| **Steps** | 1. From search results, click download on a candidate 2. Browser initiates download |
-| **Expected Result** | File downloads with original filename; correct content type |
+| **Steps** | 1. From search results, click "View Resume" on a candidate 2. New tab opens with viewer page |
+| **Expected Result** | Resume opens in a new browser tab via the `/recruiter/viewer` page; PDFs render natively, DOCX files render via Google Docs Viewer |
 
-### TC-DOWNLOAD-006: Formatted resume download from candidate detail page
+### TC-DOWNLOAD-006: Formatted resume view from candidate detail page
 | Field | Value |
 |-------|-------|
 | **ID** | TC-DOWNLOAD-006 |
 | **Priority** | P1 |
-| **Steps** | 1. Navigate to `/recruiter/locate/{candidateId}` 2. Click "Download Resume" button |
-| **Expected Result** | Calls `GET /recruiter/resume-url/{candidateId}`; browser downloads the formatted resume with correct filename and content type |
+| **Steps** | 1. Navigate to `/recruiter/locate/{candidateId}` 2. Click "View Resume" button |
+| **Expected Result** | Calls `GET /recruiter/resume-url/{candidateId}`; opens formatted resume in a new tab via the viewer page |
 
-### TC-DOWNLOAD-007: Original resume download from candidate detail page
+### TC-DOWNLOAD-007: Original resume view from candidate detail page
 | Field | Value |
 |-------|-------|
 | **ID** | TC-DOWNLOAD-007 |
 | **Priority** | P1 |
-| **Steps** | 1. Navigate to `/recruiter/locate/{candidateId}` 2. Click "Download Original" button |
-| **Expected Result** | Calls `GET /recruiter/original-resume-url/{candidateId}`; browser downloads the original resume with correct filename and content type |
+| **Steps** | 1. Navigate to `/recruiter/locate/{candidateId}` 2. Click "View Original" button |
+| **Expected Result** | Calls `GET /recruiter/original-resume-url/{candidateId}`; opens original resume in a new tab via the viewer page |
 
 ### TC-DOWNLOAD-008: Cover letter viewer toggle on candidate detail page
 | Field | Value |
@@ -1186,15 +1186,15 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | **ID** | TC-DOWNLOAD-009 |
 | **Priority** | P1 |
 | **Steps** | Navigate to `/recruiter/locate/{candidateId}` for a candidate without a `coverLetter` field |
-| **Expected Result** | "View Email / Cover Letter" button is not rendered; resume download buttons are still visible |
+| **Expected Result** | "View Email / Cover Letter" button is not rendered; resume view buttons are still visible |
 
-### TC-DOWNLOAD-010: Resume download error handling on candidate detail page
+### TC-DOWNLOAD-010: Resume view error handling on candidate detail page
 | Field | Value |
 |-------|-------|
 | **ID** | TC-DOWNLOAD-010 |
 | **Priority** | P2 |
-| **Steps** | 1. Navigate to `/recruiter/locate/{candidateId}` 2. Simulate a failed resume download (e.g., network error or 500 response) |
-| **Expected Result** | Error toast/notification displayed to the user; page remains functional; no unhandled exceptions |
+| **Steps** | 1. Navigate to `/recruiter/locate/{candidateId}` 2. Simulate a failed resume URL fetch (e.g., network error or 500 response) |
+| **Expected Result** | Error message displayed to the user; page remains functional; no unhandled exceptions |
 
 ---
 

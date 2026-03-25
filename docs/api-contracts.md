@@ -801,7 +801,7 @@ Authorization: Bearer <jwe_token> (optional)
 
 ### GET /recruiter/resume-url/{candidateId}
 
-Generate a pre-signed URL to download a candidate's formatted resume.
+Generate a pre-signed URL to view a candidate's formatted resume.
 
 **Request Headers:**
 ```
@@ -831,7 +831,7 @@ Authorization: Bearer <jwe_token>
 
 ### GET /recruiter/original-resume-url/{candidateId}
 
-Generate a pre-signed URL to download a candidate's original uploaded resume.
+Generate a pre-signed URL to view a candidate's original uploaded resume.
 
 **Request Headers:**
 ```
@@ -855,7 +855,7 @@ Authorization: Bearer <jwe_token>
 
 **Notes:**
 - The pre-signed URL uses the correct `Content-Type` based on the original file extension (PDF, DOCX, or DOC)
-- The `Content-Disposition` is set to `attachment` with the original filename, prompting a download rather than inline display
+- The `Content-Disposition` is set to `inline`, allowing the browser to display the file directly
 
 ---
 
@@ -2788,9 +2788,9 @@ For future integrations, the system can emit webhook events:
 
 The candidate detail page displays the full candidate profile. Between the profile header and the expandable profile details section, a card section provides:
 
-- **Resume Download Buttons** — Two buttons for downloading the candidate's resume:
-  - "Download Resume" — downloads the formatted (LLM-reformatted) resume via `GET /recruiter/resume-url/{candidateId}`
-  - "Download Original" — downloads the original uploaded resume via `GET /recruiter/original-resume-url/{candidateId}`
+- **Resume View Buttons** — Two buttons for viewing the candidate's resume in a new browser tab:
+  - "View Resume" — opens the formatted (LLM-reformatted) resume via `GET /recruiter/resume-url/{candidateId}` in a viewer page. PDFs render natively; DOCX files use Google Docs Viewer.
+  - "View Original" — opens the original uploaded resume via `GET /recruiter/original-resume-url/{candidateId}` in a viewer page.
 - **Email Body / Cover Letter Viewer** — A "View Email / Cover Letter" toggle button that expands to show the candidate's cover letter text. This button is only visible when the candidate record includes a `coverLetter` field.
 
 ---
