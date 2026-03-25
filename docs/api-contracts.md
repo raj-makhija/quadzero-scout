@@ -695,6 +695,8 @@ Authorization: Bearer <jwe_token> (optional)
         "lastScreenedAt": "2024-01-14T09:00:00Z",
         "roles": ["Full Stack Developer", "Frontend Lead"],
         "headline": "Sr. Full Stack Developer",
+        "notInterested": false,
+        "notInterestedAt": null,
         "matchScore": 92,
         "matchDetails": {
           "mustHaveMatched": ["react", "nodejs"],
@@ -1645,6 +1647,15 @@ Authorization: Bearer <jwe_token>
 **Notes:**
 - Returns 409 (`ALREADY_SHORTLISTED`) if the candidate is already shortlisted for the requirement
 - Returns 409 (`SCREENING_REQUIRED`) if the candidate has never been screened (`last_screened_at` is missing) or was last screened more than 15 days ago. The candidate must be screened (or re-screened) via `POST /recruiter/screen-candidate` before shortlisting.
+- When shortlisting a candidate who has `not_interested: true`, the response includes a `warning: "NOT_INTERESTED"` field to alert the recruiter. The shortlist still succeeds (it is not blocked).
+
+**Warning Response (200 OK with warning):**
+```json
+{
+  "success": true,
+  "warning": "NOT_INTERESTED"
+}
+```
 
 **Error Response (409 Screening Required):**
 ```json
@@ -1752,7 +1763,8 @@ Authorization: Bearer <jwe_token>
     "expectedCtcType": "explicit",
     "customFields": {
       "date_of_joining": "2024-03-01"
-    }
+    },
+    "notInterested": false
   },
   "notes": "Verified experience via phone screening, candidate confirmed immediate availability"
 }
@@ -1765,14 +1777,16 @@ Authorization: Bearer <jwe_token>
   "data": {
     "candidateId": "cand_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "screenedAt": "2024-01-14T09:00:00Z",
-    "fieldsUpdated": ["totalExperience", "seniority", "availability", "primarySkills", "expectedCtc"]
+    "fieldsUpdated": ["totalExperience", "seniority", "availability", "primarySkills", "expectedCtc"],
+    "notInterested": false
   }
 }
 ```
 
 **Validation Rules:**
 - `candidateId`: Required, string
-- `updatedValues`: Required, object containing one or more of: `fullName`, `email`, `phone`, `location`, `primarySkills`, `primarySkillYears`, `secondarySkills`, `totalExperience`, `seniority`, `availability`, `engagementModel`, `industries`, `roles`, `education`, `certifications`, `summary`, `currentCtc`, `expectedCtc`, `expectedCtcType`, `customFields`
+- `updatedValues`: Required, object containing one or more of: `fullName`, `email`, `phone`, `location`, `primarySkills`, `primarySkillYears`, `secondarySkills`, `totalExperience`, `seniority`, `availability`, `engagementModel`, `industries`, `roles`, `education`, `certifications`, `summary`, `currentCtc`, `expectedCtc`, `expectedCtcType`, `customFields`, `notInterested`
+- `updatedValues.notInterested`: Optional, boolean. When `true`, marks the candidate as not interested in joining. When `false`, clears the not-interested flag. Setting this updates `not_interested`, `not_interested_at`, and `not_interested_by` on the candidate profile.
 - `updatedValues.expectedCtcType`: Optional, enum: `"explicit"` (default, manually entered) or `"negotiable"` (auto-calculated from current CTC + experience-based increment: 0-3 yrs +20%, 3-8 yrs +25%, 8+ yrs +30%). When `"negotiable"`, the server computes `expectedCtc` from `currentCtc` and `totalExperience` — requires both to be present.
 - `updatedValues.customFields`: Optional, `Record<string, string | number>` map of custom field key-value pairs to merge into the candidate's existing custom fields
 - `notes`: Optional, string, max 2000 characters
@@ -2791,7 +2805,9 @@ Searches candidate profiles by name (case-insensitive partial match). Used for t
         "seniority": "senior",
         "location": "Bangalore, India",
         "lastUpdated": "2026-03-01T10:00:00.000Z",
-        "lastScreenedAt": "2026-02-25T09:00:00.000Z"
+        "lastScreenedAt": "2026-02-25T09:00:00.000Z",
+        "notInterested": false,
+        "notInterestedAt": null
       }
     ]
   }

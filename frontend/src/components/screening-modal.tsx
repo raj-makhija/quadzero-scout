@@ -47,6 +47,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
   const [totalExperience, setTotalExperience] = useState('');
   const [seniority, setSeniority] = useState('');
   const [headline, setHeadline] = useState('');
+  const [notInterested, setNotInterested] = useState(false);
 
   // Advanced fields
   const [fullName, setFullName] = useState('');
@@ -121,6 +122,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
         setCertifications((profile.certifications || []).join(', '));
         setSummary(profile.summary || '');
         setHeadline(profile.headline || generateHeadline(profile.seniority || '', profile.roles, profile.primarySkills));
+        setNotInterested(profile.notInterested || false);
 
         // Pre-fill custom fields from candidate profile
         if (additionalFields && additionalFields.length > 0) {
@@ -220,16 +222,18 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
   const handleSubmit = useCallback(async () => {
     setSubmitAttempted(true);
 
-    // Validate required fields
+    // Validate required fields (CTC, availability, engagement optional when not interested)
     const missingFields: string[] = [];
-    if (currentCtc === '') missingFields.push('Current CTC');
-    if (expectedCtcMode === 'explicit' && expectedCtc === '') missingFields.push('Expected CTC');
-    if (expectedCtcMode === 'negotiable') {
-      if (currentCtc === '') missingFields.push('Current CTC (needed for negotiable calculation)');
-      if (totalExperience === '') missingFields.push('Total Experience (needed for negotiable calculation)');
+    if (!notInterested) {
+      if (currentCtc === '') missingFields.push('Current CTC');
+      if (expectedCtcMode === 'explicit' && expectedCtc === '') missingFields.push('Expected CTC');
+      if (expectedCtcMode === 'negotiable') {
+        if (currentCtc === '') missingFields.push('Current CTC (needed for negotiable calculation)');
+        if (totalExperience === '') missingFields.push('Total Experience (needed for negotiable calculation)');
+      }
+      if (!availability) missingFields.push('Notice Period');
+      if (!engagementModel) missingFields.push('Engagement Preference');
     }
-    if (!availability) missingFields.push('Notice Period');
-    if (!engagementModel) missingFields.push('Engagement Preference');
     if (!notes.trim()) missingFields.push('Screening Notes');
 
     // Validate required additional fields
@@ -252,6 +256,9 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
 
     try {
       const updatedValues: ScreeningUpdatedValues = {};
+
+      // Always include not-interested flag
+      updatedValues.notInterested = notInterested;
 
       // Only include fields that have values
       if (fullName) updatedValues.fullName = fullName;
@@ -328,6 +335,8 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
       };
       if (fullName) refreshedFields.fullName = fullName;
       if (location) refreshedFields.location = location;
+      refreshedFields.notInterested = notInterested;
+      refreshedFields.notInterestedAt = notInterested ? new Date().toISOString() : undefined;
 
       if (isShortlistFlow) {
         // Show success message briefly, then close
@@ -353,7 +362,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
     resolvedCandidateId, fullName, email, phone, location,
     currentCtc, expectedCtc, expectedCtcMode, availability, engagementModel,
     totalExperience, seniority, primarySkillsText, secondarySkillsText,
-    industries, roles, certifications, summary, notes, onScreeningComplete,
+    industries, roles, certifications, summary, notes, notInterested, onScreeningComplete,
     isShortlistFlow, additionalFields, customFieldValues,
   ]);
 
@@ -465,18 +474,43 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                 </div>
               )}
 
+              {/* Not Interested Toggle */}
+              <div className={`p-3 rounded-lg flex items-center justify-between ${notInterested ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
+                <div>
+                  <label className="font-medium text-sm text-gray-900 dark:text-gray-100">
+                    Candidate not interested in joining
+                  </label>
+                  {notInterested && (
+                    <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">
+                      CTC, notice period, and engagement are optional for not-interested candidates
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setNotInterested(!notInterested)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0 ${
+                    notInterested ? 'bg-red-500' : 'bg-gray-300 dark:bg-gray-600'
+                  }`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    notInterested ? 'translate-x-6' : 'translate-x-1'
+                  }`} />
+                </button>
+              </div>
+
               {/* Section: Compensation */}
               <div>
                 <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                  Compensation
+                  Compensation{notInterested ? ' — optional' : ''}
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
                     label="Current CTC (LPA)"
                     htmlFor="currentCtc"
-                    required
+                    required={!notInterested}
                     touched={submitAttempted}
-                    error={currentCtc === '' ? 'Required' : undefined}
+                    error={!notInterested && currentCtc === '' ? 'Required' : undefined}
                     className={emptyFields.has('currentCtc') && !currentCtc ? 'bg-amber-50 dark:bg-amber-900/10 p-2 rounded' : ''}
                   >
                     <FormInput
@@ -488,14 +522,14 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                       value={currentCtc}
                       onChange={(e) => setCurrentCtc(e.target.value)}
                       placeholder="e.g. 12.5"
-                      hasError={submitAttempted && currentCtc === ''}
+                      hasError={submitAttempted && !notInterested && currentCtc === ''}
                     />
                   </FormField>
                   <div>
                     <FormField
                       label="Expected CTC (LPA)"
                       htmlFor="expectedCtcMode"
-                      required
+                      required={!notInterested}
                     >
                       <FormSelect
                         id="expectedCtcMode"
@@ -515,7 +549,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                           value={expectedCtc}
                           onChange={(e) => setExpectedCtc(e.target.value)}
                           placeholder="e.g. 15.0"
-                          hasError={submitAttempted && expectedCtc === ''}
+                          hasError={submitAttempted && !notInterested && expectedCtc === ''}
                         />
                       </div>
                     ) : (
@@ -541,15 +575,15 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
               {/* Section: Availability */}
               <div>
                 <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                  Availability
+                  Availability{notInterested ? ' — optional' : ''}
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
                     label="Notice Period"
                     htmlFor="availability"
-                    required
+                    required={!notInterested}
                     touched={submitAttempted}
-                    error={!availability ? 'Required' : undefined}
+                    error={!notInterested && !availability ? 'Required' : undefined}
                     className={emptyFields.has('availability') && !availability ? 'bg-amber-50 dark:bg-amber-900/10 p-2 rounded' : ''}
                   >
                     <FormSelect
@@ -558,15 +592,15 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                       onChange={(e) => setAvailability(e.target.value)}
                       options={AVAILABILITY_OPTIONS}
                       placeholder="Select notice period"
-                      hasError={submitAttempted && !availability}
+                      hasError={submitAttempted && !notInterested && !availability}
                     />
                   </FormField>
                   <FormField
                     label="Engagement Preference"
                     htmlFor="engagementModel"
-                    required
+                    required={!notInterested}
                     touched={submitAttempted}
-                    error={!engagementModel ? 'Required' : undefined}
+                    error={!notInterested && !engagementModel ? 'Required' : undefined}
                   >
                     <FormSelect
                       id="engagementModel"
@@ -574,7 +608,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                       onChange={(e) => setEngagementModel(e.target.value)}
                       options={CANDIDATE_ENGAGEMENT_OPTIONS}
                       placeholder="Select preference"
-                      hasError={submitAttempted && !engagementModel}
+                      hasError={submitAttempted && !notInterested && !engagementModel}
                     />
                   </FormField>
                 </div>
@@ -872,10 +906,16 @@ export function isScreeningExpired(lastScreenedAt?: string): boolean {
 }
 
 // Helper to get screening status badge info
-export function getScreeningStatus(lastScreenedAt?: string): {
+export function getScreeningStatus(lastScreenedAt?: string, notInterested?: boolean): {
   label: string;
   className: string;
 } {
+  if (notInterested) {
+    return {
+      label: 'Not Interested',
+      className: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    };
+  }
   if (!lastScreenedAt) {
     return {
       label: 'Not Screened',

@@ -301,6 +301,7 @@ export const ScreenCandidateRequestSchema = z.object({
       z.string(),
       z.union([z.string(), z.number()])
     ).optional(),
+    notInterested: z.boolean().optional(),
   }),
   notes: z.string().optional(),
 });

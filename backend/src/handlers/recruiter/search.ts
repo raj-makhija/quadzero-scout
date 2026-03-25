@@ -114,6 +114,8 @@ async function handleRequest(
           lastUpdated: candidate.last_updated,
           lastScreenedAt: candidate.last_screened_at,
           lastScreenedBy: candidate.last_screened_by_name || candidate.last_screened_by,
+          notInterested: candidate.not_interested || false,
+          notInterestedAt: candidate.not_interested_at,
           roles: candidate.roles || [],
           headline: candidate.headline,
         };
@@ -196,6 +198,8 @@ async function handleRequest(
           },
           lastUpdated: candidate.lastUpdated,
           lastScreenedAt: undefined, // Hide screening info
+          notInterested: undefined,
+          notInterestedAt: undefined,
         }));
 
     const response: SearchResponse = {

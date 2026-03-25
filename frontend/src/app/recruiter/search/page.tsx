@@ -1407,7 +1407,7 @@ export default function RecruiterSearchPage() {
               {results.map((candidate, index) => (
                 <div
                   key={candidate.candidateId}
-                  className="card p-6 hover:shadow-md transition-shadow cursor-pointer"
+                  className={`card p-6 hover:shadow-md transition-shadow cursor-pointer ${candidate.notInterested ? 'opacity-60 border-l-4 border-l-red-400' : ''}`}
                   onClick={() => {
                     if (!isAuthenticated) { handleLoginRequired(); return; }
                     // Smart routing when requirement exists and candidate not yet shortlisted
@@ -1428,7 +1428,7 @@ export default function RecruiterSearchPage() {
                           {candidate.matchScore}% Match
                         </span>
                         {isAuthenticated && (() => {
-                          const status = getScreeningStatus(candidate.lastScreenedAt);
+                          const status = getScreeningStatus(candidate.lastScreenedAt, candidate.notInterested);
                           return (
                             <span className={`badge text-xs ${status.className}`}>
                               {status.label}

@@ -31,6 +31,8 @@ async function handleRequest(
           notes: entry.notes,
           status: entry.status,
           customFields: candidate.custom_fields || {},
+          notInterested: candidate.not_interested || false,
+          notInterestedAt: candidate.not_interested_at,
         });
       }
     });

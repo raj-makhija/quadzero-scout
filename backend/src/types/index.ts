@@ -122,6 +122,9 @@ export interface CandidateItem {
   custom_fields?: Record<string, string | number>;
   cover_letter?: string;
   headline?: string;
+  not_interested?: boolean;
+  not_interested_at?: string;
+  not_interested_by?: string;
   _type?: string;
   created_at: string;
   last_updated: string;
@@ -274,6 +277,8 @@ export interface CandidateSearchResult {
   lastUpdated: string;
   lastScreenedAt?: string;
   lastScreenedBy?: string;
+  notInterested?: boolean;
+  notInterestedAt?: string;
 }
 
 export interface SearchResponse {
@@ -713,6 +718,8 @@ export interface ShortlistedCandidate {
   notes?: string;
   status: ShortlistStatus;
   customFields?: Record<string, string | number>;
+  notInterested?: boolean;
+  notInterestedAt?: string;
 }
 
 export interface ShortlistedCandidatesResponse {
@@ -795,6 +802,7 @@ export interface ScreeningProfileData {
   expected_ctc?: number;
   expected_ctc_type?: string;
   custom_fields?: Record<string, string | number>;
+  not_interested?: boolean;
 }
 
 export interface ScreeningItem {
@@ -830,6 +838,7 @@ export interface ScreenCandidateRequest {
     currentCtc?: number;
     expectedCtc?: number;
     customFields?: Record<string, string | number>;
+    notInterested?: boolean;
   };
   notes?: string;
 }
@@ -849,6 +858,7 @@ export interface ScreenCandidateResponse {
   candidateId: string;
   screenedAt: string;
   fieldsUpdated: string[];
+  notInterested?: boolean;
 }
 
 export interface ScreeningHistoryEntry {

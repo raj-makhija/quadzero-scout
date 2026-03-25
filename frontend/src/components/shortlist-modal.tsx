@@ -58,6 +58,7 @@ export function ShortlistModal({
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [confirmNotInterested, setConfirmNotInterested] = useState(false);
 
   const isShortlistMode = requirementContext != null;
 
@@ -87,7 +88,7 @@ export function ShortlistModal({
     }
   }, [requirementContext, candidate.candidateId, notes, onShortlisted]);
 
-  const screeningStatus = getScreeningStatus(candidate.lastScreenedAt);
+  const screeningStatus = getScreeningStatus(candidate.lastScreenedAt, candidate.notInterested);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -135,6 +136,23 @@ export function ShortlistModal({
             <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-2">
               <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
               <p className="text-sm text-red-700 dark:text-red-300">{errorMessage}</p>
+            </div>
+          )}
+
+          {/* Not Interested Warning */}
+          {candidate.notInterested && (
+            <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-red-700 dark:text-red-300">
+                  Candidate marked as Not Interested
+                </p>
+                {candidate.notInterestedAt && (
+                  <p className="text-sm text-red-600 dark:text-red-400 mt-0.5">
+                    Marked on {formatDate(candidate.notInterestedAt)}
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
@@ -409,6 +427,13 @@ export function ShortlistModal({
                     Shortlisted for {requirementContext.clientName}
                   </span>
                 </div>
+              ) : candidate.notInterested && !confirmNotInterested ? (
+                <button
+                  onClick={() => setConfirmNotInterested(true)}
+                  className="w-full btn btn-outline border-amber-500 text-amber-700 hover:bg-amber-50 dark:border-amber-400 dark:text-amber-300 dark:hover:bg-amber-900/20 flex items-center justify-center gap-2"
+                >
+                  Candidate is Not Interested — Shortlist Anyway?
+                </button>
               ) : (
                 <button
                   onClick={handleShortlist}

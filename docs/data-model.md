@@ -58,6 +58,9 @@ Stores candidate profile data extracted from resumes and edited by candidates.
 | formatted_at | String | No | ISO 8601 timestamp of formatting |
 | created_at | String | Yes | ISO 8601 timestamp |
 | last_updated | String | Yes | ISO 8601 timestamp |
+| not_interested | Boolean | No | When true, indicates the candidate is not interested in joining |
+| not_interested_at | String (ISO 8601) | No | Timestamp when not-interested was marked |
+| not_interested_by | String | No | User ID of the recruiter who marked the candidate |
 | _type | String | Yes | Fixed value `"PROFILE"` for RecentProfilesIndex GSI partitioning |
 
 **Example Item:**
@@ -100,6 +103,7 @@ Stores candidate profile data extracted from resumes and edited by candidates.
     "pan_number": "ABCDE1234F"
   },
   "cover_letter": "Dear Hiring Manager, I am writing to express my interest in the Full Stack Developer position...",
+  "not_interested": false,
   "last_screened_at": "2024-01-14T09:00:00Z",
   "last_screened_by": "user_r1e2c3",
   "experience_bucket": "6-10",

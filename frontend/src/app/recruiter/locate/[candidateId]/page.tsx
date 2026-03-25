@@ -246,7 +246,7 @@ export default function CandidateProfilePage() {
     );
   }
 
-  const screeningStatus = getScreeningStatus(profile.lastScreenedAt ?? undefined);
+  const screeningStatus = getScreeningStatus(profile.lastScreenedAt ?? undefined, profile.notInterested);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -282,7 +282,7 @@ export default function CandidateProfilePage() {
         </div>
 
         {/* Profile Header */}
-        <div className="card p-6 mb-4">
+        <div className={`card p-6 mb-4 ${profile.notInterested ? 'border-l-4 border-l-red-400' : ''}`}>
           <div className="flex items-start gap-4">
             <div className="w-14 h-14 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center flex-shrink-0">
               <User className="w-7 h-7 text-primary-600" />

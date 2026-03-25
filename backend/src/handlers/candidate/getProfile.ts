@@ -51,6 +51,8 @@ export async function handler(
       lastUpdated: candidate.last_updated,
       lastScreenedAt: candidate.last_screened_at,
       lastScreenedBy: candidate.last_screened_by_name,
+      notInterested: candidate.not_interested || false,
+      notInterestedAt: candidate.not_interested_at,
     };
 
     return success(response);

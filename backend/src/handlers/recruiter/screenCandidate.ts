@@ -31,6 +31,7 @@ const FIELD_MAP: Record<string, string> = {
   expectedCtc: 'expected_ctc',
   expectedCtcType: 'expected_ctc_type',
   headline: 'headline',
+  notInterested: 'not_interested',
 };
 
 async function handleRequest(
@@ -74,6 +75,8 @@ async function handleRequest(
       updatedValues.expectedCtc = calculateNegotiableCtc(currentCtc, totalExp);
     }
 
+    const now = new Date().toISOString();
+
     // Build previous values snapshot and DB update fields
     const previousValues: ScreeningProfileData = {};
     const dbFields: Record<string, unknown> = {};
@@ -115,14 +118,23 @@ async function handleRequest(
       dbFields['experience_bucket'] = newBucket;
     }
 
+    // If not_interested flag changed, manage timestamp and attribution fields
+    if (dbFields['not_interested'] !== undefined) {
+      if (dbFields['not_interested'] === true) {
+        dbFields['not_interested_at'] = now;
+        dbFields['not_interested_by'] = event.auth.userId;
+      } else {
+        dbFields['not_interested_at'] = null; // triggers DynamoDB REMOVE
+        dbFields['not_interested_by'] = null;
+      }
+    }
+
     // Build updated values snapshot for audit
     const updatedValuesSnapshot: ScreeningProfileData = {};
     for (const [snakeKey, value] of Object.entries(dbFields)) {
-      if (snakeKey === 'experience_bucket') continue; // Don't include derived field in audit
+      if (snakeKey === 'experience_bucket' || snakeKey === 'not_interested_at' || snakeKey === 'not_interested_by') continue; // Don't include derived/meta fields in audit
       (updatedValuesSnapshot as Record<string, unknown>)[snakeKey] = value;
     }
-
-    const now = new Date().toISOString();
 
     // Save screening record
     const screeningItem: ScreeningItem = {
@@ -163,13 +175,14 @@ async function handleRequest(
       action: 'CANDIDATE_SCREEN',
       entityType: 'candidate',
       entityId: candidateId,
-      metadata: { candidateId, candidateName: candidate.full_name, fieldsUpdated, notes },
+      metadata: { candidateId, candidateName: candidate.full_name, fieldsUpdated, notes, notInterested: updatedValues.notInterested },
     });
 
     return success({
       candidateId,
       screenedAt: now,
       fieldsUpdated,
+      notInterested: updatedValues.notInterested,
     });
   } catch (err) {
     console.error('Error screening candidate:', err);

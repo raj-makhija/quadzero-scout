@@ -682,6 +682,8 @@ export interface CandidateProfile extends ExtractedProfile {
   lastUpdated?: string;
   lastScreenedAt?: string;
   lastScreenedBy?: string;
+  notInterested?: boolean;
+  notInterestedAt?: string;
   headline?: string;
 }
 
@@ -759,6 +761,8 @@ export interface CandidateSearchResult {
   lastUpdated: string;
   lastScreenedAt?: string;
   lastScreenedBy?: string;
+  notInterested?: boolean;
+  notInterestedAt?: string;
   isShortlisted?: boolean;
   roles?: string[];
   headline?: string;
@@ -891,6 +895,7 @@ export interface BenchListCandidate {
   roles: string[];
   availability: string;
   lastScreenedAt?: string;
+  notInterested?: boolean;
 }
 
 export interface RecentProfileSummary {
@@ -903,6 +908,7 @@ export interface RecentProfileSummary {
   lastUpdated: string;
   createdAt?: string;
   lastScreenedAt?: string;
+  notInterested?: boolean;
   roles?: string[];
   headline?: string;
 }
@@ -1213,12 +1219,14 @@ export interface ScreeningUpdatedValues {
   expectedCtcType?: 'explicit' | 'negotiable';
   headline?: string;
   customFields?: Record<string, string | number>;
+  notInterested?: boolean;
 }
 
 export interface ScreenCandidateResponse {
   candidateId: string;
   screenedAt: string;
   fieldsUpdated: string[];
+  notInterested?: boolean;
 }
 
 export interface ScreeningProfileData {
@@ -1289,6 +1297,8 @@ export interface CandidateNameSearchResult {
   location?: string;
   lastUpdated: string;
   lastScreenedAt?: string;
+  notInterested?: boolean;
+  notInterestedAt?: string;
 }
 
 export interface CandidateNameSearchResponse {

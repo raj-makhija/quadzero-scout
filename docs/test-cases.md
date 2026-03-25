@@ -32,6 +32,7 @@
 22. [Module 21: Negotiable Expected CTC in Screening](#22-module-21-negotiable-expected-ctc-in-screening)
 23. [Module 22: Bench List](#23-module-22-bench-list)
 24. [Module 23: Screening Lock](#24-module-23-screening-lock)
+25. [Module 24: Not Interested Candidate](#25-module-24-not-interested-candidate)
 
 ---
 
@@ -2778,6 +2779,52 @@ All functional and non-functional aspects of Quadzero Scout covering:
 - **Steps:** Call `POST /public/screening-lock/release-beacon` with a `lockToken` for a lock that has already been released or expired
 - **Expected:** Returns 200 (idempotent — no error)
 
+## 25. Module 24: Not Interested Candidate
+
+### TC-NI-001: Screen candidate with notInterested toggle enabled
+- **Priority:** P0
+- **Type:** API / Integration
+- **Precondition:** Candidate exists in TalentProfiles; recruiter holds screening lock
+- **Steps:** Call `POST /recruiter/screen-candidate` with `updatedValues.notInterested: true`
+- **Expected:** Candidate profile updated with `not_interested: true`, `not_interested_at` set to current ISO 8601 timestamp, `not_interested_by` set to recruiter's user ID. Screening audit record includes `notInterested` in `fields_updated`.
+
+### TC-NI-002: CTC and availability become optional when not-interested is set
+- **Priority:** P1
+- **Type:** API / Validation
+- **Precondition:** Candidate exists; recruiter holds screening lock
+- **Steps:** Call `POST /recruiter/screen-candidate` with `updatedValues.notInterested: true` and omit `currentCtc`, `expectedCtc`, and `availability`
+- **Expected:** Screening succeeds without validation errors for missing CTC or availability fields
+
+### TC-NI-003: Not-interested badge appears in search results
+- **Priority:** P1
+- **Type:** API / UI
+- **Precondition:** Candidate has `not_interested: true` in their profile
+- **Steps:** Call `POST /recruiter/search` with criteria matching the candidate
+- **Expected:** Search result for the candidate includes `notInterested: true` and `notInterestedAt` with the ISO 8601 timestamp
+
+### TC-NI-004: Shortlist confirmation warning for not-interested candidate
+- **Priority:** P0
+- **Type:** API / Integration
+- **Precondition:** Candidate has `not_interested: true` and a valid screening (within 15 days)
+- **Steps:** Call `POST /recruiter/shortlist` with the candidate's ID
+- **Expected:** Response returns 200 with `success: true` and `warning: "NOT_INTERESTED"`. Shortlist entry is created successfully.
+
+### TC-NI-005: Clear not-interested flag via re-screening
+- **Priority:** P1
+- **Type:** API / Integration
+- **Precondition:** Candidate has `not_interested: true`; recruiter holds screening lock
+- **Steps:** Call `POST /recruiter/screen-candidate` with `updatedValues.notInterested: false`
+- **Expected:** Candidate profile updated with `not_interested: false`, `not_interested_at` and `not_interested_by` removed. Screening audit record reflects the change.
+
+### TC-NI-006: Screening history shows not-interested changes
+- **Priority:** P1
+- **Type:** API
+- **Precondition:** Candidate has been screened with `notInterested` toggled on and then off
+- **Steps:** Call `GET /recruiter/screening-history/{candidateId}`
+- **Expected:** Screening records include `notInterested` in `fieldsUpdated` with correct `previousValues` and `updatedValues` for each toggle
+
+---
+
 ## Traceability Matrix Summary
 
 | Module | Test Count | P0 | P1 | P2 | P3 |
@@ -2806,4 +2853,5 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | Negotiable Expected CTC | 10 | 3 | 4 | 3 | 0 |
 | Bench List | 15 | 7 | 7 | 1 | 0 |
 | Screening Lock | 17 | 7 | 10 | 0 | 0 |
-| **Total** | **372** | **91** | **149** | **100** | **32** |
+| Not Interested Candidate | 6 | 2 | 4 | 0 | 0 |
+| **Total** | **378** | **93** | **153** | **100** | **32** |
