@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
-import { X, AlertCircle, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { X, AlertCircle, Loader2, ChevronDown, ChevronUp, Lock } from 'lucide-react';
 import { api } from '@/lib/api';
-import type { CandidateSearchResult, ScreeningUpdatedValues, AdditionalFieldDefinition } from '@/lib/api';
+import type { CandidateSearchResult, ScreeningUpdatedValues, AdditionalFieldDefinition, ScreeningLockConflict } from '@/lib/api';
 import { FormField, FormInput, FormSelect, FormTextarea } from '@/components/ui/form-field';
 import {
   SENIORITY_OPTIONS,
@@ -70,9 +70,37 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
   // Validation: track whether user attempted submit
   const [submitAttempted, setSubmitAttempted] = useState(false);
 
-  // Fetch full profile data on mount
+  // Screening lock state
+  const [lockAcquired, setLockAcquired] = useState(false);
+  const [lockConflict, setLockConflict] = useState<ScreeningLockConflict | null>(null);
+  const [lockExpired, setLockExpired] = useState(false);
+  const lockAcquiredRef = useRef(false);
+  const lockTokenRef = useRef<string | null>(null);
+  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Acquire lock and fetch profile on mount
   useEffect(() => {
-    async function fetchProfile() {
+    async function acquireLockAndFetchProfile() {
+      // Step 1: Acquire the screening lock
+      try {
+        const lockResult = await api.acquireScreeningLock(resolvedCandidateId);
+        setLockAcquired(true);
+        lockAcquiredRef.current = true;
+        lockTokenRef.current = lockResult.lockToken;
+      } catch (err: unknown) {
+        const apiError = err as { code?: string; details?: ScreeningLockConflict; name?: string };
+        if (apiError.name === 'ApiError' && apiError.code === 'SCREENING_LOCKED' && apiError.details) {
+          setLockConflict(apiError.details);
+          setFetchingProfile(false);
+          return; // Don't fetch profile — show conflict UI
+        }
+        // Non-lock errors: proceed anyway (lock is best-effort UX improvement)
+        console.warn('Failed to acquire screening lock:', err);
+        setLockAcquired(true);
+        lockAcquiredRef.current = true;
+      }
+
+      // Step 2: Fetch the candidate profile
       try {
         const profile = await api.getProfile(resolvedCandidateId);
         setFullName(profile.fullName || '');
@@ -131,8 +159,63 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
         setFetchingProfile(false);
       }
     }
-    fetchProfile();
+    acquireLockAndFetchProfile();
+
+    // Cleanup: release lock on unmount
+    return () => {
+      if (lockAcquiredRef.current && resolvedCandidateId) {
+        api.releaseScreeningLock(resolvedCandidateId, lockTokenRef.current || undefined).catch(() => {});
+      }
+      if (heartbeatRef.current) {
+        clearInterval(heartbeatRef.current);
+      }
+    };
   }, [resolvedCandidateId]);
+
+  // Heartbeat: keep lock alive every 4 minutes
+  useEffect(() => {
+    if (!lockAcquired || !resolvedCandidateId) return;
+
+    heartbeatRef.current = setInterval(async () => {
+      try {
+        await api.heartbeatScreeningLock(resolvedCandidateId);
+      } catch {
+        // Lock expired — disable save and warn user
+        setLockExpired(true);
+        lockAcquiredRef.current = false;
+        if (heartbeatRef.current) clearInterval(heartbeatRef.current);
+      }
+    }, 4 * 60 * 1000); // 4 minutes
+
+    return () => {
+      if (heartbeatRef.current) clearInterval(heartbeatRef.current);
+    };
+  }, [lockAcquired, resolvedCandidateId]);
+
+  // Wrapper for onClose that releases the lock first
+  const handleClose = useCallback(() => {
+    if (lockAcquiredRef.current && resolvedCandidateId) {
+      lockAcquiredRef.current = false;
+      api.releaseScreeningLock(resolvedCandidateId, lockTokenRef.current || undefined).catch(() => {});
+    }
+    onClose();
+  }, [onClose, resolvedCandidateId]);
+
+  // Release lock on page unload (browser close, navigation, refresh)
+  useEffect(() => {
+    if (!lockAcquired || !resolvedCandidateId) return;
+
+    const handleBeforeUnload = () => {
+      if (lockAcquiredRef.current && lockTokenRef.current) {
+        const url = `${api.getApiUrl()}/recruiter/screening-lock/release-beacon`;
+        const body = JSON.stringify({ candidateId: resolvedCandidateId, lockToken: lockTokenRef.current });
+        navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }));
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [lockAcquired, resolvedCandidateId]);
 
   const handleSubmit = useCallback(async () => {
     setSubmitAttempted(true);
@@ -225,6 +308,12 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
 
       await api.screenCandidate(resolvedCandidateId, updatedValues, notes || undefined);
 
+      // Release the screening lock (fire-and-forget)
+      if (lockAcquiredRef.current) {
+        lockAcquiredRef.current = false;
+        api.releaseScreeningLock(resolvedCandidateId, lockTokenRef.current || undefined).catch(() => {});
+      }
+
       // Build updated candidate fields to pass back to the caller
       const refreshedFields: Partial<CandidateSearchResult> = {
         currentCtc: currentCtc !== '' ? parseFloat(currentCtc) : undefined,
@@ -280,7 +369,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
     )}
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black bg-opacity-50" onClick={onClose} />
+      <div className="absolute inset-0 bg-black bg-opacity-50" onClick={handleClose} />
 
       {/* Modal */}
       <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col mx-4">
@@ -307,7 +396,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
             </p>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
           >
             <X className="h-5 w-5" />
@@ -316,7 +405,25 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
-          {successMessage ? (
+          {lockConflict ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center mb-4">
+                <Lock className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+              </div>
+              <p className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
+                Candidate is being screened
+              </p>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+                <strong>{lockConflict.lockedBy}</strong> ({lockConflict.lockedByEmail})
+              </p>
+              <p className="text-sm text-gray-500 dark:text-gray-500 mb-6">
+                Started screening {formatDate(lockConflict.lockedAt)}
+              </p>
+              <button onClick={handleClose} className="btn-secondary">
+                Close
+              </button>
+            </div>
+          ) : successMessage ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <div className="w-12 h-12 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-4">
                 <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -332,6 +439,16 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
             </div>
           ) : (
             <>
+              {/* Lock expired warning */}
+              {lockExpired && (
+                <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg flex items-start gap-2">
+                  <Lock className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                  <p className="text-sm text-amber-700 dark:text-amber-300">
+                    Your screening lock has expired. Another recruiter may now be able to screen this candidate. Please save or cancel promptly.
+                  </p>
+                </div>
+              )}
+
               {/* Error message */}
               {errorMessage && (
                 <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-2">
@@ -721,24 +838,26 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
           )}
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 dark:border-gray-700">
-          <button
-            onClick={onClose}
-            disabled={loading}
-            className="btn-secondary"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={loading || fetchingProfile}
-            className="btn-primary flex items-center gap-2"
-          >
-            {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-            {loading ? 'Saving...' : 'Save Screening'}
-          </button>
-        </div>
+        {/* Footer — hidden when lock conflict is shown */}
+        {!lockConflict && (
+          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 dark:border-gray-700">
+            <button
+              onClick={handleClose}
+              disabled={loading}
+              className="btn-secondary"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={loading || fetchingProfile || lockExpired}
+              className="btn-primary flex items-center gap-2"
+            >
+              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+              {loading ? 'Saving...' : lockExpired ? 'Lock Expired' : 'Save Screening'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
     </>

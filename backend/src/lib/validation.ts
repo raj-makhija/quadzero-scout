@@ -305,6 +305,16 @@ export const ScreenCandidateRequestSchema = z.object({
   notes: z.string().optional(),
 });
 
+// Screening Lock Request Validation
+export const ScreeningLockRequestSchema = z.object({
+  candidateId: z.string().min(1),
+});
+
+export const ReleaseScreeningLockRequestSchema = z.object({
+  candidateId: z.string().min(1),
+  lockToken: z.string().optional(),
+});
+
 // Update Candidate Custom Fields Request Validation
 export const UpdateCandidateCustomFieldsRequestSchema = z.object({
   candidateId: z.string().min(1),

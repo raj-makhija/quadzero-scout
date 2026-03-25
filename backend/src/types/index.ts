@@ -866,6 +866,18 @@ export interface ScreeningHistoryResponse {
   screenings: ScreeningHistoryEntry[];
 }
 
+// ─── Screening Lock Types ───────────────────────────────────────────────────
+
+export interface ScreeningLockItem {
+  candidate_id: string;
+  locked_by: string;
+  locked_by_email: string;
+  locked_by_name: string;
+  locked_at: string;
+  lock_token: string;
+  ttl: number;
+}
+
 // ─── Session Settings Types ─────────────────────────────────────────────────
 
 export const SessionSettingsSchema = z.object({

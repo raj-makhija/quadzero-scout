@@ -379,6 +379,29 @@ Resources:
         - Key: Project
           Value: quadzero-scout
 
+  # ScreeningLocks Table (distributed lock for candidate screening)
+  ScreeningLocksTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: ${self:custom.screeningLocksTable}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: candidate_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: candidate_id
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Project
+          Value: quadzero-scout
+
   # EmailIngestLog Table (idempotency log for email-based resume ingestion)
   EmailIngestLogTable:
     Type: AWS::DynamoDB::Table
@@ -474,3 +497,9 @@ Outputs:
     Value: !GetAtt AuditLogTable.Arn
     Export:
       Name: ${self:provider.stage}-AuditLogTableArn
+
+  ScreeningLocksTableArn:
+    Description: ScreeningLocks table ARN
+    Value: !GetAtt ScreeningLocksTable.Arn
+    Export:
+      Name: ${self:provider.stage}-ScreeningLocksTableArn

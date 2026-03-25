@@ -534,6 +534,32 @@ class ApiClient {
     return this.request<ScreeningHistoryResponse>(`/recruiter/screening-history/${candidateId}`);
   }
 
+  // Screening Lock endpoints
+  async acquireScreeningLock(candidateId: string) {
+    return this.request<AcquireScreeningLockResponse>('/recruiter/screening-lock/acquire', {
+      method: 'POST',
+      body: JSON.stringify({ candidateId }),
+    });
+  }
+
+  async releaseScreeningLock(candidateId: string, lockToken?: string) {
+    return this.request<ReleaseScreeningLockResponse>('/recruiter/screening-lock/release', {
+      method: 'POST',
+      body: JSON.stringify({ candidateId, lockToken }),
+    });
+  }
+
+  async heartbeatScreeningLock(candidateId: string) {
+    return this.request<HeartbeatScreeningLockResponse>('/recruiter/screening-lock/heartbeat', {
+      method: 'POST',
+      body: JSON.stringify({ candidateId }),
+    });
+  }
+
+  getApiUrl() {
+    return this.baseUrl;
+  }
+
   // Client Master endpoints
   async saveClient(data: SaveClientPayload) {
     return this.request<ClientSummary>('/recruiter/clients', {
@@ -1229,6 +1255,28 @@ export interface ScreeningHistoryEntry {
 export interface ScreeningHistoryResponse {
   candidateId: string;
   screenings: ScreeningHistoryEntry[];
+}
+
+// Screening Lock types
+export interface AcquireScreeningLockResponse {
+  acquired: boolean;
+  expiresAt: string;
+  lockToken: string;
+}
+
+export interface ReleaseScreeningLockResponse {
+  released: boolean;
+}
+
+export interface HeartbeatScreeningLockResponse {
+  extended: boolean;
+  expiresAt: string;
+}
+
+export interface ScreeningLockConflict {
+  lockedBy: string;
+  lockedByEmail: string;
+  lockedAt: string;
 }
 
 // Locate Profile types

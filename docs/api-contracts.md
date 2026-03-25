@@ -58,6 +58,8 @@ The backend decrypts NextAuth.js JWE tokens using HKDF-derived encryption keys f
 | TEXTRACT_ERROR | 422/500 | Text extraction error |
 | DYNAMODB_ERROR | 500 | Database error |
 | SCREENING_REQUIRED | 409 | Candidate must be screened (or re-screened) before shortlisting |
+| SCREENING_LOCKED | 409 | Candidate is currently being screened by another recruiter |
+| SCREENING_LOCK_EXPIRED | 410 | Screening lock has expired or is held by another user |
 | SESSION_EXPIRED | 401 | Session has exceeded the configured timeout duration |
 
 ### Shared Types
@@ -1834,6 +1836,195 @@ Authorization: Bearer <jwe_token>
 **Notes:**
 - Screenings are returned in reverse chronological order (most recent first)
 - Returns empty `screenings` array if no screening history exists
+
+---
+
+## Recruiter Screening Lock Endpoints
+
+### POST /recruiter/screening-lock/acquire
+
+Acquire a distributed lock before screening a candidate. Uses DynamoDB conditional writes for atomicity. Lock auto-expires after 10 minutes.
+
+**Auth:** Requires `recruiter` role.
+
+**Request Headers:**
+```
+Content-Type: application/json
+Authorization: Bearer <jwe_token>
+```
+
+**Request Body:**
+```json
+{
+  "candidateId": "cand_a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "acquired": true,
+    "expiresAt": "2024-01-14T09:10:00Z",
+    "lockToken": "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+  }
+}
+```
+
+**Response (409 Conflict):**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "SCREENING_LOCKED",
+    "message": "Candidate is currently being screened by another recruiter",
+    "details": {
+      "lockedBy": "user_r1e2c3",
+      "lockedByEmail": "recruiter@quadzero.com",
+      "lockedAt": "2024-01-14T09:00:00Z"
+    }
+  }
+}
+```
+
+**Validation Rules:**
+- `candidateId`: Required, string
+
+**Notes:**
+- Returns 409 if the candidate is already locked by another recruiter
+- If the same recruiter already holds the lock, a new lock token is issued and the TTL is reset
+- Lock auto-expires after 10 minutes if not released or extended via heartbeat
+
+---
+
+### POST /recruiter/screening-lock/release
+
+Release the screening lock for a candidate. Idempotent — returns success even if the lock has already been released.
+
+**Auth:** Requires `recruiter` role.
+
+**Request Headers:**
+```
+Content-Type: application/json
+Authorization: Bearer <jwe_token>
+```
+
+**Request Body:**
+```json
+{
+  "candidateId": "cand_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "lockToken": "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "released": true
+  }
+}
+```
+
+**Validation Rules:**
+- `candidateId`: Required, string
+- `lockToken`: Optional, string (UUID). When provided, the lock is released by token match instead of userId match.
+
+**Notes:**
+- Idempotent: returns success even if the lock was already released or does not exist
+- Supports two release modes: userId-based (default, from auth token) or token-based (when `lockToken` is provided)
+
+---
+
+### POST /recruiter/screening-lock/heartbeat
+
+Extend the screening lock TTL by another 10 minutes. Frontend calls this every 4 minutes to keep the lock alive.
+
+**Auth:** Requires `recruiter` role.
+
+**Request Headers:**
+```
+Content-Type: application/json
+Authorization: Bearer <jwe_token>
+```
+
+**Request Body:**
+```json
+{
+  "candidateId": "cand_a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "extended": true,
+    "expiresAt": "2024-01-14T09:20:00Z"
+  }
+}
+```
+
+**Response (410 Gone):**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "SCREENING_LOCK_EXPIRED",
+    "message": "Screening lock has expired or is held by another user"
+  }
+}
+```
+
+**Validation Rules:**
+- `candidateId`: Required, string
+
+**Notes:**
+- Returns 410 if the lock has expired or is held by another user
+- Frontend should call this endpoint every 4 minutes to prevent lock expiration
+
+---
+
+### POST /recruiter/screening-lock/release-beacon
+
+Public endpoint for `sendBeacon`-based lock release during browser close or navigation. Secured by requiring the `lockToken` UUID that was returned at acquire time.
+
+**Auth:** None (public endpoint) — secured by `lockToken`.
+
+**Request Headers:**
+```
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "candidateId": "cand_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "lockToken": "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "released": true
+  }
+}
+```
+
+**Validation Rules:**
+- `candidateId`: Required, string
+- `lockToken`: Required, string (UUID)
+
+**Notes:**
+- This is a public endpoint with no auth header required; security is provided by the `lockToken` UUID which is only known to the client that acquired the lock
+- Designed for use with the browser `navigator.sendBeacon()` API to release locks when the user closes or navigates away from the page
+- Idempotent: returns success even if the lock was already released
 
 ---
 

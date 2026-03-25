@@ -886,7 +886,59 @@ Stores audit records of recruiter screening actions on candidate profiles. Each 
 
 ---
 
-### 11. EmailIngestLog
+### 11. ScreeningLocks
+
+Provides distributed locking for candidate screening to prevent two recruiters from screening the same candidate simultaneously.
+
+**Table Configuration:**
+- Table Name: `ScreeningLocks-{stage}`
+- Billing Mode: PAY_PER_REQUEST
+- TTL: Enabled on `ttl` attribute (10-minute auto-expiry)
+
+**Primary Key:**
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| candidate_id | String (S) | Partition Key - Candidate being locked |
+
+**Attributes:**
+
+| Attribute | Type | Required | Description |
+|-----------|------|----------|-------------|
+| candidate_id | String | Yes | Candidate being locked (PK) |
+| locked_by | String | Yes | User ID of the recruiter holding the lock |
+| locked_by_email | String | Yes | Email of the lock holder (for display) |
+| locked_by_name | String | Yes | Display name of the lock holder |
+| locked_at | String | Yes | ISO 8601 timestamp when lock was acquired |
+| lock_token | String | Yes | Random UUID for token-based release (used by sendBeacon) |
+| ttl | Number | Yes | Unix epoch seconds for DynamoDB auto-expiry |
+
+**Example Item:**
+```json
+{
+  "candidate_id": "cand_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "locked_by": "user_r1e2c3",
+  "locked_by_email": "recruiter@quadzero.com",
+  "locked_by_name": "Jane Smith",
+  "locked_at": "2024-01-15T10:30:00Z",
+  "lock_token": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "ttl": 1705313400
+}
+```
+
+**Global Secondary Indexes:** None
+
+**Access Patterns:**
+
+| Operation | Access Pattern | Index |
+|-----------|---------------|-------|
+| Acquire lock | PutItem with `attribute_not_exists` condition on candidate_id | Primary |
+| Check lock status | GetItem by candidate_id | Primary |
+| Release lock (owner) | DeleteItem by candidate_id with condition on locked_by | Primary |
+| Release lock (token) | DeleteItem by candidate_id with condition on lock_token | Primary |
+
+---
+
+### 12. EmailIngestLog
 
 Idempotency log for email-based resume ingestion. Prevents duplicate processing of the same email when the `emailIngestWorker` Lambda polls the M365 shared mailbox.
 

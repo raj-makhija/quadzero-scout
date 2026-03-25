@@ -2,7 +2,7 @@
 
 **Document Version:** 1.0
 **Application:** Quadzero Scout - AI-powered Talent Matching Platform
-**Last Updated:** 2026-03-12
+**Last Updated:** 2026-03-25
 
 ---
 
@@ -29,6 +29,9 @@
 19. [Module 18: Requirement Status Management](#19-module-18-requirement-status-management)
 20. [Module 19: Update Requirement with Audit Trail](#20-module-19-update-requirement-with-audit-trail)
 21. [Module 20: Session Timeout / Auto-Logout](#21-module-20-session-timeout--auto-logout)
+22. [Module 21: Negotiable Expected CTC in Screening](#22-module-21-negotiable-expected-ctc-in-screening)
+23. [Module 22: Bench List](#23-module-22-bench-list)
+24. [Module 23: Screening Lock](#24-module-23-screening-lock)
 
 ---
 
@@ -2663,6 +2666,118 @@ All functional and non-functional aspects of Quadzero Scout covering:
 - **Steps:** Call `GET /recruiter/bench-list` with large dataset (>100 eligible candidates)
 - **Expected:** All eligible candidates returned in single response (no pagination needed)
 
+## 24. Module 23: Screening Lock
+
+### Acquire Lock
+
+### TC-LOCK-001: Acquire lock on unlocked candidate
+- **Priority:** P0
+- **Type:** Integration
+- **Steps:** Call `POST /recruiter/screening-lock/acquire` with valid `candidateId` for a candidate not currently locked
+- **Expected:** Returns 200 with `acquired: true` and a `lockToken`
+
+### TC-LOCK-002: Acquire lock when another recruiter holds it
+- **Priority:** P0
+- **Type:** Integration
+- **Steps:** Call `POST /recruiter/screening-lock/acquire` with a `candidateId` that is currently locked by a different recruiter
+- **Expected:** Returns 409 with lock holder info (`lockedBy`, `lockedByEmail`, `lockedAt`)
+
+### TC-LOCK-003: Retry acquire when lock expired between conditional check and read
+- **Priority:** P1
+- **Type:** Integration
+- **Steps:** Simulate a scenario where the lock expires between the conditional check and the subsequent read, then retry the acquire
+- **Expected:** Returns 200 on retry
+
+### TC-LOCK-004: Acquire lock with missing candidateId
+- **Priority:** P1
+- **Type:** Integration
+- **Steps:** Call `POST /recruiter/screening-lock/acquire` without `candidateId` in the request body
+- **Expected:** Returns 400
+
+### TC-LOCK-005: Acquire lock with invalid JSON body
+- **Priority:** P1
+- **Type:** Integration
+- **Steps:** Call `POST /recruiter/screening-lock/acquire` with malformed JSON in the request body
+- **Expected:** Returns 400
+
+### TC-LOCK-006: Acquire lock with missing body
+- **Priority:** P1
+- **Type:** Integration
+- **Steps:** Call `POST /recruiter/screening-lock/acquire` with no request body
+- **Expected:** Returns 400
+
+### Release Lock
+
+### TC-LOCK-007: Release lock by lock holder (userId match)
+- **Priority:** P0
+- **Type:** Integration
+- **Steps:** Call `POST /recruiter/screening-lock/release` as the user who currently holds the lock (matched by `userId`)
+- **Expected:** Returns 200 with `released: true`
+
+### TC-LOCK-008: Release lock by token
+- **Priority:** P0
+- **Type:** Integration
+- **Steps:** Call `POST /recruiter/screening-lock/release` with the correct `lockToken`
+- **Expected:** Returns 200 with `released: true`
+
+### TC-LOCK-009: Release lock when ConditionalCheckFailedException (idempotent)
+- **Priority:** P1
+- **Type:** Integration
+- **Steps:** Call `POST /recruiter/screening-lock/release` when the lock has already been released or expired (triggers `ConditionalCheckFailedException`)
+- **Expected:** Returns 200 (idempotent — no error)
+
+### TC-LOCK-010: Release lock with missing candidateId
+- **Priority:** P1
+- **Type:** Integration
+- **Steps:** Call `POST /recruiter/screening-lock/release` without `candidateId` in the request body
+- **Expected:** Returns 400
+
+### Heartbeat Lock
+
+### TC-LOCK-011: Heartbeat extends lock TTL
+- **Priority:** P0
+- **Type:** Integration
+- **Steps:** Call `POST /recruiter/screening-lock/heartbeat` with a valid `candidateId` and `lockToken` for an active lock held by the current user
+- **Expected:** Returns 200 with `extended: true` and updated `expiresAt`
+
+### TC-LOCK-012: Heartbeat on expired lock
+- **Priority:** P0
+- **Type:** Integration
+- **Steps:** Call `POST /recruiter/screening-lock/heartbeat` for a lock that has already expired
+- **Expected:** Returns 410 with `SCREENING_LOCK_EXPIRED` error code
+
+### TC-LOCK-013: Heartbeat by non-holder
+- **Priority:** P1
+- **Type:** Integration
+- **Steps:** Call `POST /recruiter/screening-lock/heartbeat` as a user who does not hold the lock on the candidate
+- **Expected:** Returns 410 with `SCREENING_LOCK_EXPIRED` error code
+
+### TC-LOCK-014: Heartbeat with missing candidateId
+- **Priority:** P1
+- **Type:** Integration
+- **Steps:** Call `POST /recruiter/screening-lock/heartbeat` without `candidateId` in the request body
+- **Expected:** Returns 400
+
+### Release Beacon (public endpoint)
+
+### TC-LOCK-015: Release lock by token without auth
+- **Priority:** P0
+- **Type:** API
+- **Steps:** Call `POST /public/screening-lock/release-beacon` with a valid `lockToken` and no authentication header
+- **Expected:** Returns 200
+
+### TC-LOCK-016: Release beacon with missing lockToken
+- **Priority:** P1
+- **Type:** API
+- **Steps:** Call `POST /public/screening-lock/release-beacon` without `lockToken` in the request body
+- **Expected:** Returns 400
+
+### TC-LOCK-017: Release beacon when ConditionalCheckFailedException (idempotent)
+- **Priority:** P1
+- **Type:** API
+- **Steps:** Call `POST /public/screening-lock/release-beacon` with a `lockToken` for a lock that has already been released or expired
+- **Expected:** Returns 200 (idempotent — no error)
+
 ## Traceability Matrix Summary
 
 | Module | Test Count | P0 | P1 | P2 | P3 |
@@ -2690,4 +2805,5 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | Session Timeout / Auto-Logout | 22 | 13 | 8 | 1 | 0 |
 | Negotiable Expected CTC | 10 | 3 | 4 | 3 | 0 |
 | Bench List | 15 | 7 | 7 | 1 | 0 |
-| **Total** | **355** | **84** | **139** | **100** | **32** |
+| Screening Lock | 17 | 7 | 10 | 0 | 0 |
+| **Total** | **372** | **91** | **149** | **100** | **32** |

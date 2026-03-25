@@ -9,7 +9,7 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { config } from './config.js';
-import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, StatusHistoryEntry, RequirementChangeEntry, PricingConfig, PricingConfigItem, SessionSettings, SessionSettingsItem, ShortlistItem, ClientItem, ScreeningItem, AuditLogItem, AuditLogEntry } from '../types/index.js';
+import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, StatusHistoryEntry, RequirementChangeEntry, PricingConfig, PricingConfigItem, SessionSettings, SessionSettingsItem, ShortlistItem, ClientItem, ScreeningItem, ScreeningLockItem, AuditLogItem, AuditLogEntry } from '../types/index.js';
 import { DEFAULT_SESSION_TIMEOUT_SECONDS } from '../types/index.js';
 
 const client = new DynamoDBClient({ region: config.region });
@@ -1858,3 +1858,89 @@ export async function queryAuditLogsByAction(
       : undefined,
   };
 }
+
+// ─── Screening Lock Operations ──────────────────────────────────────────────
+
+const SCREENING_LOCK_TTL_SECONDS = 600; // 10 minutes
+
+export async function acquireScreeningLock(item: ScreeningLockItem): Promise<void> {
+  await docClient.send(
+    new PutCommand({
+      TableName: config.dynamodb.screeningLocksTable,
+      Item: item,
+      ConditionExpression: 'attribute_not_exists(candidate_id) OR #ttl < :now OR locked_by = :userId',
+      ExpressionAttributeNames: { '#ttl': 'ttl' },
+      ExpressionAttributeValues: {
+        ':now': Math.floor(Date.now() / 1000),
+        ':userId': item.locked_by,
+      },
+    })
+  );
+}
+
+export async function releaseScreeningLock(
+  candidateId: string,
+  userId: string
+): Promise<void> {
+  await docClient.send(
+    new DeleteCommand({
+      TableName: config.dynamodb.screeningLocksTable,
+      Key: { candidate_id: candidateId },
+      ConditionExpression: 'locked_by = :userId',
+      ExpressionAttributeValues: { ':userId': userId },
+    })
+  );
+}
+
+export async function releaseScreeningLockByToken(
+  candidateId: string,
+  lockToken: string
+): Promise<void> {
+  await docClient.send(
+    new DeleteCommand({
+      TableName: config.dynamodb.screeningLocksTable,
+      Key: { candidate_id: candidateId },
+      ConditionExpression: 'lock_token = :token',
+      ExpressionAttributeValues: { ':token': lockToken },
+    })
+  );
+}
+
+export async function heartbeatScreeningLock(
+  candidateId: string,
+  userId: string
+): Promise<void> {
+  const newTtl = Math.floor(Date.now() / 1000) + SCREENING_LOCK_TTL_SECONDS;
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.screeningLocksTable,
+      Key: { candidate_id: candidateId },
+      UpdateExpression: 'SET #ttl = :newTtl',
+      ConditionExpression: 'locked_by = :userId AND #ttl >= :now',
+      ExpressionAttributeNames: { '#ttl': 'ttl' },
+      ExpressionAttributeValues: {
+        ':newTtl': newTtl,
+        ':userId': userId,
+        ':now': Math.floor(Date.now() / 1000),
+      },
+    })
+  );
+}
+
+export async function getScreeningLock(
+  candidateId: string
+): Promise<ScreeningLockItem | null> {
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: config.dynamodb.screeningLocksTable,
+      Key: { candidate_id: candidateId },
+    })
+  );
+  const item = result.Item as ScreeningLockItem | undefined;
+  if (!item) return null;
+  // Soft TTL check: treat expired locks as non-existent
+  if (item.ttl < Math.floor(Date.now() / 1000)) return null;
+  return item;
+}
+
+export { SCREENING_LOCK_TTL_SECONDS };
