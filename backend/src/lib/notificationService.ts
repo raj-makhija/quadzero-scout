@@ -76,8 +76,8 @@ export async function notifyMatchingRecruiters(candidateIds: string[]): Promise<
 
       const budgetFit = isCandidateWithinBudget(candidate.expected_ctc, req.budget_max_lpa);
 
-      // Hard filter: budget must fit if requirement specifies max budget
-      if (req.budget_max_lpa != null && !budgetFit) continue;
+      // CTC is a soft indicator — over-budget candidates still match
+      // for notification purposes (recruiter can negotiate).
 
       // Hard filter: engagement model must be compatible
       const reqEngagementModel = req.engagement_model || criteria.engagementModel;

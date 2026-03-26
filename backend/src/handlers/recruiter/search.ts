@@ -130,9 +130,8 @@ async function handleRequest(
             return false;
           }
         }
-        if (criteria.maxBudgetLpa != null && !c.matchDetails.ctcMatch) {
-          return false;
-        }
+        // CTC is a soft indicator (not a hard filter) — candidates over budget
+        // still appear in results with an "over budget" tag, like experience/seniority.
         // Hard filter: engagement model must be compatible
         if (criteria.engagementModel && criteria.engagementModel !== 'either') {
           const candidateModel = c.engagementModel || 'either';
