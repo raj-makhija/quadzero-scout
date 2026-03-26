@@ -1217,7 +1217,7 @@ export default function RecruiterSearchPage() {
                     className="input mt-2"
                   />
                   <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    Candidates with expected CTC within 85% of budget will match
+                    Candidates over budget will be shown with an indicator
                   </p>
                 </div>
 
@@ -1476,7 +1476,12 @@ export default function RecruiterSearchPage() {
                           )}
                         </span>
                         {isAuthenticated && candidate.expectedCtc && (
-                          <span>{candidate.expectedCtc} LPA expected</span>
+                          <span className="flex items-center gap-1">
+                            {candidate.expectedCtc} LPA expected
+                            {searchCriteria.maxBudgetLpa != null && !candidate.matchDetails.ctcMatch && (
+                              <span className="text-xs text-red-500 dark:text-red-400">(over budget)</span>
+                            )}
+                          </span>
                         )}
                       </div>
 

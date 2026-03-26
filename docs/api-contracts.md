@@ -579,7 +579,7 @@ Content-Type: application/json
 - `isShortlisted` indicates whether the candidate has already been shortlisted for that requirement
 - **Unified filtering** — applies the same hard filters as `POST /recruiter/search`:
   - **Core skill pre-filter:** If a requirement has a `coreSkill`, the candidate must possess that skill (primary or secondary) to be considered
-  - **Budget hard filter:** If the requirement specifies `budgetMaxLpa`, candidates whose expected CTC exceeds it are excluded
+  - **Budget soft indicator:** If the requirement specifies `budgetMaxLpa`, candidates whose expected CTC exceeds it are flagged (not excluded)
   - **Engagement model hard filter:** If the requirement specifies a model other than `either`, candidates with an incompatible model are excluded
   - **Must-have match ratio:** Candidates must match at least 40% of must-have skills (exact matches only)
 - Location and availability from the requirement's parsed criteria are passed to scoring for accurate match scores
@@ -784,7 +784,7 @@ Authorization: Bearer <jwe_token> (optional)
 **Notes:**
 - Unauthenticated users see redacted results (names hidden, skills hidden, CTC hidden)
 - Candidates below 40% exact must-have match ratio are filtered out
-- Candidates exceeding `maxBudgetLpa` are filtered out
+- Candidates exceeding `maxBudgetLpa` are flagged with `ctcMatch: false` (soft indicator, not excluded)
 - **Core skill pre-filter:** If the search criteria includes a `coreSkill`, only candidates possessing that exact normalized skill (primary or secondary) are scored
 - Skills are normalized using the skill normalizer before matching (supports CRM, marketing, design, and HR/finance skills in addition to engineering skills)
 - The backend returns **all** scored candidates in a single response (up to 500 scanned from DynamoDB). Pagination is handled client-side on the frontend (page size: 20)

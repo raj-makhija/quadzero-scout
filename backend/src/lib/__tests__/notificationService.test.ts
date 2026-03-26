@@ -269,7 +269,7 @@ describe('notifyMatchingRecruiters', () => {
     expect(mockSendEmail).toHaveBeenCalledOnce();
   });
 
-  it('TC-NOTIFY-013: skips candidate when budget exceeds max', async () => {
+  it('TC-NOTIFY-013: includes candidate even when budget exceeds max (CTC is soft indicator)', async () => {
     const reqWithBudget = {
       ...requirementActive,
       budget_max_lpa: 10,
@@ -281,7 +281,7 @@ describe('notifyMatchingRecruiters', () => {
     (isCandidateWithinBudget as ReturnType<typeof vi.fn>).mockReturnValue(false);
 
     await notifyMatchingRecruiters(['cand_1']);
-    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(mockSendEmail).toHaveBeenCalledOnce();
   });
 
   it('TC-NOTIFY-014: skips candidate when engagement model is incompatible', async () => {
