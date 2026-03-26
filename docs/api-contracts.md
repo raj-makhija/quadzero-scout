@@ -684,7 +684,8 @@ Authorization: Bearer <jwe_token> (optional)
     "limit": 20,
     "lastEvaluatedKey": null
   },
-  "sortBy": "matchScore"
+  "sortBy": "matchScore",
+  "requirementId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 }
 ```
 
@@ -711,6 +712,7 @@ Authorization: Bearer <jwe_token> (optional)
         "headline": "Sr. Full Stack Developer",
         "notInterested": false,
         "notInterestedAt": null,
+        "isShortlisted": true,
         "matchScore": 92,
         "matchDetails": {
           "mustHaveMatched": ["react", "nodejs"],
@@ -780,6 +782,7 @@ Authorization: Bearer <jwe_token> (optional)
 - `criteria.engagementModel`: Optional, enum: `contract`, `full_time`, `either`. When set (and not `either`), candidates with an incompatible engagement model are hard-filtered out. Candidates with `either` always pass.
 - `pagination.lastEvaluatedKey`: Optional, base64-encoded cursor for DynamoDB pagination (only needed when database has >500 candidates)
 - `sortBy`: Optional, enum: `matchScore` (default), `experience`, `lastUpdated`. Each option uses composite sorting with tiebreakers (all descending): `matchScore` → lastUpdated → experience; `lastUpdated` → matchScore → experience; `experience` → matchScore → lastUpdated
+- `requirementId`: Optional, UUID string. When provided, the response includes `isShortlisted: true/false` for each candidate indicating whether they are already shortlisted for this requirement. Shortlisted candidates are visually highlighted on the frontend.
 
 **Notes:**
 - Unauthenticated users see redacted results (names hidden, skills hidden, CTC hidden)

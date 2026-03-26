@@ -155,7 +155,7 @@ export default function RecruiterSearchPage() {
       setLoading(true);
       setError(null);
       const pagination = lastEvaluatedKey ? { lastEvaluatedKey } : undefined;
-      const response = await api.searchCandidates(criteria, pagination, sort || sortBy);
+      const response = await api.searchCandidates(criteria, pagination, sort || sortBy, sourceRequirementId || undefined);
       if (append) {
         setAllResults(prev => [...prev, ...response.candidates]);
       } else {
@@ -1409,7 +1409,7 @@ export default function RecruiterSearchPage() {
               {results.map((candidate, index) => (
                 <div
                   key={candidate.candidateId}
-                  className={`card p-6 hover:shadow-md transition-shadow cursor-pointer ${candidate.notInterested ? 'opacity-60 border-l-4 border-l-red-400' : ''}`}
+                  className={`card p-6 hover:shadow-md transition-shadow cursor-pointer ${candidate.notInterested ? 'opacity-60 border-l-4 border-l-red-400' : candidate.isShortlisted ? 'border-l-4 border-l-green-500 bg-green-50/50 dark:bg-green-950/20' : ''}`}
                   onClick={() => {
                     if (!isAuthenticated) { handleLoginRequired(); return; }
                     // Smart routing when requirement exists and candidate not yet shortlisted
