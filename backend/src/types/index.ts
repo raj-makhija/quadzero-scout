@@ -287,6 +287,7 @@ export interface CandidateSearchResult {
   githubUrl?: string;
   notInterested?: boolean;
   notInterestedAt?: string;
+  isShortlisted?: boolean;
 }
 
 export interface SearchResponse {

@@ -78,6 +78,7 @@ export const SearchRequestSchema = z.object({
     lastEvaluatedKey: z.string().optional(),
   }).optional(),
   sortBy: z.enum(['matchScore', 'experience', 'lastUpdated']).optional().default('matchScore'),
+  requirementId: z.string().uuid().optional(),
 });
 
 // Save Search Request Validation

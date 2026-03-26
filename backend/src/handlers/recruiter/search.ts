@@ -1,7 +1,7 @@
 import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, SearchRequestSchema } from '../../lib/validation.js';
-import { searchCandidates } from '../../lib/dynamodb.js';
+import { searchCandidates, getShortlistsForRequirement } from '../../lib/dynamodb.js';
 import { normalizeSkill, normalizeSkills } from '../../lib/skillNormalizer.js';
 import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, parseSearchLocations } from '../../lib/matchScoring.js';
 import { withOptionalAuth, type OptionalAuthEvent } from '../../lib/auth.js';
@@ -34,7 +34,7 @@ async function handleRequest(
       );
     }
 
-    const { criteria, pagination, sortBy } = validation.data;
+    const { criteria, pagination, sortBy, requirementId } = validation.data;
 
     // Decode last evaluated key if provided
     let lastEvaluatedKey: Record<string, unknown> | undefined;
@@ -70,8 +70,12 @@ async function handleRequest(
       engagementModel: criteria.engagementModel,
     };
 
-    // Search candidates
-    const searchResult = await searchCandidates(searchCriteria, undefined, lastEvaluatedKey);
+    // Search candidates and fetch shortlists in parallel
+    const [searchResult, shortlists] = await Promise.all([
+      searchCandidates(searchCriteria, undefined, lastEvaluatedKey),
+      requirementId ? getShortlistsForRequirement(requirementId) : Promise.resolve([]),
+    ]);
+    const shortlistedCandidateIds = new Set(shortlists.map((s) => s.candidate_id));
 
     // Pre-filter: if coreSkill is specified, only score candidates who have it
     const normalizedCoreSkill = criteria.coreSkill ? normalizeSkill(criteria.coreSkill) : null;
@@ -120,6 +124,7 @@ async function handleRequest(
           notInterestedAt: candidate.not_interested_at,
           roles: candidate.roles || [],
           headline: candidate.headline,
+          isShortlisted: shortlistedCandidateIds.has(candidate.candidate_id),
         };
       })
       // Filter out candidates below minimum must-have exact match ratio
