@@ -206,10 +206,10 @@ class ApiClient {
     });
   }
 
-  async searchCandidates(criteria: SearchCriteria, pagination?: PaginationOptions, sortBy?: 'matchScore' | 'experience' | 'lastUpdated') {
+  async searchCandidates(criteria: SearchCriteria, pagination?: PaginationOptions, sortBy?: 'matchScore' | 'experience' | 'lastUpdated', requirementId?: string) {
     return this.request<SearchResponse>('/recruiter/search', {
       method: 'POST',
-      body: JSON.stringify({ criteria, pagination, sortBy }),
+      body: JSON.stringify({ criteria, pagination, sortBy, requirementId }),
     });
   }
 
