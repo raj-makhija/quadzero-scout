@@ -22,6 +22,7 @@ async function handleRequest(
       roles: item.roles || [],
       availability: item.availability,
       lastScreenedAt: item.last_screened_at,
+      notInterested: item.not_interested,
     }));
 
     return success({

@@ -46,15 +46,15 @@ export async function handler(
     // Score candidate against each requirement
     const matches: MatchedRequirement[] = [];
 
-    // Normalize candidate skills once for coreSkill pre-filter
-    const candidateAllSkills = new Set(normalizeSkills([...candidate.primary_skills, ...candidate.secondary_skills]));
+    // Normalize candidate primary skills for coreSkill pre-filter (primary only — secondary is too noisy)
+    const candidatePrimarySkills = new Set(normalizeSkills(candidate.primary_skills));
 
     for (const req of requirements) {
       const criteria = req.parsed_criteria;
 
-      // Core skill pre-filter: skip requirement if it has a coreSkill and candidate lacks it
+      // Core skill pre-filter: skip requirement if it has a coreSkill and candidate lacks it in primary skills
       const normalizedCoreSkill = criteria.coreSkill ? normalizeSkill(criteria.coreSkill) : null;
-      if (normalizedCoreSkill && !candidateAllSkills.has(normalizedCoreSkill)) {
+      if (normalizedCoreSkill && !candidatePrimarySkills.has(normalizedCoreSkill)) {
         continue;
       }
 
