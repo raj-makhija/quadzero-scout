@@ -77,12 +77,13 @@ async function handleRequest(
     ]);
     const shortlistedCandidateIds = new Set(shortlists.map((s) => s.candidate_id));
 
-    // Pre-filter: if coreSkill is specified, only score candidates who have it
+    // Pre-filter: if coreSkill is specified, only score candidates who have it as a primary skill.
+    // Secondary skills are too noisy (tangential mentions) — coreSkill must be a core competency.
     const normalizedCoreSkill = criteria.coreSkill ? normalizeSkill(criteria.coreSkill) : null;
     const candidatesToScore = normalizedCoreSkill
       ? searchResult.items.filter((c) => {
-          const allSkills = new Set(normalizeSkills([...c.primary_skills, ...c.secondary_skills]));
-          return allSkills.has(normalizedCoreSkill);
+          const primarySkills = new Set(normalizeSkills(c.primary_skills));
+          return primarySkills.has(normalizedCoreSkill);
         })
       : searchResult.items;
 
