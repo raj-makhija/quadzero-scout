@@ -15,11 +15,26 @@ vi.mock('../dynamodb.js', () => ({
 }));
 
 const mockCalculateMatchScore = vi.fn();
-vi.mock('../matchScoring.js', () => ({
-  calculateMatchScore: (...args: unknown[]) => mockCalculateMatchScore(...args),
-  MIN_MUST_HAVE_MATCH_RATIO: 0.40,
-  parseSearchLocations: (loc?: string) => loc ? loc.split(/[,;]/).map((s: string) => s.trim().toLowerCase()).filter(Boolean) : [],
-}));
+vi.mock('../matchScoring.js', () => {
+  const compatMap: Record<string, string[]> = {
+    full_time_regular: ['full_time'],
+    full_time_contract: ['full_time', 'contract'],
+    part_time_contract: ['contract'],
+    full_time: ['full_time'],
+    contract: ['contract'],
+  };
+  return {
+    calculateMatchScore: (...args: unknown[]) => mockCalculateMatchScore(...args),
+    MIN_MUST_HAVE_MATCH_RATIO: 0.40,
+    parseSearchLocations: (loc?: string) => loc ? loc.split(/[,;]/).map((s: string) => s.trim().toLowerCase()).filter(Boolean) : [],
+    isEngagementModelCompatible: (reqModel: string, candidateModel: string) => {
+      if (!reqModel || reqModel === 'either' || candidateModel === 'either') return true;
+      const compatible = compatMap[reqModel];
+      if (!compatible) return true;
+      return compatible.includes(candidateModel);
+    },
+  };
+});
 
 vi.mock('../skillNormalizer.js', () => ({
   normalizeSkill: (skill: string) => skill.toLowerCase(),

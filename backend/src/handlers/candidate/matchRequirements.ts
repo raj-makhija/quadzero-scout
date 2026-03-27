@@ -3,7 +3,7 @@ import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, MatchRequirementsRequestSchema } from '../../lib/validation.js';
 import { getCandidateById, getAllActiveRequirements, getShortlistsForCandidate } from '../../lib/dynamodb.js';
 import { normalizeSkill, normalizeSkills } from '../../lib/skillNormalizer.js';
-import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, parseSearchLocations } from '../../lib/matchScoring.js';
+import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, parseSearchLocations, isEngagementModelCompatible } from '../../lib/matchScoring.js';
 import { isCandidateWithinBudget } from '../../lib/ctcConversion.js';
 import type { MatchedRequirement, MatchRequirementsResponse } from '../../types/index.js';
 
@@ -91,7 +91,7 @@ export async function handler(
       const reqEngagementModel = req.engagement_model || criteria.engagementModel;
       if (reqEngagementModel && reqEngagementModel !== 'either') {
         const candidateModel = candidate.engagement_model || 'either';
-        if (candidateModel !== reqEngagementModel && candidateModel !== 'either') {
+        if (!isEngagementModelCompatible(reqEngagementModel, candidateModel)) {
           continue;
         }
       }
