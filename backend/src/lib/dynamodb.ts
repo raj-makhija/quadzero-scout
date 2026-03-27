@@ -172,11 +172,11 @@ export async function getBenchListCandidates(): Promise<{ items: CandidateItem[]
       ':a3': '2_weeks',
     },
     ProjectionExpression:
-      'candidate_id, full_name, total_experience, #loc, roles, availability, last_screened_at',
+      'candidate_id, full_name, total_experience, #loc, #roles, availability, last_screened_at, not_interested',
   };
 
-  // 'location' is a DynamoDB reserved word — must use an alias
-  (scanParams as Record<string, unknown>).ExpressionAttributeNames = { '#loc': 'location' };
+  // 'location' and 'roles' are DynamoDB reserved words — must use aliases
+  (scanParams as Record<string, unknown>).ExpressionAttributeNames = { '#loc': 'location', '#roles': 'roles' };
 
   const allItems: CandidateItem[] = [];
   let currentKey: Record<string, unknown> | undefined;

@@ -50,10 +50,10 @@ export async function notifyMatchingRecruiters(candidateIds: string[]): Promise<
 
     const matchedProfiles: MatchedProfile[] = [];
     for (const candidate of candidates) {
-      // Core skill pre-filter: skip candidate if requirement has a coreSkill and candidate lacks it
+      // Core skill pre-filter: must be in primary skills (secondary is too noisy for the defining technology)
       if (normalizedCoreSkill) {
-        const allSkills = new Set(normalizeSkills([...candidate.primary_skills, ...candidate.secondary_skills]));
-        if (!allSkills.has(normalizedCoreSkill)) continue;
+        const primarySkills = new Set(normalizeSkills(candidate.primary_skills));
+        if (!primarySkills.has(normalizedCoreSkill)) continue;
       }
 
       const { score, details } = calculateMatchScore(
