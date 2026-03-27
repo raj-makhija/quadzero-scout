@@ -1,5 +1,5 @@
 import { getCandidateById, getAllActiveRequirements, getUserById } from './dynamodb.js';
-import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, parseSearchLocations } from './matchScoring.js';
+import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, parseSearchLocations, isEngagementModelCompatible } from './matchScoring.js';
 import { normalizeSkill, normalizeSkills } from './skillNormalizer.js';
 import { isCandidateWithinBudget } from './ctcConversion.js';
 import { sendNewProfilesNotificationEmail, type MatchedProfile } from './emailService.js';
@@ -83,7 +83,7 @@ export async function notifyMatchingRecruiters(candidateIds: string[]): Promise<
       const reqEngagementModel = req.engagement_model || criteria.engagementModel;
       if (reqEngagementModel && reqEngagementModel !== 'either') {
         const candidateModel = candidate.engagement_model || 'either';
-        if (candidateModel !== reqEngagementModel && candidateModel !== 'either') continue;
+        if (!isEngagementModelCompatible(reqEngagementModel, candidateModel)) continue;
       }
 
       if (score > 0 || budgetFit) {
