@@ -1068,7 +1068,8 @@ Returns all bench-eligible candidates: availability in (immediate, 1_week, 2_wee
         "location": "Bangalore, India",
         "roles": ["Senior Developer", "Architect"],
         "availability": "immediate",
-        "lastScreenedAt": "2026-03-20T14:00:00.000Z"
+        "lastScreenedAt": "2026-03-20T14:00:00.000Z",
+        "notInterested": false
       }
     ],
     "totalCount": 17
@@ -1079,6 +1080,7 @@ Returns all bench-eligible candidates: availability in (immediate, 1_week, 2_wee
 **Errors:**
 - 401 `UNAUTHORIZED` — Not authenticated
 - 403 `FORBIDDEN` — Not an internal recruiter
+- 500 `DYNAMODB_ERROR` — Failed to generate bench list
 
 ---
 
