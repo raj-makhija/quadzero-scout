@@ -24,6 +24,24 @@ export const GOOD_TO_HAVE_WEIGHT = 25;
 /** Tolerance (in years) for partial experience match outside the specified range. */
 const EXPERIENCE_PARTIAL_TOLERANCE = 2;
 
+/** Maps requirement engagement models to compatible candidate engagement models.
+ *  Requirement enum: full_time_regular, full_time_contract, part_time_contract
+ *  Candidate enum: contract, full_time, either */
+const ENGAGEMENT_MODEL_COMPAT: Record<string, string[]> = {
+  full_time_regular: ['full_time'],
+  full_time_contract: ['full_time', 'contract'],
+  part_time_contract: ['contract'],
+  full_time: ['full_time'],
+  contract: ['contract'],
+};
+
+export function isEngagementModelCompatible(reqModel: string, candidateModel: string): boolean {
+  if (!reqModel || reqModel === 'either' || candidateModel === 'either') return true;
+  const compatible = ENGAGEMENT_MODEL_COMPAT[reqModel];
+  if (!compatible) return true;
+  return compatible.includes(candidateModel);
+}
+
 /** Availability values in order from shortest to longest notice period. */
 const AVAILABILITY_ORDER: string[] = [
   'immediate', '1_week', '2_weeks', '1_month', '2_months', '3_months', 'negotiable',

@@ -3,7 +3,7 @@ import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, SearchRequestSchema } from '../../lib/validation.js';
 import { searchCandidates, getShortlistsForRequirement } from '../../lib/dynamodb.js';
 import { normalizeSkill, normalizeSkills } from '../../lib/skillNormalizer.js';
-import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, parseSearchLocations } from '../../lib/matchScoring.js';
+import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, parseSearchLocations, isEngagementModelCompatible } from '../../lib/matchScoring.js';
 import { withOptionalAuth, type OptionalAuthEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
 import type { CandidateSearchResult, SearchResponse, SearchCriteria } from '../../types/index.js';
@@ -140,7 +140,7 @@ async function handleRequest(
         // Hard filter: engagement model must be compatible
         if (criteria.engagementModel && criteria.engagementModel !== 'either') {
           const candidateModel = c.engagementModel || 'either';
-          if (candidateModel !== criteria.engagementModel && candidateModel !== 'either') {
+          if (!isEngagementModelCompatible(criteria.engagementModel, candidateModel)) {
             return false;
           }
         }

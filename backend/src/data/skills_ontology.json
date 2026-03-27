@@ -277,6 +277,15 @@
     "servicenow": "servicenow",
     "service now": "servicenow",
 
+    "sailpoint iiq": "sailpoint_iiq",
+    "sailpoint identityiq": "sailpoint_iiq",
+    "sailpoint identity iq": "sailpoint_iiq",
+    "iiq": "sailpoint_iiq",
+    "identityiq": "sailpoint_iiq",
+    "sailpoint identitynow": "sailpoint_idn",
+    "identitynow": "sailpoint_idn",
+    "sailpoint idn": "sailpoint_idn",
+
     "google analytics": "google_analytics",
     "ga4": "google_analytics",
     "ga": "google_analytics",
@@ -405,6 +414,9 @@
     "hr_finance": [
       "workday", "bamboohr", "tally", "quickbooks", "excel", "ms_office",
       "sharepoint", "power_automate"
+    ],
+    "iam": [
+      "sailpoint", "sailpoint_iiq", "sailpoint_idn"
     ]
   },
   "synonymGroups": {
