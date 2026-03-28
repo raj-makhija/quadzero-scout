@@ -33,6 +33,7 @@
 23. [Module 22: Bench List](#23-module-22-bench-list)
 24. [Module 23: Screening Lock](#24-module-23-screening-lock)
 25. [Module 24: Not Interested Candidate](#25-module-24-not-interested-candidate)
+26. [Module 25: Not Suitable Candidate](#26-module-25-not-suitable-candidate)
 
 ---
 
@@ -2825,6 +2826,73 @@ All functional and non-functional aspects of Quadzero Scout covering:
 
 ---
 
+## 26. Module 25: Not Suitable Candidate
+
+### TC-NS-001: Mark candidate as not suitable from search results
+- **Priority:** P0
+- **Type:** API / Integration
+- **Precondition:** Candidate exists, requirement exists, candidate is not already marked not suitable
+- **Steps:** Call `PUT /recruiter/shortlist/not-suitable` with `{ requirementId, candidateId }`
+- **Expected:** Returns 200 with `{ success: true }`. A shortlist entry is created with `status: 'not_suitable'`.
+
+### TC-NS-002: Mark shortlisted candidate as not suitable
+- **Priority:** P0
+- **Type:** API / Integration
+- **Precondition:** Candidate is shortlisted for a requirement (status: `shortlisted`)
+- **Steps:** Call `PUT /recruiter/shortlist/not-suitable` with `{ requirementId, candidateId }`
+- **Expected:** Returns 200. Existing shortlist entry status updated to `not_suitable`.
+
+### TC-NS-003: Re-shortlist a not-suitable candidate
+- **Priority:** P1
+- **Type:** API / Integration
+- **Precondition:** Candidate is marked `not_suitable` for a requirement, candidate has valid screening (within 15 days)
+- **Steps:** Call `POST /recruiter/shortlist` with `{ requirementId, candidateId }`
+- **Expected:** Returns 200 with `{ success: true }`. Shortlist entry status changed back to `shortlisted`.
+
+### TC-NS-004: Not-suitable candidates excluded from shortlisted list
+- **Priority:** P1
+- **Type:** API
+- **Precondition:** Requirement has 3 shortlisted candidates: one `shortlisted`, one `submitted`, one `not_suitable`
+- **Steps:** Call `GET /recruiter/requirements/{requirementId}/shortlisted`
+- **Expected:** Response contains only 2 candidates (the `shortlisted` and `submitted` ones). The `not_suitable` candidate is excluded.
+
+### TC-NS-005: Search results include isNotSuitable flag
+- **Priority:** P1
+- **Type:** API
+- **Precondition:** Candidate is marked `not_suitable` for a requirement
+- **Steps:** Call `POST /recruiter/search` with `{ requirementId, criteria }`
+- **Expected:** Candidate in results has `isNotSuitable: true` and `isShortlisted: false`.
+
+### TC-NS-006: Show Not Suitable checkbox toggles visibility
+- **Priority:** P1
+- **Type:** UI / E2E
+- **Precondition:** Search results with requirement context contain not-suitable candidates
+- **Steps:** (1) Verify not-suitable candidates are hidden by default. (2) Check "Show Not Suitable" checkbox. (3) Verify not-suitable candidates now appear with orange styling.
+- **Expected:** Checkbox toggles visibility. Hidden by default; visible with orange border/badge when toggled.
+
+### TC-NS-007: Not Suitable button on shortlist view removes candidate
+- **Priority:** P1
+- **Type:** UI / E2E
+- **Precondition:** Requirement detail page with shortlisted candidates
+- **Steps:** Click "Not Suitable" button on a shortlisted candidate card
+- **Expected:** Candidate is removed from the shortlisted candidates list. API call succeeds.
+
+### TC-NS-008: Duplicate not-suitable marking returns 409
+- **Priority:** P2
+- **Type:** API
+- **Precondition:** Candidate already marked `not_suitable` for the requirement
+- **Steps:** Call `PUT /recruiter/shortlist/not-suitable` again with same `{ requirementId, candidateId }`
+- **Expected:** Returns 409 with validation error message.
+
+### TC-NS-009: Not Suitable button hidden when no requirement context
+- **Priority:** P2
+- **Type:** UI
+- **Precondition:** Search results page loaded without a requirement context (no `sourceRequirementId`)
+- **Steps:** Inspect candidate cards for "Not Suitable" button and "Show Not Suitable" checkbox
+- **Expected:** Neither the button nor the checkbox is rendered.
+
+---
+
 ## Traceability Matrix Summary
 
 | Module | Test Count | P0 | P1 | P2 | P3 |
@@ -2854,4 +2922,5 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | Bench List | 15 | 7 | 7 | 1 | 0 |
 | Screening Lock | 17 | 7 | 10 | 0 | 0 |
 | Not Interested Candidate | 6 | 2 | 4 | 0 | 0 |
-| **Total** | **378** | **93** | **153** | **100** | **32** |
+| Not Suitable Candidate | 9 | 2 | 5 | 2 | 0 |
+| **Total** | **387** | **95** | **158** | **102** | **32** |

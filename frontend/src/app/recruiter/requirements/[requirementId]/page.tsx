@@ -234,6 +234,15 @@ export default function RequirementDetailPage() {
     fetchCandidates();
   }, [status, requirementId]);
 
+  const handleMarkNotSuitable = async (candidateId: string) => {
+    try {
+      await api.markNotSuitable(requirementId, candidateId);
+      setCandidates((prev) => prev.filter((c) => c.candidateId !== candidateId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to mark as not suitable');
+    }
+  };
+
   const handleSearchCandidates = () => {
     if (!requirement) return;
 
@@ -895,6 +904,14 @@ export default function RequirementDetailPage() {
                           }`}>
                             {candidate.status.charAt(0).toUpperCase() + candidate.status.slice(1)}
                           </span>
+                          {candidate.status === 'shortlisted' && (
+                            <button
+                              onClick={() => handleMarkNotSuitable(candidate.candidateId)}
+                              className="px-2 py-0.5 rounded text-xs text-orange-600 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-950/30 transition-colors"
+                            >
+                              Not Suitable
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>

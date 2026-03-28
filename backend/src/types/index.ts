@@ -288,6 +288,7 @@ export interface CandidateSearchResult {
   notInterested?: boolean;
   notInterestedAt?: string;
   isShortlisted?: boolean;
+  isNotSuitable?: boolean;
 }
 
 export interface SearchResponse {
@@ -669,7 +670,7 @@ export interface GetPricingConfigResponse {
 
 // ─── Shortlist Types ────────────────────────────────────────────────────────
 
-export const ShortlistStatusEnum = z.enum(['shortlisted', 'submitted', 'rejected']);
+export const ShortlistStatusEnum = z.enum(['shortlisted', 'submitted', 'rejected', 'not_suitable']);
 export type ShortlistStatus = z.infer<typeof ShortlistStatusEnum>;
 
 export interface ShortlistItem {
@@ -961,7 +962,8 @@ export type AuditAction =
   | 'PRICING_CONFIG_UPDATE'
   | 'PROMPT_UPDATE'
   | 'BULK_IMPORT_START'
-  | 'SESSION_SETTINGS_UPDATE';
+  | 'SESSION_SETTINGS_UPDATE'
+  | 'SHORTLIST_MARK_NOT_SUITABLE';
 
 export type AuditEntityType =
   | 'session'

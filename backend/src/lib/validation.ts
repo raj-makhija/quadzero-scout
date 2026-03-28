@@ -251,6 +251,13 @@ export const ShortlistCandidateRequestSchema = z.object({
   notes: z.string().max(1000).optional(),
 });
 
+// Mark Not Suitable Request Validation
+export const MarkNotSuitableRequestSchema = z.object({
+  requirementId: z.string().min(1),
+  candidateId: z.string().min(1),
+  notes: z.string().max(1000).optional(),
+});
+
 // Save Client Request Validation
 export const SaveClientRequestSchema = z.object({
   clientName: z.string().min(1).max(200),

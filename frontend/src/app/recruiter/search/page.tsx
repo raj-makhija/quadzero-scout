@@ -47,12 +47,17 @@ export default function RecruiterSearchPage() {
   const [paginationKey, setPaginationKey] = useState<string | undefined>(undefined);
   const [hasMore, setHasMore] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [showNotSuitable, setShowNotSuitable] = useState(false);
 
-  // Derive the current page of results from allResults
-  const totalPages = Math.ceil(allResults.length / PAGE_SIZE);
+  // Derive the current page of results from allResults (filtering not-suitable unless toggled)
+  const filteredResults = useMemo(
+    () => showNotSuitable ? allResults : allResults.filter(c => !c.isNotSuitable),
+    [allResults, showNotSuitable]
+  );
+  const totalPages = Math.ceil(filteredResults.length / PAGE_SIZE);
   const results = useMemo(
-    () => allResults.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
-    [allResults, currentPage]
+    () => filteredResults.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [filteredResults, currentPage]
   );
   const [formattingCandidateId, setFormattingCandidateId] = useState<string | null>(null);
   const [sourceRequirementId, setSourceRequirementId] = useState<string | null>(prefilled?.requirementId || null);
@@ -441,6 +446,19 @@ export default function RecruiterSearchPage() {
       description: `Shortlisted for ${requirementContext?.clientName || 'this requirement'}`,
     });
   }, [requirementContext]);
+
+  const handleMarkNotSuitable = useCallback(async (candidateId: string) => {
+    if (!sourceRequirementId) return;
+    try {
+      await api.markNotSuitable(sourceRequirementId, candidateId);
+      setAllResults(prev => prev.map(r =>
+        r.candidateId === candidateId ? { ...r, isNotSuitable: true, isShortlisted: false } : r
+      ));
+      toast({ variant: 'default', title: 'Marked as Not Suitable' });
+    } catch (err) {
+      toast({ variant: 'error', title: 'Error', description: err instanceof Error ? err.message : 'Failed to mark as not suitable' });
+    }
+  }, [sourceRequirementId]);
 
   const handleRescreenFromModal = useCallback((candidate: CandidateSearchResult) => {
     setShortlistModalCandidate(null);
@@ -1367,6 +1385,17 @@ export default function RecruiterSearchPage() {
                   <option value="experience">Sort: Experience</option>
                 </select>
                 {sourceRequirementId && (
+                  <label className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={showNotSuitable}
+                      onChange={(e) => { setShowNotSuitable(e.target.checked); setCurrentPage(1); }}
+                      className="rounded border-gray-300 dark:border-gray-600"
+                    />
+                    Show not suitable
+                  </label>
+                )}
+                {sourceRequirementId && (
                   <button
                     onClick={() => router.push(`/recruiter/requirements/${sourceRequirementId}`)}
                     className="btn-secondary"
@@ -1409,11 +1438,11 @@ export default function RecruiterSearchPage() {
               {results.map((candidate, index) => (
                 <div
                   key={candidate.candidateId}
-                  className={`card p-6 hover:shadow-md transition-shadow cursor-pointer ${candidate.notInterested ? 'opacity-60 border-l-4 border-l-red-400' : candidate.isShortlisted ? 'border-l-4 border-l-green-500 bg-green-50/50 dark:bg-green-950/20' : ''}`}
+                  className={`card p-6 hover:shadow-md transition-shadow cursor-pointer ${candidate.notInterested ? 'opacity-60 border-l-4 border-l-red-400' : candidate.isNotSuitable ? 'opacity-50 border-l-4 border-l-orange-400 bg-orange-50/30 dark:bg-orange-950/10' : candidate.isShortlisted ? 'border-l-4 border-l-green-500 bg-green-50/50 dark:bg-green-950/20' : ''}`}
                   onClick={() => {
                     if (!isAuthenticated) { handleLoginRequired(); return; }
-                    // Smart routing when requirement exists and candidate not yet shortlisted
-                    if (sourceRequirementId && requirementContext && !candidate.isShortlisted) {
+                    // Smart routing when requirement exists and candidate not yet shortlisted/not-suitable
+                    if (sourceRequirementId && requirementContext && !candidate.isShortlisted && !candidate.isNotSuitable) {
                       handleShortlistClick(candidate);
                     } else {
                       setShortlistModalCandidate(candidate);
@@ -1440,6 +1469,11 @@ export default function RecruiterSearchPage() {
                         {isAuthenticated && candidate.isShortlisted && (
                           <span className="badge text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
                             Shortlisted
+                          </span>
+                        )}
+                        {isAuthenticated && candidate.isNotSuitable && (
+                          <span className="badge text-xs bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
+                            Not Suitable
                           </span>
                         )}
                       </div>
@@ -1544,16 +1578,27 @@ export default function RecruiterSearchPage() {
 
                     {isAuthenticated && (
                       <div className="flex flex-col items-end gap-1">
-                        {sourceRequirementId && !candidate.isShortlisted && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleShortlistClick(candidate);
-                            }}
-                            className="btn-primary text-sm whitespace-nowrap"
-                          >
-                            Shortlist
-                          </button>
+                        {sourceRequirementId && !candidate.isShortlisted && !candidate.isNotSuitable && (
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleShortlistClick(candidate);
+                              }}
+                              className="btn-primary text-sm whitespace-nowrap"
+                            >
+                              Shortlist
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMarkNotSuitable(candidate.candidateId);
+                              }}
+                              className="btn-outline text-sm whitespace-nowrap text-orange-600 border-orange-300 hover:bg-orange-50 dark:text-orange-400 dark:border-orange-700 dark:hover:bg-orange-950/30"
+                            >
+                              Not Suitable
+                            </button>
+                          </div>
                         )}
                         <button
                           onClick={(e) => {
@@ -1602,7 +1647,7 @@ export default function RecruiterSearchPage() {
               )}
 
               {/* Pagination */}
-              {allResults.length > PAGE_SIZE && (
+              {filteredResults.length > PAGE_SIZE && (
                 <div className="mt-6 flex items-center justify-between">
                   <button
                     onClick={handlePreviousPage}

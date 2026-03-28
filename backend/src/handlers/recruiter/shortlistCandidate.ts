@@ -1,7 +1,7 @@
 import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, ShortlistCandidateRequestSchema } from '../../lib/validation.js';
-import { getRequirementById, getCandidateById, getShortlistEntry, saveShortlist } from '../../lib/dynamodb.js';
+import { getRequirementById, getCandidateById, getShortlistEntry, saveShortlist, updateShortlistStatus } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
 import type { ShortlistItem } from '../../types/index.js';
@@ -63,6 +63,24 @@ async function handleRequest(
     // Check if already shortlisted
     const existing = await getShortlistEntry(requirementId, candidateId);
     if (existing) {
+      if (existing.status === 'not_suitable') {
+        // Allow re-shortlisting a candidate previously marked as not suitable
+        await updateShortlistStatus(requirementId, candidateId, 'shortlisted', event.auth.userId);
+
+        logAuditEvent(event.auth, event, {
+          action: 'SHORTLIST_ADD',
+          entityType: 'shortlist',
+          entityId: `${requirementId}:${candidateId}`,
+          metadata: { requirementId, candidateId, candidateName: candidate.full_name, previousStatus: 'not_suitable' },
+        });
+
+        const result: Record<string, unknown> = { success: true };
+        if (candidate.not_interested) {
+          result.warning = 'NOT_INTERESTED';
+          result.notInterestedAt = candidate.not_interested_at;
+        }
+        return success(result);
+      }
       return error(ErrorCodes.VALIDATION_ERROR, 'Candidate is already shortlisted for this requirement', 409);
     }
 

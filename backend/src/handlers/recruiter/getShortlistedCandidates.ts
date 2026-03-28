@@ -13,7 +13,8 @@ async function handleRequest(
       return error(ErrorCodes.VALIDATION_ERROR, 'requirementId is required', 400);
     }
 
-    const shortlists = await getShortlistsForRequirement(requirementId);
+    const allShortlists = await getShortlistsForRequirement(requirementId);
+    const shortlists = allShortlists.filter((s) => s.status !== 'not_suitable');
 
     // Fetch candidate details for each shortlist entry in parallel
     const candidates: ShortlistedCandidate[] = [];
