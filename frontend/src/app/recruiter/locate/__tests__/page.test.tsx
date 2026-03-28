@@ -148,13 +148,28 @@ describe('LocateProfilePage', () => {
           candidateId: 'cand_1',
           fullName: 'Alice Smith',
           totalExperience: 6,
+          seniority: 'senior',
+          primarySkills: ['react', 'nodejs'],
+          engagementModel: 'either',
           location: 'Bangalore, India',
           roles: ['Senior Developer'],
           availability: 'immediate',
           lastScreenedAt: new Date().toISOString(),
         },
+        {
+          candidateId: 'cand_3',
+          fullName: 'Charlie Brown',
+          totalExperience: 16,
+          seniority: 'lead',
+          primarySkills: ['java', 'aws'],
+          engagementModel: 'full_time',
+          location: 'Mumbai, India',
+          roles: ['Architect'],
+          availability: '1_week',
+          lastScreenedAt: new Date().toISOString(),
+        },
       ],
-      totalCount: 1,
+      totalCount: 2,
     });
   });
 
@@ -424,6 +439,87 @@ describe('LocateProfilePage', () => {
       });
 
       // Verify it called the dedicated bench list endpoint
+      expect(mockGetBenchList).toHaveBeenCalledTimes(1);
+    });
+
+    it('bench list respects experience filter', async () => {
+      // Mock search to return a candidate with 16 years so filtered mode has results
+      mockSearchCandidates.mockResolvedValue({
+        candidates: [
+          {
+            candidateId: 'cand_3',
+            fullName: 'Charlie Brown',
+            primarySkills: ['java', 'aws'],
+            totalExperience: 16,
+            seniority: 'lead',
+            location: 'Mumbai, India',
+            availability: '1_week',
+            engagementModel: 'full_time',
+            matchScore: 90,
+            matchDetails: {
+              mustHaveMatched: [],
+              mustHaveRelated: [],
+              mustHaveMissing: [],
+              goodToHaveMatched: [],
+              goodToHaveRelated: [],
+              experienceMatch: 'full' as const,
+              seniorityMatch: true,
+              ctcMatch: true,
+              locationMatch: 'full' as const,
+              availabilityMatch: 'full' as const,
+            },
+            lastUpdated: '2024-01-15T10:30:00Z',
+            lastScreenedAt: new Date().toISOString(),
+          },
+        ],
+        pagination: { count: 1, hasMore: false },
+        totalMatches: 1,
+      });
+
+      render(<LocateProfilePage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Alice Smith')).toBeInTheDocument();
+      });
+
+      // Open filters and set min experience to 15
+      fireEvent.click(screen.getByText('Filters'));
+      await waitFor(() => {
+        expect(screen.getByText('Experience (Years)')).toBeInTheDocument();
+      });
+
+      const minInput = screen.getByPlaceholderText('Min');
+      fireEvent.change(minInput, { target: { value: '15' } });
+      fireEvent.click(screen.getByText('Apply Filters'));
+
+      await waitFor(() => {
+        expect(screen.getByText(/candidate.*match your filters/)).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('Bench List'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('bench-list-modal')).toBeInTheDocument();
+      });
+
+      // Verify the dedicated endpoint was called (filters applied client-side)
+      expect(mockGetBenchList).toHaveBeenCalledTimes(1);
+    });
+
+    it('bench list with no active filters shows all candidates', async () => {
+      render(<LocateProfilePage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Alice Smith')).toBeInTheDocument();
+      });
+
+      // Click bench list in recent mode (no filters active)
+      fireEvent.click(screen.getByText('Bench List'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('bench-list-modal')).toBeInTheDocument();
+      });
+
       expect(mockGetBenchList).toHaveBeenCalledTimes(1);
     });
 

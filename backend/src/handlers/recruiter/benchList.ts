@@ -23,6 +23,9 @@ async function handleRequest(
       availability: item.availability,
       lastScreenedAt: item.last_screened_at,
       notInterested: item.not_interested,
+      seniority: item.seniority,
+      primarySkills: item.primary_skills || [],
+      engagementModel: item.engagement_model,
     }));
 
     return success({

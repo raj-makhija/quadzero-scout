@@ -1070,7 +1070,10 @@ Returns all bench-eligible candidates: availability in (immediate, 1_week, 2_wee
         "roles": ["Senior Developer", "Architect"],
         "availability": "immediate",
         "lastScreenedAt": "2026-03-20T14:00:00.000Z",
-        "notInterested": false
+        "notInterested": false,
+        "seniority": "senior",
+        "primarySkills": ["React", "Node.js"],
+        "engagementModel": "full_time"
       }
     ],
     "totalCount": 17
