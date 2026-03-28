@@ -2668,6 +2668,24 @@ All functional and non-functional aspects of Quadzero Scout covering:
 - **Steps:** Call `GET /recruiter/bench-list` with large dataset (>100 eligible candidates)
 - **Expected:** All eligible candidates returned in single response (no pagination needed)
 
+### TC-BENCH-016: Bench list respects active page filters
+- **Priority:** P0
+- **Type:** UI Component / Integration
+- **Steps:** Log in as internal recruiter. On Locate page, set experience filter to 15+ years. Click "Bench List" button.
+- **Expected:** Bench list modal only shows candidates with 15+ years of experience. Candidates with lower experience are excluded from the groups, counts, and exported content.
+
+### TC-BENCH-017: Bench list with no active filters shows all bench-eligible candidates
+- **Priority:** P1
+- **Type:** UI Component
+- **Steps:** Log in as internal recruiter. On Locate page, ensure no filters are applied. Click "Bench List" button.
+- **Expected:** Bench list modal shows all bench-eligible candidates (availability in immediate/1_week/2_weeks, screened within 15 days) without any additional filtering.
+
+### TC-BENCH-018: Backend returns seniority, primarySkills, and engagementModel in bench list response
+- **Priority:** P1
+- **Type:** API
+- **Steps:** Call `GET /recruiter/bench-list` as internal recruiter.
+- **Expected:** Each candidate object includes `seniority`, `primarySkills` (array), and `engagementModel` fields to support client-side filtering.
+
 ## 24. Module 23: Screening Lock
 
 ### Acquire Lock

@@ -908,6 +908,9 @@ export interface BenchListCandidate {
   availability: string;
   lastScreenedAt?: string;
   notInterested?: boolean;
+  seniority?: string;
+  primarySkills?: string[];
+  engagementModel?: string;
 }
 
 export interface RecentProfileSummary {

@@ -27,6 +27,7 @@ export type ProfileListItem = {
   roles?: string[];
   headline?: string;
   availability?: string;
+  engagementModel?: string;
 };
 
 const SCREENING_STATUS_OPTIONS = [
@@ -110,6 +111,49 @@ function countActiveFilters(f: FilterState): number {
 
 function hasActiveFilters(f: FilterState): boolean {
   return countActiveFilters(f) > 0;
+}
+
+function applyClientSideFilters(items: ProfileListItem[], filters: FilterState): ProfileListItem[] {
+  let result = items;
+  if (filters.minExperience != null) {
+    result = result.filter(c => c.totalExperience >= filters.minExperience!);
+  }
+  if (filters.maxExperience != null) {
+    result = result.filter(c => c.totalExperience <= filters.maxExperience!);
+  }
+  if (filters.seniority.length > 0) {
+    result = result.filter(c => filters.seniority.includes(c.seniority));
+  }
+  if (filters.availability.length > 0) {
+    result = result.filter(c => filters.availability.includes(c.availability || ''));
+  }
+  if (filters.location.trim()) {
+    const searchLocs = filters.location.split(/[,;]/).map(l => l.trim().toLowerCase()).filter(Boolean);
+    result = result.filter(c => {
+      if (!c.location) return false;
+      const candidateLoc = c.location.toLowerCase();
+      return searchLocs.some(loc => candidateLoc.includes(loc));
+    });
+  }
+  if (filters.screeningStatus.length > 0) {
+    result = result.filter(item =>
+      filters.screeningStatus.includes(getScreeningStatusValue(item.lastScreenedAt, item.notInterested))
+    );
+  }
+  if (filters.skills.length > 0) {
+    const requiredSkills = filters.skills.map(s => s.toLowerCase());
+    result = result.filter(c => {
+      const candidateSkills = c.primarySkills.map(s => s.toLowerCase());
+      return requiredSkills.every(skill => candidateSkills.some(cs => cs.includes(skill)));
+    });
+  }
+  if (filters.engagementModel && filters.engagementModel !== 'either') {
+    result = result.filter(c => {
+      if (!c.engagementModel) return true;
+      return c.engagementModel === filters.engagementModel || c.engagementModel === 'either';
+    });
+  }
+  return result;
 }
 
 function getDateStamp(): string {
@@ -355,34 +399,8 @@ export default function LocateProfilePage() {
       const res = await api.searchCandidates(criteria, pagination, 'lastUpdated');
 
       // Client-side hard filters (backend treats these as soft scoring factors)
-      let candidates = res.candidates;
-      if (filters.minExperience != null) {
-        candidates = candidates.filter(c => c.totalExperience >= filters.minExperience!);
-      }
-      if (filters.maxExperience != null) {
-        candidates = candidates.filter(c => c.totalExperience <= filters.maxExperience!);
-      }
-      if (filters.seniority.length > 0) {
-        candidates = candidates.filter(c => filters.seniority.includes(c.seniority));
-      }
-      if (filters.availability.length > 0) {
-        candidates = candidates.filter(c => filters.availability.includes(c.availability));
-      }
-      if (filters.location.trim()) {
-        const searchLocs = filters.location.split(/[,;]/).map(l => l.trim().toLowerCase()).filter(Boolean);
-        candidates = candidates.filter(c => {
-          if (!c.location) return false;
-          const candidateLoc = c.location.toLowerCase();
-          return searchLocs.some(loc => candidateLoc.includes(loc));
-        });
-      }
-
-      let items = candidates.map(mapSearchResultToListItem);
-
-      // Client-side screening status filter
-      if (filters.screeningStatus.length > 0) {
-        items = items.filter(item => filters.screeningStatus.includes(getScreeningStatusValue(item.lastScreenedAt, item.notInterested)));
-      }
+      let items = res.candidates.map(mapSearchResultToListItem);
+      items = applyClientSideFilters(items, filters);
 
       if (isLoadMore && existingResults) {
         setFilteredResults([...existingResults, ...items]);
@@ -444,19 +462,23 @@ export default function LocateProfilePage() {
     setErrorMessage('');
     try {
       const res = await api.getBenchList();
-      const items: ProfileListItem[] = res.candidates.map((c) => ({
+      let items: ProfileListItem[] = res.candidates.map((c) => ({
         candidateId: c.candidateId,
         fullName: c.fullName,
-        primarySkills: [],
+        primarySkills: c.primarySkills || [],
         totalExperience: c.totalExperience,
-        seniority: '',
+        seniority: c.seniority || '',
         location: c.location,
         lastUpdated: '',
         lastScreenedAt: c.lastScreenedAt,
         notInterested: c.notInterested,
         roles: c.roles,
         availability: c.availability,
+        engagementModel: c.engagementModel,
       }));
+      if (hasActiveFilters(filters)) {
+        items = applyClientSideFilters(items, filters);
+      }
       setBenchListProfiles(items);
       setShowBenchList(true);
     } catch (err) {
@@ -468,7 +490,7 @@ export default function LocateProfilePage() {
     } finally {
       setLoadingBenchList(false);
     }
-  }, []);
+  }, [filters]);
 
   const activeFilterCount = countActiveFilters(filters);
 
