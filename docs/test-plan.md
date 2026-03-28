@@ -228,7 +228,8 @@ Detailed test cases are in [test-cases.md](test-cases.md). Summary below:
 | 16 | E2E Workflows | 10 | Full user journeys, cross-browser |
 | 17 | Non-Functional Requirements | 15 | Performance, security, accessibility, contracts |
 | 18 | Notify Me — Notification Service | 10 | Toggle opt-in/out, default opt-in, match threshold, email aggregation, non-fatal errors, SES config |
-| | **Total** | **237** | |
+| 19 | Not Suitable — Candidate Suitability | 9 | Mark not suitable from search/shortlist, re-shortlist, filter toggle, visual styling, audit logging |
+| | **Total** | **246** | |
 
 ---
 

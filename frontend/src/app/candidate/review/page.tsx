@@ -95,6 +95,8 @@ export default function ReviewPage() {
         engagementModel: profile.engagementModel || 'either',
         seniority: profile.seniority || 'mid',
         location: profile.location || undefined,
+        linkedinUrl: profile.linkedinUrl || undefined,
+        githubUrl: profile.githubUrl || undefined,
         currentCtc: profile.currentCtc || undefined,
         expectedCtc: profile.expectedCtc || undefined,
         coverLetter: supplementaryText || undefined,
