@@ -518,6 +518,13 @@ class ApiClient {
     });
   }
 
+  async markNotSuitable(requirementId: string, candidateId: string, notes?: string) {
+    return this.request<{ success: boolean }>('/recruiter/shortlist/not-suitable', {
+      method: 'PUT',
+      body: JSON.stringify({ requirementId, candidateId, notes }),
+    });
+  }
+
   async getShortlistedCandidates(requirementId: string) {
     return this.request<ShortlistedCandidatesResponse>(`/recruiter/requirements/${requirementId}/shortlisted`);
   }
@@ -768,6 +775,7 @@ export interface CandidateSearchResult {
   notInterested?: boolean;
   notInterestedAt?: string;
   isShortlisted?: boolean;
+  isNotSuitable?: boolean;
   roles?: string[];
   headline?: string;
 }
@@ -1141,7 +1149,7 @@ export interface MatchRequirementsResponse {
 }
 
 // Shortlist types
-export type ShortlistStatus = 'shortlisted' | 'submitted' | 'rejected';
+export type ShortlistStatus = 'shortlisted' | 'submitted' | 'rejected' | 'not_suitable';
 
 export interface ShortlistedCandidate {
   candidateId: string;

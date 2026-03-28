@@ -713,6 +713,7 @@ Authorization: Bearer <jwe_token> (optional)
         "notInterested": false,
         "notInterestedAt": null,
         "isShortlisted": true,
+        "isNotSuitable": false,
         "matchScore": 92,
         "matchDetails": {
           "mustHaveMatched": ["react", "nodejs"],
@@ -782,7 +783,7 @@ Authorization: Bearer <jwe_token> (optional)
 - `criteria.engagementModel`: Optional, enum: `contract`, `full_time`, `either`. When set (and not `either`), candidates with an incompatible engagement model are hard-filtered out. Candidates with `either` always pass.
 - `pagination.lastEvaluatedKey`: Optional, base64-encoded cursor for DynamoDB pagination (only needed when database has >500 candidates)
 - `sortBy`: Optional, enum: `matchScore` (default), `experience`, `lastUpdated`. Each option uses composite sorting with tiebreakers (all descending): `matchScore` → lastUpdated → experience; `lastUpdated` → matchScore → experience; `experience` → matchScore → lastUpdated
-- `requirementId`: Optional, UUID string. When provided, the response includes `isShortlisted: true/false` for each candidate indicating whether they are already shortlisted for this requirement. Shortlisted candidates are visually highlighted on the frontend.
+- `requirementId`: Optional, UUID string. When provided, the response includes `isShortlisted: true/false` and `isNotSuitable: true/false` for each candidate indicating whether they are already shortlisted or marked as not suitable for this requirement. Shortlisted candidates are visually highlighted (green) and not-suitable candidates are styled with orange styling on the frontend.
 
 **Notes:**
 - Unauthenticated users see redacted results (names hidden, skills hidden, CTC hidden)
@@ -1665,7 +1666,8 @@ Authorization: Bearer <jwe_token>
 - `notes`: Optional, string, max 1000 characters
 
 **Notes:**
-- Returns 409 (`ALREADY_SHORTLISTED`) if the candidate is already shortlisted for the requirement
+- Returns 409 (`ALREADY_SHORTLISTED`) if the candidate is already shortlisted for the requirement (status is `shortlisted`, `submitted`, or `rejected`)
+- If the candidate was previously marked as `not_suitable` for this requirement, the shortlist succeeds and the status is changed back to `shortlisted`
 - Returns 409 (`SCREENING_REQUIRED`) if the candidate has never been screened (`last_screened_at` is missing) or was last screened more than 15 days ago. The candidate must be screened (or re-screened) via `POST /recruiter/screen-candidate` before shortlisting.
 - When shortlisting a candidate who has `not_interested: true`, the response includes a `warning: "NOT_INTERESTED"` field to alert the recruiter. The shortlist still succeeds (it is not blocked).
 
@@ -1714,9 +1716,51 @@ Authorization: Bearer <jwe_token>
 
 ---
 
+### PUT /recruiter/shortlist/not-suitable
+
+Mark a candidate as not suitable for a specific requirement. If the candidate is already shortlisted, the status is changed to `not_suitable`. If the candidate has no existing shortlist entry, a new one is created with `not_suitable` status. No screening freshness check is required.
+
+**Auth:** Requires `recruiter` role.
+
+**Request Headers:**
+```
+Content-Type: application/json
+Authorization: Bearer <jwe_token>
+```
+
+**Request Body:**
+```json
+{
+  "requirementId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "candidateId": "cand_x1y2z3w4-a5b6-7890-cdef-gh1234567890",
+  "notes": "Skills don't match requirement"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true
+}
+```
+
+**Validation Rules:**
+- `requirementId`: Required, string, min 1 character
+- `candidateId`: Required, string, min 1 character
+- `notes`: Optional, string, max 1000 characters
+
+**Notes:**
+- Returns 409 if the candidate is already marked as `not_suitable` for this requirement
+- Returns 404 if the requirement or candidate does not exist
+- Not-suitable candidates are excluded from `GET /recruiter/requirements/{id}/shortlisted` responses
+- Not-suitable candidates are returned by `POST /recruiter/search` with `isNotSuitable: true` (when `requirementId` is provided)
+- A not-suitable candidate can be re-shortlisted via `POST /recruiter/shortlist`, which changes the status back to `shortlisted`
+
+---
+
 ### GET /recruiter/requirements/{requirementId}/shortlisted
 
-List all shortlisted candidates for a requirement.
+List all shortlisted candidates for a requirement. Candidates with `not_suitable` status are excluded from the response.
 
 **Auth:** Requires `recruiter` role.
 

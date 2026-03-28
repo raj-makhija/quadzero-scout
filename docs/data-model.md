@@ -1106,8 +1106,10 @@ type RequirementStatus = 'active' | 'duplicate' | 'closed_on_hold';
 
 ### Shortlist Status
 ```typescript
-type ShortlistStatus = 'shortlisted' | 'submitted' | 'rejected';
+type ShortlistStatus = 'shortlisted' | 'submitted' | 'rejected' | 'not_suitable';
 ```
+
+- `not_suitable` — Recruiter has marked the candidate as not suitable for this specific requirement. Not-suitable entries are excluded from the shortlisted candidates list (`GET /recruiter/requirements/{id}/shortlisted`) and visually distinct on the search results page. A not-suitable candidate can be re-shortlisted, which changes the status back to `shortlisted`. Unlike the global `not_interested` flag on TalentProfiles, `not_suitable` is requirement-specific.
 
 ### Supported File Types
 ```typescript

@@ -75,7 +75,12 @@ async function handleRequest(
       searchCandidates(searchCriteria, undefined, lastEvaluatedKey),
       requirementId ? getShortlistsForRequirement(requirementId) : Promise.resolve([]),
     ]);
-    const shortlistedCandidateIds = new Set(shortlists.map((s) => s.candidate_id));
+    const shortlistedCandidateIds = new Set(
+      shortlists.filter((s) => s.status !== 'not_suitable').map((s) => s.candidate_id)
+    );
+    const notSuitableCandidateIds = new Set(
+      shortlists.filter((s) => s.status === 'not_suitable').map((s) => s.candidate_id)
+    );
 
     // Pre-filter: if coreSkill is specified, only score candidates who have it as a primary skill.
     // Secondary skills are too noisy (tangential mentions) — coreSkill must be a core competency.
@@ -126,6 +131,7 @@ async function handleRequest(
           roles: candidate.roles || [],
           headline: candidate.headline,
           isShortlisted: shortlistedCandidateIds.has(candidate.candidate_id),
+          isNotSuitable: notSuitableCandidateIds.has(candidate.candidate_id),
         };
       })
       // Filter out candidates below minimum must-have exact match ratio

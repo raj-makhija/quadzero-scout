@@ -545,6 +545,13 @@ functions:
           path: /recruiter/requirements/{requirementId}/shortlisted
           method: GET
 
+  recruiterMarkNotSuitable:
+    handler: src/handlers/recruiter/markNotSuitable.handler
+    events:
+      - httpApi:
+          path: /recruiter/shortlist/not-suitable
+          method: PUT
+
   # Candidate Screening Endpoints
   recruiterScreenCandidate:
     handler: src/handlers/recruiter/screenCandidate.handler
