@@ -9,7 +9,7 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { config } from './config.js';
-import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, StatusHistoryEntry, RequirementChangeEntry, PricingConfig, PricingConfigItem, SessionSettings, SessionSettingsItem, ShortlistItem, ClientItem, ScreeningItem, ScreeningLockItem, AuditLogItem, AuditLogEntry } from '../types/index.js';
+import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, StatusHistoryEntry, RequirementChangeEntry, PricingConfig, PricingConfigItem, SessionSettings, SessionSettingsItem, ShortlistItem, ClientItem, SubVendorItem, ScreeningItem, ScreeningLockItem, AuditLogItem, AuditLogEntry } from '../types/index.js';
 import { DEFAULT_SESSION_TIMEOUT_SECONDS } from '../types/index.js';
 
 const client = new DynamoDBClient({ region: config.region });
@@ -1404,6 +1404,129 @@ export async function updateShortlistStatus(
         ':by': updatedBy,
         ':at': new Date().toISOString(),
       },
+    })
+  );
+}
+
+// ─── Sub-Vendor Master Operations ────────────────────────────────────────────
+
+export async function saveSubVendor(item: SubVendorItem): Promise<void> {
+  await docClient.send(
+    new PutCommand({
+      TableName: config.dynamodb.subVendorsTable,
+      Item: item,
+    })
+  );
+}
+
+export async function getSubVendorById(subVendorId: string): Promise<SubVendorItem | null> {
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: config.dynamodb.subVendorsTable,
+      Key: { sub_vendor_id: subVendorId },
+    })
+  );
+  return (result.Item as SubVendorItem) || null;
+}
+
+export async function getSubVendorByName(subVendorNameLower: string): Promise<SubVendorItem | null> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: config.dynamodb.subVendorsTable,
+      IndexName: 'SubVendorNameLowerIndex',
+      KeyConditionExpression: 'sub_vendor_name_lower = :name',
+      ExpressionAttributeValues: { ':name': subVendorNameLower },
+      Limit: 1,
+    })
+  );
+  return (result.Items?.[0] as SubVendorItem) || null;
+}
+
+export async function listSubVendors(): Promise<SubVendorItem[]> {
+  const allItems: SubVendorItem[] = [];
+  let currentKey: Record<string, unknown> | undefined;
+
+  do {
+    const params: {
+      TableName: string;
+      Limit: number;
+      ExclusiveStartKey?: Record<string, unknown>;
+    } = {
+      TableName: config.dynamodb.subVendorsTable,
+      Limit: 100,
+    };
+
+    if (currentKey) {
+      params.ExclusiveStartKey = currentKey;
+    }
+
+    const result = await docClient.send(new ScanCommand(params));
+    allItems.push(...((result.Items || []) as SubVendorItem[]));
+    currentKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (currentKey);
+
+  allItems.sort((a, b) => a.sub_vendor_name.localeCompare(b.sub_vendor_name));
+  return allItems;
+}
+
+export async function updateSubVendor(
+  subVendorId: string,
+  updates: {
+    contactPersonName?: string | null;
+    contactPersonPhone?: string | null;
+    contactPersonEmail?: string | null;
+    notes?: string | null;
+  }
+): Promise<void> {
+  const expressionParts: string[] = ['last_updated = :now'];
+  const values: Record<string, unknown> = { ':now': new Date().toISOString() };
+  const removeNames: string[] = [];
+
+  if (updates.contactPersonName !== undefined) {
+    if (updates.contactPersonName === null) {
+      removeNames.push('contact_person_name');
+    } else {
+      expressionParts.push('contact_person_name = :cpn');
+      values[':cpn'] = updates.contactPersonName;
+    }
+  }
+  if (updates.contactPersonPhone !== undefined) {
+    if (updates.contactPersonPhone === null) {
+      removeNames.push('contact_person_phone');
+    } else {
+      expressionParts.push('contact_person_phone = :cpp');
+      values[':cpp'] = updates.contactPersonPhone;
+    }
+  }
+  if (updates.contactPersonEmail !== undefined) {
+    if (updates.contactPersonEmail === null) {
+      removeNames.push('contact_person_email');
+    } else {
+      expressionParts.push('contact_person_email = :cpe');
+      values[':cpe'] = updates.contactPersonEmail;
+    }
+  }
+  if (updates.notes !== undefined) {
+    if (updates.notes === null) {
+      removeNames.push('notes');
+    } else {
+      expressionParts.push('notes = :notes');
+      values[':notes'] = updates.notes;
+    }
+  }
+
+  let updateExpression = `SET ${expressionParts.join(', ')}`;
+  if (removeNames.length > 0) {
+    updateExpression += ` REMOVE ${removeNames.join(', ')}`;
+  }
+
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.subVendorsTable,
+      Key: { sub_vendor_id: subVendorId },
+      UpdateExpression: updateExpression,
+      ExpressionAttributeValues: values,
+      ConditionExpression: 'attribute_exists(sub_vendor_id)',
     })
   );
 }

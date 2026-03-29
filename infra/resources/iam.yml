@@ -32,6 +32,8 @@ dynamoDbPolicy:
     - !GetAtt AuditLogTable.Arn
     - !Sub '${AuditLogTable.Arn}/index/*'
     - !GetAtt ScreeningLocksTable.Arn
+    - !GetAtt SubVendorsTable.Arn
+    - !Sub '${SubVendorsTable.Arn}/index/*'
 
 # S3 Policy
 s3Policy:

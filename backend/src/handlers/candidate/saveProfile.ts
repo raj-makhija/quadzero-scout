@@ -2,7 +2,7 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda
 import { v4 as uuidv4 } from 'uuid';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, SaveProfileRequestSchema } from '../../lib/validation.js';
-import { saveCandidateProfile, getExperienceBucket, getCandidateById, getCandidateByEmail } from '../../lib/dynamodb.js';
+import { saveCandidateProfile, getExperienceBucket, getCandidateById, getCandidateByEmail, getSubVendorById } from '../../lib/dynamodb.js';
 import { deleteObject } from '../../lib/s3.js';
 import { invokeLambdaAsync } from '../../lib/lambdaInvoke.js';
 import { config } from '../../lib/config.js';
@@ -37,10 +37,19 @@ export async function handler(
 
     const { candidateId, profile, resumeS3Key } = validation.data;
 
+    // Resolve sub-vendor if provided
+    const subVendor = profile.subVendorId
+      ? await getSubVendorById(profile.subVendorId)
+      : null;
+
+    if (profile.subVendorId && !subVendor) {
+      return error(ErrorCodes.VALIDATION_ERROR, 'Sub-vendor not found', 400);
+    }
+
     // Dedup: resolve existing candidate by ID or email
     let existingCandidate = candidateId
       ? await getCandidateById(candidateId)
-      : await getCandidateByEmail(profile.email);
+      : (profile.email ? await getCandidateByEmail(profile.email) : null);
 
     if (existingCandidate && !candidateId) {
       console.log('Dedup: found existing candidate by email:', profile.email, '→', existingCandidate.candidate_id);
@@ -89,7 +98,7 @@ export async function handler(
       candidate_id: finalCandidateId,
       user_id: userId,
       full_name: profile.fullName,
-      email: profile.email,
+      email: profile.email || existingCandidate?.email || '',
       phone: profile.phone,
       location: profile.location ?? undefined,
       primary_skills: normalizedPrimarySkills,
@@ -115,6 +124,9 @@ export async function handler(
       linkedin_url: profile.linkedinUrl || existingCandidate?.linkedin_url,
       github_url: profile.githubUrl || existingCandidate?.github_url,
       cover_letter: profile.coverLetter || existingCandidate?.cover_letter,
+      sub_vendor_id: profile.subVendorId || existingCandidate?.sub_vendor_id,
+      sub_vendor_name: subVendor?.sub_vendor_name || existingCandidate?.sub_vendor_name,
+      sub_vendor_contact_person: subVendor?.contact_person_name || existingCandidate?.sub_vendor_contact_person,
       ...(preserveFormattedResume ? preserveFormattedResume : {}),
       created_at: existingCandidate?.created_at || now,
       last_updated: now,

@@ -417,7 +417,8 @@ Authorization: Bearer <jwe_token>
     "customFields": {
       "date_of_joining": "2024-03-01",
       "employee_id": "EMP-1234"
-    }
+    },
+    "subVendorId": "sv_a1b2c3d4-e5f6-7890-abcd-ef1234567890"
   },
   "resumeS3Key": "resumes/2024/01/abc123-john_doe_resume.pdf"
 }
@@ -437,6 +438,7 @@ Authorization: Bearer <jwe_token>
 **Validation Rules:**
 - `candidateId`: Optional (generated if new), string, uuid format
 - `profile.fullName`: Required, string, min 2, max 100 characters
+- `profile.email`: Conditionally required -- required when `subVendorId` is not provided; optional when `subVendorId` is provided (sub-vendor candidates may not have an email on file)
 - `profile.primarySkills`: Required, array of strings, min 1 item, no upper limit
 - `profile.secondarySkills`: Optional, array of strings, no upper limit
 - `profile.totalExperience`: Required, number, min 0, max 50
@@ -449,6 +451,7 @@ Authorization: Bearer <jwe_token>
 - `profile.githubUrl`: Optional, string (URL), GitHub profile URL
 - `profile.coverLetter`: Optional, string, cover letter or email body text
 - `profile.customFields`: Optional, `Record<string, string | number>` map of custom field key-value pairs
+- `profile.subVendorId`: Optional, string (UUID). When provided, links the candidate to a sub-vendor from the SubVendors table. The sub-vendor's name and contact person are denormalized onto the candidate profile.
 - `resumeS3Key`: Required, string, min 1, max 500
 
 ---
@@ -502,6 +505,9 @@ Authorization: Bearer <jwe_token>
       "date_of_joining": "2024-03-01",
       "employee_id": "EMP-1234"
     },
+    "subVendorId": "sv_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "subVendorName": "TechStaff Solutions",
+    "subVendorContactPerson": "Ravi Kumar",
     "lastUpdated": "2024-01-15T10:30:00Z",
     "createdAt": "2024-01-10T08:00:00Z"
   }
@@ -513,6 +519,9 @@ Authorization: Bearer <jwe_token>
 - `githubUrl`: Optional string containing the candidate's GitHub profile URL. Auto-extracted from resume/email body by LLM; can be manually set during screening. May be absent if not found.
 - `coverLetter`: Optional string containing the candidate's cover letter or supplementary text. For email-ingested candidates, this is the plain-text email body (HTML stripped). May be absent if no cover letter was provided.
 - `customFields`: Optional map of key-value pairs representing recruiter-defined custom fields for this candidate. Keys correspond to `AdditionalFieldDefinition.key` values. May be empty or absent if no custom fields have been set.
+- `subVendorId`: Optional string linking the candidate to a sub-vendor. May be absent if the candidate was not sourced via a sub-vendor.
+- `subVendorName`: Optional denormalized sub-vendor name. Present when `subVendorId` is set.
+- `subVendorContactPerson`: Optional denormalized sub-vendor contact person name. Present when `subVendorId` is set and the sub-vendor has a contact person.
 
 ---
 
@@ -712,6 +721,9 @@ Authorization: Bearer <jwe_token> (optional)
         "headline": "Sr. Full Stack Developer",
         "notInterested": false,
         "notInterestedAt": null,
+        "subVendorId": "sv_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "subVendorName": "TechStaff Solutions",
+        "subVendorContactPerson": "Ravi Kumar",
         "isShortlisted": true,
         "isNotSuitable": false,
         "matchScore": 92,
@@ -1627,6 +1639,148 @@ Update a client's default settings.
     "notes": "Updated terms",
     "createdAt": "2024-01-15T10:30:00Z",
     "lastUpdated": "2024-02-15T10:30:00Z"
+  }
+}
+```
+
+---
+
+## Sub-Vendor Master Endpoints
+
+### POST /recruiter/sub-vendors
+
+Create a new sub-vendor.
+
+**Auth:** Requires `recruiter` role.
+
+**Request Body:**
+```json
+{
+  "subVendorName": "TechStaff Solutions",
+  "contactPersonName": "Ravi Kumar",
+  "contactPersonPhone": "+91-9876543210",
+  "contactPersonEmail": "ravi@techstaff.com",
+  "notes": "Specializes in Java and Python developers"
+}
+```
+
+**Response (201 Created):**
+```json
+{
+  "success": true,
+  "data": {
+    "subVendorId": "sv_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "subVendorName": "TechStaff Solutions",
+    "contactPersonName": "Ravi Kumar",
+    "contactPersonPhone": "+91-9876543210",
+    "contactPersonEmail": "ravi@techstaff.com",
+    "notes": "Specializes in Java and Python developers",
+    "createdAt": "2024-01-15T10:30:00Z",
+    "lastUpdated": "2024-01-15T10:30:00Z"
+  }
+}
+```
+
+**Validation Rules:**
+- `subVendorName`: Required, string, min 1, max 200
+- `contactPersonName`: Optional, string, max 200
+- `contactPersonPhone`: Optional, string, max 20
+- `contactPersonEmail`: Optional, string, valid email format
+- `notes`: Optional, string, max 1000
+
+**Notes:**
+- Returns 409 if a sub-vendor with the same name already exists (case-insensitive)
+
+---
+
+### GET /recruiter/sub-vendors
+
+List all sub-vendors with full details.
+
+**Auth:** Requires `recruiter` role.
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "subVendors": [
+      {
+        "subVendorId": "sv_a1b2c3d4",
+        "subVendorName": "TechStaff Solutions",
+        "contactPersonName": "Ravi Kumar",
+        "contactPersonPhone": "+91-9876543210",
+        "contactPersonEmail": "ravi@techstaff.com",
+        "notes": "Specializes in Java and Python developers",
+        "createdAt": "2024-01-15T10:30:00Z",
+        "lastUpdated": "2024-01-15T10:30:00Z"
+      }
+    ]
+  }
+}
+```
+
+---
+
+### PUT /recruiter/sub-vendors/{subVendorId}
+
+Update a sub-vendor's details. The sub-vendor name cannot be changed.
+
+**Auth:** Requires `recruiter` role.
+
+**Path Parameters:**
+- `subVendorId`: The unique sub-vendor identifier
+
+**Request Body:**
+```json
+{
+  "contactPersonName": "Priya Sharma",
+  "contactPersonPhone": "+91-9876543211",
+  "contactPersonEmail": "priya@techstaff.com",
+  "notes": "Updated contact person"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "updated": true
+  }
+}
+```
+
+**Error Response (404 Not Found):**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "Sub-vendor not found"
+  }
+}
+```
+
+---
+
+### GET /recruiter/sub-vendor-names
+
+Get sub-vendor names for dropdown/autocomplete. Returns a minimal list with only IDs and names.
+
+**Auth:** Requires `recruiter` role.
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "subVendors": [
+      {
+        "subVendorId": "sv_a1b2c3d4",
+        "subVendorName": "TechStaff Solutions"
+      }
+    ]
   }
 }
 ```

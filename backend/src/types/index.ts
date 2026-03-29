@@ -129,6 +129,9 @@ export interface CandidateItem {
   not_interested?: boolean;
   not_interested_at?: string;
   not_interested_by?: string;
+  sub_vendor_id?: string;
+  sub_vendor_name?: string;
+  sub_vendor_contact_person?: string;
   _type?: string;
   created_at: string;
   last_updated: string;
@@ -289,6 +292,9 @@ export interface CandidateSearchResult {
   notInterestedAt?: string;
   isShortlisted?: boolean;
   isNotSuitable?: boolean;
+  subVendorId?: string;
+  subVendorName?: string;
+  subVendorContactPerson?: string;
 }
 
 export interface SearchResponse {
@@ -789,6 +795,51 @@ export interface ListClientsResponse {
   clients: ClientSummary[];
 }
 
+// ─── Sub-Vendor Master Types ────────────────────────────────────────────────
+
+export interface SubVendorItem {
+  sub_vendor_id: string;
+  sub_vendor_name: string;
+  sub_vendor_name_lower: string;
+  contact_person_name?: string;
+  contact_person_phone?: string;
+  contact_person_email?: string;
+  notes?: string;
+  created_by: string;
+  created_at: string;
+  last_updated: string;
+}
+
+export interface SaveSubVendorRequest {
+  subVendorName: string;
+  contactPersonName?: string;
+  contactPersonPhone?: string;
+  contactPersonEmail?: string;
+  notes?: string;
+}
+
+export interface UpdateSubVendorRequest {
+  contactPersonName?: string;
+  contactPersonPhone?: string;
+  contactPersonEmail?: string;
+  notes?: string;
+}
+
+export interface SubVendorSummary {
+  subVendorId: string;
+  subVendorName: string;
+  contactPersonName?: string;
+  contactPersonPhone?: string;
+  contactPersonEmail?: string;
+  notes?: string;
+  createdAt: string;
+  lastUpdated: string;
+}
+
+export interface ListSubVendorsResponse {
+  subVendors: SubVendorSummary[];
+}
+
 // ─── Candidate Screening Types ──────────────────────────────────────────────
 
 export interface ScreeningProfileData {
@@ -963,7 +1014,9 @@ export type AuditAction =
   | 'PROMPT_UPDATE'
   | 'BULK_IMPORT_START'
   | 'SESSION_SETTINGS_UPDATE'
-  | 'SHORTLIST_MARK_NOT_SUITABLE';
+  | 'SHORTLIST_MARK_NOT_SUITABLE'
+  | 'SUB_VENDOR_CREATE'
+  | 'SUB_VENDOR_UPDATE';
 
 export type AuditEntityType =
   | 'session'
@@ -973,7 +1026,8 @@ export type AuditEntityType =
   | 'requirement'
   | 'client'
   | 'user'
-  | 'config';
+  | 'config'
+  | 'sub_vendor';
 
 export interface AuditLogItem {
   pk: string;
