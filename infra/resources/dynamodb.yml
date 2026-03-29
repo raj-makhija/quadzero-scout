@@ -273,6 +273,35 @@ Resources:
         - Key: Project
           Value: quadzero-scout
 
+  # SubVendors Table (Sub-Vendor Master)
+  SubVendorsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: ${self:custom.subVendorsTable}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: sub_vendor_id
+          AttributeType: S
+        - AttributeName: sub_vendor_name_lower
+          AttributeType: S
+      KeySchema:
+        - AttributeName: sub_vendor_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: SubVendorNameLowerIndex
+          KeySchema:
+            - AttributeName: sub_vendor_name_lower
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Project
+          Value: quadzero-scout
+
   # PricingConfig Table
   PricingConfigTable:
     Type: AWS::DynamoDB::Table
@@ -503,3 +532,9 @@ Outputs:
     Value: !GetAtt ScreeningLocksTable.Arn
     Export:
       Name: ${self:provider.stage}-ScreeningLocksTableArn
+
+  SubVendorsTableArn:
+    Description: SubVendors table ARN
+    Value: !GetAtt SubVendorsTable.Arn
+    Export:
+      Name: ${self:provider.stage}-SubVendorsTableArn

@@ -63,6 +63,9 @@ Stores candidate profile data extracted from resumes and edited by candidates.
 | not_interested | Boolean | No | When true, indicates the candidate is not interested in joining |
 | not_interested_at | String (ISO 8601) | No | Timestamp when not-interested was marked |
 | not_interested_by | String | No | User ID of the recruiter who marked the candidate |
+| sub_vendor_id | String | No | Links to SubVendors table. Set when the candidate is sourced via a sub-vendor. |
+| sub_vendor_name | String | No | Denormalized sub-vendor name for search display (avoids join on read) |
+| sub_vendor_contact_person | String | No | Denormalized sub-vendor contact person name for search display |
 | _type | String | Yes | Fixed value `"PROFILE"` for RecentProfilesIndex GSI partitioning |
 
 **Example Item:**
@@ -108,6 +111,9 @@ Stores candidate profile data extracted from resumes and edited by candidates.
   "github_url": "https://github.com/johndoe",
   "cover_letter": "Dear Hiring Manager, I am writing to express my interest in the Full Stack Developer position...",
   "not_interested": false,
+  "sub_vendor_id": "sv_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "sub_vendor_name": "TechStaff Solutions",
+  "sub_vendor_contact_person": "Ravi Kumar",
   "last_screened_at": "2024-01-14T09:00:00Z",
   "last_screened_by": "user_r1e2c3",
   "experience_bucket": "6-10",
@@ -1478,7 +1484,7 @@ Centralized activity audit trail for all recruiter and admin actions.
 - **ActionTypeIndex**: `action_date` (PK) + `sk` (SK) — query by action type + date
 - **DateIndex**: `log_date` (PK) + `sk` (SK) — query all logs by date, sorted by timestamp descending
 
-**Tracked Actions**: SIGN_IN_SUCCESS, SIGN_IN_FAILURE, CANDIDATE_SEARCH, CANDIDATE_SEARCH_BY_NAME, RESUME_DOWNLOAD_FORMATTED, RESUME_DOWNLOAD_ORIGINAL, SHORTLIST_ADD, SHORTLIST_REMOVE, CANDIDATE_SCREEN, REQUIREMENT_CREATE, REQUIREMENT_UPDATE, REQUIREMENT_UPDATE_STATUS, REQUIREMENT_UPDATE_CRITERIA, REQUIREMENT_CONSOLIDATE, REQUIREMENT_TOGGLE_NOTIFY, REQUIREMENT_CHECK_DUPLICATE, CLIENT_CREATE, CLIENT_UPDATE, SEARCH_SAVE, SEARCH_DELETE, USER_APPROVE, USER_REJECT, PRICING_CONFIG_UPDATE, PROMPT_UPDATE, BULK_IMPORT_START
+**Tracked Actions**: SIGN_IN_SUCCESS, SIGN_IN_FAILURE, CANDIDATE_SEARCH, CANDIDATE_SEARCH_BY_NAME, RESUME_DOWNLOAD_FORMATTED, RESUME_DOWNLOAD_ORIGINAL, SHORTLIST_ADD, SHORTLIST_REMOVE, CANDIDATE_SCREEN, REQUIREMENT_CREATE, REQUIREMENT_UPDATE, REQUIREMENT_UPDATE_STATUS, REQUIREMENT_UPDATE_CRITERIA, REQUIREMENT_CONSOLIDATE, REQUIREMENT_TOGGLE_NOTIFY, REQUIREMENT_CHECK_DUPLICATE, CLIENT_CREATE, CLIENT_UPDATE, SUB_VENDOR_CREATE, SUB_VENDOR_UPDATE, SEARCH_SAVE, SEARCH_DELETE, USER_APPROVE, USER_REJECT, PRICING_CONFIG_UPDATE, PROMPT_UPDATE, BULK_IMPORT_START
 
 **Access Patterns:**
 
@@ -1488,3 +1494,69 @@ Centralized activity audit trail for all recruiter and admin actions.
 | Get audit trail for an entity | Query by entity_key | EntityIndex |
 | Get logs by action type + date | Query by action_date | ActionTypeIndex |
 | Get all logs for a date (default view) | Query by log_date | DateIndex |
+
+---
+
+### 13. SubVendors
+
+Stores sub-vendor (staffing agency / third-party vendor) master data. Sub-vendors can be linked to candidate profiles to track sourcing channels.
+
+**Table Configuration:**
+- Table Name: `SubVendors-{stage}`
+- Billing Mode: PAY_PER_REQUEST
+
+**Primary Key:**
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| sub_vendor_id | String (S) | Partition Key - UUID |
+
+**Attributes:**
+
+| Attribute | Type | Required | Description |
+|-----------|------|----------|-------------|
+| sub_vendor_id | String | Yes | Unique identifier (PK) |
+| sub_vendor_name | String | Yes | Display name |
+| sub_vendor_name_lower | String | Yes | Lowercase normalized name (for GSI lookup and duplicate prevention) |
+| contact_person_name | String | No | Name of the primary contact person |
+| contact_person_phone | String | No | Contact person phone number |
+| contact_person_email | String | No | Contact person email address |
+| notes | String | No | Free-text notes |
+| created_by | String | Yes | User ID of recruiter who created |
+| created_at | String | Yes | ISO 8601 timestamp |
+| last_updated | String | Yes | ISO 8601 timestamp |
+
+**Example Item:**
+```json
+{
+  "sub_vendor_id": "sv_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "sub_vendor_name": "TechStaff Solutions",
+  "sub_vendor_name_lower": "techstaff solutions",
+  "contact_person_name": "Ravi Kumar",
+  "contact_person_phone": "+91-9876543210",
+  "contact_person_email": "ravi@techstaff.com",
+  "notes": "Specializes in Java and Python developers",
+  "created_by": "user_r1e2c3",
+  "created_at": "2024-01-10T08:00:00Z",
+  "last_updated": "2024-02-15T10:30:00Z"
+}
+```
+
+**Global Secondary Indexes:**
+
+#### GSI: SubVendorNameLowerIndex
+For looking up sub-vendors by normalized name (duplicate prevention).
+
+| Attribute | Key Type |
+|-----------|----------|
+| sub_vendor_name_lower | Partition Key |
+
+*Projection: ALL*
+
+**Access Patterns:**
+
+| Operation | Access Pattern | Index |
+|-----------|---------------|-------|
+| Get sub-vendor by ID | GetItem by sub_vendor_id | Primary |
+| Lookup by name | Query by sub_vendor_name_lower | SubVendorNameLowerIndex |
+| List all sub-vendors | Scan | Table Scan |
+| Update sub-vendor | UpdateItem by sub_vendor_id | Primary |

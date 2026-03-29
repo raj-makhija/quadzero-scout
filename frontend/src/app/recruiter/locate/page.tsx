@@ -28,6 +28,9 @@ export type ProfileListItem = {
   headline?: string;
   availability?: string;
   engagementModel?: string;
+  subVendorId?: string;
+  subVendorName?: string;
+  subVendorContactPerson?: string;
 };
 
 const SCREENING_STATUS_OPTIONS = [
@@ -73,6 +76,9 @@ function mapSearchResultToListItem(c: CandidateSearchResult): ProfileListItem {
     notInterested: c.notInterested,
     roles: c.roles,
     headline: c.headline,
+    subVendorId: c.subVendorId,
+    subVendorName: c.subVendorName,
+    subVendorContactPerson: c.subVendorContactPerson,
     availability: c.availability,
   };
 }
@@ -980,7 +986,7 @@ function CandidateCard({ candidate }: { candidate: ProfileListItem }) {
   return (
     <Link
       href={`/recruiter/locate/${candidate.candidateId}`}
-      className={`card p-5 flex items-start gap-4 hover:shadow-md transition-shadow ${candidate.notInterested ? 'opacity-60 border-l-4 border-l-red-400' : ''}`}
+      className={`card p-5 flex items-start gap-4 hover:shadow-md transition-shadow ${candidate.notInterested ? 'opacity-60 border-l-4 border-l-red-400' : ''} ${candidate.subVendorId ? 'ring-2 ring-purple-300 dark:ring-purple-700' : ''}`}
     >
       <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
         <User className="w-5 h-5 text-primary-600" />
@@ -989,6 +995,11 @@ function CandidateCard({ candidate }: { candidate: ProfileListItem }) {
         <div className="flex flex-wrap items-center gap-2 mb-0.5">
           <span className="text-base font-semibold text-gray-900 dark:text-gray-100">{candidate.fullName}</span>
           <span className={`badge text-xs ${screeningStatus.className}`}>{screeningStatus.label}</span>
+          {candidate.subVendorName && (
+            <span className="badge text-xs bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+              Sub-Vendor: {candidate.subVendorName}
+            </span>
+          )}
         </div>
         <p className="text-sm text-primary-600 dark:text-primary-400 mb-1.5">{getDisplayHeadline(candidate)}</p>
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-sm text-gray-500 dark:text-gray-400 mb-2">

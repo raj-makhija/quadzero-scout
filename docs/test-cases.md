@@ -2,7 +2,7 @@
 
 **Document Version:** 1.0
 **Application:** Quadzero Scout - AI-powered Talent Matching Platform
-**Last Updated:** 2026-03-25
+**Last Updated:** 2026-03-28
 
 ---
 
@@ -34,6 +34,7 @@
 24. [Module 23: Screening Lock](#24-module-23-screening-lock)
 25. [Module 24: Not Interested Candidate](#25-module-24-not-interested-candidate)
 26. [Module 25: Not Suitable Candidate](#26-module-25-not-suitable-candidate)
+27. [Module 26: Sub-Vendor Management](#27-module-26-sub-vendor-management)
 
 ---
 
@@ -2911,6 +2912,108 @@ All functional and non-functional aspects of Quadzero Scout covering:
 
 ---
 
+## 27. Module 26: Sub-Vendor Management
+
+### TC-SV-001: Create sub-vendor with valid data
+- **Priority:** P0
+- **Type:** API / Integration
+- **Precondition:** Authenticated as recruiter
+- **Steps:** Call `POST /recruiter/sub-vendors` with `{ "subVendorName": "TechStaff Solutions", "contactPersonName": "Ravi Kumar", "contactPersonPhone": "+91-9876543210", "contactPersonEmail": "ravi@techstaff.com", "notes": "Java specialists" }`
+- **Expected:** HTTP 201; response contains `subVendorId`, `subVendorName`, `contactPersonName`, `contactPersonPhone`, `contactPersonEmail`, `notes`, `createdAt`, `lastUpdated`
+
+### TC-SV-002: Reject duplicate sub-vendor name (case-insensitive)
+- **Priority:** P0
+- **Type:** API / Validation
+- **Precondition:** Sub-vendor "TechStaff Solutions" already exists
+- **Steps:** Call `POST /recruiter/sub-vendors` with `{ "subVendorName": "techstaff solutions" }`
+- **Expected:** HTTP 409; error message indicates sub-vendor already exists
+
+### TC-SV-003: Reject create with missing sub-vendor name
+- **Priority:** P1
+- **Type:** API / Validation
+- **Precondition:** Authenticated as recruiter
+- **Steps:** Call `POST /recruiter/sub-vendors` with `{}` (empty body)
+- **Expected:** HTTP 400 with VALIDATION_ERROR
+
+### TC-SV-004: List all sub-vendors
+- **Priority:** P0
+- **Type:** API / Integration
+- **Precondition:** One or more sub-vendors exist
+- **Steps:** Call `GET /recruiter/sub-vendors`
+- **Expected:** HTTP 200; response contains `subVendors` array with full details (subVendorId, subVendorName, contactPersonName, contactPersonPhone, contactPersonEmail, notes, createdAt, lastUpdated)
+
+### TC-SV-005: Update sub-vendor with valid data
+- **Priority:** P1
+- **Type:** API / Integration
+- **Precondition:** Sub-vendor exists
+- **Steps:** Call `PUT /recruiter/sub-vendors/{subVendorId}` with `{ "contactPersonName": "Priya Sharma", "notes": "Updated" }`
+- **Expected:** HTTP 200; response contains `{ "updated": true }`
+
+### TC-SV-006: Update non-existent sub-vendor returns 404
+- **Priority:** P1
+- **Type:** API / Validation
+- **Precondition:** Authenticated as recruiter
+- **Steps:** Call `PUT /recruiter/sub-vendors/nonexistent-id` with `{ "notes": "test" }`
+- **Expected:** HTTP 404 with NOT_FOUND error code
+
+### TC-SV-007: Get sub-vendor names for dropdown
+- **Priority:** P1
+- **Type:** API / Integration
+- **Precondition:** One or more sub-vendors exist
+- **Steps:** Call `GET /recruiter/sub-vendor-names`
+- **Expected:** HTTP 200; response contains `subVendors` array with only `subVendorId` and `subVendorName` fields (no contact details or notes)
+
+### TC-SV-008: Save profile with subVendorId (email optional)
+- **Priority:** P0
+- **Type:** API / Validation
+- **Precondition:** Sub-vendor exists in SubVendors table
+- **Steps:** Call `POST /candidate/save-profile` with `profile.subVendorId` set and `profile.email` omitted
+- **Expected:** HTTP 200; profile saved successfully. Sub-vendor name and contact person denormalized onto the candidate profile.
+
+### TC-SV-009: Save profile without subVendorId (email required)
+- **Priority:** P0
+- **Type:** API / Validation
+- **Precondition:** Authenticated user
+- **Steps:** Call `POST /candidate/save-profile` without `profile.subVendorId` and without `profile.email`
+- **Expected:** HTTP 400 with VALIDATION_ERROR indicating email is required
+
+### TC-SV-010: Search results include sub-vendor fields for authenticated users
+- **Priority:** P1
+- **Type:** API
+- **Precondition:** Candidate profile has `sub_vendor_id`, `sub_vendor_name`, and `sub_vendor_contact_person` set
+- **Steps:** Call `POST /recruiter/search` with valid auth token and criteria matching the candidate
+- **Expected:** Each matching candidate in the response includes `subVendorId`, `subVendorName`, `subVendorContactPerson` fields
+
+### TC-SV-011: Search results omit sub-vendor fields for unauthenticated users
+- **Priority:** P1
+- **Type:** API
+- **Precondition:** Candidate profile has sub-vendor fields set
+- **Steps:** Call `POST /recruiter/search` without auth token
+- **Expected:** Candidate results do not contain `subVendorId`, `subVendorName`, or `subVendorContactPerson`
+
+### TC-SV-012: Sub-vendor master page displays all sub-vendors
+- **Priority:** P1
+- **Type:** UI / E2E
+- **Precondition:** Recruiter is logged in; sub-vendors exist
+- **Steps:** Navigate to the sub-vendor master page
+- **Expected:** All sub-vendors are displayed in a list/table with name, contact person, phone, email, and notes columns
+
+### TC-SV-013: Sub-vendor master page - create new sub-vendor via form
+- **Priority:** P1
+- **Type:** UI / E2E
+- **Precondition:** Recruiter is on the sub-vendor master page
+- **Steps:** (1) Click "Add Sub-Vendor" button. (2) Fill in sub-vendor name and optional contact details. (3) Submit the form.
+- **Expected:** New sub-vendor appears in the list. Success toast/notification displayed.
+
+### TC-SV-014: Sub-vendor master page - edit sub-vendor via inline or modal form
+- **Priority:** P2
+- **Type:** UI / E2E
+- **Precondition:** Recruiter is on the sub-vendor master page with existing sub-vendors
+- **Steps:** (1) Click edit on a sub-vendor row. (2) Update contact details. (3) Save changes.
+- **Expected:** Sub-vendor details updated. Updated values reflected in the list.
+
+---
+
 ## Traceability Matrix Summary
 
 | Module | Test Count | P0 | P1 | P2 | P3 |
@@ -2941,4 +3044,5 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | Screening Lock | 17 | 7 | 10 | 0 | 0 |
 | Not Interested Candidate | 6 | 2 | 4 | 0 | 0 |
 | Not Suitable Candidate | 9 | 2 | 5 | 2 | 0 |
-| **Total** | **387** | **95** | **158** | **102** | **32** |
+| Sub-Vendor Management | 14 | 5 | 7 | 2 | 0 |
+| **Total** | **401** | **100** | **165** | **104** | **32** |

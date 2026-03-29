@@ -132,6 +132,9 @@ async function handleRequest(
           headline: candidate.headline,
           isShortlisted: shortlistedCandidateIds.has(candidate.candidate_id),
           isNotSuitable: notSuitableCandidateIds.has(candidate.candidate_id),
+          subVendorId: candidate.sub_vendor_id,
+          subVendorName: candidate.sub_vendor_name,
+          subVendorContactPerson: candidate.sub_vendor_contact_person,
         };
       })
       // Filter out candidates below minimum must-have exact match ratio

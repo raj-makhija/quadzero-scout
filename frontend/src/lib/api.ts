@@ -591,6 +591,29 @@ class ApiClient {
     });
   }
 
+  // Sub-Vendor Master endpoints
+  async saveSubVendor(data: SaveSubVendorPayload) {
+    return this.request<SubVendorSummary>('/recruiter/sub-vendors', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listSubVendors() {
+    return this.request<ListSubVendorsResponse>('/recruiter/sub-vendors');
+  }
+
+  async updateSubVendor(subVendorId: string, data: UpdateSubVendorPayload) {
+    return this.request<SubVendorSummary>(`/recruiter/sub-vendors/${subVendorId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getSubVendorNames() {
+    return this.request<SubVendorNamesResponse>('/recruiter/sub-vendor-names');
+  }
+
   // Locate Profile endpoints
   async searchCandidatesByName(query: string, limit?: number): Promise<CandidateNameSearchResponse> {
     const params = new URLSearchParams({ q: query });
@@ -694,6 +717,9 @@ export interface CandidateProfile extends ExtractedProfile {
   notInterested?: boolean;
   notInterestedAt?: string;
   headline?: string;
+  subVendorId?: string;
+  subVendorName?: string;
+  subVendorContactPerson?: string;
 }
 
 export interface ParsedCriteria {
@@ -778,6 +804,9 @@ export interface CandidateSearchResult {
   isNotSuitable?: boolean;
   roles?: string[];
   headline?: string;
+  subVendorId?: string;
+  subVendorName?: string;
+  subVendorContactPerson?: string;
 }
 
 export interface SearchResponse {
@@ -1209,6 +1238,46 @@ export interface ClientDefaultsResponse {
 
 export interface ListClientsResponse {
   clients: ClientSummary[];
+}
+
+// Sub-Vendor types
+export interface SubVendorSummary {
+  subVendorId: string;
+  subVendorName: string;
+  contactPersonName?: string;
+  contactPersonPhone?: string;
+  contactPersonEmail?: string;
+  notes?: string;
+  createdAt: string;
+  lastUpdated: string;
+}
+
+export interface SubVendorNameItem {
+  subVendorId: string;
+  subVendorName: string;
+}
+
+export interface ListSubVendorsResponse {
+  subVendors: SubVendorSummary[];
+}
+
+export interface SubVendorNamesResponse {
+  subVendors: SubVendorNameItem[];
+}
+
+interface SaveSubVendorPayload {
+  subVendorName: string;
+  contactPersonName?: string;
+  contactPersonPhone?: string;
+  contactPersonEmail?: string;
+  notes?: string;
+}
+
+interface UpdateSubVendorPayload {
+  contactPersonName?: string | null;
+  contactPersonPhone?: string | null;
+  contactPersonEmail?: string | null;
+  notes?: string | null;
 }
 
 // Screening types

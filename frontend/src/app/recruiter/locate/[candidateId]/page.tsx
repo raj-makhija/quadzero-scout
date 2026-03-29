@@ -293,7 +293,17 @@ export default function CandidateProfilePage() {
               <div className="flex flex-wrap items-center gap-2 mb-0.5">
                 <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">{profile.fullName}</h1>
                 <span className={`badge text-xs ${screeningStatus.className}`}>{screeningStatus.label}</span>
+                {profile.subVendorName && (
+                  <span className="badge text-xs bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                    Sub-Vendor: {profile.subVendorName}
+                  </span>
+                )}
               </div>
+              {profile.subVendorContactPerson && (
+                <p className="text-xs text-purple-600 dark:text-purple-400 mb-0.5">
+                  Sub-Vendor Contact: {profile.subVendorContactPerson}
+                </p>
+              )}
               <p className="text-sm text-primary-600 dark:text-primary-400 mb-2">
                 {profile.headline || generateHeadline(profile.seniority || '', profile.roles, profile.primarySkills)}
               </p>
