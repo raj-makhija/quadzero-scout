@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Header } from '@/components/Header';
-import { api, ExtractedProfile } from '@/lib/api';
+import { api, ExtractedProfile, SubVendorNameItem } from '@/lib/api';
 import { formatSeniority, formatAvailability, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS, CANDIDATE_ENGAGEMENT_OPTIONS } from '@/lib/utils';
 
 export default function ReviewPage() {
@@ -16,6 +16,9 @@ export default function ReviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [newSkill, setNewSkill] = useState('');
   const [supplementaryText, setSupplementaryText] = useState<string | null>(null);
+  const [subVendors, setSubVendors] = useState<SubVendorNameItem[]>([]);
+  const [selectedSubVendorId, setSelectedSubVendorId] = useState<string>('');
+  const [subVendorSearch, setSubVendorSearch] = useState('');
 
   useEffect(() => {
     const stored = sessionStorage.getItem('extractedProfile');
@@ -31,6 +34,11 @@ export default function ReviewPage() {
     setS3Key(storedS3Key);
     setConfidence(parseFloat(storedConfidence || '0'));
     setSupplementaryText(sessionStorage.getItem('supplementaryText'));
+
+    // Fetch sub-vendor names for dropdown
+    api.getSubVendorNames()
+      .then((res) => setSubVendors(res.subVendors))
+      .catch(() => {}); // Non-critical - dropdown will be empty
   }, [router]);
 
   const updateProfile = (updates: Partial<ExtractedProfile>) => {
@@ -89,6 +97,13 @@ export default function ReviewPage() {
       setSaving(true);
       setError(null);
 
+      // Validate email is required when no sub-vendor selected
+      if (!selectedSubVendorId && !profile.email) {
+        setError('Email is required when no sub-vendor is selected');
+        setSaving(false);
+        return;
+      }
+
       const profileToSave = {
         ...profile,
         availability: profile.availability || 'negotiable',
@@ -100,6 +115,7 @@ export default function ReviewPage() {
         currentCtc: profile.currentCtc || undefined,
         expectedCtc: profile.expectedCtc || undefined,
         coverLetter: supplementaryText || undefined,
+        subVendorId: selectedSubVendorId || undefined,
       };
       const { candidateId } = await api.saveProfile({ profile: profileToSave, resumeS3Key: s3Key });
 
@@ -167,7 +183,10 @@ export default function ReviewPage() {
                 />
               </div>
               <div>
-                <label className="label">Email <span className="text-red-500">*</span></label>
+                <label className="label">
+                  Email {!selectedSubVendorId && <span className="text-red-500">*</span>}
+                  {selectedSubVendorId && <span className="text-xs text-gray-400 ml-1">(optional for sub-vendor candidates)</span>}
+                </label>
                 <input
                   type="email"
                   value={profile.email || ''}
@@ -214,6 +233,26 @@ export default function ReviewPage() {
                   placeholder="https://github.com/username"
                 />
               </div>
+              {subVendors.length > 0 && (
+                <div className="md:col-span-2">
+                  <label className="label">Sub-Vendor (optional)</label>
+                  <select
+                    value={selectedSubVendorId}
+                    onChange={(e) => setSelectedSubVendorId(e.target.value)}
+                    className="input mt-1 w-full"
+                  >
+                    <option value="">-- None (direct candidate) --</option>
+                    {subVendors.map(sv => (
+                      <option key={sv.subVendorId} value={sv.subVendorId}>{sv.subVendorName}</option>
+                    ))}
+                  </select>
+                  {selectedSubVendorId && (
+                    <p className="mt-1 text-xs text-purple-600 dark:text-purple-400">
+                      This candidate will be linked to the selected sub-vendor. Email and phone are optional.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 

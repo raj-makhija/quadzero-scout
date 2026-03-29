@@ -1438,7 +1438,7 @@ export default function RecruiterSearchPage() {
               {results.map((candidate, index) => (
                 <div
                   key={candidate.candidateId}
-                  className={`card p-6 hover:shadow-md transition-shadow cursor-pointer ${candidate.notInterested ? 'opacity-60 border-l-4 border-l-red-400' : candidate.isNotSuitable ? 'opacity-50 border-l-4 border-l-orange-400 bg-orange-50/30 dark:bg-orange-950/10' : candidate.isShortlisted ? 'border-l-4 border-l-green-500 bg-green-50/50 dark:bg-green-950/20' : ''}`}
+                  className={`card p-6 hover:shadow-md transition-shadow cursor-pointer ${candidate.notInterested ? 'opacity-60 border-l-4 border-l-red-400' : candidate.isNotSuitable ? 'opacity-50 border-l-4 border-l-orange-400 bg-orange-50/30 dark:bg-orange-950/10' : candidate.isShortlisted ? 'border-l-4 border-l-green-500 bg-green-50/50 dark:bg-green-950/20' : ''} ${candidate.subVendorId ? 'ring-2 ring-purple-300 dark:ring-purple-700' : ''}`}
                   onClick={() => {
                     if (!isAuthenticated) { handleLoginRequired(); return; }
                     // Smart routing when requirement exists and candidate not yet shortlisted/not-suitable
@@ -1476,7 +1476,17 @@ export default function RecruiterSearchPage() {
                             Not Suitable
                           </span>
                         )}
+                        {isAuthenticated && candidate.subVendorName && (
+                          <span className="badge text-xs bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                            Sub-Vendor: {candidate.subVendorName}
+                          </span>
+                        )}
                       </div>
+                      {isAuthenticated && candidate.subVendorContactPerson && (
+                        <p className="text-xs text-purple-600 dark:text-purple-400 mt-0.5">
+                          Contact: {candidate.subVendorContactPerson}
+                        </p>
+                      )}
 
                       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-gray-400">
                         <span className="flex items-center gap-1">

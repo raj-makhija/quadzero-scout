@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
-import { X, Home, Upload, Search, User, LogOut, LogIn, UserPlus, FileText, Building2 } from 'lucide-react';
+import { X, Home, Upload, Search, User, LogOut, LogIn, UserPlus, FileText, Building2, Users } from 'lucide-react';
 import { ThemeSelect } from './ThemeToggle';
 import { cn } from '@/lib/utils';
 import type { Session } from 'next-auth';
@@ -129,6 +129,12 @@ export function MobileNav({ open, onClose, session }: MobileNavProps) {
             href="/recruiter/clients"
             icon={<Building2 className="h-5 w-5" />}
             label="Clients"
+            onClick={onClose}
+          />
+          <NavLink
+            href="/recruiter/sub-vendors"
+            icon={<Users className="h-5 w-5" />}
+            label="Sub-Vendors"
             onClick={onClose}
           />
           <NavLink

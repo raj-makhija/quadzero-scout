@@ -21,7 +21,7 @@ export const SaveProfileRequestSchema = z.object({
   candidateId: z.string().uuid().optional(),
   profile: z.object({
     fullName: z.string().min(2),
-    email: z.string().email(),
+    email: z.string().email().or(z.literal('')).optional(),
     phone: z.string().optional(),
     location: z.string().nullable().optional(),
     primarySkills: z.array(z.string().min(1)).min(1),
@@ -47,6 +47,15 @@ export const SaveProfileRequestSchema = z.object({
     githubUrl: z.string().url().optional(),
     coverLetter: z.string().optional(),
     headline: z.string().optional(),
+    subVendorId: z.string().optional(),
+  }).superRefine((data, ctx) => {
+    if (!data.subVendorId && (!data.email || data.email === '')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Email is required when no sub-vendor is selected',
+        path: ['email'],
+      });
+    }
   }),
   resumeS3Key: z.string().min(1).max(500),
 });
@@ -277,6 +286,23 @@ export const UpdateClientRequestSchema = z.object({
   defaultEngagementModel: z.enum(['full_time_regular', 'full_time_contract', 'part_time_contract']).optional(),
   defaultPayroll: z.enum(['quadzero', 'client']).optional(),
   notes: z.string().max(1000).optional(),
+});
+
+// Save Sub-Vendor Request Validation
+export const SaveSubVendorRequestSchema = z.object({
+  subVendorName: z.string().min(1).max(200),
+  contactPersonName: z.string().max(200).optional(),
+  contactPersonPhone: z.string().max(20).optional(),
+  contactPersonEmail: z.string().email().optional(),
+  notes: z.string().max(1000).optional(),
+});
+
+// Update Sub-Vendor Request Validation
+export const UpdateSubVendorRequestSchema = z.object({
+  contactPersonName: z.string().max(200).nullable().optional(),
+  contactPersonPhone: z.string().max(20).nullable().optional(),
+  contactPersonEmail: z.string().email().nullable().optional(),
+  notes: z.string().max(1000).nullable().optional(),
 });
 
 // Screen Candidate Request Validation

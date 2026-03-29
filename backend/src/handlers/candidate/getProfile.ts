@@ -55,6 +55,9 @@ export async function handler(
       lastScreenedBy: candidate.last_screened_by_name,
       notInterested: candidate.not_interested || false,
       notInterestedAt: candidate.not_interested_at,
+      subVendorId: candidate.sub_vendor_id,
+      subVendorName: candidate.sub_vendor_name,
+      subVendorContactPerson: candidate.sub_vendor_contact_person,
     };
 
     return success(response);
