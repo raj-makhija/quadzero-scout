@@ -38,6 +38,7 @@ import {
   isScreeningExpired,
 } from '@/components/screening-modal';
 import ScreeningHistoryPanel from '@/components/screening-history-panel';
+import { CheckRequirementMatch } from '@/components/MatchExplainer';
 
 export default function CandidateProfilePage() {
   const params = useParams();
@@ -502,6 +503,9 @@ export default function CandidateProfilePage() {
 
         {/* Screening History */}
         <ScreeningHistoryPanel candidateId={candidateId} mode="inline" />
+
+        {/* Check Requirement Match */}
+        <CheckRequirementMatch candidateId={candidateId} />
 
         {/* Shortlisted JDs */}
         <div className="card mb-4">
