@@ -504,6 +504,14 @@ class ApiClient {
     });
   }
 
+  // Match debug (diagnostic endpoint)
+  async matchDebug(candidateId: string, requirementId: string) {
+    return this.request<MatchDebugResponse>('/candidate/match-debug', {
+      method: 'POST',
+      body: JSON.stringify({ candidateId, requirementId }),
+    });
+  }
+
   // Shortlist endpoints
   async shortlistCandidate(requirementId: string, candidateId: string, notes?: string) {
     return this.request<{ success: boolean }>('/recruiter/shortlist', {
@@ -1439,4 +1447,73 @@ export interface AuditLogFilters {
   endDate?: string;
   limit?: number;
   nextToken?: string;
+}
+
+// Match Debug types
+export interface MatchDebugFilterResult {
+  passed: boolean;
+  detail?: string;
+  ratio?: number;
+  threshold?: number;
+  matched?: string[];
+  related?: string[];
+  missing?: string[];
+  reqModel?: string;
+  candidateModel?: string;
+}
+
+export interface MatchDebugResponse {
+  candidate: {
+    candidateId: string;
+    fullName: string;
+    primarySkills: string[];
+    normalizedPrimary: string[];
+    secondarySkills: string[];
+    normalizedSecondary: string[];
+    totalExperience: number;
+    seniority: string;
+    engagementModel: string;
+    expectedCtc?: number;
+    currentCtc?: number;
+    availability: string;
+    location?: string;
+  };
+  requirement: {
+    requirementId: string;
+    clientName: string;
+    jobTitle?: string;
+    coreSkill?: string;
+    normalizedCoreSkill?: string;
+    mustHaveSkills: string[];
+    normalizedMustHave: string[];
+    goodToHaveSkills: string[];
+    normalizedGoodToHave: string[];
+    engagementModel?: string;
+    budgetMaxLpa?: number;
+    location?: string;
+    parsedLocations?: string[];
+    availability?: string[];
+    seniority?: string[];
+  };
+  filters: {
+    coreSkill: MatchDebugFilterResult;
+    mustHaveRatio: MatchDebugFilterResult;
+    engagementModel: MatchDebugFilterResult;
+    budgetFit: MatchDebugFilterResult;
+  };
+  wouldBeExcluded: boolean;
+  excludedBy: string[];
+  score: number;
+  matchDetails: {
+    mustHaveMatched: string[];
+    mustHaveRelated: string[];
+    mustHaveMissing: string[];
+    goodToHaveMatched: string[];
+    goodToHaveRelated: string[];
+    experienceMatch: string;
+    seniorityMatch: boolean;
+    ctcMatch: boolean;
+    locationMatch: string;
+    availabilityMatch: string;
+  };
 }

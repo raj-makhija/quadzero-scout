@@ -554,6 +554,14 @@ functions:
           path: /candidate/match-requirements
           method: POST
 
+  # Candidate Match Debug (diagnostic endpoint)
+  candidateMatchDebug:
+    handler: src/handlers/candidate/matchDebug.handler
+    events:
+      - httpApi:
+          path: /candidate/match-debug
+          method: POST
+
   # Shortlist Endpoints
   recruiterShortlistCandidate:
     handler: src/handlers/recruiter/shortlistCandidate.handler

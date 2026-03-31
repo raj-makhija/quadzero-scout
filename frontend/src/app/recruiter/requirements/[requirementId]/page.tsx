@@ -6,6 +6,7 @@ import { useSession } from 'next-auth/react';
 import { Bell, Pencil } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { CustomFieldsModal } from '@/components/custom-fields-modal';
+import { CheckCandidateMatch } from '@/components/MatchExplainer';
 import { api, RequirementDetail, ShortlistedCandidate, SearchCriteria, UpdateRequirementPayload } from '@/lib/api';
 import {
   formatDate,
@@ -689,6 +690,9 @@ export default function RequirementDetailPage() {
                 )}
               </div>
             </div>
+
+            {/* Check Candidate Match */}
+            <CheckCandidateMatch requirementId={requirementId} />
 
             {/* Contributing Recruiters */}
             {requirement.contributingRecruiters && requirement.contributingRecruiters.length > 1 && (

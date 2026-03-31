@@ -253,6 +253,12 @@ export const MatchRequirementsRequestSchema = z.object({
   candidateId: z.string().min(1),
 });
 
+// Match Debug Request Validation
+export const MatchDebugRequestSchema = z.object({
+  candidateId: z.string().min(1),
+  requirementId: z.string().min(1),
+});
+
 // Shortlist Candidate Request Validation
 export const ShortlistCandidateRequestSchema = z.object({
   requirementId: z.string().min(1),
