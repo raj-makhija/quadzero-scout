@@ -595,6 +595,115 @@ Content-Type: application/json
 
 ---
 
+### POST /candidate/match-debug
+
+Diagnostic endpoint that reports exactly why a specific candidate-requirement pair does or does not match. Returns raw/normalized skill data, each hard filter's pass/fail status with explanations, and the full scoring breakdown.
+
+**Request Headers:**
+```
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "candidateId": "cand_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "requirementId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+}
+```
+
+**Validation Rules:**
+- `candidateId`: Required, non-empty string
+- `requirementId`: Required, non-empty string
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "candidate": {
+      "candidateId": "cand_...",
+      "fullName": "John Doe",
+      "primarySkills": ["java", "spring boot"],
+      "normalizedPrimary": ["java", "spring boot"],
+      "secondarySkills": ["docker"],
+      "normalizedSecondary": ["docker"],
+      "totalExperience": 8,
+      "seniority": "senior",
+      "engagementModel": "full_time",
+      "expectedCtc": 25,
+      "availability": "1_month",
+      "location": "Hyderabad"
+    },
+    "requirement": {
+      "requirementId": "...",
+      "clientName": "Acme Corp",
+      "jobTitle": "Java Lead",
+      "coreSkill": "java",
+      "normalizedCoreSkill": "java",
+      "mustHaveSkills": ["java", "spring boot"],
+      "normalizedMustHave": ["java", "spring boot"],
+      "goodToHaveSkills": ["kubernetes"],
+      "normalizedGoodToHave": ["kubernetes"],
+      "engagementModel": "full_time_regular",
+      "budgetMaxLpa": 40,
+      "location": "Hyderabad, India",
+      "parsedLocations": ["hyderabad", "india"],
+      "availability": ["immediate", "1_month"],
+      "seniority": ["senior", "lead"]
+    },
+    "filters": {
+      "coreSkill": {
+        "passed": true,
+        "detail": "Normalized coreSkill 'java' found in candidate primary skills"
+      },
+      "mustHaveRatio": {
+        "passed": true,
+        "ratio": 1.0,
+        "threshold": 0.4,
+        "matched": ["java", "spring boot"],
+        "related": [],
+        "missing": []
+      },
+      "engagementModel": {
+        "passed": true,
+        "reqModel": "full_time_regular",
+        "candidateModel": "full_time"
+      },
+      "budgetFit": {
+        "passed": true,
+        "detail": "candidate expectedCtc=25, requirement budgetMaxLpa=40"
+      }
+    },
+    "wouldBeExcluded": false,
+    "excludedBy": [],
+    "score": 85,
+    "matchDetails": {
+      "mustHaveMatched": ["java", "spring boot"],
+      "mustHaveRelated": [],
+      "mustHaveMissing": [],
+      "goodToHaveMatched": [],
+      "goodToHaveRelated": [],
+      "experienceMatch": "full",
+      "seniorityMatch": true,
+      "ctcMatch": true,
+      "locationMatch": "full",
+      "availabilityMatch": "full"
+    }
+  }
+}
+```
+
+**Notes:**
+- No authentication required
+- Runs the candidate through ALL filters and scoring even if a filter would normally exclude the pair — this ensures the full diagnostic is always returned
+- `wouldBeExcluded` is `true` if any hard filter failed; `excludedBy` lists which filter(s) rejected the pair
+- Hard filters evaluated: `coreSkill` (exact match in primary skills), `mustHaveRatio` (≥40% exact matches), `engagementModel` (compatibility check)
+- `budgetFit` is a soft indicator (not a hard filter) — reported for informational purposes
+- Used by the Match Explainer UI on the requirement detail and locate profile pages
+
+---
+
 ## Recruiter Endpoints
 
 ### POST /recruiter/parse-jd
