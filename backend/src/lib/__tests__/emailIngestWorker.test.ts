@@ -195,7 +195,7 @@ describe('emailIngestWorker', () => {
   it('processes a single email with a PDF attachment (happy path)', async () => {
     const message = makeMessage();
     mockGetUnreadMessages.mockResolvedValue([message]);
-    mockGetResumeAttachments.mockReturnValue(message.attachments);
+    mockGetResumeAttachments.mockResolvedValue(message.attachments);
     setupSuccessfulProcessing();
 
     await handler();
@@ -250,7 +250,7 @@ describe('emailIngestWorker', () => {
   it('skips already processed messages (idempotency)', async () => {
     const message = makeMessage();
     mockGetUnreadMessages.mockResolvedValue([message]);
-    mockGetResumeAttachments.mockReturnValue(message.attachments);
+    mockGetResumeAttachments.mockResolvedValue(message.attachments);
     mockGetIngestLogEntry.mockResolvedValue({ status: 'completed' });
 
     await handler();
@@ -272,7 +272,7 @@ describe('emailIngestWorker', () => {
   it('skips emails with no qualifying attachments', async () => {
     const message = makeMessage();
     mockGetUnreadMessages.mockResolvedValue([message]);
-    mockGetResumeAttachments.mockReturnValue([]); // No PDF/DOCX
+    mockGetResumeAttachments.mockResolvedValue([]); // No PDF/DOCX
 
     await handler();
 
@@ -288,7 +288,7 @@ describe('emailIngestWorker', () => {
   it('handles text extraction failure with error digest', async () => {
     const message = makeMessage();
     mockGetUnreadMessages.mockResolvedValue([message]);
-    mockGetResumeAttachments.mockReturnValue(message.attachments);
+    mockGetResumeAttachments.mockResolvedValue(message.attachments);
     mockExtractTextFromResume.mockResolvedValue({ text: 'short', confidence: 0.5 });
 
     await handler();
@@ -313,7 +313,7 @@ describe('emailIngestWorker', () => {
   it('handles ConditionalCheckFailedException (race condition)', async () => {
     const message = makeMessage();
     mockGetUnreadMessages.mockResolvedValue([message]);
-    mockGetResumeAttachments.mockReturnValue(message.attachments);
+    mockGetResumeAttachments.mockResolvedValue(message.attachments);
     const condErr = new Error('Condition not met');
     condErr.name = 'ConditionalCheckFailedException';
     mockPutIngestLogEntry.mockRejectedValue(condErr);
@@ -331,7 +331,7 @@ describe('emailIngestWorker', () => {
   it('updates existing candidate (dedup by email)', async () => {
     const message = makeMessage();
     mockGetUnreadMessages.mockResolvedValue([message]);
-    mockGetResumeAttachments.mockReturnValue(message.attachments);
+    mockGetResumeAttachments.mockResolvedValue(message.attachments);
     setupSuccessfulProcessing();
     mockGetCandidateByEmail.mockResolvedValue({
       candidate_id: 'existing-cand-123',
@@ -359,7 +359,7 @@ describe('emailIngestWorker', () => {
     const msg1 = makeMessage({ id: 'msg-1', internetMessageId: '<msg-1@test.com>' });
     const msg2 = makeMessage({ id: 'msg-2', internetMessageId: '<msg-2@test.com>' });
     mockGetUnreadMessages.mockResolvedValue([msg1, msg2]);
-    mockGetResumeAttachments.mockReturnValue([msg1.attachments![0]]);
+    mockGetResumeAttachments.mockResolvedValue([msg1.attachments![0]]);
 
     // First message fails unexpectedly
     mockGetIngestLogEntry
@@ -386,7 +386,7 @@ describe('emailIngestWorker', () => {
       },
     });
     mockGetUnreadMessages.mockResolvedValue([message]);
-    mockGetResumeAttachments.mockReturnValue(message.attachments);
+    mockGetResumeAttachments.mockResolvedValue(message.attachments);
     setupSuccessfulProcessing();
 
     await handler();
@@ -402,7 +402,7 @@ describe('emailIngestWorker', () => {
   it('handles email with no body gracefully', async () => {
     const message = makeMessage({ body: undefined });
     mockGetUnreadMessages.mockResolvedValue([message]);
-    mockGetResumeAttachments.mockReturnValue(message.attachments);
+    mockGetResumeAttachments.mockResolvedValue(message.attachments);
     setupSuccessfulProcessing();
 
     await handler();

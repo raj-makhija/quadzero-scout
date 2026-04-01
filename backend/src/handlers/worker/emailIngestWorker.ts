@@ -117,7 +117,7 @@ export async function handler(): Promise<void> {
       }
 
       // Get resume attachments
-      const resumeAttachments = getResumeAttachments(message);
+      const resumeAttachments = await getResumeAttachments(graphConfig, message);
       if (resumeAttachments.length === 0) {
         console.log(`Email ingest: No resume attachments in message from ${fromAddress}: "${subject}"`);
         await safeMarkAsRead(graphConfig, message.id);
