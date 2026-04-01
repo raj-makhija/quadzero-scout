@@ -8,6 +8,7 @@ import {
   getAccessToken,
   getUnreadMessages,
   getResumeAttachments,
+  isResumeContentType,
   markMessageAsRead,
   moveMessageToFolder,
   getMailFolderByName,
@@ -34,7 +35,7 @@ function mockFetchResponse(body: unknown, status = 200) {
 
 describe('graphClient', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     invalidateTokenCache();
   });
 
@@ -140,8 +141,52 @@ describe('graphClient', () => {
     });
   });
 
+  describe('isResumeContentType', () => {
+    it('accepts application/pdf', () => {
+      expect(isResumeContentType('application/pdf', 'resume.pdf')).toBe(true);
+    });
+
+    it('accepts DOCX MIME type', () => {
+      expect(
+        isResumeContentType(
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'cv.docx'
+        )
+      ).toBe(true);
+    });
+
+    it('accepts MIME type with parameters (e.g., application/pdf; name=file.pdf)', () => {
+      expect(isResumeContentType('application/pdf; name="resume.pdf"', 'resume.pdf')).toBe(true);
+    });
+
+    it('accepts application/octet-stream with .pdf extension', () => {
+      expect(isResumeContentType('application/octet-stream', 'Kanchan_QA_4.9Year.pdf')).toBe(true);
+    });
+
+    it('accepts application/octet-stream with .docx extension', () => {
+      expect(isResumeContentType('application/octet-stream', 'resume.docx')).toBe(true);
+    });
+
+    it('rejects application/octet-stream with non-resume extension', () => {
+      expect(isResumeContentType('application/octet-stream', 'photo.png')).toBe(false);
+    });
+
+    it('rejects non-resume MIME types', () => {
+      expect(isResumeContentType('image/png', 'photo.png')).toBe(false);
+      expect(isResumeContentType('text/plain', 'notes.txt')).toBe(false);
+    });
+
+    it('is case-insensitive for MIME type', () => {
+      expect(isResumeContentType('Application/PDF', 'resume.pdf')).toBe(true);
+    });
+
+    it('is case-insensitive for file extension', () => {
+      expect(isResumeContentType('application/octet-stream', 'RESUME.PDF')).toBe(true);
+    });
+  });
+
   describe('getResumeAttachments', () => {
-    it('filters to only PDF and DOCX attachments', () => {
+    it('filters to only PDF and DOCX attachments', async () => {
       const message: GraphMessage = {
         id: 'msg-1',
         subject: 'Test',
@@ -163,14 +208,14 @@ describe('graphClient', () => {
         ],
       };
 
-      const result = getResumeAttachments(message);
+      const result = await getResumeAttachments(testConfig, message);
 
       expect(result).toHaveLength(2);
       expect(result[0].name).toBe('resume.pdf');
       expect(result[1].name).toBe('cv.docx');
     });
 
-    it('returns empty array when no attachments', () => {
+    it('returns empty array when no attachments', async () => {
       const message: GraphMessage = {
         id: 'msg-1',
         subject: 'Test',
@@ -180,10 +225,11 @@ describe('graphClient', () => {
         internetMessageId: '<test@test.com>',
       };
 
-      expect(getResumeAttachments(message)).toHaveLength(0);
+      const result = await getResumeAttachments(testConfig, message);
+      expect(result).toHaveLength(0);
     });
 
-    it('excludes attachments without contentBytes', () => {
+    it('fetches contentBytes individually when missing from expanded response', async () => {
       const message: GraphMessage = {
         id: 'msg-1',
         subject: 'Test',
@@ -196,7 +242,62 @@ describe('graphClient', () => {
         ],
       };
 
-      expect(getResumeAttachments(message)).toHaveLength(0);
+      // Mock token acquisition + individual attachment fetch
+      mockFetch.mockResolvedValueOnce(
+        mockFetchResponse({ access_token: 'test-token', expires_in: 3600 })
+      );
+      mockFetch.mockResolvedValueOnce(
+        mockFetchResponse({ contentBytes: 'fetched-content-base64' })
+      );
+
+      const result = await getResumeAttachments(testConfig, message);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].contentBytes).toBe('fetched-content-base64');
+      // Token fetch + individual attachment fetch
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('accepts application/octet-stream with .pdf extension', async () => {
+      const message: GraphMessage = {
+        id: 'msg-1',
+        subject: 'Test',
+        from: { emailAddress: { name: 'Test', address: 'test@test.com' } },
+        receivedDateTime: '2026-03-10T10:00:00Z',
+        hasAttachments: true,
+        internetMessageId: '<test@test.com>',
+        attachments: [
+          { id: 'att-1', name: 'Kanchan_QA_4.9Year.pdf', contentType: 'application/octet-stream', contentBytes: 'abc', size: 144000 },
+        ],
+      };
+
+      const result = await getResumeAttachments(testConfig, message);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].name).toBe('Kanchan_QA_4.9Year.pdf');
+    });
+
+    it('skips attachment when individual fetch also fails', async () => {
+      const message: GraphMessage = {
+        id: 'msg-1',
+        subject: 'Test',
+        from: { emailAddress: { name: 'Test', address: 'test@test.com' } },
+        receivedDateTime: '2026-03-10T10:00:00Z',
+        hasAttachments: true,
+        internetMessageId: '<test@test.com>',
+        attachments: [
+          { id: 'att-1', name: 'resume.pdf', contentType: 'application/pdf', contentBytes: '', size: 100 },
+        ],
+      };
+
+      // Token acquisition succeeds, but individual attachment fetch fails
+      mockFetch.mockResolvedValueOnce(
+        mockFetchResponse({ access_token: 'test-token', expires_in: 3600 })
+      );
+      mockFetch.mockResolvedValueOnce(mockFetchResponse({ error: 'not found' }, 404));
+
+      const result = await getResumeAttachments(testConfig, message);
+      expect(result).toHaveLength(0);
     });
   });
 
