@@ -53,6 +53,23 @@ const SUPPORTED_ATTACHMENT_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ];
 
+const RESUME_FILE_EXTENSIONS = ['pdf', 'docx'];
+
+/**
+ * Check if an attachment's content type (or file extension fallback) indicates a resume file.
+ * Handles MIME types with parameters (e.g., "application/pdf; name=file.pdf")
+ * and falls back to file extension when contentType is generic (application/octet-stream).
+ */
+export function isResumeContentType(contentType: string, fileName: string): boolean {
+  const baseMime = contentType.toLowerCase().split(';')[0].trim();
+  if (SUPPORTED_ATTACHMENT_TYPES.includes(baseMime)) return true;
+  if (baseMime === 'application/octet-stream') {
+    const ext = fileName.toLowerCase().split('.').pop();
+    return ext !== undefined && RESUME_FILE_EXTENSIONS.includes(ext);
+  }
+  return false;
+}
+
 /**
  * Acquire an OAuth2 access token using client credentials flow.
  * Caches the token in memory and refreshes 5 minutes before expiry.
@@ -130,16 +147,87 @@ export async function getUnreadMessages(
 }
 
 /**
- * Filter a message's attachments to only PDF and DOCX file attachments.
+ * Fetch a single attachment's full content (including contentBytes) by ID.
+ * Used as a fallback when $expand=attachments does not return contentBytes inline.
  */
-export function getResumeAttachments(message: GraphMessage): GraphAttachment[] {
+async function fetchAttachmentContent(
+  graphConfig: GraphConfig,
+  messageId: string,
+  attachmentId: string
+): Promise<string | null> {
+  const token = await getAccessToken(graphConfig);
+  const mailbox = encodeURIComponent(graphConfig.mailboxAddress);
+  const url =
+    `https://graph.microsoft.com/v1.0/users/${mailbox}/messages/${messageId}/attachments/${attachmentId}` +
+    `?$select=id,contentBytes`;
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    console.warn(
+      `Email ingest: Failed to fetch attachment ${attachmentId} (${response.status})`
+    );
+    return null;
+  }
+
+  const data = (await response.json()) as { contentBytes?: string };
+  return data.contentBytes || null;
+}
+
+/**
+ * Filter a message's attachments to only PDF and DOCX file attachments.
+ * If contentBytes is missing (Graph API list endpoint may omit it),
+ * fetches attachment content individually as a fallback.
+ */
+export async function getResumeAttachments(
+  graphConfig: GraphConfig,
+  message: GraphMessage
+): Promise<GraphAttachment[]> {
   if (!message.attachments || message.attachments.length === 0) return [];
 
-  return message.attachments.filter(
-    (att) =>
-      att.contentBytes &&
-      SUPPORTED_ATTACHMENT_TYPES.includes(att.contentType.toLowerCase())
+  // Log all attachments for diagnostics
+  for (const att of message.attachments) {
+    console.log(
+      `Email ingest: Attachment "${att.name}" — contentType="${att.contentType}", ` +
+        `size=${att.size}, hasContentBytes=${!!att.contentBytes}`
+    );
+  }
+
+  // Filter to resume-type attachments by MIME type or file extension
+  const candidates = message.attachments.filter((att) =>
+    isResumeContentType(att.contentType, att.name)
   );
+
+  if (candidates.length === 0) return [];
+
+  // For candidates missing contentBytes, fetch individually from Graph API
+  const results: GraphAttachment[] = [];
+  for (const att of candidates) {
+    if (att.contentBytes) {
+      results.push(att);
+    } else {
+      console.log(
+        `Email ingest: contentBytes missing for "${att.name}", fetching individually`
+      );
+      const contentBytes = await fetchAttachmentContent(
+        graphConfig,
+        message.id,
+        att.id
+      );
+      if (contentBytes) {
+        results.push({ ...att, contentBytes });
+      } else {
+        console.warn(
+          `Email ingest: Could not retrieve contentBytes for "${att.name}", skipping attachment`
+        );
+      }
+    }
+  }
+
+  return results;
 }
 
 /**
