@@ -1,0 +1,16 @@
+name: Hotfix
+description: Urgent production fix
+labels: ["hotfix", "priority:critical"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What is broken in production?
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: User impact
+    validations:
+      required: true

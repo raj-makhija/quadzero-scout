@@ -1,0 +1,29 @@
+name: Feature Request
+description: Propose a new feature
+labels: ["feature"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What should this feature do?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: How do we know this is done?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Backend
+        - Frontend
+        - Infrastructure
+        - Full Stack
+    validations:
+      required: true

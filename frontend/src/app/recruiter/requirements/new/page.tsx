@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Header } from '@/components/Header';
 import { api, ParsedCriteria, DuplicateMatch, EngagementModel, Payroll, ConsolidateResponse, ClientDefaultsResponse, AdditionalFieldDefinition } from '@/lib/api';
-import { ENGAGEMENT_MODEL_OPTIONS, PAYROLL_OPTIONS, formatEngagementModel } from '@/lib/utils';
+import { ENGAGEMENT_MODEL_OPTIONS, PAYROLL_OPTIONS, formatEngagementModel, generateJobTitle } from '@/lib/utils';
 import { AdditionalFieldsBuilder } from '@/components/additional-fields-builder';
 
 type Step = 'jd_input' | 'details' | 'duplicate_check' | 'confirmation';
@@ -39,6 +39,7 @@ export default function PostRequirementPage() {
   const [paymentTermsDays, setPaymentTermsDays] = useState<string>('');
   const [coreSkill, setCoreSkill] = useState('');
   const [additionalFields, setAdditionalFields] = useState<AdditionalFieldDefinition[]>([]);
+  const [contactPersonName, setContactPersonName] = useState('');
 
   // Client defaults
   const [clientDefaults, setClientDefaults] = useState<ClientDefaultsResponse | null>(null);
@@ -83,17 +84,6 @@ export default function PostRequirementPage() {
       }
     }, 500);
   }, [engagementModel, payroll]);
-
-  const generateJobTitle = (client: string, end: string, skill: string): string => {
-    const parts: string[] = [];
-    if (client.trim()) {
-      let part = client.trim();
-      if (end.trim()) part += ` (${end.trim()})`;
-      parts.push(part);
-    }
-    if (skill.trim()) parts.push(skill.trim());
-    return parts.join(' - ') || '';
-  };
 
   const handleParseJD = async () => {
     if (!jobDescription.trim()) {
@@ -175,7 +165,7 @@ export default function PostRequirementPage() {
       setCheckingDuplicates(true);
       setError(null);
 
-      const generatedTitle = generateJobTitle(clientName, endClient, coreSkill);
+      const generatedTitle = generateJobTitle(clientName, endClient, coreSkill, contactPersonName);
       const response = await api.checkRequirementDuplicate(clientName, parsedCriteria, generatedTitle || undefined);
 
       if (response.duplicates.length > 0) {
@@ -204,7 +194,7 @@ export default function PostRequirementPage() {
         ? clientDefaults.defaultPaymentTermsDays
         : paymentTermsDays ? parseInt(paymentTermsDays) : undefined;
 
-      const generatedTitle = generateJobTitle(clientName, endClient, coreSkill);
+      const generatedTitle = generateJobTitle(clientName, endClient, coreSkill, contactPersonName);
       const response = await api.saveRequirement({
         clientName: clientName.trim(),
         endClient: endClient.trim() || undefined,
@@ -220,6 +210,7 @@ export default function PostRequirementPage() {
         status: duplicateOf ? 'duplicate' : 'active',
         duplicateOf,
         additionalFields: additionalFields.length > 0 ? additionalFields : undefined,
+        contactPersonName: contactPersonName.trim() || undefined,
       });
 
       // Persist payment terms to client if recruiter entered them
@@ -391,6 +382,19 @@ export default function PostRequirementPage() {
                     onChange={(e) => setEndClient(e.target.value)}
                     placeholder="Who will leverage the resource? (optional)"
                     className="input mt-1"
+                  />
+                </div>
+
+                {/* Contact Person */}
+                <div>
+                  <label className="label">Contact Person</label>
+                  <input
+                    type="text"
+                    value={contactPersonName}
+                    onChange={(e) => setContactPersonName(e.target.value)}
+                    placeholder="HR contact at client (optional)"
+                    className="input mt-1"
+                    maxLength={200}
                   />
                 </div>
 

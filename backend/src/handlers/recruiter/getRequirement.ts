@@ -86,6 +86,7 @@ async function handleRequest(
       demandScore: item.demand_score || 0,
       notifyRecruiterIds: item.notify_recruiter_ids || [],
       additionalFields: item.additional_fields || [],
+      contactPersonName: item.contact_person_name,
       changeHistory,
     });
   } catch (err) {

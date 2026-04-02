@@ -48,6 +48,7 @@ export const SaveProfileRequestSchema = z.object({
     coverLetter: z.string().optional(),
     headline: z.string().optional(),
     subVendorId: z.string().optional(),
+    skillSynonyms: z.record(z.string(), z.array(z.string())).nullable().optional(),
   }).superRefine((data, ctx) => {
     if (!data.subVendorId && (!data.email || data.email === '')) {
       ctx.addIssue({
@@ -81,6 +82,7 @@ export const SearchRequestSchema = z.object({
     industries: z.array(z.string()).optional(),
     maxBudgetLpa: z.number().min(0).optional(),
     engagementModel: z.enum(['contract', 'full_time', 'either']).optional(),
+    skillSynonyms: z.record(z.string(), z.array(z.string())).optional(),
   }),
   pagination: z.object({
     limit: z.number().min(1).max(100).optional().default(20),
@@ -138,6 +140,7 @@ export const SaveRequirementRequestSchema = z.object({
   status: z.enum(['active', 'duplicate']).optional().default('active'),
   duplicateOf: z.string().uuid().optional(),
   additionalFields: z.array(AdditionalFieldDefinitionSchema).optional().default([]),
+  contactPersonName: z.string().max(200).optional(),
 });
 
 // Check Duplicate Request Validation
@@ -195,6 +198,7 @@ export const UpdateRequirementRequestSchema = z.object({
   jdText: z.string().min(50).max(10000).optional(),
   parsedCriteria: LLMJDOutputSchema.optional(),
   additionalFields: z.array(AdditionalFieldDefinitionSchema).optional(),
+  contactPersonName: z.string().max(200).nullable().optional(),
 }).refine(data => Object.values(data).some(v => v !== undefined), {
   message: 'At least one field must be provided for update',
 });

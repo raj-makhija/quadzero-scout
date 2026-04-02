@@ -1,3 +1,11 @@
+# Automated promotion pipeline:
+#   develop → qa (merge + deploy backend)
+#   qa → main (merge + deploy backend)
+# Frontend deploys are handled by AWS Amplify on branch push.
+#
+# Features reach develop via PRs from feature/bugfix branches.
+# This workflow then promotes to qa and main on schedule.
+
 name: Scheduled Deploy (QA + Prod)
 
 on:

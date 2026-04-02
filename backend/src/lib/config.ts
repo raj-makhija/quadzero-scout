@@ -115,7 +115,7 @@ export const config: Config = {
     openrouterModel: getEnvVar('OPENROUTER_MODEL', 'anthropic/claude-3.5-sonnet'),
     openrouterReferer: getEnvVar('OPENROUTER_REFERER', 'https://quadzero-scout.com'),
     geminiApiKey: getEnvVar('GEMINI_API_KEY', ''),
-    geminiModel: getEnvVar('GEMINI_MODEL', 'gemini-2.0-flash'),
+    geminiModel: getEnvVar('GEMINI_MODEL', 'gemini-2.5-flash'),
     maxRetries: 3,
   },
 };

@@ -293,6 +293,9 @@ function MatchDebugPanel({ result }: { result: MatchDebugResponse }) {
               {matchDetails.mustHaveMatched.map((s) => (
                 <span key={s} className="badge bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">{s}</span>
               ))}
+              {(matchDetails.mustHaveFuzzy || []).map((s) => (
+                <span key={s} className="badge bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400">{s} (fuzzy)</span>
+              ))}
               {matchDetails.mustHaveRelated.map((s) => (
                 <span key={s} className="badge bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">{s} (related)</span>
               ))}
@@ -307,6 +310,9 @@ function MatchDebugPanel({ result }: { result: MatchDebugResponse }) {
             <div className="flex flex-wrap gap-1.5">
               {matchDetails.goodToHaveMatched.map((s) => (
                 <span key={s} className="badge bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">{s}</span>
+              ))}
+              {(matchDetails.goodToHaveFuzzy || []).map((s) => (
+                <span key={s} className="badge bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400">{s} (fuzzy)</span>
               ))}
               {matchDetails.goodToHaveRelated.map((s) => (
                 <span key={s} className="badge bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">{s} (related)</span>

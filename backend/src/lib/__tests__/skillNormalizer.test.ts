@@ -336,3 +336,100 @@ describe('calculateSkillMatch()', () => {
     expect(result.missing).toContain('azure');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Fuzzy matching (token containment + synonym)
+// ---------------------------------------------------------------------------
+
+describe('calculateSkillMatch() — fuzzy matching', () => {
+  it('fuzzy-matches when required skill tokens are contained in candidate skill', () => {
+    const result = calculateSkillMatch(
+      ['client relationship management'],
+      ['client relationship'],
+      true // exactOnly — fuzzy is still checked
+    );
+    expect(result.fuzzyMatched).toContain('client relationship');
+    expect(result.exactMatched).toEqual([]);
+    expect(result.missing).toEqual([]);
+  });
+
+  it('fuzzy-matches bidirectionally (candidate skill tokens are subset of required)', () => {
+    const result = calculateSkillMatch(
+      ['risk management'],
+      ['risk management framework'],
+      true
+    );
+    expect(result.fuzzyMatched).toContain('risk management framework');
+  });
+
+  it('does NOT fuzzy-match when only partial token overlap', () => {
+    const result = calculateSkillMatch(
+      ['delivery governance'],
+      ['delivery management'],
+      true
+    );
+    expect(result.fuzzyMatched).toEqual([]);
+    expect(result.missing).toContain('delivery management');
+  });
+
+  it('does NOT fuzzy-match identical skills (those are exact)', () => {
+    const result = calculateSkillMatch(
+      ['account management'],
+      ['account management'],
+      true
+    );
+    expect(result.exactMatched).toContain('account management');
+    expect(result.fuzzyMatched).toEqual([]);
+  });
+
+  it('does NOT fuzzy-match single-token skills that are equal length', () => {
+    // "java" and "java" should be exact, not fuzzy
+    const result = calculateSkillMatch(['java'], ['java'], true);
+    expect(result.exactMatched).toContain('java');
+    expect(result.fuzzyMatched).toEqual([]);
+  });
+
+  it('combines exact, fuzzy, and missing in a real-world scenario', () => {
+    const result = calculateSkillMatch(
+      ['account management', 'client relationship management', 'delivery governance'],
+      ['account management', 'client relationship', 'delivery management'],
+      true
+    );
+    expect(result.exactMatched).toEqual(['account management']);
+    expect(result.fuzzyMatched).toEqual(['client relationship']);
+    expect(result.missing).toEqual(['delivery management']);
+  });
+
+  it('fuzzy-matches via requiredSynonyms', () => {
+    const result = calculateSkillMatch(
+      ['delivery governance'],
+      ['delivery management'],
+      true,
+      { 'delivery management': ['delivery governance', 'service delivery management'] }
+    );
+    expect(result.fuzzyMatched).toContain('delivery management');
+    expect(result.missing).toEqual([]);
+  });
+
+  it('fuzzy-matches via candidateSynonyms', () => {
+    const result = calculateSkillMatch(
+      ['delivery governance'],
+      ['delivery management'],
+      true,
+      undefined,
+      { 'delivery governance': ['delivery management', 'delivery oversight'] }
+    );
+    expect(result.fuzzyMatched).toContain('delivery management');
+    expect(result.missing).toEqual([]);
+  });
+
+  it('prefers exact match over fuzzy match', () => {
+    const result = calculateSkillMatch(
+      ['react', 'react native'],
+      ['react'],
+      true
+    );
+    expect(result.exactMatched).toEqual(['react']);
+    expect(result.fuzzyMatched).toEqual([]);
+  });
+});

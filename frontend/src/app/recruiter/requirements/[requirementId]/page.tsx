@@ -13,6 +13,7 @@ import {
   formatEngagementModel,
   formatPayroll,
   formatSeniority,
+  generateJobTitle,
 } from '@/lib/utils';
 
 const FIELD_LABELS: Record<string, string> = {
@@ -25,6 +26,7 @@ const FIELD_LABELS: Record<string, string> = {
   contractDurationMonths: 'Contract Duration',
   paymentTermsDays: 'Payment Terms',
   jobTitle: 'Job Title',
+  contactPersonName: 'Contact Person',
   jdText: 'Job Description',
   parsedCriteria: 'Parsed Criteria',
   additionalFields: 'Additional Fields',
@@ -51,7 +53,7 @@ interface EditFormData {
   budgetMaxLpa: string;
   contractDurationMonths: string;
   paymentTermsDays: string;
-  jobTitle: string;
+  contactPersonName: string;
   jdText: string;
 }
 
@@ -92,7 +94,7 @@ export default function RequirementDetailPage() {
     budgetMaxLpa: '',
     contractDurationMonths: '',
     paymentTermsDays: '',
-    jobTitle: '',
+    contactPersonName: '',
     jdText: '',
   });
 
@@ -107,7 +109,7 @@ export default function RequirementDetailPage() {
       budgetMaxLpa: requirement.budgetMaxLpa != null ? String(requirement.budgetMaxLpa) : '',
       contractDurationMonths: requirement.contractDurationMonths != null ? String(requirement.contractDurationMonths) : '',
       paymentTermsDays: requirement.paymentTermsDays != null ? String(requirement.paymentTermsDays) : '',
-      jobTitle: requirement.jobTitle || '',
+      contactPersonName: requirement.contactPersonName || '',
       jdText: requirement.jdText || '',
     });
     setEditing(true);
@@ -148,7 +150,7 @@ export default function RequirementDetailPage() {
       const oldPayTerms = requirement.paymentTermsDays ?? null;
       if (newPayTerms !== oldPayTerms) payload.paymentTermsDays = newPayTerms;
 
-      if (editForm.jobTitle !== (requirement.jobTitle || '')) payload.jobTitle = editForm.jobTitle;
+      if (editForm.contactPersonName !== (requirement.contactPersonName || '')) payload.contactPersonName = editForm.contactPersonName || null;
       if (editForm.jdText !== requirement.jdText) payload.jdText = editForm.jdText;
 
       // Check if anything changed
@@ -160,7 +162,7 @@ export default function RequirementDetailPage() {
       // Auto re-parse JD text when it changes
       if (payload.jdText) {
         try {
-          const parseResult = await api.parseJobDescription(payload.jdText, payload.jobTitle || requirement.jobTitle);
+          const parseResult = await api.parseJobDescription(payload.jdText, requirement.jobTitle);
           payload.parsedCriteria = parseResult.parsedCriteria;
         } catch (parseErr) {
           console.error('JD re-parse failed, saving text without updating criteria:', parseErr);
@@ -258,6 +260,7 @@ export default function RequirementDetailPage() {
       location: requirement.parsedCriteria.location || undefined,
       roles: requirement.parsedCriteria.roles || [],
       maxBudgetLpa: requirement.budgetMaxLpa || undefined,
+      skillSynonyms: requirement.parsedCriteria.skillSynonyms || undefined,
     };
 
     sessionStorage.setItem('scout_recruiter_search', JSON.stringify({
@@ -334,7 +337,7 @@ export default function RequirementDetailPage() {
               <div className="bg-gradient-to-r from-primary-600 to-primary-700 px-6 py-6 text-white">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <div>
-                    <h1 className="text-2xl font-bold">{requirement.jobTitle || 'Untitled Requirement'}</h1>
+                    <h1 className="text-2xl font-bold">{generateJobTitle(requirement.clientName, requirement.endClient, requirement.parsedCriteria?.coreSkill, requirement.contactPersonName)}</h1>
                     <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-primary-100 text-sm">
                       <span className="font-medium">{requirement.clientName}</span>
                       {requirement.endClient && <span>End Client: {requirement.endClient}</span>}
@@ -441,13 +444,14 @@ export default function RequirementDetailPage() {
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Job Title</label>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Contact Person</label>
                         <input
                           type="text"
-                          value={editForm.jobTitle}
-                          onChange={(e) => setEditForm(f => ({ ...f, jobTitle: e.target.value }))}
+                          value={editForm.contactPersonName}
+                          onChange={(e) => setEditForm(f => ({ ...f, contactPersonName: e.target.value }))}
                           className="input w-full"
                           maxLength={200}
+                          placeholder="HR contact at client (optional)"
                         />
                       </div>
                       <div>
