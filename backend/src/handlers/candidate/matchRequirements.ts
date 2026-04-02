@@ -3,9 +3,21 @@ import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, MatchRequirementsRequestSchema } from '../../lib/validation.js';
 import { getCandidateById, getAllActiveRequirements, getShortlistsForCandidate } from '../../lib/dynamodb.js';
 import { normalizeSkill, normalizeSkills } from '../../lib/skillNormalizer.js';
-import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, parseSearchLocations, isEngagementModelCompatible } from '../../lib/matchScoring.js';
+import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, FUZZY_MATCH_WEIGHT, parseSearchLocations, isEngagementModelCompatible } from '../../lib/matchScoring.js';
 import { isCandidateWithinBudget } from '../../lib/ctcConversion.js';
 import type { MatchedRequirement, MatchRequirementsResponse } from '../../types/index.js';
+
+/** Normalize a synonym map: lowercase keys and values. Returns undefined if input is null/undefined. */
+function normalizeSynonymMap(
+  synonyms: Record<string, string[]> | null | undefined
+): Record<string, string[]> | undefined {
+  if (!synonyms) return undefined;
+  const result: Record<string, string[]> = {};
+  for (const [key, values] of Object.entries(synonyms)) {
+    result[normalizeSkill(key)] = normalizeSkills(values);
+  }
+  return result;
+}
 
 export async function handler(
   event: APIGatewayProxyEventV2
@@ -62,6 +74,10 @@ export async function handler(
       const normalizedGoodToHave = normalizeSkills(criteria.goodToHaveSkills || []);
       const searchLocations = parseSearchLocations(criteria.location ?? undefined);
 
+      // Normalize synonyms from parsed criteria (may be null for older requirements)
+      const reqSynonyms = normalizeSynonymMap(criteria.skillSynonyms);
+      const candSynonyms = normalizeSynonymMap(candidate.skill_synonyms);
+
       const { score, details } = calculateMatchScore(
         candidate,
         normalizedMustHave,
@@ -71,13 +87,15 @@ export async function handler(
         criteria.seniority?.length ? criteria.seniority : undefined,
         req.budget_max_lpa ?? undefined,
         searchLocations,
-        criteria.availability
+        criteria.availability,
+        reqSynonyms,
+        candSynonyms
       );
 
-      // Filter out requirements below minimum must-have exact match ratio
+      // Filter out requirements below minimum must-have effective match ratio
       if (normalizedMustHave.length > 0) {
-        const exactRatio = details.mustHaveMatched.length / normalizedMustHave.length;
-        if (exactRatio < MIN_MUST_HAVE_MATCH_RATIO) {
+        const effectiveRatio = (details.mustHaveMatched.length + (details.mustHaveFuzzy?.length || 0) * FUZZY_MATCH_WEIGHT) / normalizedMustHave.length;
+        if (effectiveRatio < MIN_MUST_HAVE_MATCH_RATIO) {
           continue;
         }
       }
@@ -111,9 +129,11 @@ export async function handler(
         matchScore: score,
         matchDetails: {
           mustHaveMatched: details.mustHaveMatched,
+          mustHaveFuzzy: details.mustHaveFuzzy,
           mustHaveRelated: details.mustHaveRelated,
           mustHaveMissing: details.mustHaveMissing,
           goodToHaveMatched: details.goodToHaveMatched,
+          goodToHaveFuzzy: details.goodToHaveFuzzy,
           goodToHaveRelated: details.goodToHaveRelated,
           experienceMatch: details.experienceMatch,
           seniorityMatch: details.seniorityMatch,

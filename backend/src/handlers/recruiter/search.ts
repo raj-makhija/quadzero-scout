@@ -3,10 +3,22 @@ import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, SearchRequestSchema } from '../../lib/validation.js';
 import { searchCandidates, getShortlistsForRequirement } from '../../lib/dynamodb.js';
 import { normalizeSkill, normalizeSkills } from '../../lib/skillNormalizer.js';
-import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, parseSearchLocations, isEngagementModelCompatible } from '../../lib/matchScoring.js';
+import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, FUZZY_MATCH_WEIGHT, parseSearchLocations, isEngagementModelCompatible } from '../../lib/matchScoring.js';
 import { withOptionalAuth, type OptionalAuthEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
 import type { CandidateSearchResult, SearchResponse, SearchCriteria } from '../../types/index.js';
+
+/** Normalize a synonym map: lowercase keys and values. Returns undefined if input is null/undefined. */
+function normalizeSynonymMap(
+  synonyms: Record<string, string[]> | null | undefined
+): Record<string, string[]> | undefined {
+  if (!synonyms) return undefined;
+  const result: Record<string, string[]> = {};
+  for (const [key, values] of Object.entries(synonyms)) {
+    result[normalizeSkill(key)] = normalizeSkills(values);
+  }
+  return result;
+}
 
 async function handleRequest(
   event: OptionalAuthEvent
@@ -92,9 +104,14 @@ async function handleRequest(
         })
       : searchResult.items;
 
+    // Normalize synonym map from search criteria (may be null for older requirements)
+    const reqSynonyms = normalizeSynonymMap(criteria.skillSynonyms);
+
     // Calculate match scores and filter
     const scoredCandidates: CandidateSearchResult[] = candidatesToScore
       .map((candidate) => {
+        const candSynonyms = normalizeSynonymMap(candidate.skill_synonyms);
+
         const { score, details } = calculateMatchScore(
           candidate,
           normalizedMustHave,
@@ -104,7 +121,9 @@ async function handleRequest(
           criteria.seniority,
           criteria.maxBudgetLpa,
           searchLocations,
-          criteria.availability
+          criteria.availability,
+          reqSynonyms,
+          candSynonyms
         );
 
         return {
@@ -137,11 +156,11 @@ async function handleRequest(
           subVendorContactPerson: candidate.sub_vendor_contact_person,
         };
       })
-      // Filter out candidates below minimum must-have exact match ratio
+      // Filter out candidates below minimum must-have effective match ratio
       .filter((c) => {
         if (normalizedMustHave.length > 0) {
-          const exactRatio = c.matchDetails.mustHaveMatched.length / normalizedMustHave.length;
-          if (exactRatio < MIN_MUST_HAVE_MATCH_RATIO) {
+          const effectiveRatio = (c.matchDetails.mustHaveMatched.length + (c.matchDetails.mustHaveFuzzy?.length || 0) * FUZZY_MATCH_WEIGHT) / normalizedMustHave.length;
+          if (effectiveRatio < MIN_MUST_HAVE_MATCH_RATIO) {
             return false;
           }
         }
@@ -202,9 +221,11 @@ async function handleRequest(
           matchDetails: {
             // Hide specific skill matches
             mustHaveMatched: [],
+            mustHaveFuzzy: [],
             mustHaveRelated: [],
             mustHaveMissing: [],
             goodToHaveMatched: [],
+            goodToHaveFuzzy: [],
             goodToHaveRelated: [],
             experienceMatch: candidate.matchDetails.experienceMatch,
             seniorityMatch: candidate.matchDetails.seniorityMatch,

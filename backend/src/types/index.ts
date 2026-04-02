@@ -132,6 +132,7 @@ export interface CandidateItem {
   sub_vendor_id?: string;
   sub_vendor_name?: string;
   sub_vendor_contact_person?: string;
+  skill_synonyms?: Record<string, string[]>;
   _type?: string;
   created_at: string;
   last_updated: string;
@@ -176,6 +177,7 @@ export const LLMResumeOutputSchema = z.object({
   expectedCtc: z.number().nullable().optional().transform(v => v ?? null),
   linkedinUrl: z.string().url().nullable().optional().transform(v => v ?? null),
   githubUrl: z.string().url().nullable().optional().transform(v => v ?? null),
+  skillSynonyms: z.record(z.string(), z.array(z.string())).nullable().optional().default(null),
 });
 export type LLMResumeOutput = z.infer<typeof LLMResumeOutputSchema>;
 
@@ -203,6 +205,7 @@ export const LLMJDOutputSchema = z.object({
   coreSkill: z.string().nullable().optional().default(null),
   contractDurationMonths: z.number().nullable().optional().default(null),
   paymentTermsDays: z.number().nullable().optional().default(null),
+  skillSynonyms: z.record(z.string(), z.array(z.string())).nullable().optional().default(null),
 });
 export type LLMJDOutput = z.infer<typeof LLMJDOutputSchema>;
 
@@ -273,9 +276,11 @@ export interface CandidateSearchResult {
   matchScore: number;
   matchDetails: {
     mustHaveMatched: string[];
+    mustHaveFuzzy: string[];
     mustHaveRelated: string[];
     mustHaveMissing: string[];
     goodToHaveMatched: string[];
+    goodToHaveFuzzy: string[];
     goodToHaveRelated: string[];
     experienceMatch: 'full' | 'partial' | 'none';
     seniorityMatch: boolean;
@@ -705,9 +710,11 @@ export interface MatchedRequirement {
   matchScore: number;
   matchDetails: {
     mustHaveMatched: string[];
+    mustHaveFuzzy: string[];
     mustHaveRelated: string[];
     mustHaveMissing: string[];
     goodToHaveMatched: string[];
+    goodToHaveFuzzy: string[];
     goodToHaveRelated: string[];
     experienceMatch: 'full' | 'partial' | 'none';
     seniorityMatch: boolean;

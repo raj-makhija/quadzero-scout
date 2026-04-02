@@ -1,10 +1,22 @@
 import { getCandidateById, getAllActiveRequirements, getUserById } from './dynamodb.js';
-import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, parseSearchLocations, isEngagementModelCompatible } from './matchScoring.js';
+import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, FUZZY_MATCH_WEIGHT, parseSearchLocations, isEngagementModelCompatible } from './matchScoring.js';
 import { normalizeSkill, normalizeSkills } from './skillNormalizer.js';
 import { isCandidateWithinBudget } from './ctcConversion.js';
 import { sendNewProfilesNotificationEmail, type MatchedProfile } from './emailService.js';
 import { config } from './config.js';
 import type { CandidateItem, RequirementItem } from '../types/index.js';
+
+/** Normalize a synonym map: lowercase keys and values. Returns undefined if input is null/undefined. */
+function normalizeSynonymMap(
+  synonyms: Record<string, string[]> | null | undefined
+): Record<string, string[]> | undefined {
+  if (!synonyms) return undefined;
+  const result: Record<string, string[]> = {};
+  for (const [key, values] of Object.entries(synonyms)) {
+    result[normalizeSkill(key)] = normalizeSkills(values);
+  }
+  return result;
+}
 
 /**
  * For a list of candidate IDs, runs matching against all active requirements
@@ -48,6 +60,9 @@ export async function notifyMatchingRecruiters(candidateIds: string[]): Promise<
     const normalizedCoreSkill = criteria.coreSkill ? normalizeSkill(criteria.coreSkill) : null;
     const searchLocations = parseSearchLocations(criteria.location ?? undefined);
 
+    // Normalize synonym maps (may be null for older requirements)
+    const reqSynonyms = normalizeSynonymMap(criteria.skillSynonyms);
+
     const matchedProfiles: MatchedProfile[] = [];
     for (const candidate of candidates) {
       // Core skill pre-filter: must be in primary skills (secondary is too noisy for the defining technology)
@@ -55,6 +70,8 @@ export async function notifyMatchingRecruiters(candidateIds: string[]): Promise<
         const primarySkills = new Set(normalizeSkills(candidate.primary_skills));
         if (!primarySkills.has(normalizedCoreSkill)) continue;
       }
+
+      const candSynonyms = normalizeSynonymMap(candidate.skill_synonyms);
 
       const { score, details } = calculateMatchScore(
         candidate,
@@ -65,13 +82,15 @@ export async function notifyMatchingRecruiters(candidateIds: string[]): Promise<
         criteria.seniority?.length ? criteria.seniority : undefined,
         req.budget_max_lpa ?? undefined,
         searchLocations,
-        criteria.availability
+        criteria.availability,
+        reqSynonyms,
+        candSynonyms
       );
 
-      // Apply minimum must-have exact match ratio filter (exact matches only)
+      // Apply minimum must-have effective match ratio filter
       if (normalizedMustHave.length > 0) {
-        const exactRatio = details.mustHaveMatched.length / normalizedMustHave.length;
-        if (exactRatio < MIN_MUST_HAVE_MATCH_RATIO) continue;
+        const effectiveRatio = (details.mustHaveMatched.length + (details.mustHaveFuzzy?.length || 0) * FUZZY_MATCH_WEIGHT) / normalizedMustHave.length;
+        if (effectiveRatio < MIN_MUST_HAVE_MATCH_RATIO) continue;
       }
 
       const budgetFit = isCandidateWithinBudget(candidate.expected_ctc, req.budget_max_lpa);

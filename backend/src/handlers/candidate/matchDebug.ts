@@ -3,8 +3,20 @@ import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, MatchDebugRequestSchema } from '../../lib/validation.js';
 import { getCandidateById, getRequirementById } from '../../lib/dynamodb.js';
 import { normalizeSkill, normalizeSkills } from '../../lib/skillNormalizer.js';
-import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, parseSearchLocations, isEngagementModelCompatible } from '../../lib/matchScoring.js';
+import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, FUZZY_MATCH_WEIGHT, parseSearchLocations, isEngagementModelCompatible } from '../../lib/matchScoring.js';
 import { isCandidateWithinBudget } from '../../lib/ctcConversion.js';
+
+/** Normalize a synonym map: lowercase keys and values. Returns undefined if input is null/undefined. */
+function normalizeSynonymMap(
+  synonyms: Record<string, string[]> | null | undefined
+): Record<string, string[]> | undefined {
+  if (!synonyms) return undefined;
+  const result: Record<string, string[]> = {};
+  for (const [key, values] of Object.entries(synonyms)) {
+    result[normalizeSkill(key)] = normalizeSkills(values);
+  }
+  return result;
+}
 
 export async function handler(
   event: APIGatewayProxyEventV2
@@ -52,6 +64,10 @@ export async function handler(
     const normalizedGoodToHave = normalizeSkills(criteria.goodToHaveSkills || []);
     const searchLocations = parseSearchLocations(criteria.location ?? undefined);
 
+    // Normalize synonym maps
+    const reqSynonyms = normalizeSynonymMap(criteria.skillSynonyms);
+    const candSynonyms = normalizeSynonymMap(candidate.skill_synonyms);
+
     // --- Filter 1: CoreSkill pre-filter ---
     const rawCoreSkill = criteria.coreSkill || null;
     const normalizedCoreSkill = rawCoreSkill ? normalizeSkill(rawCoreSkill) : null;
@@ -67,14 +83,16 @@ export async function handler(
       criteria.seniority?.length ? criteria.seniority : undefined,
       requirement.budget_max_lpa ?? undefined,
       searchLocations,
-      criteria.availability
+      criteria.availability,
+      reqSynonyms,
+      candSynonyms
     );
 
-    // --- Filter 2: Must-have match ratio ---
-    const exactRatio = normalizedMustHave.length > 0
-      ? details.mustHaveMatched.length / normalizedMustHave.length
+    // --- Filter 2: Must-have match ratio (exact + fuzzy) ---
+    const effectiveRatio = normalizedMustHave.length > 0
+      ? (details.mustHaveMatched.length + (details.mustHaveFuzzy?.length || 0) * FUZZY_MATCH_WEIGHT) / normalizedMustHave.length
       : 1;
-    const mustHaveRatioPassed = normalizedMustHave.length === 0 || exactRatio >= MIN_MUST_HAVE_MATCH_RATIO;
+    const mustHaveRatioPassed = normalizedMustHave.length === 0 || effectiveRatio >= MIN_MUST_HAVE_MATCH_RATIO;
 
     // --- Filter 3: Engagement model ---
     const reqEngagementModel = requirement.engagement_model || criteria.engagementModel;
@@ -108,6 +126,7 @@ export async function handler(
         currentCtc: candidate.current_ctc,
         availability: candidate.availability,
         location: candidate.location,
+        skillSynonyms: candSynonyms || null,
       },
       requirement: {
         requirementId: requirement.requirement_id,
@@ -125,6 +144,7 @@ export async function handler(
         parsedLocations: searchLocations,
         availability: criteria.availability,
         seniority: criteria.seniority,
+        skillSynonyms: reqSynonyms || null,
       },
       filters: {
         coreSkill: {
@@ -137,9 +157,10 @@ export async function handler(
         },
         mustHaveRatio: {
           passed: mustHaveRatioPassed,
-          ratio: Math.round(exactRatio * 100) / 100,
+          ratio: Math.round(effectiveRatio * 100) / 100,
           threshold: MIN_MUST_HAVE_MATCH_RATIO,
           matched: details.mustHaveMatched,
+          fuzzy: details.mustHaveFuzzy,
           related: details.mustHaveRelated,
           missing: details.mustHaveMissing,
         },

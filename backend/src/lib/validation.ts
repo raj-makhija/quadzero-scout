@@ -48,6 +48,7 @@ export const SaveProfileRequestSchema = z.object({
     coverLetter: z.string().optional(),
     headline: z.string().optional(),
     subVendorId: z.string().optional(),
+    skillSynonyms: z.record(z.string(), z.array(z.string())).nullable().optional(),
   }).superRefine((data, ctx) => {
     if (!data.subVendorId && (!data.email || data.email === '')) {
       ctx.addIssue({
@@ -81,6 +82,7 @@ export const SearchRequestSchema = z.object({
     industries: z.array(z.string()).optional(),
     maxBudgetLpa: z.number().min(0).optional(),
     engagementModel: z.enum(['contract', 'full_time', 'either']).optional(),
+    skillSynonyms: z.record(z.string(), z.array(z.string())).optional(),
   }),
   pagination: z.object({
     limit: z.number().min(1).max(100).optional().default(20),

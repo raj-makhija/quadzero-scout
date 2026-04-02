@@ -662,6 +662,7 @@ Content-Type: application/json
         "ratio": 1.0,
         "threshold": 0.4,
         "matched": ["java", "spring boot"],
+        "fuzzy": [],
         "related": [],
         "missing": []
       },
@@ -680,9 +681,11 @@ Content-Type: application/json
     "score": 85,
     "matchDetails": {
       "mustHaveMatched": ["java", "spring boot"],
+      "mustHaveFuzzy": [],
       "mustHaveRelated": [],
       "mustHaveMissing": [],
       "goodToHaveMatched": [],
+      "goodToHaveFuzzy": [],
       "goodToHaveRelated": [],
       "experienceMatch": "full",
       "seniorityMatch": true,
@@ -698,7 +701,8 @@ Content-Type: application/json
 - No authentication required
 - Runs the candidate through ALL filters and scoring even if a filter would normally exclude the pair — this ensures the full diagnostic is always returned
 - `wouldBeExcluded` is `true` if any hard filter failed; `excludedBy` lists which filter(s) rejected the pair
-- Hard filters evaluated: `coreSkill` (exact match in primary skills), `mustHaveRatio` (≥40% exact matches), `engagementModel` (compatibility check)
+- Hard filters evaluated: `coreSkill` (exact match in primary skills), `mustHaveRatio` (≥40% effective matches = exact + fuzzy × 0.85), `engagementModel` (compatibility check)
+- Fuzzy matching: skills match via token containment (all tokens of shorter skill appear in longer) or LLM-generated synonyms (stored in `skillSynonyms` on requirements and `skill_synonyms` on candidates)
 - `budgetFit` is a soft indicator (not a hard filter) — reported for informational purposes
 - Used by the Match Explainer UI on the requirement detail and locate profile pages
 
@@ -3010,6 +3014,122 @@ Get audit trail for a specific entity. Requires admin role.
 
 **Query Parameters**: `limit`, `nextToken`
 **Response**: Same structure as `/admin/audit-logs`
+
+---
+
+### Recruiter Activity Endpoint
+
+#### GET /recruiter/my-activity
+
+Get the authenticated recruiter's own activity summary and logs for a given period.
+
+**Auth**: Required (recruiter or admin)
+
+**Query Parameters**:
+- `period` (optional): `previousDay` (default), `week`, `month`, `year`
+- `detail` (optional): `true` to include individual log entries. For `previousDay`/`week` logs are included by default; for `month`/`year` only summary is returned unless `detail=true`.
+- `limit` (optional): Max results per page (default 100, max 100)
+- `nextToken` (optional): Pagination token
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "summary": {
+      "CANDIDATE_SEARCH": 5,
+      "SHORTLIST_ADD": 3,
+      "CANDIDATE_SCREEN": 2
+    },
+    "logs": [
+      {
+        "eventId": "...",
+        "userId": "...",
+        "userEmail": "...",
+        "userRole": "recruiter",
+        "action": "CANDIDATE_SEARCH",
+        "entityType": "search",
+        "entityId": "...",
+        "metadata": {},
+        "ipAddress": "...",
+        "timestamp": "2026-03-31T14:30:00.000Z"
+      }
+    ],
+    "period": "previousDay",
+    "startDate": "2026-03-31",
+    "endDate": "2026-03-31",
+    "pagination": {
+      "count": 10,
+      "hasMore": false,
+      "nextToken": null
+    }
+  }
+}
+```
+
+---
+
+### Admin Activity Dashboard Endpoints
+
+#### GET /admin/activity-dashboard
+
+Get activity summary across all recruiters (cumulative) or for a specific recruiter. Requires admin role.
+
+**Auth**: Required (admin only)
+
+**Query Parameters**:
+- `period` (optional): `previousDay` (default), `week`, `month`, `year`
+- `userId` (optional): If provided, returns activity for that specific recruiter. If absent, returns cumulative activity across all users.
+- `detail` (optional): `true` to include individual log entries (only applicable when `userId` is provided)
+- `limit` (optional): Max results per page (default 100, max 100)
+- `nextToken` (optional): Pagination token
+
+**Response (cumulative, no userId)**:
+```json
+{
+  "success": true,
+  "data": {
+    "summary": { "CANDIDATE_SEARCH": 25, "SHORTLIST_ADD": 12 },
+    "recruiterBreakdown": {
+      "user-id-1": {
+        "email": "recruiter1@quadzero.com",
+        "counts": { "CANDIDATE_SEARCH": 15, "SHORTLIST_ADD": 8 }
+      },
+      "user-id-2": {
+        "email": "recruiter2@quadzero.com",
+        "counts": { "CANDIDATE_SEARCH": 10, "SHORTLIST_ADD": 4 }
+      }
+    },
+    "logs": [],
+    "period": "previousDay",
+    "startDate": "2026-03-31",
+    "endDate": "2026-03-31",
+    "pagination": { "count": 0, "hasMore": false }
+  }
+}
+```
+
+**Response (individual, with userId)**: Same structure as `GET /recruiter/my-activity`.
+
+---
+
+#### GET /admin/recruiters/list
+
+List all approved recruiters and admins for the activity dashboard recruiter selector dropdown.
+
+**Auth**: Required (admin only)
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "recruiters": [
+      { "id": "user-id-1", "email": "recruiter@quadzero.com", "name": "John Doe" }
+    ]
+  }
+}
+```
 
 ---
 

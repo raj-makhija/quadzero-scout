@@ -258,6 +258,7 @@ export default function RequirementDetailPage() {
       location: requirement.parsedCriteria.location || undefined,
       roles: requirement.parsedCriteria.roles || [],
       maxBudgetLpa: requirement.budgetMaxLpa || undefined,
+      skillSynonyms: requirement.parsedCriteria.skillSynonyms || undefined,
     };
 
     sessionStorage.setItem('scout_recruiter_search', JSON.stringify({
