@@ -140,6 +140,7 @@ export const SaveRequirementRequestSchema = z.object({
   status: z.enum(['active', 'duplicate']).optional().default('active'),
   duplicateOf: z.string().uuid().optional(),
   additionalFields: z.array(AdditionalFieldDefinitionSchema).optional().default([]),
+  contactPersonName: z.string().max(200).optional(),
 });
 
 // Check Duplicate Request Validation
@@ -197,6 +198,7 @@ export const UpdateRequirementRequestSchema = z.object({
   jdText: z.string().min(50).max(10000).optional(),
   parsedCriteria: LLMJDOutputSchema.optional(),
   additionalFields: z.array(AdditionalFieldDefinitionSchema).optional(),
+  contactPersonName: z.string().max(200).nullable().optional(),
 }).refine(data => Object.values(data).some(v => v !== undefined), {
   message: 'At least one field must be provided for update',
 });

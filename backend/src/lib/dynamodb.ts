@@ -1165,7 +1165,7 @@ export async function getAllRequirementsPaginated(
   limit: number = 20,
   offset: number = 0,
   statusFilter?: string,
-  clientNameLower?: string,
+  searchTerm?: string,
   dateFrom?: string,
   dateTo?: string
 ): Promise<{ items: RequirementItem[]; total: number; hasMore: boolean }> {
@@ -1197,11 +1197,6 @@ export async function getAllRequirementsPaginated(
       exprValues[':statusVal'] = statusFilter;
     }
 
-    if (clientNameLower) {
-      filterParts.push('client_name_lower = :clientName');
-      exprValues[':clientName'] = clientNameLower;
-    }
-
     if (dateFrom) {
       filterParts.push('created_at >= :dateFrom');
       exprValues[':dateFrom'] = dateFrom;
@@ -1229,19 +1224,33 @@ export async function getAllRequirementsPaginated(
     currentKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
   } while (currentKey && allItems.length < MAX_SCAN);
 
+  // Apply substring search across multiple fields (post-scan filter)
+  let filtered = allItems;
+  if (searchTerm) {
+    filtered = allItems.filter((item) => {
+      const fields = [
+        item.client_name_lower,
+        item.end_client?.toLowerCase(),
+        item.parsed_criteria?.coreSkill?.toLowerCase(),
+        item.contact_person_name?.toLowerCase(),
+      ];
+      return fields.some((field) => field && field.includes(searchTerm));
+    });
+  }
+
   // Sort all items by created_at descending
-  allItems.sort(
+  filtered.sort(
     (a, b) =>
       new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
 
   // Paginate by offset
-  const page = allItems.slice(offset, offset + limit);
+  const page = filtered.slice(offset, offset + limit);
 
   return {
     items: page,
-    total: allItems.length,
-    hasMore: offset + limit < allItems.length,
+    total: filtered.length,
+    hasMore: offset + limit < filtered.length,
   };
 }
 
