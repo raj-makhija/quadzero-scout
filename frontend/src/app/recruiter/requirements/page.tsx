@@ -187,12 +187,23 @@ export default function RequirementsListPage() {
 
         {/* Requirements List */}
         <div className="space-y-4">
-          {sortedRequirements.map((req) => {
+          {sortedRequirements.map((req, idx) => {
             const isInactive = req.status === 'closed_on_hold' || req.status === 'duplicate';
+            const prevReq = idx > 0 ? sortedRequirements[idx - 1] : null;
+            const prevInactive = prevReq ? (prevReq.status === 'closed_on_hold' || prevReq.status === 'duplicate') : false;
+            const showDivider = isInactive && !prevInactive;
             return (
+            <>
+            {showDivider && (
+              <div key="inactive-divider" className="flex items-center gap-3 pt-2 pb-1">
+                <div className="flex-1 border-t border-gray-300 dark:border-gray-600" />
+                <span className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">Closed / On-hold</span>
+                <div className="flex-1 border-t border-gray-300 dark:border-gray-600" />
+              </div>
+            )}
             <div
               key={req.requirementId}
-              className={`card p-5 hover:shadow-md transition-shadow cursor-pointer ${isInactive ? 'bg-gray-100 dark:bg-gray-800/60 opacity-75 border-gray-300 dark:border-gray-700' : ''}`}
+              className={`card p-5 hover:shadow-md transition-shadow cursor-pointer ${isInactive ? 'bg-amber-50/60 dark:bg-gray-800/80 opacity-60 border-dashed border-amber-300/50 dark:border-gray-500/50' : ''}`}
               onClick={() => router.push(`/recruiter/requirements/${req.requirementId}`)}
             >
               <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
@@ -297,6 +308,7 @@ export default function RequirementsListPage() {
                 </div>
               </div>
             </div>
+            </>
             );
           })}
 
