@@ -65,6 +65,7 @@ async function handleRequest(
         ...field,
         key: slugifyFieldKey(field.label),
       })),
+      contact_person_name: data.contactPersonName,
     };
 
     await saveRequirement(item);

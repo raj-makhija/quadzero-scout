@@ -452,6 +452,7 @@ export interface RequirementItem {
   change_history?: RequirementChangeEntry[];
   notify_recruiter_ids?: string[];
   additional_fields?: AdditionalFieldDefinition[];
+  contact_person_name?: string;
 }
 
 // Requirement API types
@@ -470,6 +471,7 @@ export interface SaveRequirementRequest {
   status?: string;
   duplicateOf?: string;
   additionalFields?: AdditionalFieldDefinition[];
+  contactPersonName?: string;
 }
 
 export interface SaveRequirementResponse {

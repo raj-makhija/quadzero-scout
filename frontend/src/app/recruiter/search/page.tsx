@@ -8,7 +8,7 @@ import { PricingPanel } from '@/components/PricingPanel';
 import { ComboboxInput } from '@/components/ui/combobox-input';
 import { api, ApiError, ParsedCriteria, SearchCriteria, CandidateSearchResult, EngagementModel, Payroll, DuplicateMatch, ConsolidateResponse, ClientDefaultsResponse, AdditionalFieldDefinition } from '@/lib/api';
 import { AdditionalFieldsBuilder } from '@/components/additional-fields-builder';
-import { formatSeniority, formatAvailability, formatCandidateEngagement, getMatchScoreColor, getMatchScoreBgColor, formatRelativeTime, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS, ENGAGEMENT_MODEL_OPTIONS, PAYROLL_OPTIONS, formatEngagementModel } from '@/lib/utils';
+import { formatSeniority, formatAvailability, formatCandidateEngagement, getMatchScoreColor, getMatchScoreBgColor, formatRelativeTime, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS, ENGAGEMENT_MODEL_OPTIONS, PAYROLL_OPTIONS, formatEngagementModel, generateJobTitle } from '@/lib/utils';
 import { ScreeningModal, getScreeningStatus, isScreeningExpired } from '@/components/screening-modal';
 import { ShortlistModal } from '@/components/shortlist-modal';
 import { toast } from '@/hooks/use-toast';
@@ -111,6 +111,7 @@ export default function RecruiterSearchPage() {
   const [clientNameOptions, setClientNameOptions] = useState<string[]>([]);
   const [endClientOptions, setEndClientOptions] = useState<string[]>([]);
   const [additionalFields, setAdditionalFields] = useState<AdditionalFieldDefinition[]>([]);
+  const [contactPersonName, setContactPersonName] = useState('');
 
   // Debounced client defaults lookup
   const lookupClientDefaults = useCallback((name: string) => {
@@ -142,17 +143,6 @@ export default function RecruiterSearchPage() {
       }
     }, 500);
   }, [engagementModel, payroll]);
-
-  const generateJobTitle = (client: string, end: string, skill: string): string => {
-    const parts: string[] = [];
-    if (client.trim()) {
-      let part = client.trim();
-      if (end.trim()) part += ` (${end.trim()})`;
-      parts.push(part);
-    }
-    if (skill.trim()) parts.push(skill.trim());
-    return parts.join(' - ') || '';
-  };
 
   // Search helper — reusable for both button click and state restore
   const runSearch = useCallback(async (criteria: SearchCriteria, lastEvaluatedKey?: string, sort?: 'matchScore' | 'experience' | 'lastUpdated', append?: boolean) => {
@@ -476,7 +466,7 @@ export default function RecruiterSearchPage() {
       setError(null);
 
       // Check for duplicates first
-      const generatedTitle = generateJobTitle(clientName, endClient, coreSkill);
+      const generatedTitle = generateJobTitle(clientName, endClient, coreSkill, contactPersonName);
       const dupResponse = await api.checkRequirementDuplicate(clientName, parsedCriteria, generatedTitle || undefined);
 
       if (dupResponse.duplicates.length > 0) {
@@ -506,7 +496,7 @@ export default function RecruiterSearchPage() {
         ? clientDefaults.defaultPaymentTermsDays
         : paymentTermsDays ? parseInt(paymentTermsDays) : undefined;
 
-      const generatedTitle = generateJobTitle(clientName, endClient, coreSkill);
+      const generatedTitle = generateJobTitle(clientName, endClient, coreSkill, contactPersonName);
       const saveResult = await api.saveRequirement({
         clientName: clientName.trim(),
         endClient: endClient.trim() || undefined,
@@ -521,6 +511,7 @@ export default function RecruiterSearchPage() {
         parsedCriteria,
         status: 'active',
         additionalFields: additionalFields.length > 0 ? additionalFields : undefined,
+        contactPersonName: contactPersonName.trim() || undefined,
       });
 
       // Capture requirement ID so shortlisting is available from search results
@@ -594,7 +585,7 @@ export default function RecruiterSearchPage() {
       setRequirementContext({
         requirementId: match.requirementId,
         clientName: clientName.trim(),
-        jobTitle: generateJobTitle(clientName, endClient, coreSkill) || undefined,
+        jobTitle: generateJobTitle(clientName, endClient, coreSkill, contactPersonName) || undefined,
         engagementModel: engagementModel as string,
         contractDurationMonths: contractDurationMonths ? parseInt(contractDurationMonths) : undefined,
         paymentTermsDays: clientDefaults?.found && clientDefaults.defaultPaymentTermsDays
@@ -856,6 +847,17 @@ export default function RecruiterSearchPage() {
                     placeholder="Who will leverage the resource? (optional)"
                     className="mt-1"
                     id="end-client"
+                  />
+                </div>
+                <div>
+                  <label className="label">Contact Person</label>
+                  <input
+                    type="text"
+                    value={contactPersonName}
+                    onChange={(e) => setContactPersonName(e.target.value)}
+                    placeholder="HR contact at client (optional)"
+                    className="input mt-1"
+                    maxLength={200}
                   />
                 </div>
                 <div>

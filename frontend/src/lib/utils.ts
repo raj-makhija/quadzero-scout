@@ -186,3 +186,28 @@ export const PAYROLL_OPTIONS = [
   { value: 'quadzero', label: 'Quadzero' },
   { value: 'client', label: 'Client' },
 ];
+
+export function generateJobTitle(
+  clientName?: string,
+  endClient?: string,
+  coreSkill?: string | null,
+  contactPersonName?: string,
+): string {
+  const parts: string[] = [];
+
+  if (coreSkill?.trim()) {
+    parts.push(coreSkill.trim());
+  }
+
+  if (clientName?.trim()) {
+    let clientPart = clientName.trim();
+    if (endClient?.trim()) clientPart += ` (${endClient.trim()})`;
+    parts.push(clientPart);
+  }
+
+  if (contactPersonName?.trim()) {
+    parts.push(contactPersonName.trim());
+  }
+
+  return parts.join(' - ') || 'Untitled Requirement';
+}

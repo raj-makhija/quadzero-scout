@@ -267,7 +267,7 @@ class ApiClient {
 
   async listRequirements(filters?: RequirementFilters) {
     const params = new URLSearchParams();
-    if (filters?.clientName) params.set('clientName', filters.clientName);
+    if (filters?.search) params.set('search', filters.search);
     if (filters?.dateFrom) params.set('dateFrom', filters.dateFrom);
     if (filters?.dateTo) params.set('dateTo', filters.dateTo);
     if (filters?.status) params.set('status', filters.status);
@@ -950,6 +950,7 @@ export interface SaveRequirementPayload {
   status?: 'active' | 'duplicate';
   duplicateOf?: string;
   additionalFields?: AdditionalFieldDefinition[];
+  contactPersonName?: string;
 }
 
 export interface RequirementSummary {
@@ -971,6 +972,8 @@ export interface RequirementSummary {
   demandScore?: number;
   notifyRecruiterIds?: string[];
   additionalFields?: AdditionalFieldDefinition[];
+  contactPersonName?: string;
+  coreSkill?: string | null;
 }
 
 export interface BenchListCandidate {
@@ -1043,6 +1046,7 @@ export interface UpdateRequirementPayload {
   jdText?: string;
   parsedCriteria?: ParsedCriteria;
   additionalFields?: AdditionalFieldDefinition[];
+  contactPersonName?: string | null;
 }
 
 export interface UpdateRequirementResponse {
@@ -1084,7 +1088,7 @@ export interface ConsolidateResponse {
 }
 
 export interface RequirementFilters {
-  clientName?: string;
+  search?: string;
   dateFrom?: string;
   dateTo?: string;
   status?: string;

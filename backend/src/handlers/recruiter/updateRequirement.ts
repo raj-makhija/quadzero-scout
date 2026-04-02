@@ -21,6 +21,7 @@ const FIELD_MAP: Record<string, string> = {
   jdText: 'jd_text',
   parsedCriteria: 'parsed_criteria',
   additionalFields: 'additional_fields',
+  contactPersonName: 'contact_person_name',
 };
 
 function deepEqual(a: unknown, b: unknown): boolean {

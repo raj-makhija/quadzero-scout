@@ -1014,6 +1014,7 @@ Authorization: Bearer <jwe_token>
   "contractDurationMonths": 12,
   "paymentTermsDays": 60,
   "jobTitle": "Senior React Developer",
+  "contactPersonName": "Priya Sharma",
   "jdText": "We are looking for a Senior React Developer with 5+ years...",
   "parsedCriteria": {
     "mustHaveSkills": ["react", "typescript"],
@@ -1065,7 +1066,8 @@ Authorization: Bearer <jwe_token>
 - `budgetMaxLpa`: Optional, number, min 0, max 500
 - `contractDurationMonths`: Optional, number, min 1, max 60 (only meaningful for contract engagements)
 - `paymentTermsDays`: Optional, number, must be one of: 30, 45, 60, 90
-- `jobTitle`: Optional, string, max 200 (auto-generated on frontend as "Client Name (End Client) - Core Skill")
+- `jobTitle`: Optional, string, max 200 (dynamically generated on frontend as "CoreSkill - Client Name (End Client) - Contact Person")
+- `contactPersonName`: Optional, string, max 200 (HR contact person at the client)
 - `jdText`: Required, string, min 50, max 10000
 - `parsedCriteria`: Required, LLM JD output schema (includes `coreSkill`)
 - `additionalFields`: Optional, array of `AdditionalFieldDefinition` objects (see Shared Types)
@@ -1088,6 +1090,7 @@ Authorization: Bearer <jwe_token>
 **Query Parameters:**
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| search | String | No | Substring search across client name, end client, core skill, and contact person name (case-insensitive) |
 | status | String | No | Filter by status: `active` or `closed_on_hold` |
 
 **Response (200 OK):**
@@ -1105,6 +1108,8 @@ Authorization: Bearer <jwe_token>
         "budgetMinLpa": 15,
         "budgetMaxLpa": 30,
         "jobTitle": "Senior React Developer",
+        "contactPersonName": "Priya Sharma",
+        "coreSkill": "React",
         "mustHaveSkills": ["react", "typescript"],
         "roles": ["Senior React Developer"],
         "status": "active",
@@ -1222,11 +1227,12 @@ Get a specific requirement by ID.
 **Path Parameters:**
 - `requirementId`: The unique requirement identifier
 
-**Response (200 OK):** Returns the full requirement object including `jdText`, `parsedCriteria`, `statusHistory`, `additionalFields`, and `changeHistory`.
+**Response (200 OK):** Returns the full requirement object including `jdText`, `parsedCriteria`, `contactPersonName`, `statusHistory`, `additionalFields`, and `changeHistory`.
 
 **Response includes:**
 | Field | Type | Description |
 |-------|------|-------------|
+| contactPersonName | String | HR contact person name at the client organization (may be absent) |
 | statusHistory | Array | Array of status change records, each containing `status`, `reason`, `changedBy`, and `changedAt` |
 | additionalFields | Array | Array of `AdditionalFieldDefinition` objects defining custom fields for this requirement (see Shared Types). May be empty or absent if none were configured. |
 | changeHistory | Array | Array of field-level change audit records (see `RequirementChangeEntry` in data model). Each entry contains `changedAt`, `changedBy`, and `changes` (array of `{field, oldValue, newValue}`). May be empty or absent if no updates have been made. |
@@ -1522,6 +1528,7 @@ Update one or more fields on a requirement with field-level audit trail. Only th
   "contractDurationMonths": "number | null",
   "paymentTermsDays": "30 | 45 | 60 | 90 | null",
   "jobTitle": "string",
+  "contactPersonName": "string | null",
   "jdText": "string (min 50, max 10000)",
   "parsedCriteria": "ParsedCriteria object",
   "additionalFields": "AdditionalFieldDefinition[]"
@@ -1539,6 +1546,7 @@ Update one or more fields on a requirement with field-level audit trail. Only th
 | contractDurationMonths | Number \| null | No | Contract duration in months, 1-60 (send `null` to clear) |
 | paymentTermsDays | Number \| null | No | Payment terms: 30, 45, 60, or 90 (send `null` to clear) |
 | jobTitle | String | No | Job title |
+| contactPersonName | String \| null | No | HR contact person name at the client (send `null` to clear) |
 | jdText | String | No | Raw JD text (min 50, max 10000 chars) |
 | parsedCriteria | Object | No | LLM-parsed search criteria (ParsedCriteria) |
 | additionalFields | Array | No | Array of AdditionalFieldDefinition objects |
