@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Bell } from 'lucide-react';
@@ -59,6 +59,19 @@ export default function RequirementsListPage() {
       setLoading(false);
     }
   }, [searchFilter, dateFrom, dateTo, statusFilter, currentOffset]);
+
+  const sortedRequirements = useMemo(() => {
+    const active: RequirementSummary[] = [];
+    const inactive: RequirementSummary[] = [];
+    for (const req of requirements) {
+      if (req.status === 'closed_on_hold' || req.status === 'duplicate') {
+        inactive.push(req);
+      } else {
+        active.push(req);
+      }
+    }
+    return [...active, ...inactive];
+  }, [requirements]);
 
   useEffect(() => {
     if (status === 'authenticated') {
@@ -174,10 +187,12 @@ export default function RequirementsListPage() {
 
         {/* Requirements List */}
         <div className="space-y-4">
-          {requirements.map((req) => (
+          {sortedRequirements.map((req) => {
+            const isInactive = req.status === 'closed_on_hold' || req.status === 'duplicate';
+            return (
             <div
               key={req.requirementId}
-              className="card p-5 hover:shadow-md transition-shadow cursor-pointer"
+              className={`card p-5 hover:shadow-md transition-shadow cursor-pointer ${isInactive ? 'bg-gray-100 dark:bg-gray-800/60 opacity-75 border-gray-300 dark:border-gray-700' : ''}`}
               onClick={() => router.push(`/recruiter/requirements/${req.requirementId}`)}
             >
               <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
@@ -282,7 +297,8 @@ export default function RequirementsListPage() {
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
 
           {!loading && requirements.length === 0 && (
             <div className="card p-12 text-center">
