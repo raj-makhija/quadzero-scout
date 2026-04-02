@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [develop]
+
+concurrency:
+  group: ci-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install backend dependencies
+        run: cd backend && npm ci --ignore-scripts
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci --ignore-scripts
+
+      - name: Lint backend
+        run: cd backend && npm run lint
+
+      - name: Lint frontend
+        run: cd frontend && npm run lint
+
+      - name: Typecheck backend
+        run: cd backend && npm run typecheck
+
+      - name: Typecheck frontend
+        run: cd frontend && npm run typecheck
+
+  test-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install backend dependencies
+        run: cd backend && npm ci --ignore-scripts
+
+      - name: Run backend tests
+        run: cd backend && npm test
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci --ignore-scripts
+
+      - name: Run frontend tests
+        run: cd frontend && npm test

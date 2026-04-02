@@ -6,7 +6,7 @@ import { saveCandidateProfile, getExperienceBucket, getCandidateById, getCandida
 import { deleteObject } from '../../lib/s3.js';
 import { invokeLambdaAsync } from '../../lib/lambdaInvoke.js';
 import { config } from '../../lib/config.js';
-import { normalizeSkills, normalizeSkillYears } from '../../lib/skillNormalizer.js';
+import { normalizeSkill, normalizeSkills, normalizeSkillYears } from '../../lib/skillNormalizer.js';
 import type { CandidateItem, SaveProfileResponse } from '../../types/index.js';
 
 export async function handler(
@@ -93,6 +93,16 @@ export async function handler(
     const normalizedSecondarySkills = normalizeSkills(profile.secondarySkills || []);
     const normalizedSkillYears = normalizeSkillYears(profile.primarySkillYears);
 
+    // Normalize skill synonyms from LLM output (may be null for older resumes)
+    let skillSynonyms: Record<string, string[]> | undefined;
+    if (profile.skillSynonyms) {
+      skillSynonyms = {};
+      for (const [skill, syns] of Object.entries(profile.skillSynonyms)) {
+        const normalizedKey = normalizeSkill(skill);
+        skillSynonyms[normalizedKey] = normalizeSkills(syns);
+      }
+    }
+
     // Build candidate item for DynamoDB (using snake_case for DynamoDB attributes)
     const candidateItem: CandidateItem = {
       candidate_id: finalCandidateId,
@@ -127,6 +137,7 @@ export async function handler(
       sub_vendor_id: profile.subVendorId || existingCandidate?.sub_vendor_id,
       sub_vendor_name: subVendor?.sub_vendor_name || existingCandidate?.sub_vendor_name,
       sub_vendor_contact_person: subVendor?.contact_person_name || existingCandidate?.sub_vendor_contact_person,
+      skill_synonyms: skillSynonyms || existingCandidate?.skill_synonyms,
       ...(preserveFormattedResume ? preserveFormattedResume : {}),
       created_at: existingCandidate?.created_at || now,
       last_updated: now,

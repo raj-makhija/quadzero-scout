@@ -9,7 +9,7 @@ async function handleRequest(
   try {
     const params = event.queryStringParameters || {};
 
-    const clientName = params.clientName;
+    const search = params.search;
     const dateFrom = params.dateFrom;
     const dateTo = params.dateTo;
     const statusFilter = params.status;
@@ -20,7 +20,7 @@ async function handleRequest(
       limit,
       offset,
       statusFilter,
-      clientName ? clientName.toLowerCase().trim() : undefined,
+      search ? search.toLowerCase().trim() : undefined,
       dateFrom,
       dateTo
     );
@@ -44,6 +44,8 @@ async function handleRequest(
       demandScore: item.demand_score || 0,
       notifyRecruiterIds: item.notify_recruiter_ids,
       additionalFields: item.additional_fields || [],
+      contactPersonName: item.contact_person_name,
+      coreSkill: item.parsed_criteria?.coreSkill || null,
     }));
 
     return success({

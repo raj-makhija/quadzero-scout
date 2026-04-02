@@ -26,6 +26,7 @@ vi.mock('../matchScoring.js', () => {
   return {
     calculateMatchScore: (...args: unknown[]) => mockCalculateMatchScore(...args),
     MIN_MUST_HAVE_MATCH_RATIO: 0.40,
+    FUZZY_MATCH_WEIGHT: 0.85,
     parseSearchLocations: (loc?: string) => loc ? loc.split(/[,;]/).map((s: string) => s.trim().toLowerCase()).filter(Boolean) : [],
     isEngagementModelCompatible: (reqModel: string, candidateModel: string) => {
       if (!reqModel || reqModel === 'either' || candidateModel === 'either') return true;
@@ -98,8 +99,8 @@ const requirementActive = {
   budget_max_lpa: undefined,
 };
 
-const goodMatchScore = { score: 80, details: { mustHaveMatched: ['react'], mustHaveRelated: [], mustHaveMissing: [] } };
-const noMatchScore = { score: 0, details: { mustHaveMatched: [], mustHaveRelated: [], mustHaveMissing: ['react'] } };
+const goodMatchScore = { score: 80, details: { mustHaveMatched: ['react'], mustHaveFuzzy: [], mustHaveRelated: [], mustHaveMissing: [] } };
+const noMatchScore = { score: 0, details: { mustHaveMatched: [], mustHaveFuzzy: [], mustHaveRelated: [], mustHaveMissing: ['react'] } };
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -130,10 +131,10 @@ describe('notifyMatchingRecruiters', () => {
   it('TC-NOTIFY-003: no email when candidate does not meet MIN_MUST_HAVE_MATCH_RATIO', async () => {
     mockGetCandidateById.mockResolvedValue(candidateA);
     mockGetAllActiveRequirements.mockResolvedValue([requirementActive]);
-    // 0 out of 1 must-have matched → effective ratio 0 < 0.25
+    // 0 out of 1 must-have matched → effective ratio 0 < 0.40
     mockCalculateMatchScore.mockReturnValue({
       score: 0,
-      details: { mustHaveMatched: [], mustHaveRelated: [], mustHaveMissing: ['react'] },
+      details: { mustHaveMatched: [], mustHaveFuzzy: [], mustHaveRelated: [], mustHaveMissing: ['react'] },
     });
     await notifyMatchingRecruiters(['cand_1']);
     expect(mockSendEmail).not.toHaveBeenCalled();
@@ -238,7 +239,7 @@ describe('notifyMatchingRecruiters', () => {
     mockGetCandidateById.mockResolvedValue(candidateA);
     mockGetAllActiveRequirements.mockResolvedValue([requirementActive]);
     // mustHaveSkills empty → ratio check skipped; score = 0 and budgetFit false
-    mockCalculateMatchScore.mockReturnValue({ score: 0, details: { mustHaveMatched: [], mustHaveRelated: [], mustHaveMissing: [] } });
+    mockCalculateMatchScore.mockReturnValue({ score: 0, details: { mustHaveMatched: [], mustHaveFuzzy: [], mustHaveRelated: [], mustHaveMissing: [] } });
     const { isCandidateWithinBudget } = await import('../ctcConversion.js');
     (isCandidateWithinBudget as ReturnType<typeof vi.fn>).mockReturnValue(false);
 
@@ -319,14 +320,14 @@ describe('notifyMatchingRecruiters', () => {
   it('TC-NOTIFY-015: uses exact-only ratio (not effective ratio with related matches)', async () => {
     mockGetCandidateById.mockResolvedValue(candidateA);
     mockGetAllActiveRequirements.mockResolvedValue([requirementActive]);
-    // 0 exact matches but 1 related match — previously would have passed with effectiveRatio
+    // 0 exact matches, 0 fuzzy, but 1 related match — related alone is not enough
     mockCalculateMatchScore.mockReturnValue({
       score: 30,
-      details: { mustHaveMatched: [], mustHaveRelated: ['react'], mustHaveMissing: [] },
+      details: { mustHaveMatched: [], mustHaveFuzzy: [], mustHaveRelated: ['react'], mustHaveMissing: [] },
     });
 
     await notifyMatchingRecruiters(['cand_1']);
-    // exactRatio = 0/1 = 0 < 0.40 → filtered out
+    // effectiveRatio = (0 + 0 * 0.85) / 1 = 0 < 0.40 → filtered out
     expect(mockSendEmail).not.toHaveBeenCalled();
   });
 });

@@ -15,6 +15,9 @@ export const RELATED_MATCH_WEIGHT = 0.3;
 /** Weight applied to related (category-based) must-have skill matches. */
 export const MUST_HAVE_RELATED_WEIGHT = 0.3;
 
+/** Weight applied to fuzzy (token-containment / synonym) matches toward must-have ratio and scoring. */
+export const FUZZY_MATCH_WEIGHT = 0.85;
+
 /** Score weight for must-have skills component. */
 export const MUST_HAVE_WEIGHT = 45;
 
@@ -159,7 +162,9 @@ export function calculateMatchScore(
   seniority?: string[],
   maxBudgetLpa?: number,
   searchLocations?: string[],
-  searchAvailability?: string[]
+  searchAvailability?: string[],
+  requiredSynonyms?: Record<string, string[]>,
+  candidateSynonyms?: Record<string, string[]>
 ): MatchScoreResult {
   let score = 0;
 
@@ -169,20 +174,20 @@ export function calculateMatchScore(
     ...candidate.secondary_skills,
   ];
 
-  // Must-have skills match — exact matches only for scoring
-  const mustHaveMatch = calculateSkillMatch(candidateSkills, mustHaveSkills, true);
-  // Second pass on missing must-haves to find related skills for display only (not scored)
+  // Must-have skills match — exact + fuzzy (token containment / synonym) for scoring
+  const mustHaveMatch = calculateSkillMatch(candidateSkills, mustHaveSkills, true, requiredSynonyms, candidateSynonyms);
+  // Second pass on remaining missing must-haves to find related skills for display only (not scored)
   const mustHaveRelatedDisplay = calculateSkillMatch(candidateSkills, mustHaveMatch.missing, false);
 
   const mustHaveEffective = mustHaveSkills.length > 0
-    ? mustHaveMatch.exactMatched.length / mustHaveSkills.length
+    ? (mustHaveMatch.exactMatched.length + mustHaveMatch.fuzzyMatched.length * FUZZY_MATCH_WEIGHT) / mustHaveSkills.length
     : 1;
   score += mustHaveEffective * MUST_HAVE_WEIGHT;
 
-  // Good-to-have skills match — related allowed at reduced weight
-  const goodToHaveMatch = calculateSkillMatch(candidateSkills, goodToHaveSkills, false);
+  // Good-to-have skills match — fuzzy + related allowed at reduced weight
+  const goodToHaveMatch = calculateSkillMatch(candidateSkills, goodToHaveSkills, false, requiredSynonyms, candidateSynonyms);
   const goodToHaveEffective = goodToHaveSkills.length > 0
-    ? (goodToHaveMatch.exactMatched.length + goodToHaveMatch.relatedMatched.length * RELATED_MATCH_WEIGHT) / goodToHaveSkills.length
+    ? (goodToHaveMatch.exactMatched.length + goodToHaveMatch.fuzzyMatched.length * FUZZY_MATCH_WEIGHT + goodToHaveMatch.relatedMatched.length * RELATED_MATCH_WEIGHT) / goodToHaveSkills.length
     : 1;
   score += goodToHaveEffective * GOOD_TO_HAVE_WEIGHT;
 
@@ -228,9 +233,11 @@ export function calculateMatchScore(
     score: Math.round(score),
     details: {
       mustHaveMatched: mustHaveMatch.exactMatched,
+      mustHaveFuzzy: mustHaveMatch.fuzzyMatched,
       mustHaveRelated: mustHaveRelatedDisplay.relatedMatched,
       mustHaveMissing: mustHaveRelatedDisplay.missing,
       goodToHaveMatched: goodToHaveMatch.exactMatched,
+      goodToHaveFuzzy: goodToHaveMatch.fuzzyMatched,
       goodToHaveRelated: goodToHaveMatch.relatedMatched,
       experienceMatch,
       seniorityMatch,

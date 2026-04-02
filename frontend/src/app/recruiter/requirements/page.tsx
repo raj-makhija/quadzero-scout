@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Bell } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { api, RequirementSummary } from '@/lib/api';
-import { formatDate, formatEngagementModel, formatPayroll } from '@/lib/utils';
+import { formatDate, formatEngagementModel, formatPayroll, generateJobTitle } from '@/lib/utils';
 
 export default function RequirementsListPage() {
   const router = useRouter();
@@ -19,7 +19,7 @@ export default function RequirementsListPage() {
   const [currentOffset, setCurrentOffset] = useState(0);
 
   // Filters
-  const [clientNameFilter, setClientNameFilter] = useState('');
+  const [searchFilter, setSearchFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -38,7 +38,7 @@ export default function RequirementsListPage() {
       const offset = reset ? 0 : currentOffset;
 
       const response = await api.listRequirements({
-        clientName: clientNameFilter.trim() || undefined,
+        search: searchFilter.trim() || undefined,
         dateFrom: dateFrom || undefined,
         dateTo: dateTo ? dateTo + 'T23:59:59.999Z' : undefined,
         status: statusFilter || undefined,
@@ -58,7 +58,20 @@ export default function RequirementsListPage() {
     } finally {
       setLoading(false);
     }
-  }, [clientNameFilter, dateFrom, dateTo, statusFilter, currentOffset]);
+  }, [searchFilter, dateFrom, dateTo, statusFilter, currentOffset]);
+
+  const sortedRequirements = useMemo(() => {
+    const active: RequirementSummary[] = [];
+    const inactive: RequirementSummary[] = [];
+    for (const req of requirements) {
+      if (req.status === 'closed_on_hold' || req.status === 'duplicate') {
+        inactive.push(req);
+      } else {
+        active.push(req);
+      }
+    }
+    return [...active, ...inactive];
+  }, [requirements]);
 
   useEffect(() => {
     if (status === 'authenticated') {
@@ -105,12 +118,12 @@ export default function RequirementsListPage() {
         <div className="card p-4 mb-6">
           <div className="flex flex-col sm:flex-row gap-3 items-end">
             <div className="flex-1">
-              <label className="label text-xs">Client Name</label>
+              <label className="label text-xs">Search</label>
               <input
                 type="text"
-                value={clientNameFilter}
-                onChange={(e) => setClientNameFilter(e.target.value)}
-                placeholder="Filter by client name..."
+                value={searchFilter}
+                onChange={(e) => setSearchFilter(e.target.value)}
+                placeholder="Search by client, end client, skill, contact..."
                 className="input mt-1"
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
               />
@@ -148,10 +161,10 @@ export default function RequirementsListPage() {
             <button onClick={handleSearch} className="btn-primary whitespace-nowrap">
               Search
             </button>
-            {(clientNameFilter || dateFrom || dateTo || statusFilter) && (
+            {(searchFilter || dateFrom || dateTo || statusFilter) && (
               <button
                 onClick={() => {
-                  setClientNameFilter('');
+                  setSearchFilter('');
                   setDateFrom('');
                   setDateTo('');
                   setStatusFilter('');
@@ -174,17 +187,30 @@ export default function RequirementsListPage() {
 
         {/* Requirements List */}
         <div className="space-y-4">
-          {requirements.map((req) => (
+          {sortedRequirements.map((req, idx) => {
+            const isInactive = req.status === 'closed_on_hold' || req.status === 'duplicate';
+            const prevReq = idx > 0 ? sortedRequirements[idx - 1] : null;
+            const prevInactive = prevReq ? (prevReq.status === 'closed_on_hold' || prevReq.status === 'duplicate') : false;
+            const showDivider = isInactive && !prevInactive;
+            return (
+            <>
+            {showDivider && (
+              <div key="inactive-divider" className="flex items-center gap-3 pt-2 pb-1">
+                <div className="flex-1 border-t border-gray-300 dark:border-gray-600" />
+                <span className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">Closed / On-hold</span>
+                <div className="flex-1 border-t border-gray-300 dark:border-gray-600" />
+              </div>
+            )}
             <div
               key={req.requirementId}
-              className="card p-5 hover:shadow-md transition-shadow cursor-pointer"
+              className={`card p-5 hover:shadow-md transition-shadow cursor-pointer ${isInactive ? 'bg-amber-50/60 dark:bg-gray-800/80 opacity-60 border-dashed border-amber-300/50 dark:border-gray-500/50' : ''}`}
               onClick={() => router.push(`/recruiter/requirements/${req.requirementId}`)}
             >
               <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2 mb-1">
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                      {req.jobTitle || 'Untitled Requirement'}
+                      {generateJobTitle(req.clientName, req.endClient, req.coreSkill, req.contactPersonName)}
                     </h3>
                     {req.status === 'duplicate' && (
                       <span className="badge bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300 text-xs">
@@ -282,7 +308,9 @@ export default function RequirementsListPage() {
                 </div>
               </div>
             </div>
-          ))}
+            </>
+            );
+          })}
 
           {!loading && requirements.length === 0 && (
             <div className="card p-12 text-center">
@@ -291,11 +319,11 @@ export default function RequirementsListPage() {
               </svg>
               <h3 className="mt-4 text-lg font-medium text-gray-900 dark:text-gray-100">No requirements found</h3>
               <p className="mt-2 text-gray-500 dark:text-gray-400">
-                {clientNameFilter || dateFrom || dateTo || statusFilter
+                {searchFilter || dateFrom || dateTo || statusFilter
                   ? 'Try adjusting your filters'
                   : 'Post your first JD requirement to get started'}
               </p>
-              {!clientNameFilter && !dateFrom && !dateTo && !statusFilter && (
+              {!searchFilter && !dateFrom && !dateTo && !statusFilter && (
                 <button
                   onClick={() => router.push('/recruiter/search')}
                   className="btn-primary mt-4"

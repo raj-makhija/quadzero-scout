@@ -9,10 +9,13 @@ import {
   FileText,
   Users,
   ArrowRight,
+  Activity,
 } from 'lucide-react';
 import { api } from '@/lib/api';
-import type { RequirementSummary, RecentProfileSummary } from '@/lib/api';
+import type { RequirementSummary, RecentProfileSummary, ActivityPeriod, ActivitySummary } from '@/lib/api';
 import { formatRelativeTime, formatSeniority } from '@/lib/utils';
+import { PeriodSelector } from './activity/PeriodSelector';
+import { ActivitySummaryCard } from './activity/ActivitySummaryCard';
 
 interface RecruiterHomeProps {
   userName?: string | null;
@@ -27,6 +30,12 @@ export function RecruiterHome({ userName }: RecruiterHomeProps) {
   const [loadingProfiles, setLoadingProfiles] = useState(true);
   const [errorReqs, setErrorReqs] = useState<string | null>(null);
   const [errorProfiles, setErrorProfiles] = useState<string | null>(null);
+
+  // Activity state
+  const [activityPeriod, setActivityPeriod] = useState<ActivityPeriod>('previousDay');
+  const [activitySummary, setActivitySummary] = useState<ActivitySummary>({});
+  const [loadingActivity, setLoadingActivity] = useState(true);
+  const [errorActivity, setErrorActivity] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchRequirements = async () => {
@@ -54,6 +63,23 @@ export function RecruiterHome({ userName }: RecruiterHomeProps) {
     fetchRequirements();
     fetchProfiles();
   }, []);
+
+  useEffect(() => {
+    const fetchActivity = async () => {
+      setLoadingActivity(true);
+      setErrorActivity(null);
+      try {
+        const data = await api.getMyActivity({ period: activityPeriod });
+        setActivitySummary(data.summary);
+      } catch {
+        setErrorActivity('Failed to load activity');
+      } finally {
+        setLoadingActivity(false);
+      }
+    };
+
+    fetchActivity();
+  }, [activityPeriod]);
 
   return (
     <div>
@@ -113,6 +139,34 @@ export function RecruiterHome({ userName }: RecruiterHomeProps) {
             Find a specific candidate by name
           </p>
         </Link>
+      </div>
+
+      {/* Your Activity */}
+      <div className="mt-12 max-w-6xl mx-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+            <Activity className="w-5 h-5 text-primary-600" />
+            Your Activity
+          </h2>
+          <div className="flex items-center gap-3">
+            <PeriodSelector value={activityPeriod} onChange={setActivityPeriod} />
+            <Link
+              href="/recruiter/activity"
+              className="text-sm font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 flex items-center gap-1"
+            >
+              View Details
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+        </div>
+
+        {errorActivity ? (
+          <div className="card p-4 text-sm text-red-600 dark:text-red-400">
+            {errorActivity}
+          </div>
+        ) : (
+          <ActivitySummaryCard summary={activitySummary} loading={loadingActivity} />
+        )}
       </div>
 
       {/* Latest Requirements & Profiles */}

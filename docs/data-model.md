@@ -400,7 +400,8 @@ Stores job requirements created by recruiters with parsed JD criteria.
 | budget_max_lpa | Number | No | Maximum budget in LPA |
 | contract_duration_months | Number | No | Contract duration in months (1-60). Only meaningful for contract engagements |
 | payment_terms_days | Number | No | Payment terms in days (30, 45, 60, or 90) |
-| job_title | String | No | Job title (auto-generated on frontend as "Client Name (End Client) - Core Skill") |
+| contact_person_name | String | No | HR contact person name at the client organization |
+| job_title | String | No | Job title (dynamically generated on frontend as "CoreSkill - Client Name (End Client) - Contact Person") |
 | jd_text | String | Yes | Raw job description text |
 | parsed_criteria | Map | Yes | LLM-parsed search criteria |
 | status | String | Yes | active or duplicate |
@@ -1244,6 +1245,7 @@ export const SaveRequirementRequestSchema = z.object({
   parsedCriteria: LLMJDOutputSchema,
   status: z.enum(['active', 'duplicate']).optional().default('active'),
   duplicateOf: z.string().uuid().optional(),
+  contactPersonName: z.string().max(200).optional(),
 });
 ```
 
@@ -1262,6 +1264,7 @@ export const UpdateRequirementRequestSchema = z.object({
   jdText: z.string().min(50).max(10000).optional(),
   parsedCriteria: LLMJDOutputSchema.optional(),
   additionalFields: z.array(AdditionalFieldDefinitionSchema).optional(),
+  contactPersonName: z.string().max(200).nullable().optional(),
 }).refine(obj => Object.keys(obj).length > 0, {
   message: 'At least one field must be provided',
 });

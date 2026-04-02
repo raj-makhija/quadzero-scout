@@ -267,7 +267,7 @@ class ApiClient {
 
   async listRequirements(filters?: RequirementFilters) {
     const params = new URLSearchParams();
-    if (filters?.clientName) params.set('clientName', filters.clientName);
+    if (filters?.search) params.set('search', filters.search);
     if (filters?.dateFrom) params.set('dateFrom', filters.dateFrom);
     if (filters?.dateTo) params.set('dateTo', filters.dateTo);
     if (filters?.status) params.set('status', filters.status);
@@ -663,6 +663,41 @@ class ApiClient {
     return this.request<ListAuditLogsResponse>(`/admin/audit-logs/entity/${entityType}/${entityId}?${searchParams.toString()}`);
   }
 
+  // Activity Dashboard endpoints
+  async getMyActivity(params?: {
+    period?: ActivityPeriod;
+    detail?: boolean;
+    limit?: number;
+    nextToken?: string;
+  }): Promise<ActivityDashboardResponse> {
+    const searchParams = new URLSearchParams();
+    if (params?.period) searchParams.set('period', params.period);
+    if (params?.detail) searchParams.set('detail', 'true');
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    if (params?.nextToken) searchParams.set('nextToken', params.nextToken);
+    return this.request<ActivityDashboardResponse>(`/recruiter/my-activity?${searchParams.toString()}`);
+  }
+
+  async getActivityDashboard(params?: {
+    period?: ActivityPeriod;
+    userId?: string;
+    detail?: boolean;
+    limit?: number;
+    nextToken?: string;
+  }): Promise<ActivityDashboardResponse> {
+    const searchParams = new URLSearchParams();
+    if (params?.period) searchParams.set('period', params.period);
+    if (params?.userId) searchParams.set('userId', params.userId);
+    if (params?.detail) searchParams.set('detail', 'true');
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    if (params?.nextToken) searchParams.set('nextToken', params.nextToken);
+    return this.request<ActivityDashboardResponse>(`/admin/activity-dashboard?${searchParams.toString()}`);
+  }
+
+  async listApprovedRecruiters(): Promise<{ recruiters: RecruiterListItem[] }> {
+    return this.request<{ recruiters: RecruiterListItem[] }>('/admin/recruiters/list');
+  }
+
   // Session Settings endpoints
   async getSessionSettings() {
     return this.request<{ settings: { sessionTimeoutSeconds: number } }>('/admin/session-settings');
@@ -753,6 +788,7 @@ export interface ParsedCriteria {
   coreSkill?: string | null;
   contractDurationMonths?: number | null;
   paymentTermsDays?: number | null;
+  skillSynonyms?: Record<string, string[]> | null;
 }
 
 export interface SearchCriteria {
@@ -769,6 +805,7 @@ export interface SearchCriteria {
   roles?: string[];
   maxBudgetLpa?: number;
   engagementModel?: 'contract' | 'full_time' | 'either';
+  skillSynonyms?: Record<string, string[]>;
 }
 
 export interface PaginationOptions {
@@ -913,6 +950,7 @@ export interface SaveRequirementPayload {
   status?: 'active' | 'duplicate';
   duplicateOf?: string;
   additionalFields?: AdditionalFieldDefinition[];
+  contactPersonName?: string;
 }
 
 export interface RequirementSummary {
@@ -934,6 +972,8 @@ export interface RequirementSummary {
   demandScore?: number;
   notifyRecruiterIds?: string[];
   additionalFields?: AdditionalFieldDefinition[];
+  contactPersonName?: string;
+  coreSkill?: string | null;
 }
 
 export interface BenchListCandidate {
@@ -1006,6 +1046,7 @@ export interface UpdateRequirementPayload {
   jdText?: string;
   parsedCriteria?: ParsedCriteria;
   additionalFields?: AdditionalFieldDefinition[];
+  contactPersonName?: string | null;
 }
 
 export interface UpdateRequirementResponse {
@@ -1047,7 +1088,7 @@ export interface ConsolidateResponse {
 }
 
 export interface RequirementFilters {
-  clientName?: string;
+  search?: string;
   dateFrom?: string;
   dateTo?: string;
   status?: string;
@@ -1449,6 +1490,42 @@ export interface AuditLogFilters {
   nextToken?: string;
 }
 
+// Activity Dashboard types
+export type ActivityPeriod = 'previousDay' | 'week' | 'month' | 'year';
+
+export interface ActivitySummary {
+  [actionType: string]: number;
+}
+
+export interface RecruiterBreakdownEntry {
+  email: string;
+  counts: ActivitySummary;
+}
+
+export interface RecruiterBreakdown {
+  [userId: string]: RecruiterBreakdownEntry;
+}
+
+export interface ActivityDashboardResponse {
+  summary: ActivitySummary;
+  recruiterBreakdown?: RecruiterBreakdown;
+  logs: AuditLogEntry[];
+  period: ActivityPeriod;
+  startDate: string;
+  endDate: string;
+  pagination: {
+    count: number;
+    hasMore: boolean;
+    nextToken?: string;
+  };
+}
+
+export interface RecruiterListItem {
+  id: string;
+  email: string;
+  name: string;
+}
+
 // Match Debug types
 export interface MatchDebugFilterResult {
   passed: boolean;
@@ -1456,6 +1533,7 @@ export interface MatchDebugFilterResult {
   ratio?: number;
   threshold?: number;
   matched?: string[];
+  fuzzy?: string[];
   related?: string[];
   missing?: string[];
   reqModel?: string;
@@ -1506,9 +1584,11 @@ export interface MatchDebugResponse {
   score: number;
   matchDetails: {
     mustHaveMatched: string[];
+    mustHaveFuzzy: string[];
     mustHaveRelated: string[];
     mustHaveMissing: string[];
     goodToHaveMatched: string[];
+    goodToHaveFuzzy: string[];
     goodToHaveRelated: string[];
     experienceMatch: string;
     seniorityMatch: boolean;
