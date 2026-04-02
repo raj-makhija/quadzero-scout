@@ -63,10 +63,10 @@ export default function Home() {
               </p>
               <div className="mt-10 flex flex-col sm:flex-row justify-center items-center gap-3 sm:gap-4">
                 <Link href="/candidate/upload" className="btn-primary text-lg px-8 py-3 w-full sm:w-auto">
-                  I'm a Candidate
+                  I&apos;m a Candidate
                 </Link>
                 <Link href="/recruiter/search" className="btn-outline text-lg px-8 py-3 w-full sm:w-auto">
-                  I'm a Recruiter
+                  I&apos;m a Recruiter
                 </Link>
               </div>
             </div>

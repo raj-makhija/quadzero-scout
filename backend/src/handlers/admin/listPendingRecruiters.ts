@@ -8,7 +8,7 @@ async function handleRequest(_event: AuthenticatedEvent): Promise<APIGatewayProx
     const pendingRecruiters = await getUsersByStatus('pending', 'recruiter');
 
     // Don't expose password hashes
-    const sanitizedUsers = pendingRecruiters.map(({ passwordHash, ...user }) => user);
+    const sanitizedUsers = pendingRecruiters.map(({ passwordHash: _passwordHash, ...user }) => user);
 
     return success({ recruiters: sanitizedUsers, count: sanitizedUsers.length });
   } catch (err) {

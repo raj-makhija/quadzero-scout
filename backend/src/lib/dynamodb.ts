@@ -4,6 +4,7 @@ import {
   GetCommand,
   PutCommand,
   QueryCommand,
+  type QueryCommandInput,
   ScanCommand,
   DeleteCommand,
   UpdateCommand,
@@ -1758,7 +1759,7 @@ export async function getRecentProfiles(
   limit: number = 10,
   lastEvaluatedKey?: Record<string, unknown>
 ): Promise<{ items: CandidateItem[]; lastKey?: Record<string, unknown> }> {
-  const params: Record<string, unknown> = {
+  const params: QueryCommandInput = {
     TableName: config.dynamodb.talentProfilesTable,
     IndexName: 'RecentProfilesIndex',
     KeyConditionExpression: '#type = :type',

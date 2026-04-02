@@ -51,7 +51,6 @@ export async function sendIngestDigestEmail(results: IngestResult[]): Promise<vo
   const errors = results.filter((r): r is IngestResultError => r.status === 'error');
   const skipped = results.filter((r): r is IngestResultSkipped => r.status === 'skipped');
 
-  const hasErrors = errors.length > 0;
   const subjectParts: string[] = [];
   if (successes.length > 0) {
     subjectParts.push(`${successes.length} resume(s) processed`);

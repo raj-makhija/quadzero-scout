@@ -202,7 +202,8 @@ export const UpdateRequirementRequestSchema = z.object({
 });
 
 // Validate function with proper error handling
-export function validate<T>(schema: z.ZodSchema<T>, data: unknown): { success: true; data: T } | { success: false; errors: z.ZodError } {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function validate<T>(schema: z.ZodType<T, any, any>, data: unknown): { success: true; data: T } | { success: false; errors: z.ZodError } {
   const result = schema.safeParse(data);
   if (result.success) {
     return { success: true, data: result.data };

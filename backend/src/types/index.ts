@@ -580,7 +580,7 @@ export const PricingConfigSchema = z.object({
       maxMonths: z.number().min(1),
       discountPct: z.number().min(0).max(1),
     })),
-  }).optional().default({
+  }).default({
     thresholds: [
       { minMonths: 1, maxMonths: 5, discountPct: 0 },
       { minMonths: 6, maxMonths: 11, discountPct: 0.05 },
@@ -662,9 +662,9 @@ export interface PricingOutput {
   finalEffectiveMarkupPct: number;
 }
 
-export interface CalculatePricingRequest extends PricingInput {}
+export type CalculatePricingRequest = PricingInput;
 
-export interface CalculatePricingResponse extends PricingOutput {}
+export type CalculatePricingResponse = PricingOutput;
 
 export interface UpdatePricingConfigRequest {
   config: PricingConfig;
@@ -741,6 +741,8 @@ export interface ShortlistedCandidate {
   notes?: string;
   status: ShortlistStatus;
   customFields?: Record<string, string | number>;
+  linkedinUrl?: string;
+  githubUrl?: string;
   notInterested?: boolean;
   notInterestedAt?: string;
 }
