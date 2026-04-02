@@ -35,6 +35,7 @@
 25. [Module 24: Not Interested Candidate](#25-module-24-not-interested-candidate)
 26. [Module 25: Not Suitable Candidate](#26-module-25-not-suitable-candidate)
 27. [Module 26: Sub-Vendor Management](#27-module-26-sub-vendor-management)
+28. [Module 27: Recruiter Activity Dashboard](#28-module-27-recruiter-activity-dashboard)
 
 ---
 
@@ -3014,6 +3015,138 @@ All functional and non-functional aspects of Quadzero Scout covering:
 
 ---
 
+## 28. Module 27: Recruiter Activity Dashboard
+
+### TC-AD-001: Recruiter home page shows activity summary on load
+- **Priority:** P0
+- **Type:** UI / E2E
+- **Precondition:** Recruiter is logged in; has audit log entries from the previous day
+- **Steps:** Navigate to the recruiter home page
+- **Expected:** "Your Activity" section appears between quick action cards and latest requirements/profiles; shows categorized counts (Searches, Shortlists, Resumes, Screenings, Requirements, Clients) for the previous day by default
+
+### TC-AD-002: Activity period selector changes data
+- **Priority:** P1
+- **Type:** UI
+- **Precondition:** Recruiter is on the home page
+- **Steps:** Change the period dropdown from "Previous Day" to "Last 7 Days"
+- **Expected:** Activity summary updates to show counts for the last 7 days; loading state shown during fetch
+
+### TC-AD-003: Activity summary shows zero state
+- **Priority:** P2
+- **Type:** UI
+- **Precondition:** Recruiter has no activity for the selected period
+- **Steps:** Select a period with no activity
+- **Expected:** All category counts show 0 with dimmed styling; "No activity recorded for this period" message shown
+
+### TC-AD-004: View Details link navigates to activity page
+- **Priority:** P1
+- **Type:** UI
+- **Steps:** Click "View Details" link next to the period selector on home page
+- **Expected:** Navigates to `/recruiter/activity` page
+
+### TC-AD-005: Recruiter activity page - Summary tab
+- **Priority:** P1
+- **Type:** UI / E2E
+- **Precondition:** Recruiter has activity for the selected period
+- **Steps:** Navigate to `/recruiter/activity`; ensure "Summary" tab is active
+- **Expected:** Shows categorized activity summary card with counts per category
+
+### TC-AD-006: Recruiter activity page - Detailed tab
+- **Priority:** P1
+- **Type:** UI / E2E
+- **Precondition:** Recruiter has activity for the selected period
+- **Steps:** Navigate to `/recruiter/activity`; click "Detailed" tab
+- **Expected:** Shows chronological table of activity entries with timestamp, action badge, entity info, IP address; rows are expandable to show metadata
+
+### TC-AD-007: Recruiter activity page - pagination
+- **Priority:** P2
+- **Type:** UI
+- **Precondition:** Recruiter has >100 activity entries for the selected period
+- **Steps:** Navigate to detailed view; scroll to bottom
+- **Expected:** "Load More" button appears; clicking it appends more entries
+
+### TC-AD-008: GET /recruiter/my-activity returns summary for previousDay
+- **Priority:** P0
+- **Type:** API
+- **Steps:** Call `GET /recruiter/my-activity?period=previousDay` with valid recruiter token
+- **Expected:** Response contains `summary` (action type counts), `logs` array, `period`, `startDate`, `endDate`, and `pagination` fields. `startDate` and `endDate` are yesterday's date in IST.
+
+### TC-AD-009: GET /recruiter/my-activity returns summary only for month/year
+- **Priority:** P1
+- **Type:** API
+- **Steps:** Call `GET /recruiter/my-activity?period=year` without `detail=true`
+- **Expected:** Response `summary` contains aggregated counts; `logs` array is empty
+
+### TC-AD-010: GET /recruiter/my-activity with detail=true for month
+- **Priority:** P1
+- **Type:** API
+- **Steps:** Call `GET /recruiter/my-activity?period=month&detail=true&limit=50`
+- **Expected:** Response contains both `summary` and `logs` with up to 50 entries; `pagination.nextToken` present if more exist
+
+### TC-AD-011: GET /recruiter/my-activity invalid period returns error
+- **Priority:** P2
+- **Type:** API
+- **Steps:** Call `GET /recruiter/my-activity?period=invalid`
+- **Expected:** Returns 400 VALIDATION_ERROR with descriptive message
+
+### TC-AD-012: Admin activity dashboard - cumulative view
+- **Priority:** P0
+- **Type:** UI / E2E
+- **Precondition:** Admin logged in; multiple recruiters have activity
+- **Steps:** Navigate to `/admin/activity`; "All Recruiters" view is active
+- **Expected:** Shows overall summary card and recruiter breakdown table with per-recruiter counts; table sorted by total activity descending
+
+### TC-AD-013: Admin activity dashboard - individual recruiter view
+- **Priority:** P1
+- **Type:** UI / E2E
+- **Precondition:** Admin logged in
+- **Steps:** Switch to "Individual" view; select a recruiter from dropdown
+- **Expected:** Summary card updates to show only that recruiter's activity; "Show Details" toggle reveals detailed log table
+
+### TC-AD-014: Admin activity dashboard - recruiter dropdown populated
+- **Priority:** P1
+- **Type:** API / UI
+- **Steps:** Navigate to `/admin/activity`; switch to Individual mode
+- **Expected:** Dropdown shows all approved recruiters and admins sorted by name, fetched from `GET /admin/recruiters/list`
+
+### TC-AD-015: GET /admin/activity-dashboard cumulative view
+- **Priority:** P0
+- **Type:** API
+- **Steps:** Call `GET /admin/activity-dashboard?period=previousDay` without userId
+- **Expected:** Response contains `summary`, `recruiterBreakdown` (per-user counts), empty `logs`, and `pagination`
+
+### TC-AD-016: GET /admin/activity-dashboard individual view
+- **Priority:** P1
+- **Type:** API
+- **Steps:** Call `GET /admin/activity-dashboard?period=week&userId=<recruiter-id>&detail=true`
+- **Expected:** Response contains `summary` and `logs` for the specified recruiter only; `recruiterBreakdown` is not present
+
+### TC-AD-017: GET /admin/recruiters/list returns approved users
+- **Priority:** P1
+- **Type:** API
+- **Steps:** Call `GET /admin/recruiters/list` with admin token
+- **Expected:** Returns array of `{ id, email, name }` for approved recruiters and admins, sorted by name
+
+### TC-AD-018: Admin dashboard card links to activity page
+- **Priority:** P2
+- **Type:** UI
+- **Steps:** Navigate to `/admin`; click "Activity Dashboard" card
+- **Expected:** Navigates to `/admin/activity`
+
+### TC-AD-019: Admin sidebar shows Activity link
+- **Priority:** P2
+- **Type:** UI
+- **Steps:** Navigate to any admin page
+- **Expected:** Sidebar includes "Activity" link between "Audit Logs" and "Settings"
+
+### TC-AD-020: Non-admin cannot access admin activity endpoints
+- **Priority:** P1
+- **Type:** API
+- **Steps:** Call `GET /admin/activity-dashboard` with recruiter token
+- **Expected:** Returns 403 Forbidden
+
+---
+
 ## Traceability Matrix Summary
 
 | Module | Test Count | P0 | P1 | P2 | P3 |
@@ -3045,4 +3178,5 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | Not Interested Candidate | 6 | 2 | 4 | 0 | 0 |
 | Not Suitable Candidate | 9 | 2 | 5 | 2 | 0 |
 | Sub-Vendor Management | 14 | 5 | 7 | 2 | 0 |
-| **Total** | **401** | **100** | **165** | **104** | **32** |
+| Recruiter Activity Dashboard | 20 | 3 | 9 | 5 | 3 |
+| **Total** | **421** | **103** | **174** | **109** | **35** |

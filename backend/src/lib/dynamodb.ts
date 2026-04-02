@@ -2003,6 +2003,173 @@ export async function queryAuditLogsByAction(
   };
 }
 
+// ─── Activity Dashboard Query Functions ─────────────────────────────────────
+
+export interface ActivitySummary {
+  [actionType: string]: number;
+}
+
+export interface RecruiterBreakdownEntry {
+  email: string;
+  counts: ActivitySummary;
+}
+
+export interface RecruiterBreakdown {
+  [userId: string]: RecruiterBreakdownEntry;
+}
+
+export async function queryAuditLogsByUserWithSummary(
+  userId: string,
+  options: {
+    startDate: string;
+    endDate: string;
+    summaryOnly?: boolean;
+    limit?: number;
+    nextToken?: string;
+  }
+): Promise<{
+  summary: ActivitySummary;
+  logs: AuditLogEntry[];
+  nextToken?: string;
+}> {
+  const { startDate, endDate, summaryOnly = false } = options;
+  const limit = options.limit || 100;
+
+  // When summaryOnly, paginate through all results to build a full summary
+  if (summaryOnly) {
+    const summary: ActivitySummary = {};
+    let exclusiveStartKey: Record<string, unknown> | undefined;
+
+    do {
+      const result = await docClient.send(
+        new QueryCommand({
+          TableName: config.dynamodb.auditLogTable,
+          KeyConditionExpression: 'pk = :pk AND sk BETWEEN :start AND :end',
+          ExpressionAttributeValues: {
+            ':pk': `USER#${userId}`,
+            ':start': startDate,
+            ':end': endDate + '\uffff',
+          },
+          ProjectionExpression: '#a',
+          ExpressionAttributeNames: { '#a': 'action' },
+          ExclusiveStartKey: exclusiveStartKey,
+        })
+      );
+      for (const item of (result.Items || []) as { action: string }[]) {
+        summary[item.action] = (summary[item.action] || 0) + 1;
+      }
+      exclusiveStartKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+    } while (exclusiveStartKey);
+
+    return { summary, logs: [] };
+  }
+
+  // Return both logs and summary for detail requests
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: config.dynamodb.auditLogTable,
+      KeyConditionExpression: 'pk = :pk AND sk BETWEEN :start AND :end',
+      ExpressionAttributeValues: {
+        ':pk': `USER#${userId}`,
+        ':start': startDate,
+        ':end': endDate + '\uffff',
+      },
+      ScanIndexForward: false,
+      Limit: limit,
+      ExclusiveStartKey: options.nextToken
+        ? JSON.parse(Buffer.from(options.nextToken, 'base64').toString())
+        : undefined,
+    })
+  );
+
+  const items = (result.Items || []) as AuditLogItem[];
+
+  const summary: ActivitySummary = {};
+  for (const item of items) {
+    summary[item.action] = (summary[item.action] || 0) + 1;
+  }
+
+  return {
+    summary,
+    logs: items.map(toAuditLogEntry),
+    nextToken: result.LastEvaluatedKey
+      ? Buffer.from(JSON.stringify(result.LastEvaluatedKey)).toString('base64')
+      : undefined,
+  };
+}
+
+export async function queryAuditLogsSummaryByDateRange(
+  startDate: string,
+  endDate: string,
+  options?: { userId?: string }
+): Promise<{
+  summary: ActivitySummary;
+  recruiterBreakdown: RecruiterBreakdown;
+}> {
+  // Build list of date partitions to query
+  const dates: string[] = [];
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    dates.push(d.toISOString().slice(0, 10));
+  }
+
+  const summary: ActivitySummary = {};
+  const recruiterBreakdown: RecruiterBreakdown = {};
+
+  const filterExpression = options?.userId ? 'user_id = :uid' : undefined;
+  const filterValues = options?.userId ? { ':uid': options.userId } : undefined;
+
+  // Batch concurrent queries (10 at a time) for performance
+  const BATCH_SIZE = 10;
+  for (let i = 0; i < dates.length; i += BATCH_SIZE) {
+    const batch = dates.slice(i, i + BATCH_SIZE);
+    const queries = batch.map(async (date) => {
+      let exclusiveStartKey: Record<string, unknown> | undefined;
+      const dateItems: { action: string; user_id: string; user_email: string }[] = [];
+
+      do {
+        const params = {
+          TableName: config.dynamodb.auditLogTable,
+          IndexName: 'DateIndex',
+          KeyConditionExpression: 'log_date = :ld',
+          ExpressionAttributeValues: {
+            ':ld': date,
+            ...(filterValues || {}),
+          },
+          ProjectionExpression: '#a, user_id, user_email',
+          ExpressionAttributeNames: { '#a': 'action' },
+          ExclusiveStartKey: exclusiveStartKey,
+          ...(filterExpression ? { FilterExpression: filterExpression } : {}),
+        };
+
+        const result = await docClient.send(new QueryCommand(params));
+        dateItems.push(
+          ...((result.Items || []) as { action: string; user_id: string; user_email: string }[])
+        );
+        exclusiveStartKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+      } while (exclusiveStartKey);
+
+      return dateItems;
+    });
+
+    const results = await Promise.all(queries);
+    for (const items of results) {
+      for (const item of items) {
+        summary[item.action] = (summary[item.action] || 0) + 1;
+
+        if (!recruiterBreakdown[item.user_id]) {
+          recruiterBreakdown[item.user_id] = { email: item.user_email, counts: {} };
+        }
+        recruiterBreakdown[item.user_id].counts[item.action] =
+          (recruiterBreakdown[item.user_id].counts[item.action] || 0) + 1;
+      }
+    }
+  }
+
+  return { summary, recruiterBreakdown };
+}
+
 // ─── Screening Lock Operations ──────────────────────────────────────────────
 
 const SCREENING_LOCK_TTL_SECONDS = 600; // 10 minutes

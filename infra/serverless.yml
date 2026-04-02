@@ -329,6 +329,13 @@ functions:
           path: /recruiter/bench-list
           method: GET
 
+  recruiterMyActivity:
+    handler: src/handlers/recruiter/myActivity.handler
+    events:
+      - httpApi:
+          path: /recruiter/my-activity
+          method: GET
+
   recruiterGetRequirement:
     handler: src/handlers/recruiter/getRequirement.handler
     events:
@@ -692,6 +699,20 @@ functions:
     events:
       - httpApi:
           path: /admin/audit-logs/entity/{entityType}/{entityId}
+          method: GET
+
+  adminActivityDashboard:
+    handler: src/handlers/admin/activityDashboard.handler
+    events:
+      - httpApi:
+          path: /admin/activity-dashboard
+          method: GET
+
+  adminListApprovedRecruiters:
+    handler: src/handlers/admin/listApprovedRecruiters.handler
+    events:
+      - httpApi:
+          path: /admin/recruiters/list
           method: GET
 
 resources:
