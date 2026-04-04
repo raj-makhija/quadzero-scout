@@ -1,7 +1,7 @@
 import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, ScreenCandidateRequestSchema } from '../../lib/validation.js';
-import { getCandidateById, saveScreening, updateCandidateProfileFields, getUserById } from '../../lib/dynamodb.js';
+import { getCandidateById, saveScreening, updateCandidateProfileFields, getUserById, getSubVendorById } from '../../lib/dynamodb.js';
 import { getExperienceBucket } from '../../lib/dynamodb.js';
 import { normalizeSkills } from '../../lib/skillNormalizer.js';
 import { calculateNegotiableCtc } from '../../lib/ctcConversion.js';
@@ -128,6 +128,35 @@ async function handleRequest(
       } else {
         dbFields['not_interested_at'] = null; // triggers DynamoDB REMOVE
         dbFields['not_interested_by'] = null;
+      }
+    }
+
+    // Handle sub-vendor updates (requires denormalization, not in FIELD_MAP)
+    if (updatedValues.subVendorId !== undefined) {
+      const svFields = ['sub_vendor_id', 'sub_vendor_name', 'sub_vendor_contact_person', 'sub_vendor_contact_phone', 'sub_vendor_contact_email'] as const;
+      // Record previous values for audit
+      for (const f of svFields) {
+        (previousValues as Record<string, unknown>)[f] = candidate[f as keyof typeof candidate];
+      }
+
+      if (updatedValues.subVendorId === null) {
+        // Remove sub-vendor
+        for (const f of svFields) {
+          dbFields[f] = null;
+        }
+        fieldsUpdated.push(...svFields);
+      } else {
+        // Set/change sub-vendor
+        const subVendor = await getSubVendorById(updatedValues.subVendorId);
+        if (!subVendor) {
+          return error(ErrorCodes.VALIDATION_ERROR, 'Sub-vendor not found', 400);
+        }
+        dbFields['sub_vendor_id'] = subVendor.sub_vendor_id;
+        dbFields['sub_vendor_name'] = subVendor.sub_vendor_name;
+        dbFields['sub_vendor_contact_person'] = subVendor.contact_person_name || null;
+        dbFields['sub_vendor_contact_phone'] = subVendor.contact_person_phone || null;
+        dbFields['sub_vendor_contact_email'] = subVendor.contact_person_email || null;
+        fieldsUpdated.push(...svFields);
       }
     }
 

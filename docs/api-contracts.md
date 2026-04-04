@@ -508,6 +508,8 @@ Authorization: Bearer <jwe_token>
     "subVendorId": "sv_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "subVendorName": "TechStaff Solutions",
     "subVendorContactPerson": "Ravi Kumar",
+    "subVendorContactPhone": "+91-9876500000",
+    "subVendorContactEmail": "ravi.kumar@techstaff.com",
     "lastUpdated": "2024-01-15T10:30:00Z",
     "createdAt": "2024-01-10T08:00:00Z"
   }
@@ -522,6 +524,8 @@ Authorization: Bearer <jwe_token>
 - `subVendorId`: Optional string linking the candidate to a sub-vendor. May be absent if the candidate was not sourced via a sub-vendor.
 - `subVendorName`: Optional denormalized sub-vendor name. Present when `subVendorId` is set.
 - `subVendorContactPerson`: Optional denormalized sub-vendor contact person name. Present when `subVendorId` is set and the sub-vendor has a contact person.
+- `subVendorContactPhone`: Optional sub-vendor contact person phone number. Present when `subVendorId` is set and the sub-vendor has a contact phone.
+- `subVendorContactEmail`: Optional sub-vendor contact person email address. Present when `subVendorId` is set and the sub-vendor has a contact email.
 
 ---
 
@@ -837,6 +841,8 @@ Authorization: Bearer <jwe_token> (optional)
         "subVendorId": "sv_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
         "subVendorName": "TechStaff Solutions",
         "subVendorContactPerson": "Ravi Kumar",
+        "subVendorContactPhone": "+91-9876500000",
+        "subVendorContactEmail": "ravi.kumar@techstaff.com",
         "isShortlisted": true,
         "isNotSuitable": false,
         "matchScore": 92,
@@ -1166,7 +1172,10 @@ Returns the most recently updated candidate profiles (sorted by `lastUpdated` de
         "createdAt": "2026-03-10T08:00:00.000Z",
         "lastScreenedAt": "2026-03-11T14:00:00.000Z",
         "roles": ["Full Stack Developer"],
-        "headline": "Sr. Full Stack Developer"
+        "headline": "Sr. Full Stack Developer",
+        "subVendorId": "sv_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "subVendorName": "TechStaff Solutions",
+        "subVendorContactPerson": "Ravi Kumar"
       }
     ],
     "pagination": {
@@ -1203,7 +1212,12 @@ Returns all bench-eligible candidates: availability in (immediate, 1_week, 2_wee
         "notInterested": false,
         "seniority": "senior",
         "primarySkills": ["React", "Node.js"],
-        "engagementModel": "full_time"
+        "engagementModel": "full_time",
+        "subVendorId": "sv_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "subVendorName": "TechStaff Solutions",
+        "subVendorContactPerson": "Ravi Kumar",
+        "subVendorContactPhone": "+91-9876500000",
+        "subVendorContactEmail": "ravi.kumar@techstaff.com"
       }
     ],
     "totalCount": 17
@@ -2133,6 +2147,7 @@ Authorization: Bearer <jwe_token>
 - `updatedValues.linkedinUrl`: Optional, string (URL), LinkedIn profile URL
 - `updatedValues.githubUrl`: Optional, string (URL), GitHub profile URL
 - `updatedValues.customFields`: Optional, `Record<string, string | number>` map of custom field key-value pairs to merge into the candidate's existing custom fields
+- `updatedValues.subVendorId`: Optional, `string | null`. Sub-vendor ID to link candidate to. A string UUID sets or changes the sub-vendor (triggers denormalization of all 5 sub-vendor fields: `sub_vendor_id`, `sub_vendor_name`, `sub_vendor_contact_person`, `sub_vendor_contact_phone`, `sub_vendor_contact_email`). `null` removes the sub-vendor and clears all 5 sub-vendor fields. Omit to leave unchanged.
 - `notes`: Optional, string, max 2000 characters
 
 **Flow:**

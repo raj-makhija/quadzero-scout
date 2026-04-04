@@ -16,7 +16,6 @@ import {
   markMessageAsRead,
   moveMessageToFolder,
   getMailFolderByName,
-  invalidateTokenCache,
   type GraphConfig,
   type GraphMessage,
   type GraphAttachment,
