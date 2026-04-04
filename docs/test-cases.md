@@ -3034,6 +3034,62 @@ All functional and non-functional aspects of Quadzero Scout covering:
 - **Steps:** (1) Click edit on a sub-vendor row. (2) Update contact details. (3) Save changes.
 - **Expected:** Sub-vendor details updated. Updated values reflected in the list.
 
+### TC-SV-018: Review page — sub-vendor checkbox unchecked by default; fields hidden
+- **Priority:** P0
+- **Type:** UI / E2E
+- **Precondition:** Recruiter is on the review page for a candidate with no existing sub-vendor link
+- **Steps:** Open the review page for the candidate
+- **Expected:** The "This resume is received from a sub-vendor" checkbox is unchecked by default. Sub-vendor fields (Contact Person Name, Company Name, Email, Phone) are not visible.
+
+### TC-SV-019: Review page — checking checkbox reveals sub-vendor inline editor
+- **Priority:** P0
+- **Type:** UI / E2E
+- **Precondition:** Recruiter is on the review page with the sub-vendor checkbox unchecked
+- **Steps:** Check the "This resume is received from a sub-vendor" checkbox
+- **Expected:** A purple-tinted section appears containing Contact Person Name (with typeahead), Company Name, Email, and Phone fields.
+
+### TC-SV-020: Review page — typeahead suggests existing sub-vendors and auto-populates fields
+- **Priority:** P0
+- **Type:** UI / E2E
+- **Precondition:** Recruiter is on the review page with the sub-vendor checkbox checked; existing sub-vendors are available
+- **Steps:** (1) Start typing in the Contact Person Name field. (2) Observe typeahead suggestions displayed in "Name — Company" format. (3) Select a suggestion.
+- **Expected:** All four fields (Contact Person Name, Company Name, Email, Phone) are auto-populated with the selected sub-vendor's details. `subVendorId` is set to the selected sub-vendor's ID.
+
+### TC-SV-021: Review page — manually editing a field after typeahead selection clears subVendorId
+- **Priority:** P1
+- **Type:** UI
+- **Precondition:** Recruiter selected a sub-vendor via typeahead; all fields are auto-populated and `subVendorId` is set
+- **Steps:** Manually edit any of the four sub-vendor fields (e.g., change the Company Name)
+- **Expected:** `subVendorId` is cleared, treating the entry as a new sub-vendor.
+
+### TC-SV-022: Review page — saving with new sub-vendor auto-creates via POST and links candidate
+- **Priority:** P0
+- **Type:** API / Integration
+- **Precondition:** Recruiter filled in sub-vendor details manually (no `subVendorId` set)
+- **Steps:** Click save on the review page
+- **Expected:** The system calls `POST /recruiter/sub-vendors` to create the new sub-vendor, then links the candidate to the newly created sub-vendor. Candidate is saved successfully with the sub-vendor association.
+
+### TC-SV-023: Review page — auto-create 409 conflict resolves by fetching existing sub-vendor
+- **Priority:** P1
+- **Type:** API / Integration
+- **Precondition:** Recruiter entered a sub-vendor name that already exists in the system (no `subVendorId` set)
+- **Steps:** Click save on the review page
+- **Expected:** `POST /recruiter/sub-vendors` returns HTTP 409. The system fetches the existing sub-vendor by name, uses its ID to link the candidate, and completes the save successfully.
+
+### TC-SV-024: Review page — Company Name required when sub-vendor checkbox is enabled
+- **Priority:** P1
+- **Type:** UI / Validation
+- **Precondition:** Recruiter checked the sub-vendor checkbox on the review page
+- **Steps:** Leave Company Name empty and click save
+- **Expected:** A validation error is displayed indicating Company Name is required. The save is blocked until Company Name is provided.
+
+### TC-SV-025: Review page — unchecking checkbox clears sub-vendor fields and saves without sub-vendor
+- **Priority:** P1
+- **Type:** UI / E2E
+- **Precondition:** Recruiter previously checked the sub-vendor checkbox and filled in some fields
+- **Steps:** (1) Uncheck the "This resume is received from a sub-vendor" checkbox. (2) Save the candidate.
+- **Expected:** All sub-vendor fields are cleared and hidden. The candidate is saved without any sub-vendor association.
+
 ---
 
 ## 28. Module 27: Recruiter Activity Dashboard
