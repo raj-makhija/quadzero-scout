@@ -172,7 +172,7 @@ export async function getBenchListCandidates(): Promise<{ items: CandidateItem[]
       ':a3': '2_weeks',
     },
     ProjectionExpression:
-      'candidate_id, full_name, total_experience, #loc, #roles, availability, last_screened_at, not_interested, seniority, primary_skills, engagement_model',
+      'candidate_id, full_name, total_experience, #loc, #roles, availability, last_screened_at, not_interested, seniority, primary_skills, engagement_model, sub_vendor_id, sub_vendor_name, sub_vendor_contact_person, sub_vendor_contact_phone, sub_vendor_contact_email',
   };
 
   // 'location' and 'roles' are DynamoDB reserved words — must use aliases
@@ -1767,21 +1767,18 @@ export async function getRecentProfiles(
   limit: number = 10,
   lastEvaluatedKey?: Record<string, unknown>
 ): Promise<{ items: CandidateItem[]; lastKey?: Record<string, unknown> }> {
-  const params: Record<string, unknown> = {
+  const params = {
     TableName: config.dynamodb.talentProfilesTable,
     IndexName: 'RecentProfilesIndex',
     KeyConditionExpression: '#type = :type',
-    ExpressionAttributeNames: { '#type': '_type', '#loc': 'location', '#roles': 'roles' },
+    ExpressionAttributeNames: { '#type': '_type', '#loc': 'location', '#roles': 'roles' } as Record<string, string>,
     ExpressionAttributeValues: { ':type': 'PROFILE' },
     ScanIndexForward: false,
     Limit: limit,
     ProjectionExpression:
-      'candidate_id, full_name, primary_skills, total_experience, seniority, #loc, last_updated, created_at, last_screened_at, #roles, headline',
+      'candidate_id, full_name, primary_skills, total_experience, seniority, #loc, last_updated, created_at, last_screened_at, #roles, headline, sub_vendor_id, sub_vendor_name, sub_vendor_contact_person',
+    ExclusiveStartKey: lastEvaluatedKey as Record<string, unknown> | undefined,
   };
-
-  if (lastEvaluatedKey) {
-    params.ExclusiveStartKey = lastEvaluatedKey;
-  }
 
   const result = await docClient.send(new QueryCommand(params));
 

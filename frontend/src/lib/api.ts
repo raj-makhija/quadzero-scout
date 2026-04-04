@@ -763,6 +763,8 @@ export interface CandidateProfile extends ExtractedProfile {
   subVendorId?: string;
   subVendorName?: string;
   subVendorContactPerson?: string;
+  subVendorContactPhone?: string;
+  subVendorContactEmail?: string;
 }
 
 export interface ParsedCriteria {
@@ -852,6 +854,8 @@ export interface CandidateSearchResult {
   subVendorId?: string;
   subVendorName?: string;
   subVendorContactPerson?: string;
+  subVendorContactPhone?: string;
+  subVendorContactEmail?: string;
 }
 
 export interface SearchResponse {
@@ -988,6 +992,11 @@ export interface BenchListCandidate {
   seniority?: string;
   primarySkills?: string[];
   engagementModel?: string;
+  subVendorId?: string;
+  subVendorName?: string;
+  subVendorContactPerson?: string;
+  subVendorContactPhone?: string;
+  subVendorContactEmail?: string;
 }
 
 export interface RecentProfileSummary {
@@ -1003,6 +1012,9 @@ export interface RecentProfileSummary {
   notInterested?: boolean;
   roles?: string[];
   headline?: string;
+  subVendorId?: string;
+  subVendorName?: string;
+  subVendorContactPerson?: string;
 }
 
 export interface RequestHistoryEntry {

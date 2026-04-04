@@ -2981,32 +2981,53 @@ All functional and non-functional aspects of Quadzero Scout covering:
 ### TC-SV-010: Search results include sub-vendor fields for authenticated users
 - **Priority:** P1
 - **Type:** API
-- **Precondition:** Candidate profile has `sub_vendor_id`, `sub_vendor_name`, and `sub_vendor_contact_person` set
+- **Precondition:** Candidate profile has `sub_vendor_id`, `sub_vendor_name`, `sub_vendor_contact_person`, `sub_vendor_contact_phone`, and `sub_vendor_contact_email` set
 - **Steps:** Call `POST /recruiter/search` with valid auth token and criteria matching the candidate
-- **Expected:** Each matching candidate in the response includes `subVendorId`, `subVendorName`, `subVendorContactPerson` fields
+- **Expected:** Each matching candidate in the response includes `subVendorId`, `subVendorName`, `subVendorContactPerson`, `subVendorContactPhone`, `subVendorContactEmail` fields
 
 ### TC-SV-011: Search results omit sub-vendor fields for unauthenticated users
 - **Priority:** P1
 - **Type:** API
 - **Precondition:** Candidate profile has sub-vendor fields set
 - **Steps:** Call `POST /recruiter/search` without auth token
-- **Expected:** Candidate results do not contain `subVendorId`, `subVendorName`, or `subVendorContactPerson`
+- **Expected:** Candidate results do not contain `subVendorId`, `subVendorName`, `subVendorContactPerson`, `subVendorContactPhone`, or `subVendorContactEmail`
 
-### TC-SV-012: Sub-vendor master page displays all sub-vendors
+### TC-SV-012: getProfile returns sub-vendor contact phone and email
+- **Priority:** P1
+- **Type:** API
+- **Precondition:** Candidate is linked to a sub-vendor that has contact phone and email set
+- **Steps:** Call `GET /candidate/profile/{candidateId}` with valid auth token
+- **Expected:** Response includes `subVendorContactPhone` and `subVendorContactEmail` fields with correct values
+
+### TC-SV-013: Bench list returns sub-vendor fields
+- **Priority:** P1
+- **Type:** API
+- **Precondition:** Bench-eligible candidate is linked to a sub-vendor with all contact fields set
+- **Steps:** Call `GET /recruiter/bench-list` with valid internal recruiter auth token
+- **Expected:** Each matching candidate in the response includes `subVendorId`, `subVendorName`, `subVendorContactPerson`, `subVendorContactPhone`, `subVendorContactEmail` fields
+
+### TC-SV-014: Candidate detail page shows sub-vendor section with contact details
+- **Priority:** P1
+- **Type:** UI / E2E
+- **Precondition:** Candidate is linked to a sub-vendor with contact person name, phone, and email set; candidate has no personal phone or email
+- **Steps:** Navigate to the candidate detail page for the linked candidate
+- **Expected:** A dedicated sub-vendor section is displayed showing contact person name, phone (clickable `tel:` link), and email (clickable `mailto:` link). When the candidate has no personal phone/email, a fallback message is shown indicating contact details are unavailable
+
+### TC-SV-015: Sub-vendor master page displays all sub-vendors
 - **Priority:** P1
 - **Type:** UI / E2E
 - **Precondition:** Recruiter is logged in; sub-vendors exist
 - **Steps:** Navigate to the sub-vendor master page
 - **Expected:** All sub-vendors are displayed in a list/table with name, contact person, phone, email, and notes columns
 
-### TC-SV-013: Sub-vendor master page - create new sub-vendor via form
+### TC-SV-016: Sub-vendor master page - create new sub-vendor via form
 - **Priority:** P1
 - **Type:** UI / E2E
 - **Precondition:** Recruiter is on the sub-vendor master page
 - **Steps:** (1) Click "Add Sub-Vendor" button. (2) Fill in sub-vendor name and optional contact details. (3) Submit the form.
 - **Expected:** New sub-vendor appears in the list. Success toast/notification displayed.
 
-### TC-SV-014: Sub-vendor master page - edit sub-vendor via inline or modal form
+### TC-SV-017: Sub-vendor master page - edit sub-vendor via inline or modal form
 - **Priority:** P2
 - **Type:** UI / E2E
 - **Precondition:** Recruiter is on the sub-vendor master page with existing sub-vendors

@@ -1484,9 +1484,9 @@ export default function RecruiterSearchPage() {
                           </span>
                         )}
                       </div>
-                      {isAuthenticated && candidate.subVendorContactPerson && (
+                      {isAuthenticated && candidate.subVendorId && (candidate.subVendorContactPerson || candidate.subVendorContactPhone || candidate.subVendorContactEmail) && (
                         <p className="text-xs text-purple-600 dark:text-purple-400 mt-0.5">
-                          Contact: {candidate.subVendorContactPerson}
+                          Contact: {candidate.subVendorContactPerson}{candidate.subVendorContactPhone && ` \u00b7 ${candidate.subVendorContactPhone}`}{candidate.subVendorContactEmail && ` \u00b7 ${candidate.subVendorContactEmail}`}
                         </p>
                       )}
 

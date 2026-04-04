@@ -31,6 +31,8 @@ export type ProfileListItem = {
   subVendorId?: string;
   subVendorName?: string;
   subVendorContactPerson?: string;
+  subVendorContactPhone?: string;
+  subVendorContactEmail?: string;
 };
 
 const SCREENING_STATUS_OPTIONS = [
@@ -60,6 +62,9 @@ function mapRecentToListItem(p: RecentProfileSummary): ProfileListItem {
     notInterested: p.notInterested,
     roles: p.roles,
     headline: p.headline,
+    subVendorId: p.subVendorId,
+    subVendorName: p.subVendorName,
+    subVendorContactPerson: p.subVendorContactPerson,
   };
 }
 
@@ -79,6 +84,8 @@ function mapSearchResultToListItem(c: CandidateSearchResult): ProfileListItem {
     subVendorId: c.subVendorId,
     subVendorName: c.subVendorName,
     subVendorContactPerson: c.subVendorContactPerson,
+    subVendorContactPhone: c.subVendorContactPhone,
+    subVendorContactEmail: c.subVendorContactEmail,
     availability: c.availability,
   };
 }
@@ -481,6 +488,11 @@ export default function LocateProfilePage() {
         roles: c.roles,
         availability: c.availability,
         engagementModel: c.engagementModel,
+        subVendorId: c.subVendorId,
+        subVendorName: c.subVendorName,
+        subVendorContactPerson: c.subVendorContactPerson,
+        subVendorContactPhone: c.subVendorContactPhone,
+        subVendorContactEmail: c.subVendorContactEmail,
       }));
       if (hasActiveFilters(filters)) {
         items = applyClientSideFilters(items, filters);
@@ -1001,6 +1013,11 @@ function CandidateCard({ candidate }: { candidate: ProfileListItem }) {
             </span>
           )}
         </div>
+        {candidate.subVendorContactPerson && (
+          <p className="text-xs text-purple-600 dark:text-purple-400">
+            Contact: {candidate.subVendorContactPerson}{candidate.subVendorContactPhone && ` \u00b7 ${candidate.subVendorContactPhone}`}
+          </p>
+        )}
         <p className="text-sm text-primary-600 dark:text-primary-400 mb-1.5">{getDisplayHeadline(candidate)}</p>
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-sm text-gray-500 dark:text-gray-400 mb-2">
           <span>{candidate.totalExperience} yrs exp</span>

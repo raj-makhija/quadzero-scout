@@ -4,7 +4,7 @@ import { getDistinctClientNames } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 
 async function handleRequest(
-  event: AuthenticatedEvent
+  _event: AuthenticatedEvent
 ): Promise<APIGatewayProxyResultV2> {
   try {
     const result = await getDistinctClientNames();

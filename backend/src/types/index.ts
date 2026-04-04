@@ -132,6 +132,8 @@ export interface CandidateItem {
   sub_vendor_id?: string;
   sub_vendor_name?: string;
   sub_vendor_contact_person?: string;
+  sub_vendor_contact_phone?: string;
+  sub_vendor_contact_email?: string;
   skill_synonyms?: Record<string, string[]>;
   _type?: string;
   created_at: string;
@@ -743,6 +745,8 @@ export interface ShortlistedCandidate {
   notes?: string;
   status: ShortlistStatus;
   customFields?: Record<string, string | number>;
+  linkedinUrl?: string;
+  githubUrl?: string;
   notInterested?: boolean;
   notInterestedAt?: string;
 }

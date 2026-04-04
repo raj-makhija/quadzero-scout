@@ -66,6 +66,8 @@ Stores candidate profile data extracted from resumes and edited by candidates.
 | sub_vendor_id | String | No | Links to SubVendors table. Set when the candidate is sourced via a sub-vendor. |
 | sub_vendor_name | String | No | Denormalized sub-vendor name for search display (avoids join on read) |
 | sub_vendor_contact_person | String | No | Denormalized sub-vendor contact person name for search display |
+| sub_vendor_contact_phone | String | No | Denormalized sub-vendor contact person phone |
+| sub_vendor_contact_email | String | No | Denormalized sub-vendor contact person email |
 | _type | String | Yes | Fixed value `"PROFILE"` for RecentProfilesIndex GSI partitioning |
 
 **Example Item:**
@@ -114,6 +116,8 @@ Stores candidate profile data extracted from resumes and edited by candidates.
   "sub_vendor_id": "sv_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "sub_vendor_name": "TechStaff Solutions",
   "sub_vendor_contact_person": "Ravi Kumar",
+  "sub_vendor_contact_phone": "+91-9876500000",
+  "sub_vendor_contact_email": "ravi.kumar@techstaff.com",
   "last_screened_at": "2024-01-14T09:00:00Z",
   "last_screened_by": "user_r1e2c3",
   "experience_bucket": "6-10",

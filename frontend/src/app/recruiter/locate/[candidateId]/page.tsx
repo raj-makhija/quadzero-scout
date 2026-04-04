@@ -17,6 +17,8 @@ import {
   ExternalLink,
   FileText,
   Mail,
+  Building2,
+  Phone,
 } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { api, ApiError } from '@/lib/api';
@@ -300,11 +302,6 @@ export default function CandidateProfilePage() {
                   </span>
                 )}
               </div>
-              {profile.subVendorContactPerson && (
-                <p className="text-xs text-purple-600 dark:text-purple-400 mb-0.5">
-                  Sub-Vendor Contact: {profile.subVendorContactPerson}
-                </p>
-              )}
               <p className="text-sm text-primary-600 dark:text-primary-400 mb-2">
                 {profile.headline || generateHeadline(profile.seniority || '', profile.roles, profile.primarySkills)}
               </p>
@@ -341,6 +338,49 @@ export default function CandidateProfilePage() {
             </div>
           </div>
         </div>
+
+        {/* Sub-Vendor Info Section */}
+        {profile.subVendorId && (
+          <div className="card p-4 mb-4 border-l-4 border-l-purple-500 bg-purple-50/50 dark:bg-purple-950/20">
+            <div className="flex items-center gap-2 mb-2">
+              <Building2 className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+              <h3 className="text-sm font-semibold text-purple-700 dark:text-purple-300">
+                Sub-Vendor: {profile.subVendorName}
+              </h3>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
+              {profile.subVendorContactPerson && (
+                <div>
+                  <p className="text-gray-500 dark:text-gray-400 text-xs">Contact Person</p>
+                  <p className="font-medium text-gray-900 dark:text-gray-100">{profile.subVendorContactPerson}</p>
+                </div>
+              )}
+              {profile.subVendorContactPhone && (
+                <div>
+                  <p className="text-gray-500 dark:text-gray-400 text-xs">Phone</p>
+                  <a href={`tel:${profile.subVendorContactPhone}`} className="font-medium text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1">
+                    <Phone className="w-3 h-3" />
+                    {profile.subVendorContactPhone}
+                  </a>
+                </div>
+              )}
+              {profile.subVendorContactEmail && (
+                <div>
+                  <p className="text-gray-500 dark:text-gray-400 text-xs">Email</p>
+                  <a href={`mailto:${profile.subVendorContactEmail}`} className="font-medium text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1">
+                    <Mail className="w-3 h-3" />
+                    {profile.subVendorContactEmail}
+                  </a>
+                </div>
+              )}
+            </div>
+            {!profile.phone && !profile.email && (
+              <p className="mt-2 text-xs text-purple-600 dark:text-purple-400 italic">
+                This candidate has no direct contact info. Reach out via sub-vendor contact above.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Actions: Resume Downloads & Cover Letter */}
         <div className="card p-4 mb-4">

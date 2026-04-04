@@ -58,6 +58,8 @@ export async function handler(
       subVendorId: candidate.sub_vendor_id,
       subVendorName: candidate.sub_vendor_name,
       subVendorContactPerson: candidate.sub_vendor_contact_person,
+      subVendorContactPhone: candidate.sub_vendor_contact_phone,
+      subVendorContactEmail: candidate.sub_vendor_contact_email,
     };
 
     return success(response);
