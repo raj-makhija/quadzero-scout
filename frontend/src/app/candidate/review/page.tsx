@@ -118,9 +118,9 @@ export default function ReviewPage() {
           try {
             const result = await api.saveSubVendor({
               subVendorName: subVendorData.companyName.trim(),
-              contactPersonName: subVendorData.contactPersonName || undefined,
-              contactPersonEmail: subVendorData.email || undefined,
-              contactPersonPhone: subVendorData.phone || undefined,
+              contactPersonName: subVendorData.contactPersonName.trim() || undefined,
+              contactPersonEmail: subVendorData.email.trim() || undefined,
+              contactPersonPhone: subVendorData.phone.trim() || undefined,
             });
             subVendorIdToUse = result.subVendorId;
           } catch (err) {
