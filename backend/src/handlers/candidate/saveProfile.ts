@@ -109,7 +109,7 @@ export async function handler(
       user_id: userId,
       full_name: profile.fullName,
       email: profile.email || existingCandidate?.email || '',
-      phone: profile.phone,
+      phone: profile.phone ?? undefined,
       location: profile.location ?? undefined,
       primary_skills: normalizedPrimarySkills,
       primary_skill_years: normalizedSkillYears,

@@ -21,8 +21,8 @@ export const SaveProfileRequestSchema = z.object({
   candidateId: z.string().uuid().optional(),
   profile: z.object({
     fullName: z.string().min(2),
-    email: z.string().email().or(z.literal('')).optional(),
-    phone: z.string().optional(),
+    email: z.string().email().or(z.literal('')).nullable().optional(),
+    phone: z.string().nullable().optional(),
     location: z.string().nullable().optional(),
     primarySkills: z.array(z.string().min(1)).min(1),
     primarySkillYears: z.record(z.string(), z.number().min(0).max(50)),
