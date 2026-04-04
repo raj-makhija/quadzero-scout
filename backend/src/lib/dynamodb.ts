@@ -83,10 +83,15 @@ export async function getCandidateByUserId(userId: string): Promise<CandidateIte
 }
 
 export async function saveCandidateProfile(candidate: CandidateItem): Promise<void> {
+  // DynamoDB does not allow empty strings for GSI key attributes (e.g., EmailIndex).
+  // Strip empty string from email so the attribute is omitted rather than stored as "".
+  const item: Record<string, unknown> = { ...candidate, _type: 'PROFILE' };
+  if (item.email === '') delete item.email;
+
   await docClient.send(
     new PutCommand({
       TableName: config.dynamodb.talentProfilesTable,
-      Item: { ...candidate, _type: 'PROFILE' },
+      Item: item,
     })
   );
 }
