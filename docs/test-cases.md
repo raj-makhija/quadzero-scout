@@ -3090,6 +3090,55 @@ All functional and non-functional aspects of Quadzero Scout covering:
 - **Steps:** (1) Uncheck the "This resume is received from a sub-vendor" checkbox. (2) Save the candidate.
 - **Expected:** All sub-vendor fields are cleared and hidden. The candidate is saved without any sub-vendor association.
 
+### TC-SV-026: Screening modal — sub-vendor section present with checkbox pre-filled from profile
+- **Priority:** P1
+- **Type:** UI
+- **Precondition:** Candidate has an existing sub-vendor association
+- **Steps:** Open the screening modal for the candidate
+- **Expected:** The sub-vendor section is visible with a "This candidate is from a sub-vendor" checkbox. The checkbox is checked and the sub-vendor fields are pre-filled from the candidate's profile.
+
+### TC-SV-027: Screening modal — can add sub-vendor to a candidate that previously had none; auto-creates if new
+- **Priority:** P1
+- **Type:** UI / Integration
+- **Precondition:** Candidate has no existing sub-vendor association
+- **Steps:** (1) Open the screening modal. (2) Check the "This candidate is from a sub-vendor" checkbox. (3) Type a new sub-vendor name that does not exist. (4) Save.
+- **Expected:** The system auto-creates the sub-vendor via `POST /recruiter/sub-vendors`, links the candidate to the newly created sub-vendor, and saves successfully.
+
+### TC-SV-028: Screening modal — can change sub-vendor on a candidate via typeahead selection
+- **Priority:** P1
+- **Type:** UI
+- **Precondition:** Candidate has an existing sub-vendor association
+- **Steps:** (1) Open the screening modal. (2) Clear the current sub-vendor name. (3) Type a different sub-vendor name and select from the typeahead dropdown. (4) Save.
+- **Expected:** The candidate's sub-vendor is updated to the newly selected sub-vendor. The screening is saved with the new `subVendorId`.
+
+### TC-SV-029: Screening modal — unchecking checkbox removes sub-vendor
+- **Priority:** P1
+- **Type:** UI / E2E
+- **Precondition:** Candidate has an existing sub-vendor association
+- **Steps:** (1) Open the screening modal. (2) Uncheck the "This candidate is from a sub-vendor" checkbox. (3) Save.
+- **Expected:** The system sends `subVendorId: null` to the backend. All 5 sub-vendor fields (`sub_vendor_id`, `sub_vendor_name`, `sub_vendor_contact_person`, `sub_vendor_contact_phone`, `sub_vendor_contact_email`) are cleared on the candidate.
+
+### TC-SV-030: Backend — POST /recruiter/screen-candidate with subVendorId UUID denormalizes all 5 fields
+- **Priority:** P0
+- **Type:** API
+- **Precondition:** A valid sub-vendor exists in the system
+- **Steps:** Call `POST /recruiter/screen-candidate` with `updatedValues.subVendorId` set to the sub-vendor's UUID
+- **Expected:** The candidate profile is updated with all 5 denormalized sub-vendor fields: `sub_vendor_id`, `sub_vendor_name`, `sub_vendor_contact_person`, `sub_vendor_contact_phone`, `sub_vendor_contact_email`. The screening audit record reflects the change.
+
+### TC-SV-031: Backend — POST /recruiter/screen-candidate with subVendorId null clears all 5 sub-vendor fields
+- **Priority:** P0
+- **Type:** API
+- **Precondition:** Candidate has an existing sub-vendor association
+- **Steps:** Call `POST /recruiter/screen-candidate` with `updatedValues.subVendorId` set to `null`
+- **Expected:** All 5 sub-vendor fields (`sub_vendor_id`, `sub_vendor_name`, `sub_vendor_contact_person`, `sub_vendor_contact_phone`, `sub_vendor_contact_email`) are cleared on the candidate profile. The screening audit record reflects the removal.
+
+### TC-SV-032: Backend — POST /recruiter/screen-candidate with invalid subVendorId returns 400
+- **Priority:** P1
+- **Type:** API
+- **Precondition:** No sub-vendor exists with the provided ID
+- **Steps:** Call `POST /recruiter/screen-candidate` with `updatedValues.subVendorId` set to a non-existent UUID
+- **Expected:** Returns HTTP 400 with error code `VALIDATION_ERROR` and message "Sub-vendor not found".
+
 ---
 
 ## 28. Module 27: Recruiter Activity Dashboard

@@ -350,6 +350,7 @@ export const ScreenCandidateRequestSchema = z.object({
     linkedinUrl: z.string().url().optional(),
     githubUrl: z.string().url().optional(),
     notInterested: z.boolean().optional(),
+    subVendorId: z.string().nullable().optional(),
   }),
   notes: z.string().optional(),
 });

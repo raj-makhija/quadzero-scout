@@ -2147,6 +2147,7 @@ Authorization: Bearer <jwe_token>
 - `updatedValues.linkedinUrl`: Optional, string (URL), LinkedIn profile URL
 - `updatedValues.githubUrl`: Optional, string (URL), GitHub profile URL
 - `updatedValues.customFields`: Optional, `Record<string, string | number>` map of custom field key-value pairs to merge into the candidate's existing custom fields
+- `updatedValues.subVendorId`: Optional, `string | null`. Sub-vendor ID to link candidate to. A string UUID sets or changes the sub-vendor (triggers denormalization of all 5 sub-vendor fields: `sub_vendor_id`, `sub_vendor_name`, `sub_vendor_contact_person`, `sub_vendor_contact_phone`, `sub_vendor_contact_email`). `null` removes the sub-vendor and clears all 5 sub-vendor fields. Omit to leave unchanged.
 - `notes`: Optional, string, max 2000 characters
 
 **Flow:**

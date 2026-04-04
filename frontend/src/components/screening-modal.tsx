@@ -2,8 +2,9 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { X, AlertCircle, Loader2, ChevronDown, ChevronUp, Lock } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import type { CandidateSearchResult, ScreeningUpdatedValues, AdditionalFieldDefinition, ScreeningLockConflict } from '@/lib/api';
+import { SubVendorInlineEditor, type SubVendorEditorState } from '@/components/sub-vendor-inline-editor';
 import { FormField, FormInput, FormSelect, FormTextarea } from '@/components/ui/form-field';
 import {
   SENIORITY_OPTIONS,
@@ -67,6 +68,13 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
   // Custom/additional fields from requirement definitions
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, string>>({});
 
+  // Sub-vendor state
+  const [subVendorEnabled, setSubVendorEnabled] = useState(false);
+  const [subVendorData, setSubVendorData] = useState<SubVendorEditorState>({
+    subVendorId: '', contactPersonName: '', companyName: '', email: '', phone: '',
+  });
+  const [initialSubVendorId, setInitialSubVendorId] = useState('');
+
   // Track which fields are empty/missing for highlighting
   const [emptyFields, setEmptyFields] = useState<Set<string>>(new Set());
 
@@ -127,6 +135,19 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
         setLinkedinUrl(profile.linkedinUrl || '');
         setGithubUrl(profile.githubUrl || '');
         setNotInterested(profile.notInterested || false);
+
+        // Pre-fill sub-vendor state
+        if (profile.subVendorId) {
+          setSubVendorEnabled(true);
+          setInitialSubVendorId(profile.subVendorId);
+          setSubVendorData({
+            subVendorId: profile.subVendorId,
+            contactPersonName: profile.subVendorContactPerson || '',
+            companyName: profile.subVendorName || '',
+            email: profile.subVendorContactEmail || '',
+            phone: profile.subVendorContactPhone || '',
+          });
+        }
 
         // Pre-fill custom fields from candidate profile
         if (additionalFields && additionalFields.length > 0) {
@@ -321,6 +342,43 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
         }
       }
 
+      // Handle sub-vendor
+      if (subVendorEnabled) {
+        if (!subVendorData.companyName.trim()) {
+          setErrorMessage('Company Name is required when sub-vendor is enabled');
+          setLoading(false);
+          return;
+        }
+        let subVendorIdToUse = subVendorData.subVendorId;
+        if (!subVendorIdToUse) {
+          // Auto-create new sub-vendor
+          try {
+            const result = await api.saveSubVendor({
+              subVendorName: subVendorData.companyName.trim(),
+              contactPersonName: subVendorData.contactPersonName || undefined,
+              contactPersonEmail: subVendorData.email || undefined,
+              contactPersonPhone: subVendorData.phone || undefined,
+            });
+            subVendorIdToUse = result.subVendorId;
+          } catch (err) {
+            if (err instanceof ApiError && err.message.includes('already exists')) {
+              const list = await api.listSubVendors();
+              const match = list.subVendors.find(
+                (sv) => sv.subVendorName.toLowerCase() === subVendorData.companyName.trim().toLowerCase()
+              );
+              if (match) subVendorIdToUse = match.subVendorId;
+              else throw err;
+            } else {
+              throw err;
+            }
+          }
+        }
+        updatedValues.subVendorId = subVendorIdToUse;
+      } else if (initialSubVendorId) {
+        // Sub-vendor was removed
+        updatedValues.subVendorId = null;
+      }
+
       await api.screenCandidate(resolvedCandidateId, updatedValues, notes || undefined);
 
       // Release the screening lock (fire-and-forget)
@@ -345,6 +403,17 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
       if (location) refreshedFields.location = location;
       refreshedFields.notInterested = notInterested;
       refreshedFields.notInterestedAt = notInterested ? new Date().toISOString() : undefined;
+
+      // Pass back sub-vendor state
+      if (subVendorEnabled && updatedValues.subVendorId) {
+        refreshedFields.subVendorId = updatedValues.subVendorId;
+        refreshedFields.subVendorName = subVendorData.companyName;
+        refreshedFields.subVendorContactPerson = subVendorData.contactPersonName;
+      } else if (!subVendorEnabled && initialSubVendorId) {
+        refreshedFields.subVendorId = undefined;
+        refreshedFields.subVendorName = undefined;
+        refreshedFields.subVendorContactPerson = undefined;
+      }
 
       if (isShortlistFlow) {
         // Show success message briefly, then close
@@ -372,6 +441,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
     totalExperience, seniority, primarySkillsText, secondarySkillsText,
     industries, roles, certifications, summary, notes, notInterested, onScreeningComplete,
     isShortlistFlow, additionalFields, customFieldValues,
+    subVendorEnabled, subVendorData, initialSubVendorId,
   ]);
 
   return (
@@ -506,6 +576,19 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                   }`} />
                 </button>
               </div>
+
+              {/* Sub-Vendor */}
+              <SubVendorInlineEditor
+                enabled={subVendorEnabled}
+                onEnabledChange={setSubVendorEnabled}
+                subVendorId={subVendorData.subVendorId}
+                contactPersonName={subVendorData.contactPersonName}
+                companyName={subVendorData.companyName}
+                email={subVendorData.email}
+                phone={subVendorData.phone}
+                onChange={setSubVendorData}
+                checkboxLabel="This candidate is from a sub-vendor"
+              />
 
               {/* Section: Compensation */}
               <div>

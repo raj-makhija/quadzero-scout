@@ -1367,6 +1367,7 @@ export interface ScreeningUpdatedValues {
   linkedinUrl?: string;
   githubUrl?: string;
   notInterested?: boolean;
+  subVendorId?: string | null;
 }
 
 export interface ScreenCandidateResponse {
