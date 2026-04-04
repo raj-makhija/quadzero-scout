@@ -154,6 +154,8 @@ async function handleRequest(
           subVendorId: candidate.sub_vendor_id,
           subVendorName: candidate.sub_vendor_name,
           subVendorContactPerson: candidate.sub_vendor_contact_person,
+          subVendorContactPhone: candidate.sub_vendor_contact_phone,
+          subVendorContactEmail: candidate.sub_vendor_contact_email,
         };
       })
       // Filter out candidates below minimum must-have effective match ratio

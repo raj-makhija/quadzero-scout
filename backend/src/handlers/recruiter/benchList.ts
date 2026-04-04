@@ -26,6 +26,11 @@ async function handleRequest(
       seniority: item.seniority,
       primarySkills: item.primary_skills || [],
       engagementModel: item.engagement_model,
+      subVendorId: item.sub_vendor_id,
+      subVendorName: item.sub_vendor_name,
+      subVendorContactPerson: item.sub_vendor_contact_person,
+      subVendorContactPhone: item.sub_vendor_contact_phone,
+      subVendorContactEmail: item.sub_vendor_contact_email,
     }));
 
     return success({

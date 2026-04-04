@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Header } from '@/components/Header';
-import { api, ExtractedProfile, SubVendorNameItem } from '@/lib/api';
+import { SubVendorInlineEditor, type SubVendorEditorState } from '@/components/sub-vendor-inline-editor';
+import { api, ApiError, ExtractedProfile } from '@/lib/api';
 import { formatSeniority, formatAvailability, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS, CANDIDATE_ENGAGEMENT_OPTIONS } from '@/lib/utils';
 
 export default function ReviewPage() {
@@ -16,9 +17,10 @@ export default function ReviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [newSkill, setNewSkill] = useState('');
   const [supplementaryText, setSupplementaryText] = useState<string | null>(null);
-  const [subVendors, setSubVendors] = useState<SubVendorNameItem[]>([]);
-  const [selectedSubVendorId, setSelectedSubVendorId] = useState<string>('');
-  const [subVendorSearch, setSubVendorSearch] = useState('');
+  const [subVendorEnabled, setSubVendorEnabled] = useState(false);
+  const [subVendorData, setSubVendorData] = useState<SubVendorEditorState>({
+    subVendorId: '', contactPersonName: '', companyName: '', email: '', phone: '',
+  });
 
   useEffect(() => {
     const stored = sessionStorage.getItem('extractedProfile');
@@ -34,11 +36,6 @@ export default function ReviewPage() {
     setS3Key(storedS3Key);
     setConfidence(parseFloat(storedConfidence || '0'));
     setSupplementaryText(sessionStorage.getItem('supplementaryText'));
-
-    // Fetch sub-vendor names for dropdown
-    api.getSubVendorNames()
-      .then((res) => setSubVendors(res.subVendors))
-      .catch(() => {}); // Non-critical - dropdown will be empty
   }, [router]);
 
   const updateProfile = (updates: Partial<ExtractedProfile>) => {
@@ -98,10 +95,51 @@ export default function ReviewPage() {
       setError(null);
 
       // Validate email is required when no sub-vendor selected
-      if (!selectedSubVendorId && !profile.email) {
+      if (!subVendorEnabled && !profile.email) {
         setError('Email is required when no sub-vendor is selected');
         setSaving(false);
         return;
+      }
+
+      // Validate company name when sub-vendor is enabled
+      if (subVendorEnabled && !subVendorData.companyName.trim()) {
+        setError('Company Name is required for sub-vendor');
+        setSaving(false);
+        return;
+      }
+
+      // Resolve or create sub-vendor
+      let subVendorIdToUse: string | undefined;
+      if (subVendorEnabled) {
+        if (subVendorData.subVendorId) {
+          subVendorIdToUse = subVendorData.subVendorId;
+        } else {
+          // Auto-create new sub-vendor
+          try {
+            const result = await api.saveSubVendor({
+              subVendorName: subVendorData.companyName.trim(),
+              contactPersonName: subVendorData.contactPersonName.trim() || undefined,
+              contactPersonEmail: subVendorData.email.trim() || undefined,
+              contactPersonPhone: subVendorData.phone.trim() || undefined,
+            });
+            subVendorIdToUse = result.subVendorId;
+          } catch (err) {
+            if (err instanceof ApiError && err.message.includes('already exists')) {
+              // Already exists by name — find and use existing
+              const list = await api.listSubVendors();
+              const match = list.subVendors.find(
+                (sv) => sv.subVendorName.toLowerCase() === subVendorData.companyName.trim().toLowerCase()
+              );
+              if (match) {
+                subVendorIdToUse = match.subVendorId;
+              } else {
+                throw err;
+              }
+            } else {
+              throw err;
+            }
+          }
+        }
       }
 
       const profileToSave = {
@@ -115,7 +153,7 @@ export default function ReviewPage() {
         currentCtc: profile.currentCtc || undefined,
         expectedCtc: profile.expectedCtc || undefined,
         coverLetter: supplementaryText || undefined,
-        subVendorId: selectedSubVendorId || undefined,
+        subVendorId: subVendorIdToUse,
       };
       const { candidateId } = await api.saveProfile({ profile: profileToSave, resumeS3Key: s3Key });
 
@@ -172,6 +210,16 @@ export default function ReviewPage() {
           {/* Basic Info */}
           <div className="card p-6">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Basic Information</h2>
+            <SubVendorInlineEditor
+              enabled={subVendorEnabled}
+              onEnabledChange={setSubVendorEnabled}
+              subVendorId={subVendorData.subVendorId}
+              contactPersonName={subVendorData.contactPersonName}
+              companyName={subVendorData.companyName}
+              email={subVendorData.email}
+              phone={subVendorData.phone}
+              onChange={setSubVendorData}
+            />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="label">Full Name <span className="text-red-500">*</span></label>
@@ -184,8 +232,8 @@ export default function ReviewPage() {
               </div>
               <div>
                 <label className="label">
-                  Email {!selectedSubVendorId && <span className="text-red-500">*</span>}
-                  {selectedSubVendorId && <span className="text-xs text-gray-400 ml-1">(optional for sub-vendor candidates)</span>}
+                  Email {!subVendorEnabled && <span className="text-red-500">*</span>}
+                  {subVendorEnabled && <span className="text-xs text-gray-400 ml-1">(optional for sub-vendor candidates)</span>}
                 </label>
                 <input
                   type="email"
@@ -233,26 +281,6 @@ export default function ReviewPage() {
                   placeholder="https://github.com/username"
                 />
               </div>
-              {subVendors.length > 0 && (
-                <div className="md:col-span-2">
-                  <label className="label">Sub-Vendor (optional)</label>
-                  <select
-                    value={selectedSubVendorId}
-                    onChange={(e) => setSelectedSubVendorId(e.target.value)}
-                    className="input mt-1 w-full"
-                  >
-                    <option value="">-- None (direct candidate) --</option>
-                    {subVendors.map(sv => (
-                      <option key={sv.subVendorId} value={sv.subVendorId}>{sv.subVendorName}</option>
-                    ))}
-                  </select>
-                  {selectedSubVendorId && (
-                    <p className="mt-1 text-xs text-purple-600 dark:text-purple-400">
-                      This candidate will be linked to the selected sub-vendor. Email and phone are optional.
-                    </p>
-                  )}
-                </div>
-              )}
             </div>
           </div>
 

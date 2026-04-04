@@ -36,6 +36,9 @@ async function handleRequest(
       lastScreenedAt: item.last_screened_at,
       roles: item.roles || [],
       headline: item.headline,
+      subVendorId: item.sub_vendor_id,
+      subVendorName: item.sub_vendor_name,
+      subVendorContactPerson: item.sub_vendor_contact_person,
     }));
 
     // Encode next page key
