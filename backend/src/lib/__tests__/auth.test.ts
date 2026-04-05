@@ -10,6 +10,7 @@ import { withAuth, withOptionalAuth, type AuthenticatedEvent, type OptionalAuthE
 vi.mock('../dynamodb.js', () => ({
   getUserById: vi.fn(),
   getUserByEmail: vi.fn(),
+  getActiveSessionSettings: vi.fn().mockResolvedValue({ sessionTimeoutSeconds: 86400 }),
 }));
 
 import { getUserById, getUserByEmail } from '../dynamodb.js';
