@@ -545,7 +545,15 @@ export default function CandidateProfilePage() {
         <ScreeningHistoryPanel candidateId={candidateId} mode="inline" />
 
         {/* Check Requirement Match */}
-        <CheckRequirementMatch candidateId={candidateId} />
+        <CheckRequirementMatch
+          candidateId={candidateId}
+          candidateName={profile?.fullName || ''}
+          candidateScreening={{
+            lastScreenedAt: profile?.lastScreenedAt,
+            notInterested: profile?.notInterested,
+            notInterestedAt: profile?.notInterestedAt,
+          }}
+        />
 
         {/* Shortlisted JDs */}
         <div className="card mb-4">

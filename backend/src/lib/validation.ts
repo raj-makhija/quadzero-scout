@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { LLMJDOutputSchema, PricingConfigSchema, SessionSettingsSchema, AdditionalFieldDefinitionSchema, SeniorityEnum, AvailabilityEnum } from '../types/index.js';
+import { LLMJDOutputSchema, PricingConfigSchema, SessionSettingsSchema, AdditionalFieldDefinitionSchema, SeniorityEnum, AvailabilityEnum, PipelineStageEnum, ClientFeedbackRatingEnum, InterviewFeedbackRatingEnum, InterviewTypeEnum, InterviewDecisionEnum, CommunicationSourceEnum } from '../types/index.js';
 
 // Upload URL Request Validation
 export const UploadUrlRequestSchema = z.object({
@@ -20,7 +20,7 @@ export const AnalyzeRequestSchema = z.object({
 export const SaveProfileRequestSchema = z.object({
   candidateId: z.string().uuid().optional(),
   profile: z.object({
-    fullName: z.string().min(2),
+    fullName: z.string().min(2).max(100),
     email: z.string().email().or(z.literal('')).nullable().optional(),
     phone: z.string().nullable().optional(),
     location: z.string().nullable().optional(),
@@ -38,8 +38,8 @@ export const SaveProfileRequestSchema = z.object({
       institution: z.string(),
       year: z.number().optional(),
     })).optional(),
-    certifications: z.array(z.string()).optional(),
-    summary: z.string().optional(),
+    certifications: z.array(z.string()).max(20).optional(),
+    summary: z.string().max(2000).optional(),
     currentCtc: z.number().min(0).max(500).optional(),
     expectedCtc: z.number().min(0).max(500).optional(),
     customFields: z.record(z.string(), z.union([z.string(), z.number()])).optional().default({}),
@@ -139,7 +139,7 @@ export const SaveRequirementRequestSchema = z.object({
   parsedCriteria: LLMJDOutputSchema,
   status: z.enum(['active', 'duplicate']).optional().default('active'),
   duplicateOf: z.string().uuid().optional(),
-  additionalFields: z.array(AdditionalFieldDefinitionSchema).optional().default([]),
+  additionalFields: z.array(AdditionalFieldDefinitionSchema).max(20).optional().default([]),
   contactPersonName: z.string().max(200).optional(),
 });
 
@@ -337,8 +337,8 @@ export const ScreenCandidateRequestSchema = z.object({
       institution: z.string(),
       year: z.number().optional(),
     })).optional(),
-    certifications: z.array(z.string()).optional(),
-    summary: z.string().optional(),
+    certifications: z.array(z.string()).max(20).optional(),
+    summary: z.string().max(2000).optional(),
     currentCtc: z.number().min(0).max(500).nullable().optional(),
     expectedCtc: z.number().min(0).max(500).nullable().optional(),
     expectedCtcType: z.enum(['explicit', 'negotiable']).optional(),
@@ -381,6 +381,62 @@ export const UpdateCandidateCustomFieldsRequestSchema = z.object({
 export const UpdateSessionSettingsRequestSchema = z.object({
   settings: SessionSettingsSchema,
   description: z.string().max(500).optional(),
+});
+
+// ─── Pipeline Validation Schemas ─────────────────────────────────────────────
+
+export const SubmitCandidateToClientRequestSchema = z.object({
+  clientEmail: z.string().email().optional(),
+  clientName: z.string().max(200).optional(),
+  coverNote: z.string().max(5000).optional(),
+  ccEmails: z.array(z.string().email()).max(10).optional(),
+  offline: z.boolean().optional(),
+  offlineSentAt: z.string().datetime().optional(),
+});
+
+export const SubmitBatchToClientRequestSchema = z.object({
+  candidateIds: z.array(z.string().min(1)).min(1).max(20),
+  clientEmail: z.string().email(),
+  clientName: z.string().max(200).optional(),
+  coverNote: z.string().max(5000).optional(),
+  ccEmails: z.array(z.string().email()).max(10).optional(),
+});
+
+export const RecordClientFeedbackRequestSchema = z.object({
+  rating: ClientFeedbackRatingEnum,
+  feedbackText: z.string().min(1).max(5000),
+  round: z.number().int().min(0).optional(),
+  source: CommunicationSourceEnum,
+});
+
+export const ScheduleInterviewRequestSchema = z.object({
+  round: z.number().int().min(1).max(20),
+  interviewType: InterviewTypeEnum,
+  scheduledAt: z.string().datetime(),
+  durationMinutes: z.number().int().min(15).max(480).optional(),
+  interviewerName: z.string().max(200).optional(),
+  interviewerEmail: z.string().email().optional(),
+  locationOrLink: z.string().max(1000).optional(),
+  notes: z.string().max(2000).optional(),
+});
+
+export const RecordInterviewFeedbackRequestSchema = z.object({
+  round: z.number().int().min(1).max(20),
+  rating: InterviewFeedbackRatingEnum,
+  feedbackText: z.string().min(1).max(5000),
+  source: CommunicationSourceEnum,
+  decision: InterviewDecisionEnum,
+});
+
+export const UpdatePipelineStageRequestSchema = z.object({
+  stage: PipelineStageEnum,
+  reason: z.string().max(2000).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const AddPipelineNoteRequestSchema = z.object({
+  text: z.string().min(1).max(5000),
+  source: CommunicationSourceEnum,
 });
 
 // Format Zod errors for API response

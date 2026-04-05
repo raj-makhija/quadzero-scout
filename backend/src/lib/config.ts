@@ -18,6 +18,7 @@ interface Config {
     auditLogTable: string;
     screeningLocksTable: string;
     subVendorsTable: string;
+    pipelineActivityTable: string;
   };
   s3: {
     resumesBucket: string;
@@ -82,6 +83,7 @@ export const config: Config = {
     auditLogTable: getEnvVar('DYNAMODB_TABLE_AUDIT_LOG', 'AuditLog-dev'),
     screeningLocksTable: getEnvVar('DYNAMODB_TABLE_SCREENING_LOCKS', 'ScreeningLocks-dev'),
     subVendorsTable: getEnvVar('DYNAMODB_TABLE_SUB_VENDORS', 'SubVendors-dev'),
+    pipelineActivityTable: getEnvVar('DYNAMODB_TABLE_PIPELINE_ACTIVITY', 'PipelineActivity-dev'),
   },
   s3: {
     resumesBucket: getEnvVar('S3_BUCKET_RESUMES', 'quadzero-scout-resumes-dev'),

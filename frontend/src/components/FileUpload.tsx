@@ -170,7 +170,7 @@ export function FileUpload({
                 or click to browse
               </p>
               <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
-                PDF, DOCX up to {formatFileSize(maxSize)}
+                PDF, DOC, DOCX up to {formatFileSize(maxSize)}
               </p>
             </>
           ) : (

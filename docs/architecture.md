@@ -16,6 +16,7 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │  │  - Edit Profile │  │  - Results      │  │  - JWE Sessions             │  │
 │  │                 │  │  - Requirements │  │                             │  │
 │  │                 │  │  - Shortlists   │  │                             │  │
+│  │                 │  │  - Pipeline     │  │                             │  │
 │  │                 │  │  - Clients      │  │                             │  │
 │  └─────────────────┘  └─────────────────┘  └─────────────────────────────┘  │
 │                                                                             │
@@ -65,6 +66,10 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │                            │  - screenCandidate / screeningHistory       │ │
 │                            │  - saveClient / listClients                 │ │
 │                            │  - getClientDefaults / updateClient         │ │
+│                            │  - submitToClient / submitBatch             │ │
+│                            │  - clientFeedback / interviewSchedule       │ │
+│                            │  - interviewFeedback / updatePipelineStage  │ │
+│                            │  - getPipeline / getActivities / addNote    │ │
 │                            └──────────────────────────────────────────────┘ │
 │  ┌──────────────────────┐                                                   │
 │  │  Worker Lambdas      │                                                   │
@@ -102,6 +107,8 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │  - Clients      │  │                 │  │                                 │
 │  - Candidate   │  │                 │  │                                 │
 │    Screenings  │  │                 │  │                                 │
+│  - Pipeline    │  │                 │  │                                 │
+│    Activity    │  │                 │  │                                 │
 └─────────────────┘  └─────────────────┘  └─────────────────────────────────┘
           │
           ▼
@@ -448,7 +455,7 @@ Bulk Upload:
 
 - **Bench List** (`BenchListModal` component, `frontend/src/components/bench-list-modal.tsx`): Available on the Locate Profile page for internal recruiters only (`isInternal === true`). A "Bench List" button appears in the header bar in both recent and filtered modes. Clicking it calls the dedicated `GET /recruiter/bench-list` backend endpoint, which scans all candidates server-side with hard filters (availability in immediate/1_week/2_weeks, screened within 15 days) and returns all matches (up to 2000 scanned). This ensures consistent, complete results regardless of the user's current view state. The handler (`backend/src/handlers/recruiter/benchList.ts`) enforces internal-only access via `event.auth.isInternal`. The DynamoDB scan uses `FilterExpression` and `ProjectionExpression` for efficiency (`backend/src/lib/dynamodb.ts:getBenchListCandidates`). The modal groups candidates by their primary role (first entry in the `roles` array; candidates with no roles are grouped under "Other"). Each group displays: role category, resource count, all unique role titles within the group, experience range (min–max), unique availability values (formatted), and unique preferred locations. Groups are sorted by count descending. The modal provides two copy actions: "Copy for Email" (copies a styled HTML table with inline CSS for email client compatibility via `navigator.clipboard.write()` with `ClipboardItem`) and "Copy for LinkedIn" (copies a clean plain-text summary via `navigator.clipboard.writeText()`). All data is deterministic — no LLM involvement.
 
-- **Match Explainer** (`MatchExplainer.tsx` component): A diagnostic feature accessible from two entry points — "Check Candidate Match" on the requirement detail page and "Check Requirement Match" on the locate profile page. It calls `POST /candidate/match-debug` with a candidateId + requirementId pair and displays: a verdict (Match/No Match with score), each hard filter's pass/fail status with explanations, an expandable scoring breakdown (must-have 0-45, good-to-have 0-25, experience 0-8, seniority 0-5, location 0-10, availability 0-7), color-coded skill comparison (green=matched, amber=related, red=missing), and the candidate's raw profile data. The requirement page variant includes a candidate name typeahead search (debounced, using `searchCandidatesByName`); the locate page variant accepts a requirement ID directly.
+- **Match Explainer** (`MatchExplainer.tsx` component): A diagnostic feature accessible from two entry points — "Check Candidate Match" on the requirement detail page and "Check Requirement Match" on the locate profile page. It calls `POST /candidate/match-debug` with a candidateId + requirementId pair and displays: a verdict (Match/No Match with score), each hard filter's pass/fail status with explanations, an expandable scoring breakdown (must-have 0-45, good-to-have 0-25, experience 0-8, seniority 0-5, location 0-10, availability 0-7), color-coded skill comparison (green=matched, amber=related, red=missing), and the candidate's raw profile data. The requirement page variant includes a candidate name typeahead search (debounced, using `searchCandidatesByName`); the locate page variant includes a requirement search typeahead (debounced, using `listRequirements` with a search filter) that displays client name, end client, job title, core skill, and top must-have skills in the dropdown. Both variants include a `ShortlistAction` panel below the match results, allowing the recruiter to shortlist the candidate for the requirement regardless of the match score. Screening conditions apply: if screening is required or expired, an inline `ScreeningModal` overlay opens (with `isShortlistFlow` mode and the requirement's `additionalFields`) instead of navigating away — after screening completes, the local candidate state updates immediately so the recruiter can shortlist without leaving the page.
 
 - **Recruiter dashboard** (`RecruiterHome` component): The authenticated recruiter landing page displays three quick-action cards (Upload Resume, Search by JD, Locate Profile), followed by a "Your Activity" section showing an activity summary for the selected period (default: previous day) with a period selector dropdown and link to the full activity detail page, then a two-column layout showing the 10 latest requirements and 10 latest candidate profiles. Data is fetched on mount via `Promise.allSettled` with independent loading/error states per section. Requirements link to `/recruiter/requirements/{id}` and profiles link to `/recruiter/locate/{id}`. The recent profiles endpoint (`GET /recruiter/recent-profiles`) uses a DynamoDB full-table Scan sorted client-side by `last_updated` descending — suitable at current scale but should be optimized with a dedicated GSI if the TalentProfiles table grows beyond ~1000 items.
 
@@ -591,7 +598,7 @@ The active provider is configured via the `LLM_PROVIDER` environment variable.
 
 | Component | Technology | Responsibility |
 |-----------|------------|----------------|
-| Profile Storage | DynamoDB | Candidate data, users, prompts, requirements, shortlists, screening history |
+| Profile Storage | DynamoDB | Candidate data, users, prompts, requirements, shortlists, screening history, pipeline activity |
 | File Storage | S3 | Resume documents (original + formatted) |
 | Text Extraction | pdf-parse / mammoth | In-Lambda PDF and DOCX parsing |
 
@@ -835,7 +842,59 @@ The platform includes a centralized audit trail that tracks all recruiter and ad
   2. By entity (EntityIndex GSI) — "who touched this candidate/requirement?"
   3. By action+date (ActionTypeIndex GSI) — "all resume downloads on 2026-03-16"
 - **Auto-expiry**: TTL of 365 days automatically removes old audit records.
-- **25 tracked event types** covering sign-ins, searches, resume downloads, shortlisting, screening, requirement CRUD, client management, and admin actions.
+- **32 tracked event types** covering sign-ins, searches, resume downloads, shortlisting, screening, requirement CRUD, client management, pipeline actions (submit, feedback, interviews, stage updates, notes), and admin actions.
+
+## Post-Shortlisting Pipeline
+
+The pipeline feature extends the shortlisting workflow into a full candidate tracking pipeline that follows candidates from shortlist through client submission, interviews, offers, and joining.
+
+### Pipeline Stage Machine
+
+Candidates progress through active stages linearly, and can exit to terminal states from any active stage:
+
+```
+shortlisted → submitted_to_client → client_reviewed → interview_scheduled
+  → interview_completed → offered → offer_accepted → joined
+
+  (from any active stage) → rejected_by_client | candidate_withdrawn | on_hold
+```
+
+Stage transitions are recorded as `stage_change` activities in the PipelineActivity table and update the `pipeline_stage` and `stage_entered_at` fields on the Shortlists record.
+
+### Client Submission Flow
+
+1. Recruiter selects one or more shortlisted candidates and triggers submission.
+2. Backend generates 7-day presigned S3 URLs for each candidate's resume (formatted if available, otherwise original).
+3. An HTML email is composed via SES containing candidate summaries (name, headline, experience, skills, CTC) and resume download links.
+4. Email is sent to the client contact address from the requirement. Reply-To is set to the shared Scout mailbox (`scout-ingest@quadzero.com`) for future email thread tracking.
+5. Each candidate's pipeline stage moves to `submitted_to_client`; `submitted_at` and `submitted_by` are recorded.
+6. Corresponding `stage_change` and `email_sent` activities are written to PipelineActivity.
+
+### Activity Timeline
+
+Every pipeline action (stage change, feedback, interview scheduling, notes, emails) creates an immutable activity record in the PipelineActivity table keyed by `{requirement_id}#{candidate_id}`. Activities are sorted chronologically by their sort key (`{ISO-timestamp}#{uuid}`) and displayed as a vertical timeline in the candidate detail panel.
+
+### Frontend Pipeline Board
+
+The requirement detail page includes a toggle between **List** view (existing shortlist table) and **Pipeline** view (kanban board). Pipeline components:
+
+| Component | Responsibility |
+|-----------|----------------|
+| `pipeline-board` | Kanban board layout with columns per active stage + collapsed exit-state columns |
+| `pipeline-candidate-card` | Draggable card showing candidate name, headline, stage duration, and last activity |
+| `pipeline-timeline` | Vertical activity feed in the candidate detail side panel |
+| `submit-to-client-modal` | Form for single/batch candidate submission with notes and email preview |
+| `feedback-form-modal` | Form for recording client feedback or interview feedback with rating |
+| `interview-schedule-modal` | Form for scheduling interviews with date, round, and interviewer fields |
+
+### Email Templates
+
+| Template | Trigger | Content |
+|----------|---------|---------|
+| `sendCandidateSubmissionEmail` | Single candidate submit | HTML email with candidate summary, skills, experience, CTC, and 7-day presigned resume link |
+| `sendBatchSubmissionEmail` | Batch submit | HTML email with multiple candidate summaries in a table layout, each with a presigned resume link |
+
+Both templates set `Reply-To` to the shared Scout mailbox for future email thread ingestion.
 
 ## CI/CD — Scheduled Deployment
 
