@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Loader2, Send, ChevronDown, ChevronUp } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { RefreshCw, Loader2, Send, ChevronDown, ChevronRight } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { PipelineCandidateView, PipelineViewResponse } from '@/lib/api';
 import { PipelineCandidateCard } from './pipeline-candidate-card';
@@ -28,9 +28,9 @@ const EXITED_STAGES = [
 const STAGE_LABELS: Record<string, string> = {
   shortlisted: 'Shortlisted',
   submitted_to_client: 'Submitted',
-  client_reviewed: 'Client Reviewed',
+  client_reviewed: 'Reviewed',
   interview_scheduled: 'Interview',
-  interview_completed: 'Interview Done',
+  interview_completed: 'Done',
   offered: 'Offered',
   offer_accepted: 'Accepted',
   joined: 'Joined',
@@ -40,19 +40,56 @@ const STAGE_LABELS: Record<string, string> = {
   not_suitable: 'Not Suitable',
 };
 
-const STAGE_COLORS: Record<string, string> = {
-  shortlisted: 'border-blue-400',
-  submitted_to_client: 'border-indigo-400',
-  client_reviewed: 'border-purple-400',
-  interview_scheduled: 'border-amber-400',
-  interview_completed: 'border-orange-400',
-  offered: 'border-emerald-400',
-  offer_accepted: 'border-green-500',
-  joined: 'border-green-600',
-  rejected_by_client: 'border-red-400',
-  candidate_withdrawn: 'border-gray-400',
-  on_hold: 'border-yellow-400',
-  not_suitable: 'border-red-300',
+const STAGE_FULL_LABELS: Record<string, string> = {
+  shortlisted: 'Shortlisted',
+  submitted_to_client: 'Submitted to Client',
+  client_reviewed: 'Client Reviewed',
+  interview_scheduled: 'Interview Scheduled',
+  interview_completed: 'Interview Completed',
+  offered: 'Offered',
+  offer_accepted: 'Offer Accepted',
+  joined: 'Joined',
+  rejected_by_client: 'Rejected by Client',
+  candidate_withdrawn: 'Candidate Withdrawn',
+  on_hold: 'On Hold',
+  not_suitable: 'Not Suitable',
+};
+
+const STAGE_BG_ACTIVE: Record<string, string> = {
+  shortlisted: 'bg-blue-500 text-white',
+  submitted_to_client: 'bg-indigo-500 text-white',
+  client_reviewed: 'bg-purple-500 text-white',
+  interview_scheduled: 'bg-amber-500 text-white',
+  interview_completed: 'bg-orange-500 text-white',
+  offered: 'bg-emerald-500 text-white',
+  offer_accepted: 'bg-green-600 text-white',
+  joined: 'bg-green-700 text-white',
+};
+
+const STAGE_BG_EMPTY: Record<string, string> = {
+  shortlisted: 'bg-blue-50 dark:bg-blue-900/20 text-blue-400 dark:text-blue-500',
+  submitted_to_client: 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-400 dark:text-indigo-500',
+  client_reviewed: 'bg-purple-50 dark:bg-purple-900/20 text-purple-400 dark:text-purple-500',
+  interview_scheduled: 'bg-amber-50 dark:bg-amber-900/20 text-amber-400 dark:text-amber-500',
+  interview_completed: 'bg-orange-50 dark:bg-orange-900/20 text-orange-400 dark:text-orange-500',
+  offered: 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-400 dark:text-emerald-500',
+  offer_accepted: 'bg-green-50 dark:bg-green-900/20 text-green-400 dark:text-green-500',
+  joined: 'bg-green-50 dark:bg-green-900/20 text-green-400 dark:text-green-500',
+};
+
+const STAGE_GROUP_ACCENT: Record<string, string> = {
+  shortlisted: 'border-l-blue-500',
+  submitted_to_client: 'border-l-indigo-500',
+  client_reviewed: 'border-l-purple-500',
+  interview_scheduled: 'border-l-amber-500',
+  interview_completed: 'border-l-orange-500',
+  offered: 'border-l-emerald-500',
+  offer_accepted: 'border-l-green-600',
+  joined: 'border-l-green-700',
+  rejected_by_client: 'border-l-red-400',
+  candidate_withdrawn: 'border-l-gray-400',
+  on_hold: 'border-l-yellow-400',
+  not_suitable: 'border-l-red-300',
 };
 
 interface PipelineBoardProps {
@@ -63,11 +100,13 @@ export function PipelineBoard({ requirementId }: PipelineBoardProps) {
   const [data, setData] = useState<PipelineViewResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [collapsedStages, setCollapsedStages] = useState<Set<string>>(new Set());
   const [exitedExpanded, setExitedExpanded] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [submitModalOpen, setSubmitModalOpen] = useState(false);
   const [submitCandidateIds, setSubmitCandidateIds] = useState<string[]>([]);
   const [submitCandidateNames, setSubmitCandidateNames] = useState<string[]>([]);
+  const groupRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const fetchData = useCallback(async () => {
     try {
@@ -91,14 +130,33 @@ export function PipelineBoard({ requirementId }: PipelineBoardProps) {
     fetchData();
   };
 
+  const toggleStage = (stage: string) => {
+    setCollapsedStages((prev) => {
+      const next = new Set(prev);
+      if (next.has(stage)) next.delete(stage);
+      else next.add(stage);
+      return next;
+    });
+  };
+
+  const handleStripClick = (stage: string) => {
+    // Expand the group if collapsed
+    setCollapsedStages((prev) => {
+      const next = new Set(prev);
+      next.delete(stage);
+      return next;
+    });
+    // Scroll to it
+    setTimeout(() => {
+      groupRefs.current[stage]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 50);
+  };
+
   const handleSelectCandidate = (candidateId: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(candidateId)) {
-        next.delete(candidateId);
-      } else {
-        next.add(candidateId);
-      }
+      if (next.has(candidateId)) next.delete(candidateId);
+      else next.add(candidateId);
       return next;
     });
   };
@@ -124,10 +182,7 @@ export function PipelineBoard({ requirementId }: PipelineBoardProps) {
   };
 
   const getExitedCount = (): number => {
-    return EXITED_STAGES.reduce(
-      (sum, stage) => sum + getCandidatesForStage(stage).length,
-      0
-    );
+    return EXITED_STAGES.reduce((sum, s) => sum + getCandidatesForStage(s).length, 0);
   };
 
   if (loading && !data) {
@@ -143,16 +198,18 @@ export function PipelineBoard({ requirementId }: PipelineBoardProps) {
     return (
       <div className="text-center py-16">
         <p className="text-sm text-red-500 dark:text-red-400">{error}</p>
-        <button onClick={handleRefresh} className="mt-3 btn-primary text-sm">
-          Retry
-        </button>
+        <button onClick={handleRefresh} className="mt-3 btn-primary text-sm">Retry</button>
       </div>
     );
   }
 
   const shortlistedCandidates = getCandidatesForStage('shortlisted');
-  const hasSelectedShortlisted = shortlistedCandidates.some((c) =>
-    selectedIds.has(c.candidateId)
+  const selectedShortlistedCount = shortlistedCandidates.filter((c) => selectedIds.has(c.candidateId)).length;
+  const exitedCount = getExitedCount();
+
+  // Stages that have candidates (for grouped list)
+  const activeStagesWithCandidates = ACTIVE_STAGES.filter(
+    (s) => getCandidatesForStage(s).length > 0
   );
 
   return (
@@ -160,7 +217,7 @@ export function PipelineBoard({ requirementId }: PipelineBoardProps) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Pipeline</h2>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Pipeline</h3>
           {data && (
             <span className="text-sm text-gray-500 dark:text-gray-400">
               {data.summary.activeCount} active &middot; {data.summary.exitedCount} exited
@@ -177,44 +234,95 @@ export function PipelineBoard({ requirementId }: PipelineBoardProps) {
         </button>
       </div>
 
-      {/* Kanban board */}
-      <div className="overflow-x-auto pb-4">
-        <div className="flex gap-4 min-w-max">
-          {ACTIVE_STAGES.map((stage) => {
-            const candidates = getCandidatesForStage(stage);
-            const count = candidates.length;
-            const isShortlisted = stage === 'shortlisted';
+      {/* Summary strip */}
+      <div className="flex items-center gap-1 overflow-x-auto pb-1">
+        {ACTIVE_STAGES.map((stage, idx) => {
+          const count = getCandidatesForStage(stage).length;
+          const hasItems = count > 0;
+          const bgClass = hasItems
+            ? STAGE_BG_ACTIVE[stage]
+            : STAGE_BG_EMPTY[stage];
 
-            return (
-              <div
-                key={stage}
-                className={`w-72 flex-shrink-0 bg-gray-50 dark:bg-gray-800/50 rounded-lg border-t-2 ${STAGE_COLORS[stage] || 'border-gray-300'}`}
+          return (
+            <div key={stage} className="flex items-center flex-shrink-0">
+              {idx > 0 && (
+                <span className="text-gray-300 dark:text-gray-600 mx-0.5 text-xs select-none">›</span>
+              )}
+              <button
+                onClick={() => hasItems && handleStripClick(stage)}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all ${bgClass} ${hasItems ? 'cursor-pointer hover:opacity-80 shadow-sm' : 'cursor-default opacity-70'}`}
               >
-                {/* Column header */}
-                <div className="px-3 py-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                      {STAGE_LABELS[stage]}
-                    </h3>
-                    <span className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-full px-2 py-0.5">
-                      {count}
-                    </span>
-                  </div>
-                  {isShortlisted && hasSelectedShortlisted && (
-                    <button
-                      onClick={handleBatchSubmit}
-                      className="flex items-center gap-1 text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline"
-                    >
-                      <Send className="h-3 w-3" />
-                      Submit ({[...selectedIds].filter((id) =>
-                        shortlistedCandidates.some((c) => c.candidateId === id)
-                      ).length})
-                    </button>
-                  )}
-                </div>
+                {STAGE_LABELS[stage]} {count > 0 && <span className="font-bold">{count}</span>}
+              </button>
+            </div>
+          );
+        })}
+        {exitedCount > 0 && (
+          <div className="flex items-center flex-shrink-0 ml-2">
+            <span className="text-xs text-gray-400 dark:text-gray-500">·</span>
+            <button
+              onClick={() => setExitedExpanded(!exitedExpanded)}
+              className="ml-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400 hover:opacity-80 transition-all"
+            >
+              {exitedCount} exited
+            </button>
+          </div>
+        )}
+      </div>
 
-                {/* Candidates */}
-                <div className="px-2 pb-2 space-y-2 max-h-[60vh] overflow-y-auto">
+      {/* Grouped list */}
+      {activeStagesWithCandidates.length === 0 && !loading && (
+        <div className="card p-8 text-center">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            No candidates in the pipeline yet. Shortlist candidates to get started.
+          </p>
+        </div>
+      )}
+
+      <div className="space-y-3">
+        {activeStagesWithCandidates.map((stage) => {
+          const candidates = getCandidatesForStage(stage);
+          const isCollapsed = collapsedStages.has(stage);
+          const isShortlisted = stage === 'shortlisted';
+
+          return (
+            <div
+              key={stage}
+              ref={(el) => { groupRefs.current[stage] = el; }}
+              className={`border border-gray-200 dark:border-gray-700 rounded-lg border-l-[3px] ${STAGE_GROUP_ACCENT[stage] || 'border-l-gray-300'} overflow-hidden`}
+            >
+              {/* Group header */}
+              <button
+                onClick={() => toggleStage(stage)}
+                className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  {isCollapsed ? (
+                    <ChevronRight className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                  )}
+                  <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                    {STAGE_FULL_LABELS[stage]}
+                  </h4>
+                  <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-full px-2 py-0.5 font-medium">
+                    {candidates.length}
+                  </span>
+                </div>
+                {isShortlisted && selectedShortlistedCount > 0 && (
+                  <div
+                    onClick={(e) => { e.stopPropagation(); handleBatchSubmit(); }}
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 text-xs font-medium hover:bg-primary-100 dark:hover:bg-primary-900/50 transition-colors"
+                  >
+                    <Send className="h-3 w-3" />
+                    Submit Selected ({selectedShortlistedCount})
+                  </div>
+                )}
+              </button>
+
+              {/* Candidate list */}
+              {!isCollapsed && (
+                <div className="px-4 pb-3 space-y-2">
                   {candidates.map((candidate) => (
                     <PipelineCandidateCard
                       key={candidate.candidateId}
@@ -223,70 +331,58 @@ export function PipelineBoard({ requirementId }: PipelineBoardProps) {
                       onRefresh={handleRefresh}
                       selected={selectedIds.has(candidate.candidateId)}
                       onSelect={isShortlisted ? handleSelectCandidate : undefined}
-                      onSubmitToClient={
-                        isShortlisted ? () => handleSubmitSingle(candidate) : undefined
-                      }
+                      onSubmitToClient={isShortlisted ? () => handleSubmitSingle(candidate) : undefined}
                     />
                   ))}
-                  {candidates.length === 0 && (
-                    <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-4">
-                      No candidates
-                    </p>
-                  )}
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {/* Exited section */}
-      {getExitedCount() > 0 && (
+      {exitedCount > 0 && (
         <div className="border border-gray-200 dark:border-gray-700 rounded-lg">
           <button
             onClick={() => setExitedExpanded(!exitedExpanded)}
             className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors rounded-lg"
           >
             <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-gray-600 dark:text-gray-400">
-                Exited
-              </span>
-              <span className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded-full px-2 py-0.5">
-                {getExitedCount()}
+              {exitedExpanded ? (
+                <ChevronDown className="h-4 w-4 text-gray-400" />
+              ) : (
+                <ChevronRight className="h-4 w-4 text-gray-400" />
+              )}
+              <span className="text-sm font-semibold text-gray-500 dark:text-gray-400">Exited</span>
+              <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded-full px-2 py-0.5 font-medium">
+                {exitedCount}
               </span>
             </div>
-            {exitedExpanded ? (
-              <ChevronUp className="h-4 w-4 text-gray-400" />
-            ) : (
-              <ChevronDown className="h-4 w-4 text-gray-400" />
-            )}
           </button>
-
           {exitedExpanded && (
-            <div className="px-4 pb-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {EXITED_STAGES.map((stage) => {
-                  const candidates = getCandidatesForStage(stage);
-                  if (candidates.length === 0) return null;
-                  return (
-                    <div key={stage}>
-                      <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
-                        {STAGE_LABELS[stage]} ({candidates.length})
-                      </h4>
-                      <div className="space-y-2">
-                        {candidates.map((candidate) => (
-                          <PipelineCandidateCard
-                            key={candidate.candidateId}
-                            candidate={candidate}
-                            requirementId={requirementId}
-                            onRefresh={handleRefresh}
-                          />
-                        ))}
-                      </div>
+            <div className="px-4 pb-4 space-y-3">
+              {EXITED_STAGES.map((stage) => {
+                const candidates = getCandidatesForStage(stage);
+                if (candidates.length === 0) return null;
+                return (
+                  <div key={stage} className={`border-l-[3px] ${STAGE_GROUP_ACCENT[stage] || 'border-l-gray-300'} pl-3`}>
+                    <h5 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+                      {STAGE_FULL_LABELS[stage]} ({candidates.length})
+                    </h5>
+                    <div className="space-y-2">
+                      {candidates.map((candidate) => (
+                        <PipelineCandidateCard
+                          key={candidate.candidateId}
+                          candidate={candidate}
+                          requirementId={requirementId}
+                          onRefresh={handleRefresh}
+                        />
+                      ))}
                     </div>
-                  );
-                })}
-              </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

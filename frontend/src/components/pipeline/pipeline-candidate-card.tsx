@@ -10,10 +10,11 @@ import {
   Clock,
   CheckSquare,
   Square,
+  History,
 } from 'lucide-react';
 import type { PipelineCandidateView } from '@/lib/api';
 import { api } from '@/lib/api';
-import { formatRelativeTime, formatSeniority } from '@/lib/utils';
+import { formatSeniority } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
 import { PipelineTimeline } from './pipeline-timeline';
 import { FeedbackFormModal } from './feedback-form-modal';
@@ -59,20 +60,17 @@ export function PipelineCandidateCard({
 
   const stage = candidate.pipelineStage;
   const dotColor = STAGE_DOT_COLORS[stage] || 'bg-gray-400';
-  const skills = candidate.primarySkills?.slice(0, 3) || [];
+  const skills = candidate.primarySkills?.slice(0, 5) || [];
+  const remainingSkills = Math.max(0, (candidate.primarySkills?.length || 0) - 5);
 
   const daysSinceStageEntry = candidate.stageEnteredAt
-    ? Math.floor(
-        (Date.now() - new Date(candidate.stageEnteredAt).getTime()) / (1000 * 60 * 60 * 24)
-      )
+    ? Math.floor((Date.now() - new Date(candidate.stageEnteredAt).getTime()) / (1000 * 60 * 60 * 24))
     : null;
 
   const handleAdvanceToOffer = async () => {
     try {
       setAdvancingToOffer(true);
-      await api.updatePipelineStage(requirementId, candidate.candidateId, {
-        stage: 'offered',
-      });
+      await api.updatePipelineStage(requirementId, candidate.candidateId, { stage: 'offered' });
       toast({ variant: 'success', title: 'Candidate advanced to Offered stage' });
       onRefresh();
     } catch {
@@ -82,21 +80,52 @@ export function PipelineCandidateCard({
     }
   };
 
-  const openClientFeedback = () => {
-    setFeedbackMode('client');
-    setFeedbackOpen(true);
-  };
+  // Primary action based on stage
+  const renderPrimaryAction = () => {
+    const pillBase = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors';
 
-  const openInterviewFeedback = () => {
-    setFeedbackMode('interview');
-    setFeedbackOpen(true);
+    switch (stage) {
+      case 'shortlisted':
+        return onSubmitToClient ? (
+          <button onClick={onSubmitToClient} className={`${pillBase} bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50`}>
+            <Send className="h-3 w-3" /> Submit
+          </button>
+        ) : null;
+      case 'submitted_to_client':
+        return (
+          <button onClick={() => { setFeedbackMode('client'); setFeedbackOpen(true); }} className={`${pillBase} bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50`}>
+            <MessageSquare className="h-3 w-3" /> Record Feedback
+          </button>
+        );
+      case 'client_reviewed':
+        return (
+          <button onClick={() => setInterviewOpen(true)} className={`${pillBase} bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-900/50`}>
+            <Calendar className="h-3 w-3" /> Schedule Interview
+          </button>
+        );
+      case 'interview_scheduled':
+        return (
+          <button onClick={() => { setFeedbackMode('interview'); setFeedbackOpen(true); }} className={`${pillBase} bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/50`}>
+            <ClipboardCheck className="h-3 w-3" /> Record Feedback
+          </button>
+        );
+      case 'interview_completed':
+        return (
+          <button onClick={handleAdvanceToOffer} disabled={advancingToOffer} className={`${pillBase} bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/50`}>
+            <ArrowUpRight className="h-3 w-3" /> {advancingToOffer ? 'Advancing...' : 'Advance to Offer'}
+          </button>
+        );
+      default:
+        return null;
+    }
   };
 
   return (
     <>
-      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-3 shadow-sm hover:shadow-md transition-shadow">
-        {/* Top row: checkbox + name */}
-        <div className="flex items-start gap-2">
+      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 hover:shadow-sm transition-shadow">
+        {/* Main row */}
+        <div className="flex items-start gap-3">
+          {/* Checkbox */}
           {onSelect && (
             <button
               onClick={() => onSelect(candidate.candidateId)}
@@ -109,125 +138,82 @@ export function PipelineCandidateCard({
               )}
             </button>
           )}
+
+          {/* Content */}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5">
-              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
-              <span className="text-sm font-semibold text-gray-900 dark:text-white truncate">
-                {candidate.fullName}
+            {/* Name + time row */}
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
+                <span className="text-sm font-semibold text-gray-900 dark:text-white truncate">
+                  {candidate.fullName}
+                </span>
+              </div>
+              {daysSinceStageEntry !== null && (
+                <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">
+                  <Clock className="h-3 w-3" />
+                  {daysSinceStageEntry === 0 ? 'Today' : `${daysSinceStageEntry}d`}
+                </span>
+              )}
+            </div>
+
+            {/* Skills + experience row */}
+            <div className="mt-2 flex items-center flex-wrap gap-x-3 gap-y-1">
+              <div className="flex flex-wrap gap-1">
+                {skills.map((skill) => (
+                  <span key={skill} className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded px-2 py-0.5">
+                    {skill}
+                  </span>
+                ))}
+                {remainingSkills > 0 && (
+                  <span className="text-xs text-gray-400 dark:text-gray-500 px-1">+{remainingSkills}</span>
+                )}
+              </div>
+              <span className="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0">
+                {candidate.totalExperience}y &middot; {formatSeniority(candidate.seniority)}
               </span>
             </div>
-          </div>
-        </div>
 
-        {/* Skills */}
-        {skills.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1">
-            {skills.map((skill) => (
-              <span
-                key={skill}
-                className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded px-1.5 py-0.5"
-              >
-                {skill}
-              </span>
-            ))}
-            {(candidate.primarySkills?.length || 0) > 3 && (
-              <span className="text-xs text-gray-400 dark:text-gray-500">
-                +{(candidate.primarySkills?.length || 0) - 3}
-              </span>
+            {/* Stage-specific info */}
+            {stage === 'submitted_to_client' && daysSinceStageEntry !== null && (
+              <div className="mt-2 text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                Awaiting client feedback &middot; {daysSinceStageEntry}d
+              </div>
+            )}
+            {stage === 'interview_scheduled' && candidate.nextInterviewAt && (
+              <div className="mt-2 text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                <Calendar className="h-3 w-3" />
+                {new Date(candidate.nextInterviewAt).toLocaleDateString('en-US', {
+                  month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+                })}
+                {candidate.interviewRoundCount ? ` · Round ${candidate.interviewRoundCount}` : ''}
+              </div>
+            )}
+            {stage === 'offered' && candidate.offeredCtcLpa && (
+              <div className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
+                Offered: {candidate.offeredCtcLpa} LPA
+                {candidate.expectedJoiningDate && ` · Join: ${new Date(candidate.expectedJoiningDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
+              </div>
+            )}
+            {candidate.rejectionReason && (stage === 'rejected_by_client' || stage === 'candidate_withdrawn') && (
+              <div className="mt-2 text-xs text-red-500 dark:text-red-400 truncate">
+                {candidate.rejectionReason}
+              </div>
             )}
           </div>
-        )}
 
-        {/* Experience + time in stage */}
-        <div className="mt-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-          <span>
-            {candidate.totalExperience}y &middot; {formatSeniority(candidate.seniority)}
-          </span>
-          {daysSinceStageEntry !== null && (
-            <span className="flex items-center gap-1">
-              <Clock className="h-3 w-3" />
-              {daysSinceStageEntry === 0
-                ? 'Today'
-                : `${daysSinceStageEntry}d`}
-            </span>
-          )}
-        </div>
-
-        {/* Stage-specific info */}
-        {stage === 'submitted_to_client' && daysSinceStageEntry !== null && (
-          <div className="mt-2 text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
-            <Clock className="h-3 w-3" />
-            Awaiting feedback &middot; {daysSinceStageEntry}d
+          {/* Actions column */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {renderPrimaryAction()}
+            <button
+              onClick={() => setTimelineOpen(true)}
+              className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              title="View Timeline"
+            >
+              <History className="h-4 w-4" />
+            </button>
           </div>
-        )}
-        {stage === 'interview_scheduled' && candidate.nextInterviewAt && (
-          <div className="mt-2 text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1">
-            <Calendar className="h-3 w-3" />
-            {new Date(candidate.nextInterviewAt).toLocaleDateString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              hour: 'numeric',
-              minute: '2-digit',
-            })}
-          </div>
-        )}
-
-        {/* Quick actions */}
-        <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-700 flex flex-wrap gap-1">
-          {stage === 'shortlisted' && onSubmitToClient && (
-            <button
-              onClick={onSubmitToClient}
-              className="text-xs text-primary-600 dark:text-primary-400 hover:underline flex items-center gap-0.5"
-            >
-              <Send className="h-3 w-3" />
-              Submit
-            </button>
-          )}
-          {stage === 'submitted_to_client' && (
-            <button
-              onClick={openClientFeedback}
-              className="text-xs text-primary-600 dark:text-primary-400 hover:underline flex items-center gap-0.5"
-            >
-              <MessageSquare className="h-3 w-3" />
-              Record Feedback
-            </button>
-          )}
-          {stage === 'client_reviewed' && (
-            <button
-              onClick={() => setInterviewOpen(true)}
-              className="text-xs text-primary-600 dark:text-primary-400 hover:underline flex items-center gap-0.5"
-            >
-              <Calendar className="h-3 w-3" />
-              Schedule Interview
-            </button>
-          )}
-          {stage === 'interview_scheduled' && (
-            <button
-              onClick={openInterviewFeedback}
-              className="text-xs text-primary-600 dark:text-primary-400 hover:underline flex items-center gap-0.5"
-            >
-              <ClipboardCheck className="h-3 w-3" />
-              Record Feedback
-            </button>
-          )}
-          {stage === 'interview_completed' && (
-            <button
-              onClick={handleAdvanceToOffer}
-              disabled={advancingToOffer}
-              className="text-xs text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-0.5"
-            >
-              <ArrowUpRight className="h-3 w-3" />
-              {advancingToOffer ? 'Advancing...' : 'Advance to Offer'}
-            </button>
-          )}
-
-          {/* View timeline - always available for active stages */}
-          <button
-            onClick={() => setTimelineOpen(true)}
-            className="text-xs text-gray-500 dark:text-gray-400 hover:underline ml-auto"
-          >
-            View Timeline
-          </button>
         </div>
       </div>
 
@@ -248,10 +234,7 @@ export function PipelineCandidateCard({
         mode={feedbackMode}
         isOpen={feedbackOpen}
         onClose={() => setFeedbackOpen(false)}
-        onRecorded={() => {
-          setFeedbackOpen(false);
-          onRefresh();
-        }}
+        onRecorded={() => { setFeedbackOpen(false); onRefresh(); }}
         currentRound={candidate.interviewRoundCount}
       />
 
@@ -262,10 +245,7 @@ export function PipelineCandidateCard({
         candidateName={candidate.fullName}
         isOpen={interviewOpen}
         onClose={() => setInterviewOpen(false)}
-        onScheduled={() => {
-          setInterviewOpen(false);
-          onRefresh();
-        }}
+        onScheduled={() => { setInterviewOpen(false); onRefresh(); }}
         currentRound={candidate.interviewRoundCount}
       />
     </>
