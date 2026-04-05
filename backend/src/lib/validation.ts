@@ -386,10 +386,12 @@ export const UpdateSessionSettingsRequestSchema = z.object({
 // ─── Pipeline Validation Schemas ─────────────────────────────────────────────
 
 export const SubmitCandidateToClientRequestSchema = z.object({
-  clientEmail: z.string().email(),
+  clientEmail: z.string().email().optional(),
   clientName: z.string().max(200).optional(),
   coverNote: z.string().max(5000).optional(),
   ccEmails: z.array(z.string().email()).max(10).optional(),
+  offline: z.boolean().optional(),
+  offlineSentAt: z.string().datetime().optional(),
 });
 
 export const SubmitBatchToClientRequestSchema = z.object({

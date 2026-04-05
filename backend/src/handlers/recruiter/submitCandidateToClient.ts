@@ -35,7 +35,12 @@ async function handleRequest(
       return error(ErrorCodes.VALIDATION_ERROR, formatZodErrors(validation.errors), 400);
     }
 
-    const { clientEmail, clientName, coverNote, ccEmails } = validation.data;
+    const { clientEmail, clientName, coverNote, ccEmails, offline, offlineSentAt } = validation.data;
+
+    // clientEmail is required when not offline
+    if (!offline && !clientEmail) {
+      return error(ErrorCodes.VALIDATION_ERROR, 'Client email is required when sending via Scout', 400);
+    }
 
     // Fetch requirement, candidate, and shortlist entry in parallel
     const [requirement, candidate, shortlistEntry] = await Promise.all([
@@ -54,56 +59,78 @@ async function handleRequest(
       return error(ErrorCodes.DUPLICATE_SUBMISSION, `Candidate is already in stage: ${currentStage}. Cannot submit again.`, 409);
     }
 
-    // Get recruiter info for email
-    const recruiter = await getUserById(event.auth.userId);
-    const recruiterName = recruiter?.name || event.auth.email;
+    const now = new Date().toISOString();
 
-    // Generate presigned resume URL
-    const resumeUrl = await getFormattedResumeUrl(candidate);
+    if (offline) {
+      // Offline mode: skip email, just record the submission
+      await transitionPipelineStage(
+        requirementId,
+        candidateId,
+        currentStage,
+        'submitted_to_client',
+        event.auth.userId,
+        undefined,
+        {
+          submitted_at: offlineSentAt || now,
+          submitted_by: event.auth.userId,
+        }
+      );
 
-    // Send email to client
-    await sendCandidateSubmissionEmail({
-      clientEmail,
-      clientName,
-      ccEmails,
-      requirementId,
-      jobTitle: requirement.job_title,
-      clientCompany: requirement.client_name,
-      coverNote,
-      candidate,
-      resumeUrl,
-      recruiterName,
-    });
+      await createPipelineActivity(requirementId, candidateId, 'email_sent', event.auth.userId, {
+        email_type: 'submission',
+        offline: true,
+        offline_sent_at: offlineSentAt || now,
+        recorded_at: now,
+        recipient_email: clientEmail || 'sent offline',
+        subject: `Candidate Profile: ${candidate.full_name} (sent offline)`,
+      });
+    } else {
+      // Online mode: send email via SES
+      const recruiter = await getUserById(event.auth.userId);
+      const recruiterName = recruiter?.name || event.auth.email;
+      const resumeUrl = await getFormattedResumeUrl(candidate);
 
-    // Transition stage and log activity
-    await transitionPipelineStage(
-      requirementId,
-      candidateId,
-      currentStage,
-      'submitted_to_client',
-      event.auth.userId,
-      undefined,
-      {
-        submitted_at: new Date().toISOString(),
-        submitted_by: event.auth.userId,
-      }
-    );
+      await sendCandidateSubmissionEmail({
+        clientEmail: clientEmail!,
+        clientName,
+        ccEmails,
+        requirementId,
+        jobTitle: requirement.job_title,
+        clientCompany: requirement.client_name,
+        coverNote,
+        candidate,
+        resumeUrl,
+        recruiterName,
+      });
 
-    // Log email sent activity
-    await createPipelineActivity(requirementId, candidateId, 'email_sent', event.auth.userId, {
-      email_type: 'submission',
-      recipient_email: clientEmail,
-      subject: `Candidate Profile: ${candidate.full_name}`,
-    });
+      await transitionPipelineStage(
+        requirementId,
+        candidateId,
+        currentStage,
+        'submitted_to_client',
+        event.auth.userId,
+        undefined,
+        {
+          submitted_at: now,
+          submitted_by: event.auth.userId,
+        }
+      );
+
+      await createPipelineActivity(requirementId, candidateId, 'email_sent', event.auth.userId, {
+        email_type: 'submission',
+        recipient_email: clientEmail,
+        subject: `Candidate Profile: ${candidate.full_name}`,
+      });
+    }
 
     logAuditEvent(event.auth, event, {
       action: 'PIPELINE_SUBMIT_TO_CLIENT',
       entityType: 'pipeline',
       entityId: `${requirementId}:${candidateId}`,
-      metadata: { requirementId, candidateId, clientEmail, candidateName: candidate.full_name },
+      metadata: { requirementId, candidateId, clientEmail, candidateName: candidate.full_name, offline: !!offline },
     });
 
-    return success({ submitted: true, candidateId, requirementId });
+    return success({ submitted: true, candidateId, requirementId, offline: !!offline });
   } catch (err) {
     console.error('Error submitting candidate to client:', err);
     return error(ErrorCodes.INTERNAL_ERROR, 'Failed to submit candidate to client', 500, { message: (err as Error).message });

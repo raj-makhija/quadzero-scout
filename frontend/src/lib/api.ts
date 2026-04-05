@@ -1626,10 +1626,12 @@ export interface MatchDebugFilterResult {
 
 // Pipeline types
 export interface SubmitToClientParams {
-  clientEmail: string;
+  clientEmail?: string;
   clientName?: string;
   coverNote?: string;
   ccEmails?: string[];
+  offline?: boolean;
+  offlineSentAt?: string;
 }
 
 export interface SubmitBatchToClientParams {

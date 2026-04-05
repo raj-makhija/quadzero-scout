@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Loader2, AlertCircle, Send } from 'lucide-react';
+import { X, Loader2, AlertCircle, Send, MailCheck } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 
@@ -30,6 +30,8 @@ export function SubmitToClientModal({
   const [ccEmails, setCcEmails] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [offline, setOffline] = useState(false);
+  const [offlineSentAt, setOfflineSentAt] = useState('');
 
   if (!isOpen) return null;
 
@@ -37,8 +39,9 @@ export function SubmitToClientModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!clientEmail.trim()) {
-      setErrorMessage('Client email is required.');
+
+    if (!offline && !clientEmail.trim()) {
+      setErrorMessage('Client email is required when sending via Scout.');
       return;
     }
 
@@ -54,25 +57,31 @@ export function SubmitToClientModal({
       if (isBatch) {
         await api.submitBatchToClient(requirementId, {
           candidateIds,
-          clientEmail: clientEmail.trim(),
+          clientEmail: clientEmail.trim() || undefined!,
           clientName: clientName.trim() || undefined,
           coverNote: coverNote.trim() || undefined,
           ccEmails: parsedCcEmails.length > 0 ? parsedCcEmails : undefined,
         });
       } else {
         await api.submitCandidateToClient(requirementId, candidateIds[0], {
-          clientEmail: clientEmail.trim(),
+          clientEmail: clientEmail.trim() || undefined,
           clientName: clientName.trim() || undefined,
           coverNote: coverNote.trim() || undefined,
           ccEmails: parsedCcEmails.length > 0 ? parsedCcEmails : undefined,
+          offline,
+          offlineSentAt: offline && offlineSentAt
+            ? new Date(offlineSentAt).toISOString()
+            : undefined,
         });
       }
 
       toast({
         variant: 'success',
-        title: isBatch
-          ? `${candidateIds.length} candidates submitted to client`
-          : 'Candidate submitted to client',
+        title: offline
+          ? 'Submission recorded (sent offline)'
+          : isBatch
+            ? `${candidateIds.length} candidates submitted to client`
+            : 'Candidate submitted to client',
       });
 
       // Reset form
@@ -80,6 +89,8 @@ export function SubmitToClientModal({
       setClientName(contactPersonName || '');
       setCoverNote('');
       setCcEmails('');
+      setOffline(false);
+      setOfflineSentAt('');
       onSubmitted();
     } catch (err) {
       if (err instanceof ApiError) {
@@ -146,10 +157,49 @@ export function SubmitToClientModal({
             </div>
           )}
 
+          {/* Offline toggle */}
+          {!isBatch && (
+            <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-750">
+              <input
+                type="checkbox"
+                checked={offline}
+                onChange={(e) => setOffline(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              <div className="flex-1">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Email sent to client offline
+                </span>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  Mark as submitted without sending an email from Scout
+                </p>
+              </div>
+              <MailCheck className="h-4 w-4 text-gray-400" />
+            </label>
+          )}
+
+          {/* Offline sent date/time */}
+          {offline && !isBatch && (
+            <div>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">
+                When was the email sent?
+              </label>
+              <input
+                type="datetime-local"
+                value={offlineSentAt}
+                onChange={(e) => setOfflineSentAt(e.target.value)}
+                className="input w-full text-sm"
+              />
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                Leave blank to use the current time
+              </p>
+            </div>
+          )}
+
           {/* Client Email */}
           <div>
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">
-              Client Email <span className="text-red-500">*</span>
+              Client Email {!offline && <span className="text-red-500">*</span>}
             </label>
             <input
               type="email"
@@ -157,8 +207,13 @@ export function SubmitToClientModal({
               onChange={(e) => setClientEmail(e.target.value)}
               placeholder="client@company.com"
               className="input w-full text-sm"
-              required
+              required={!offline}
             />
+            {offline && (
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                Optional when recording an offline submission
+              </p>
+            )}
           </div>
 
           {/* Client Name */}
@@ -175,37 +230,41 @@ export function SubmitToClientModal({
             />
           </div>
 
-          {/* Cover Note */}
-          <div>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">
-              Cover Note
-            </label>
-            <textarea
-              value={coverNote}
-              onChange={(e) => setCoverNote(e.target.value)}
-              placeholder="Optional cover note for the client..."
-              className="input w-full text-sm"
-              rows={3}
-              maxLength={2000}
-            />
-          </div>
+          {/* Cover Note — hide for offline */}
+          {!offline && (
+            <div>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">
+                Cover Note
+              </label>
+              <textarea
+                value={coverNote}
+                onChange={(e) => setCoverNote(e.target.value)}
+                placeholder="Optional cover note for the client..."
+                className="input w-full text-sm"
+                rows={3}
+                maxLength={2000}
+              />
+            </div>
+          )}
 
-          {/* CC Emails */}
-          <div>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">
-              CC Emails
-            </label>
-            <input
-              type="text"
-              value={ccEmails}
-              onChange={(e) => setCcEmails(e.target.value)}
-              placeholder="email1@co.com, email2@co.com"
-              className="input w-full text-sm"
-            />
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-              Comma-separated email addresses
-            </p>
-          </div>
+          {/* CC Emails — hide for offline */}
+          {!offline && (
+            <div>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">
+                CC Emails
+              </label>
+              <input
+                type="text"
+                value={ccEmails}
+                onChange={(e) => setCcEmails(e.target.value)}
+                placeholder="email1@co.com, email2@co.com"
+                className="input w-full text-sm"
+              />
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                Comma-separated email addresses
+              </p>
+            </div>
+          )}
 
           {/* Submit button */}
           <div className="pt-2">
@@ -217,7 +276,12 @@ export function SubmitToClientModal({
               {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Sending...
+                  {offline ? 'Recording...' : 'Sending...'}
+                </>
+              ) : offline ? (
+                <>
+                  <MailCheck className="h-4 w-4" />
+                  Mark as Sent Offline
                 </>
               ) : (
                 <>
