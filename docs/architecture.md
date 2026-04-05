@@ -16,6 +16,7 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │  │  - Edit Profile │  │  - Results      │  │  - JWE Sessions             │  │
 │  │                 │  │  - Requirements │  │                             │  │
 │  │                 │  │  - Shortlists   │  │                             │  │
+│  │                 │  │  - Pipeline     │  │                             │  │
 │  │                 │  │  - Clients      │  │                             │  │
 │  └─────────────────┘  └─────────────────┘  └─────────────────────────────┘  │
 │                                                                             │
@@ -65,6 +66,10 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │                            │  - screenCandidate / screeningHistory       │ │
 │                            │  - saveClient / listClients                 │ │
 │                            │  - getClientDefaults / updateClient         │ │
+│                            │  - submitToClient / submitBatch             │ │
+│                            │  - clientFeedback / interviewSchedule       │ │
+│                            │  - interviewFeedback / updatePipelineStage  │ │
+│                            │  - getPipeline / getActivities / addNote    │ │
 │                            └──────────────────────────────────────────────┘ │
 │  ┌──────────────────────┐                                                   │
 │  │  Worker Lambdas      │                                                   │
@@ -102,6 +107,8 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │  - Clients      │  │                 │  │                                 │
 │  - Candidate   │  │                 │  │                                 │
 │    Screenings  │  │                 │  │                                 │
+│  - Pipeline    │  │                 │  │                                 │
+│    Activity    │  │                 │  │                                 │
 └─────────────────┘  └─────────────────┘  └─────────────────────────────────┘
           │
           ▼
@@ -591,7 +598,7 @@ The active provider is configured via the `LLM_PROVIDER` environment variable.
 
 | Component | Technology | Responsibility |
 |-----------|------------|----------------|
-| Profile Storage | DynamoDB | Candidate data, users, prompts, requirements, shortlists, screening history |
+| Profile Storage | DynamoDB | Candidate data, users, prompts, requirements, shortlists, screening history, pipeline activity |
 | File Storage | S3 | Resume documents (original + formatted) |
 | Text Extraction | pdf-parse / mammoth | In-Lambda PDF and DOCX parsing |
 
@@ -835,7 +842,59 @@ The platform includes a centralized audit trail that tracks all recruiter and ad
   2. By entity (EntityIndex GSI) — "who touched this candidate/requirement?"
   3. By action+date (ActionTypeIndex GSI) — "all resume downloads on 2026-03-16"
 - **Auto-expiry**: TTL of 365 days automatically removes old audit records.
-- **25 tracked event types** covering sign-ins, searches, resume downloads, shortlisting, screening, requirement CRUD, client management, and admin actions.
+- **32 tracked event types** covering sign-ins, searches, resume downloads, shortlisting, screening, requirement CRUD, client management, pipeline actions (submit, feedback, interviews, stage updates, notes), and admin actions.
+
+## Post-Shortlisting Pipeline
+
+The pipeline feature extends the shortlisting workflow into a full candidate tracking pipeline that follows candidates from shortlist through client submission, interviews, offers, and joining.
+
+### Pipeline Stage Machine
+
+Candidates progress through active stages linearly, and can exit to terminal states from any active stage:
+
+```
+shortlisted → submitted_to_client → client_reviewed → interview_scheduled
+  → interview_completed → offered → offer_accepted → joined
+
+  (from any active stage) → rejected_by_client | candidate_withdrawn | on_hold
+```
+
+Stage transitions are recorded as `stage_change` activities in the PipelineActivity table and update the `pipeline_stage` and `stage_entered_at` fields on the Shortlists record.
+
+### Client Submission Flow
+
+1. Recruiter selects one or more shortlisted candidates and triggers submission.
+2. Backend generates 7-day presigned S3 URLs for each candidate's resume (formatted if available, otherwise original).
+3. An HTML email is composed via SES containing candidate summaries (name, headline, experience, skills, CTC) and resume download links.
+4. Email is sent to the client contact address from the requirement. Reply-To is set to the shared Scout mailbox (`scout-ingest@quadzero.com`) for future email thread tracking.
+5. Each candidate's pipeline stage moves to `submitted_to_client`; `submitted_at` and `submitted_by` are recorded.
+6. Corresponding `stage_change` and `email_sent` activities are written to PipelineActivity.
+
+### Activity Timeline
+
+Every pipeline action (stage change, feedback, interview scheduling, notes, emails) creates an immutable activity record in the PipelineActivity table keyed by `{requirement_id}#{candidate_id}`. Activities are sorted chronologically by their sort key (`{ISO-timestamp}#{uuid}`) and displayed as a vertical timeline in the candidate detail panel.
+
+### Frontend Pipeline Board
+
+The requirement detail page includes a toggle between **List** view (existing shortlist table) and **Pipeline** view (kanban board). Pipeline components:
+
+| Component | Responsibility |
+|-----------|----------------|
+| `pipeline-board` | Kanban board layout with columns per active stage + collapsed exit-state columns |
+| `pipeline-candidate-card` | Draggable card showing candidate name, headline, stage duration, and last activity |
+| `pipeline-timeline` | Vertical activity feed in the candidate detail side panel |
+| `submit-to-client-modal` | Form for single/batch candidate submission with notes and email preview |
+| `feedback-form-modal` | Form for recording client feedback or interview feedback with rating |
+| `interview-schedule-modal` | Form for scheduling interviews with date, round, and interviewer fields |
+
+### Email Templates
+
+| Template | Trigger | Content |
+|----------|---------|---------|
+| `sendCandidateSubmissionEmail` | Single candidate submit | HTML email with candidate summary, skills, experience, CTC, and 7-day presigned resume link |
+| `sendBatchSubmissionEmail` | Batch submit | HTML email with multiple candidate summaries in a table layout, each with a presigned resume link |
+
+Both templates set `Reply-To` to the shared Scout mailbox for future email thread ingestion.
 
 ## CI/CD — Scheduled Deployment
 

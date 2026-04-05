@@ -688,6 +688,48 @@ export interface GetPricingConfigResponse {
 export const ShortlistStatusEnum = z.enum(['shortlisted', 'submitted', 'rejected', 'not_suitable']);
 export type ShortlistStatus = z.infer<typeof ShortlistStatusEnum>;
 
+// Pipeline stages — extends shortlist into a full recruitment pipeline
+export const PipelineStageEnum = z.enum([
+  // Active progression stages
+  'shortlisted',
+  'submitted_to_client',
+  'client_reviewed',
+  'interview_scheduled',
+  'interview_completed',
+  'offered',
+  'offer_accepted',
+  'joined',
+  // Exit states (valid from any active stage)
+  'rejected_by_client',
+  'candidate_withdrawn',
+  'on_hold',
+  // Legacy compat
+  'submitted',
+  'rejected',
+  'not_suitable',
+]);
+export type PipelineStage = z.infer<typeof PipelineStageEnum>;
+
+// Client feedback rating
+export const ClientFeedbackRatingEnum = z.enum(['positive', 'neutral', 'negative']);
+export type ClientFeedbackRating = z.infer<typeof ClientFeedbackRatingEnum>;
+
+// Interview feedback rating
+export const InterviewFeedbackRatingEnum = z.enum(['strong_yes', 'yes', 'neutral', 'no', 'strong_no']);
+export type InterviewFeedbackRating = z.infer<typeof InterviewFeedbackRatingEnum>;
+
+// Interview type
+export const InterviewTypeEnum = z.enum(['phone', 'video', 'in_person', 'assignment']);
+export type InterviewType = z.infer<typeof InterviewTypeEnum>;
+
+// Interview feedback decision
+export const InterviewDecisionEnum = z.enum(['proceed', 'reject', 'hold']);
+export type InterviewDecision = z.infer<typeof InterviewDecisionEnum>;
+
+// Communication source
+export const CommunicationSourceEnum = z.enum(['email', 'call', 'chat', 'internal']);
+export type CommunicationSource = z.infer<typeof CommunicationSourceEnum>;
+
 export interface ShortlistItem {
   requirement_id: string;
   candidate_id: string;
@@ -695,6 +737,199 @@ export interface ShortlistItem {
   tagged_at: string;
   notes?: string;
   status: ShortlistStatus;
+  // Pipeline fields (written on first pipeline action)
+  pipeline_stage?: PipelineStage;
+  stage_entered_at?: string;
+  submitted_at?: string;
+  submitted_by?: string;
+  client_feedback_summary?: string;
+  client_feedback_rating?: ClientFeedbackRating;
+  next_interview_at?: string;
+  interview_round_count?: number;
+  offered_ctc_lpa?: number;
+  expected_joining_date?: string;
+  rejection_reason?: string;
+  last_activity_at?: string;
+}
+
+// ─── Pipeline Activity Types ────────────────────────────────────────────────
+
+export const PipelineActivityTypeEnum = z.enum([
+  'stage_change',
+  'client_feedback',
+  'interview_scheduled',
+  'interview_feedback',
+  'email_sent',
+  'note',
+  'offer_extended',
+  'offer_response',
+]);
+export type PipelineActivityType = z.infer<typeof PipelineActivityTypeEnum>;
+
+export interface PipelineActivityItem {
+  requirement_candidate_key: string; // PK: {requirement_id}#{candidate_id}
+  activity_id: string;               // SK: {ISO-timestamp}#{uuid}
+  activity_type: PipelineActivityType;
+  created_by: string;
+  created_at: string;
+  data: Record<string, unknown>;
+}
+
+export interface StageChangeData {
+  from_stage: string;
+  to_stage: string;
+  reason?: string;
+}
+
+export interface ClientFeedbackData {
+  rating: ClientFeedbackRating;
+  feedback_text: string;
+  round?: number;
+  source: CommunicationSource;
+  auto_parsed?: boolean;
+  llm_classification?: Record<string, unknown>;
+  from_address?: string;
+}
+
+export interface InterviewScheduledData {
+  round: number;
+  interview_type: InterviewType;
+  scheduled_at: string;
+  duration_minutes?: number;
+  interviewer_name?: string;
+  interviewer_email?: string;
+  location_or_link?: string;
+  notes?: string;
+}
+
+export interface InterviewFeedbackData {
+  round: number;
+  rating: InterviewFeedbackRating;
+  feedback_text: string;
+  source: CommunicationSource;
+  decision: InterviewDecision;
+}
+
+export interface EmailSentData {
+  email_type: 'submission' | 'batch_submission' | 'follow_up' | 'interview_confirmation' | 'offer';
+  recipient_email: string;
+  subject: string;
+  candidate_ids?: string[];
+}
+
+export interface NoteData {
+  text: string;
+  source: CommunicationSource;
+}
+
+export interface OfferExtendedData {
+  ctc_lpa?: number;
+  joining_date?: string;
+  offer_details?: string;
+}
+
+export interface OfferResponseData {
+  response: 'accepted' | 'declined' | 'countered';
+  counter_ctc_lpa?: number;
+  notes?: string;
+}
+
+// ─── Pipeline API Request/Response Types ────────────────────────────────────
+
+export interface SubmitCandidateToClientRequest {
+  clientEmail: string;
+  clientName?: string;
+  coverNote?: string;
+  ccEmails?: string[];
+}
+
+export interface SubmitBatchToClientRequest {
+  candidateIds: string[];
+  clientEmail: string;
+  clientName?: string;
+  coverNote?: string;
+  ccEmails?: string[];
+}
+
+export interface RecordClientFeedbackRequest {
+  rating: ClientFeedbackRating;
+  feedbackText: string;
+  round?: number;
+  source: CommunicationSource;
+}
+
+export interface ScheduleInterviewRequest {
+  round: number;
+  interviewType: InterviewType;
+  scheduledAt: string;
+  durationMinutes?: number;
+  interviewerName?: string;
+  interviewerEmail?: string;
+  locationOrLink?: string;
+  notes?: string;
+}
+
+export interface RecordInterviewFeedbackRequest {
+  round: number;
+  rating: InterviewFeedbackRating;
+  feedbackText: string;
+  source: CommunicationSource;
+  decision: InterviewDecision;
+}
+
+export interface UpdatePipelineStageRequest {
+  stage: PipelineStage;
+  reason?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AddPipelineNoteRequest {
+  text: string;
+  source: CommunicationSource;
+}
+
+export interface PipelineCandidateView {
+  candidateId: string;
+  fullName: string;
+  primarySkills: string[];
+  totalExperience: number;
+  seniority: string;
+  expectedCtc?: number;
+  pipelineStage: string;
+  stageEnteredAt?: string;
+  lastActivityAt?: string;
+  clientFeedbackSummary?: string;
+  clientFeedbackRating?: string;
+  nextInterviewAt?: string;
+  interviewRoundCount?: number;
+  offeredCtcLpa?: number;
+  expectedJoiningDate?: string;
+  rejectionReason?: string;
+  taggedAt: string;
+  notes?: string;
+  customFields?: Record<string, string | number>;
+  linkedinUrl?: string;
+  githubUrl?: string;
+  notInterested?: boolean;
+}
+
+export interface PipelineViewResponse {
+  stages: Record<string, PipelineCandidateView[]>;
+  summary: {
+    total: number;
+    activeCount: number;
+    exitedCount: number;
+    byStage: Record<string, number>;
+  };
+}
+
+export interface PipelineActivitiesResponse {
+  activities: PipelineActivityItem[];
+  pagination: {
+    count: number;
+    hasMore: boolean;
+    lastEvaluatedKey?: string;
+  };
 }
 
 // ─── Requirement Matching Types ─────────────────────────────────────────────
@@ -1029,7 +1264,14 @@ export type AuditAction =
   | 'SESSION_SETTINGS_UPDATE'
   | 'SHORTLIST_MARK_NOT_SUITABLE'
   | 'SUB_VENDOR_CREATE'
-  | 'SUB_VENDOR_UPDATE';
+  | 'SUB_VENDOR_UPDATE'
+  | 'PIPELINE_SUBMIT_TO_CLIENT'
+  | 'PIPELINE_BATCH_SUBMIT'
+  | 'PIPELINE_CLIENT_FEEDBACK'
+  | 'PIPELINE_INTERVIEW_SCHEDULED'
+  | 'PIPELINE_INTERVIEW_FEEDBACK'
+  | 'PIPELINE_STAGE_UPDATE'
+  | 'PIPELINE_NOTE_ADDED';
 
 export type AuditEntityType =
   | 'session'
@@ -1040,7 +1282,8 @@ export type AuditEntityType =
   | 'client'
   | 'user'
   | 'config'
-  | 'sub_vendor';
+  | 'sub_vendor'
+  | 'pipeline';
 
 export interface AuditLogItem {
   pk: string;

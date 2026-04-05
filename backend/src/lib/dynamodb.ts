@@ -9,7 +9,7 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { config } from './config.js';
-import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, StatusHistoryEntry, RequirementChangeEntry, PricingConfig, PricingConfigItem, SessionSettings, SessionSettingsItem, ShortlistItem, ClientItem, SubVendorItem, ScreeningItem, ScreeningLockItem, AuditLogItem, AuditLogEntry } from '../types/index.js';
+import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, StatusHistoryEntry, RequirementChangeEntry, PricingConfig, PricingConfigItem, SessionSettings, SessionSettingsItem, ShortlistItem, ClientItem, SubVendorItem, ScreeningItem, ScreeningLockItem, AuditLogItem, AuditLogEntry, PipelineActivityItem } from '../types/index.js';
 import { DEFAULT_SESSION_TIMEOUT_SECONDS } from '../types/index.js';
 
 const client = new DynamoDBClient({ region: config.region });
@@ -1420,6 +1420,77 @@ export async function updateShortlistStatus(
       },
     })
   );
+}
+
+// ─── Pipeline Operations ────────────────────────────────────────────────────
+
+export async function updateShortlistPipelineStage(
+  requirementId: string,
+  candidateId: string,
+  stage: string,
+  _updatedBy: string,
+  extraFields?: Record<string, unknown>
+): Promise<void> {
+  const now = new Date().toISOString();
+  let updateExpr = 'SET pipeline_stage = :stage, stage_entered_at = :now, last_activity_at = :now, #status = :legacyStatus';
+  const exprNames: Record<string, string> = { '#status': 'status' };
+  const exprValues: Record<string, unknown> = {
+    ':stage': stage,
+    ':now': now,
+    ':legacyStatus': stage === 'submitted_to_client' ? 'submitted'
+      : stage === 'rejected_by_client' ? 'rejected'
+      : stage === 'not_suitable' ? 'not_suitable'
+      : 'shortlisted',
+  };
+
+  if (extraFields) {
+    for (const [key, value] of Object.entries(extraFields)) {
+      const safeKey = key.replace(/[^a-zA-Z0-9_]/g, '_');
+      updateExpr += `, ${key} = :${safeKey}`;
+      exprValues[`:${safeKey}`] = value;
+    }
+  }
+
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.shortlistsTable,
+      Key: { requirement_id: requirementId, candidate_id: candidateId },
+      UpdateExpression: updateExpr,
+      ExpressionAttributeNames: exprNames,
+      ExpressionAttributeValues: exprValues,
+    })
+  );
+}
+
+export async function savePipelineActivity(item: PipelineActivityItem): Promise<void> {
+  await docClient.send(
+    new PutCommand({
+      TableName: config.dynamodb.pipelineActivityTable,
+      Item: item,
+    })
+  );
+}
+
+export async function getPipelineActivities(
+  requirementId: string,
+  candidateId: string,
+  limit = 50,
+  lastEvaluatedKey?: Record<string, unknown>
+): Promise<{ items: PipelineActivityItem[]; lastEvaluatedKey?: Record<string, unknown> }> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: config.dynamodb.pipelineActivityTable,
+      KeyConditionExpression: 'requirement_candidate_key = :key',
+      ExpressionAttributeValues: { ':key': `${requirementId}#${candidateId}` },
+      ScanIndexForward: false, // newest first
+      Limit: limit,
+      ...(lastEvaluatedKey ? { ExclusiveStartKey: lastEvaluatedKey } : {}),
+    })
+  );
+  return {
+    items: (result.Items || []) as PipelineActivityItem[],
+    lastEvaluatedKey: result.LastEvaluatedKey as Record<string, unknown> | undefined,
+  };
 }
 
 // ─── Sub-Vendor Master Operations ────────────────────────────────────────────

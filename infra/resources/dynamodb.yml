@@ -454,6 +454,33 @@ Resources:
         - Key: Project
           Value: quadzero-scout
 
+  # PipelineActivity Table (tracks all pipeline events per candidate+requirement)
+  PipelineActivityTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: ${self:custom.pipelineActivityTable}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: requirement_candidate_key
+          AttributeType: S
+        - AttributeName: activity_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: requirement_candidate_key
+          KeyType: HASH
+        - AttributeName: activity_id
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Project
+          Value: quadzero-scout
+
 Outputs:
   TalentProfilesTableArn:
     Description: TalentProfiles table ARN
@@ -538,3 +565,9 @@ Outputs:
     Value: !GetAtt SubVendorsTable.Arn
     Export:
       Name: ${self:provider.stage}-SubVendorsTableArn
+
+  PipelineActivityTableArn:
+    Description: PipelineActivity table ARN
+    Value: !GetAtt PipelineActivityTable.Arn
+    Export:
+      Name: ${self:provider.stage}-PipelineActivityTableArn

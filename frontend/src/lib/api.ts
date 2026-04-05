@@ -715,6 +715,70 @@ class ApiClient {
     const data = await response.json();
     return data.data as { sessionTimeoutSeconds: number };
   }
+
+  // Pipeline endpoints
+  async submitCandidateToClient(requirementId: string, candidateId: string, params: SubmitToClientParams) {
+    return this.request<{ submitted: boolean; candidateId: string; requirementId: string }>(
+      `/recruiter/requirements/${requirementId}/candidates/${candidateId}/submit`,
+      { method: 'POST', body: JSON.stringify(params) }
+    );
+  }
+
+  async submitBatchToClient(requirementId: string, params: SubmitBatchToClientParams) {
+    return this.request<{ submitted: boolean; candidateIds: string[]; requirementId: string }>(
+      `/recruiter/requirements/${requirementId}/submit-batch`,
+      { method: 'POST', body: JSON.stringify(params) }
+    );
+  }
+
+  async recordClientFeedback(requirementId: string, candidateId: string, params: RecordClientFeedbackParams) {
+    return this.request<{ recorded: boolean }>(
+      `/recruiter/requirements/${requirementId}/candidates/${candidateId}/client-feedback`,
+      { method: 'POST', body: JSON.stringify(params) }
+    );
+  }
+
+  async scheduleInterview(requirementId: string, candidateId: string, params: ScheduleInterviewParams) {
+    return this.request<{ scheduled: boolean; round: number }>(
+      `/recruiter/requirements/${requirementId}/candidates/${candidateId}/interviews`,
+      { method: 'POST', body: JSON.stringify(params) }
+    );
+  }
+
+  async recordInterviewFeedback(requirementId: string, candidateId: string, params: RecordInterviewFeedbackParams) {
+    return this.request<{ recorded: boolean; decision: string }>(
+      `/recruiter/requirements/${requirementId}/candidates/${candidateId}/interview-feedback`,
+      { method: 'POST', body: JSON.stringify(params) }
+    );
+  }
+
+  async updatePipelineStage(requirementId: string, candidateId: string, params: UpdatePipelineStageParams) {
+    return this.request<{ updated: boolean; fromStage: string; toStage: string }>(
+      `/recruiter/requirements/${requirementId}/candidates/${candidateId}/pipeline-stage`,
+      { method: 'PUT', body: JSON.stringify(params) }
+    );
+  }
+
+  async getPipelineView(requirementId: string) {
+    return this.request<PipelineViewResponse>(`/recruiter/requirements/${requirementId}/pipeline`);
+  }
+
+  async getCandidateActivities(requirementId: string, candidateId: string, limit?: number, lastKey?: string) {
+    const params = new URLSearchParams();
+    if (limit) params.set('limit', String(limit));
+    if (lastKey) params.set('lastKey', lastKey);
+    const qs = params.toString();
+    return this.request<PipelineActivitiesResponse>(
+      `/recruiter/requirements/${requirementId}/candidates/${candidateId}/activities${qs ? `?${qs}` : ''}`
+    );
+  }
+
+  async addPipelineNote(requirementId: string, candidateId: string, text: string, source: CommunicationSource) {
+    return this.request<{ added: boolean; activityId: string }>(
+      `/recruiter/requirements/${requirementId}/candidates/${candidateId}/notes`,
+      { method: 'POST', body: JSON.stringify({ text, source }) }
+    );
+  }
 }
 
 export const api = new ApiClient(API_URL);
@@ -1243,6 +1307,13 @@ export interface MatchRequirementsResponse {
 
 // Shortlist types
 export type ShortlistStatus = 'shortlisted' | 'submitted' | 'rejected' | 'not_suitable';
+export type PipelineStage = 'shortlisted' | 'submitted_to_client' | 'client_reviewed' | 'interview_scheduled' | 'interview_completed' | 'offered' | 'offer_accepted' | 'joined' | 'rejected_by_client' | 'candidate_withdrawn' | 'on_hold' | 'submitted' | 'rejected' | 'not_suitable';
+export type ClientFeedbackRating = 'positive' | 'neutral' | 'negative';
+export type InterviewFeedbackRating = 'strong_yes' | 'yes' | 'neutral' | 'no' | 'strong_no';
+export type InterviewType = 'phone' | 'video' | 'in_person' | 'assignment';
+export type InterviewDecision = 'proceed' | 'reject' | 'hold';
+export type CommunicationSource = 'email' | 'call' | 'chat' | 'internal';
+export type PipelineActivityType = 'stage_change' | 'client_feedback' | 'interview_scheduled' | 'interview_feedback' | 'email_sent' | 'note' | 'offer_extended' | 'offer_response';
 
 export interface ShortlistedCandidate {
   candidateId: string;
@@ -1551,6 +1622,107 @@ export interface MatchDebugFilterResult {
   missing?: string[];
   reqModel?: string;
   candidateModel?: string;
+}
+
+// Pipeline types
+export interface SubmitToClientParams {
+  clientEmail: string;
+  clientName?: string;
+  coverNote?: string;
+  ccEmails?: string[];
+}
+
+export interface SubmitBatchToClientParams {
+  candidateIds: string[];
+  clientEmail: string;
+  clientName?: string;
+  coverNote?: string;
+  ccEmails?: string[];
+}
+
+export interface RecordClientFeedbackParams {
+  rating: ClientFeedbackRating;
+  feedbackText: string;
+  round?: number;
+  source: CommunicationSource;
+}
+
+export interface ScheduleInterviewParams {
+  round: number;
+  interviewType: InterviewType;
+  scheduledAt: string;
+  durationMinutes?: number;
+  interviewerName?: string;
+  interviewerEmail?: string;
+  locationOrLink?: string;
+  notes?: string;
+}
+
+export interface RecordInterviewFeedbackParams {
+  round: number;
+  rating: InterviewFeedbackRating;
+  feedbackText: string;
+  source: CommunicationSource;
+  decision: InterviewDecision;
+}
+
+export interface UpdatePipelineStageParams {
+  stage: PipelineStage;
+  reason?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface PipelineCandidateView {
+  candidateId: string;
+  fullName: string;
+  primarySkills: string[];
+  totalExperience: number;
+  seniority: string;
+  expectedCtc?: number;
+  pipelineStage: string;
+  stageEnteredAt?: string;
+  lastActivityAt?: string;
+  clientFeedbackSummary?: string;
+  clientFeedbackRating?: string;
+  nextInterviewAt?: string;
+  interviewRoundCount?: number;
+  offeredCtcLpa?: number;
+  expectedJoiningDate?: string;
+  rejectionReason?: string;
+  taggedAt: string;
+  notes?: string;
+  customFields?: Record<string, string | number>;
+  linkedinUrl?: string;
+  githubUrl?: string;
+  notInterested?: boolean;
+}
+
+export interface PipelineViewResponse {
+  stages: Record<string, PipelineCandidateView[]>;
+  summary: {
+    total: number;
+    activeCount: number;
+    exitedCount: number;
+    byStage: Record<string, number>;
+  };
+}
+
+export interface PipelineActivityItem {
+  requirement_candidate_key: string;
+  activity_id: string;
+  activity_type: PipelineActivityType;
+  created_by: string;
+  created_at: string;
+  data: Record<string, unknown>;
+}
+
+export interface PipelineActivitiesResponse {
+  activities: PipelineActivityItem[];
+  pagination: {
+    count: number;
+    hasMore: boolean;
+    lastEvaluatedKey?: string;
+  };
 }
 
 export interface MatchDebugResponse {

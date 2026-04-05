@@ -8,6 +8,7 @@ import { Header } from '@/components/Header';
 import { CustomFieldsModal } from '@/components/custom-fields-modal';
 import { CheckCandidateMatch } from '@/components/MatchExplainer';
 import { api, RequirementDetail, ShortlistedCandidate, SearchCriteria, UpdateRequirementPayload } from '@/lib/api';
+import { PipelineBoard } from '@/components/pipeline/pipeline-board';
 import {
   formatDate,
   formatEngagementModel,
@@ -72,6 +73,7 @@ export default function RequirementDetailPage() {
   const [candidates, setCandidates] = useState<ShortlistedCandidate[]>([]);
   const [candidatesLoading, setCandidatesLoading] = useState(true);
 
+  const [viewMode, setViewMode] = useState<'list' | 'pipeline'>('pipeline');
   const [jdExpanded, setJdExpanded] = useState(false);
   const [statusLoading, setStatusLoading] = useState(false);
   const [showReasonModal, setShowReasonModal] = useState(false);
@@ -808,25 +810,45 @@ export default function RequirementDetailPage() {
               </div>
             )}
 
-            {/* Shortlisted Candidates Pipeline */}
+            {/* Candidates Pipeline / List View */}
             <div>
-              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">
-                Shortlisted Candidates
-                {!candidatesLoading && candidates.length > 0 && (
-                  <span className="ml-2 text-base font-normal text-gray-500 dark:text-gray-400">
-                    ({candidates.length})
-                  </span>
-                )}
-              </h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+                  Candidates
+                  {!candidatesLoading && candidates.length > 0 && (
+                    <span className="ml-2 text-base font-normal text-gray-500 dark:text-gray-400">
+                      ({candidates.length})
+                    </span>
+                  )}
+                </h2>
+                <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+                  <button
+                    onClick={() => setViewMode('pipeline')}
+                    className={`px-3 py-1.5 text-sm rounded-md transition-colors ${viewMode === 'pipeline' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                  >
+                    Pipeline
+                  </button>
+                  <button
+                    onClick={() => setViewMode('list')}
+                    className={`px-3 py-1.5 text-sm rounded-md transition-colors ${viewMode === 'list' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                  >
+                    List
+                  </button>
+                </div>
+              </div>
 
-              {candidatesLoading && (
+              {viewMode === 'pipeline' && (
+                <PipelineBoard requirementId={requirementId} />
+              )}
+
+              {viewMode === 'list' && candidatesLoading && (
                 <div className="card p-8 text-center">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500 mx-auto" />
-                  <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Loading pipeline...</p>
+                  <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Loading candidates...</p>
                 </div>
               )}
 
-              {!candidatesLoading && candidates.length === 0 && (
+              {viewMode === 'list' && !candidatesLoading && candidates.length === 0 && (
                 <div className="card p-8 text-center">
                   <svg className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -841,7 +863,7 @@ export default function RequirementDetailPage() {
                 </div>
               )}
 
-              {!candidatesLoading && candidates.length > 0 && (
+              {viewMode === 'list' && !candidatesLoading && candidates.length > 0 && (
                 <div className="space-y-3">
                   {candidates.map((candidate) => (
                     <div key={candidate.candidateId} className="card p-4">
