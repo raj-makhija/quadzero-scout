@@ -12,19 +12,19 @@ import {
   ChevronUp,
   UserPlus,
 } from 'lucide-react';
-import Link from 'next/link';
 import { api, ApiError } from '@/lib/api';
-import type { MatchDebugResponse, MatchDebugFilterResult, CandidateNameSearchResult } from '@/lib/api';
-import { isScreeningExpired, getScreeningStatus } from '@/components/screening-modal';
+import type { MatchDebugResponse, MatchDebugFilterResult, CandidateNameSearchResult, AdditionalFieldDefinition, CandidateSearchResult } from '@/lib/api';
+import { ScreeningModal, isScreeningExpired, getScreeningStatus } from '@/components/screening-modal';
 
 // ─── Candidate Search Variant ─────────────────────────────────────────────────
 
 interface CheckCandidateProps {
   requirementId: string;
   onShortlisted?: () => void;
+  additionalFields?: AdditionalFieldDefinition[];
 }
 
-export function CheckCandidateMatch({ requirementId, onShortlisted }: CheckCandidateProps) {
+export function CheckCandidateMatch({ requirementId, onShortlisted, additionalFields }: CheckCandidateProps) {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<CandidateNameSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -146,6 +146,8 @@ export function CheckCandidateMatch({ requirementId, onShortlisted }: CheckCandi
           requirementId={requirementId}
           candidate={selectedCandidate}
           onShortlisted={onShortlisted}
+          additionalFields={additionalFields}
+          onCandidateUpdated={setSelectedCandidate}
         />
       )}
     </div>
@@ -235,19 +237,34 @@ function ShortlistAction({
   requirementId,
   candidate,
   onShortlisted,
+  additionalFields,
+  onCandidateUpdated,
 }: {
   requirementId: string;
   candidate: CandidateNameSearchResult;
   onShortlisted?: () => void;
+  additionalFields?: AdditionalFieldDefinition[];
+  onCandidateUpdated: (updated: CandidateNameSearchResult) => void;
 }) {
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [confirmNotInterested, setConfirmNotInterested] = useState(false);
+  const [showScreeningModal, setShowScreeningModal] = useState(false);
 
   const screeningStatus = getScreeningStatus(candidate.lastScreenedAt, candidate.notInterested);
   const screeningExpired = isScreeningExpired(candidate.lastScreenedAt);
+
+  const handleScreeningComplete = useCallback((_candidateId: string, updatedValues?: Partial<CandidateSearchResult>) => {
+    setShowScreeningModal(false);
+    onCandidateUpdated({
+      ...candidate,
+      lastScreenedAt: new Date().toISOString(),
+      notInterested: updatedValues?.notInterested ?? candidate.notInterested,
+      notInterestedAt: updatedValues?.notInterestedAt ?? candidate.notInterestedAt,
+    });
+  }, [candidate, onCandidateUpdated]);
 
   const handleShortlist = async () => {
     setLoading(true);
@@ -308,12 +325,12 @@ function ShortlistAction({
               ? ' The previous screening has expired (>15 days).'
               : ' This candidate has not been screened yet.'}
           </p>
-          <Link
-            href={`/recruiter/locate/${candidate.candidateId}`}
+          <button
+            onClick={() => setShowScreeningModal(true)}
             className="inline-block mt-2 text-sm font-medium text-primary-600 dark:text-primary-400 hover:underline"
           >
             Screen Candidate &rarr;
-          </Link>
+          </button>
         </div>
       ) : (
         <>
@@ -366,6 +383,17 @@ function ShortlistAction({
             </>
           )}
         </>
+      )}
+
+      {showScreeningModal && (
+        <ScreeningModal
+          candidateId={candidate.candidateId}
+          candidateName={candidate.fullName}
+          onClose={() => setShowScreeningModal(false)}
+          onScreeningComplete={handleScreeningComplete}
+          isShortlistFlow={true}
+          additionalFields={additionalFields}
+        />
       )}
     </div>
   );

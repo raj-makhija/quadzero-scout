@@ -700,7 +700,7 @@ export default function RequirementDetailPage() {
             </div>
 
             {/* Check Candidate Match */}
-            <CheckCandidateMatch requirementId={requirementId} onShortlisted={fetchCandidates} />
+            <CheckCandidateMatch requirementId={requirementId} onShortlisted={fetchCandidates} additionalFields={requirement.additionalFields} />
 
             {/* Contributing Recruiters */}
             {requirement.contributingRecruiters && requirement.contributingRecruiters.length > 1 && (
