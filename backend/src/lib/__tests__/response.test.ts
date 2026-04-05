@@ -114,7 +114,23 @@ describe('ErrorCodes', () => {
     expect(ErrorCodes.SCREENING_REQUIRED).toBe('SCREENING_REQUIRED');
   });
 
-  it('has exactly 11 error codes', () => {
-    expect(Object.keys(ErrorCodes)).toHaveLength(11);
+  it('defines LLM_ERROR', () => {
+    expect(ErrorCodes.LLM_ERROR).toBe('LLM_ERROR');
+  });
+
+  it('defines SESSION_EXPIRED', () => {
+    expect(ErrorCodes.SESSION_EXPIRED).toBe('SESSION_EXPIRED');
+  });
+
+  it('defines DUPLICATE_SUBMISSION', () => {
+    expect(ErrorCodes.DUPLICATE_SUBMISSION).toBe('DUPLICATE_SUBMISSION');
+  });
+
+  it('defines INVALID_STAGE_TRANSITION', () => {
+    expect(ErrorCodes.INVALID_STAGE_TRANSITION).toBe('INVALID_STAGE_TRANSITION');
+  });
+
+  it('has exactly 14 error codes', () => {
+    expect(Object.keys(ErrorCodes)).toHaveLength(14);
   });
 });

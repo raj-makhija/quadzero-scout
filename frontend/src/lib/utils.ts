@@ -86,6 +86,7 @@ export function truncateText(text: string, maxLength: number): string {
 
 export const SUPPORTED_FILE_TYPES = [
   'application/pdf',
+  'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ];
 

@@ -20,7 +20,7 @@ export const AnalyzeRequestSchema = z.object({
 export const SaveProfileRequestSchema = z.object({
   candidateId: z.string().uuid().optional(),
   profile: z.object({
-    fullName: z.string().min(2),
+    fullName: z.string().min(2).max(100),
     email: z.string().email().or(z.literal('')).nullable().optional(),
     phone: z.string().nullable().optional(),
     location: z.string().nullable().optional(),
@@ -38,8 +38,8 @@ export const SaveProfileRequestSchema = z.object({
       institution: z.string(),
       year: z.number().optional(),
     })).optional(),
-    certifications: z.array(z.string()).optional(),
-    summary: z.string().optional(),
+    certifications: z.array(z.string()).max(20).optional(),
+    summary: z.string().max(2000).optional(),
     currentCtc: z.number().min(0).max(500).optional(),
     expectedCtc: z.number().min(0).max(500).optional(),
     customFields: z.record(z.string(), z.union([z.string(), z.number()])).optional().default({}),
@@ -139,7 +139,7 @@ export const SaveRequirementRequestSchema = z.object({
   parsedCriteria: LLMJDOutputSchema,
   status: z.enum(['active', 'duplicate']).optional().default('active'),
   duplicateOf: z.string().uuid().optional(),
-  additionalFields: z.array(AdditionalFieldDefinitionSchema).optional().default([]),
+  additionalFields: z.array(AdditionalFieldDefinitionSchema).max(20).optional().default([]),
   contactPersonName: z.string().max(200).optional(),
 });
 
@@ -337,8 +337,8 @@ export const ScreenCandidateRequestSchema = z.object({
       institution: z.string(),
       year: z.number().optional(),
     })).optional(),
-    certifications: z.array(z.string()).optional(),
-    summary: z.string().optional(),
+    certifications: z.array(z.string()).max(20).optional(),
+    summary: z.string().max(2000).optional(),
     currentCtc: z.number().min(0).max(500).nullable().optional(),
     expectedCtc: z.number().min(0).max(500).nullable().optional(),
     expectedCtcType: z.enum(['explicit', 'negotiable']).optional(),
