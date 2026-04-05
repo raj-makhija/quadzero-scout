@@ -600,68 +600,35 @@ functions:
           path: /recruiter/shortlist/not-suitable
           method: PUT
 
-  # Pipeline Endpoints
-  recruiterSubmitCandidateToClient:
-    handler: src/handlers/recruiter/submitCandidateToClient.handler
+  # Pipeline Endpoints (single Lambda router to stay under CloudFormation 500 resource limit)
+  recruiterPipeline:
+    handler: src/handlers/recruiter/pipelineRouter.handler
     timeout: 30
     events:
       - httpApi:
           path: /recruiter/requirements/{requirementId}/candidates/{candidateId}/submit
           method: POST
-
-  recruiterSubmitBatchToClient:
-    handler: src/handlers/recruiter/submitBatchToClient.handler
-    timeout: 30
-    events:
       - httpApi:
           path: /recruiter/requirements/{requirementId}/submit-batch
           method: POST
-
-  recruiterRecordClientFeedback:
-    handler: src/handlers/recruiter/recordClientFeedback.handler
-    events:
       - httpApi:
           path: /recruiter/requirements/{requirementId}/candidates/{candidateId}/client-feedback
           method: POST
-
-  recruiterScheduleInterview:
-    handler: src/handlers/recruiter/scheduleInterview.handler
-    events:
       - httpApi:
           path: /recruiter/requirements/{requirementId}/candidates/{candidateId}/interviews
           method: POST
-
-  recruiterRecordInterviewFeedback:
-    handler: src/handlers/recruiter/recordInterviewFeedback.handler
-    events:
       - httpApi:
           path: /recruiter/requirements/{requirementId}/candidates/{candidateId}/interview-feedback
           method: POST
-
-  recruiterUpdatePipelineStage:
-    handler: src/handlers/recruiter/updatePipelineStage.handler
-    events:
       - httpApi:
           path: /recruiter/requirements/{requirementId}/candidates/{candidateId}/pipeline-stage
           method: PUT
-
-  recruiterGetPipelineView:
-    handler: src/handlers/recruiter/getPipelineView.handler
-    events:
       - httpApi:
           path: /recruiter/requirements/{requirementId}/pipeline
           method: GET
-
-  recruiterGetCandidateActivities:
-    handler: src/handlers/recruiter/getCandidateActivities.handler
-    events:
       - httpApi:
           path: /recruiter/requirements/{requirementId}/candidates/{candidateId}/activities
           method: GET
-
-  recruiterAddPipelineNote:
-    handler: src/handlers/recruiter/addPipelineNote.handler
-    events:
       - httpApi:
           path: /recruiter/requirements/{requirementId}/candidates/{candidateId}/notes
           method: POST
