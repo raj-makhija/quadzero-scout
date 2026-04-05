@@ -10,21 +10,25 @@ import {
   X,
   ChevronDown,
   ChevronUp,
+  UserPlus,
 } from 'lucide-react';
+import Link from 'next/link';
 import { api, ApiError } from '@/lib/api';
 import type { MatchDebugResponse, MatchDebugFilterResult, CandidateNameSearchResult } from '@/lib/api';
+import { isScreeningExpired, getScreeningStatus } from '@/components/screening-modal';
 
 // ─── Candidate Search Variant ─────────────────────────────────────────────────
 
 interface CheckCandidateProps {
   requirementId: string;
+  onShortlisted?: () => void;
 }
 
-export function CheckCandidateMatch({ requirementId }: CheckCandidateProps) {
+export function CheckCandidateMatch({ requirementId, onShortlisted }: CheckCandidateProps) {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<CandidateNameSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
-  const [selectedCandidate, setSelectedCandidate] = useState<{ id: string; name: string } | null>(null);
+  const [selectedCandidate, setSelectedCandidate] = useState<CandidateNameSearchResult | null>(null);
   const [debugResult, setDebugResult] = useState<MatchDebugResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -47,7 +51,7 @@ export function CheckCandidateMatch({ requirementId }: CheckCandidateProps) {
   }, [query, searchCandidates]);
 
   const handleSelect = async (candidate: CandidateNameSearchResult) => {
-    setSelectedCandidate({ id: candidate.candidateId, name: candidate.fullName });
+    setSelectedCandidate(candidate);
     setQuery(candidate.fullName);
     setShowSuggestions(false);
     setSuggestions([]);
@@ -135,6 +139,15 @@ export function CheckCandidateMatch({ requirementId }: CheckCandidateProps) {
 
       {/* Results */}
       {debugResult && <MatchDebugPanel result={debugResult} />}
+
+      {/* Shortlist Action */}
+      {debugResult && selectedCandidate && (
+        <ShortlistAction
+          requirementId={requirementId}
+          candidate={selectedCandidate}
+          onShortlisted={onShortlisted}
+        />
+      )}
     </div>
   );
 }
@@ -212,6 +225,148 @@ export function CheckRequirementMatch({ candidateId }: CheckRequirementProps) {
       )}
 
       {debugResult && <MatchDebugPanel result={debugResult} />}
+    </div>
+  );
+}
+
+// ─── Shortlist Action ─────────────────────────────────────────────────────────
+
+function ShortlistAction({
+  requirementId,
+  candidate,
+  onShortlisted,
+}: {
+  requirementId: string;
+  candidate: CandidateNameSearchResult;
+  onShortlisted?: () => void;
+}) {
+  const [notes, setNotes] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+  const [confirmNotInterested, setConfirmNotInterested] = useState(false);
+
+  const screeningStatus = getScreeningStatus(candidate.lastScreenedAt, candidate.notInterested);
+  const screeningExpired = isScreeningExpired(candidate.lastScreenedAt);
+
+  const handleShortlist = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      await api.shortlistCandidate(requirementId, candidate.candidateId, notes || undefined);
+      setSuccess(true);
+      onShortlisted?.();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.code === 'VALIDATION_ERROR' && err.message.includes('already shortlisted')) {
+          setSuccess(true);
+          onShortlisted?.();
+          return;
+        }
+        setError(err.message);
+      } else {
+        setError('Failed to shortlist candidate. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (success) {
+    return (
+      <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg flex items-center gap-2">
+        <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0" />
+        <span className="text-sm font-medium text-green-700 dark:text-green-300">
+          {candidate.fullName} has been shortlisted successfully.
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-3">
+      {/* Screening status */}
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-gray-600 dark:text-gray-400">Screening Status</span>
+        <span className={`badge text-xs ${screeningStatus.className}`}>{screeningStatus.label}</span>
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-2">
+          <AlertTriangle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
+          <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
+        </div>
+      )}
+
+      {/* Screening expired */}
+      {screeningExpired ? (
+        <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+          <p className="text-sm text-amber-700 dark:text-amber-300">
+            Screening is required before this candidate can be shortlisted.
+            {candidate.lastScreenedAt
+              ? ' The previous screening has expired (>15 days).'
+              : ' This candidate has not been screened yet.'}
+          </p>
+          <Link
+            href={`/recruiter/locate/${candidate.candidateId}`}
+            className="inline-block mt-2 text-sm font-medium text-primary-600 dark:text-primary-400 hover:underline"
+          >
+            Screen Candidate &rarr;
+          </Link>
+        </div>
+      ) : (
+        <>
+          {/* Not interested warning */}
+          {candidate.notInterested && !confirmNotInterested ? (
+            <div className="space-y-2">
+              <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
+                <p className="text-sm text-red-700 dark:text-red-300">
+                  This candidate is marked as Not Interested.
+                </p>
+              </div>
+              <button
+                onClick={() => setConfirmNotInterested(true)}
+                className="w-full btn btn-outline border-amber-500 text-amber-700 hover:bg-amber-50 dark:border-amber-400 dark:text-amber-300 dark:hover:bg-amber-900/20 text-sm"
+              >
+                Shortlist Anyway?
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* Notes */}
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Shortlist notes (optional)..."
+                className="input w-full text-sm"
+                rows={2}
+                maxLength={1000}
+              />
+
+              {/* Shortlist button */}
+              <button
+                onClick={handleShortlist}
+                disabled={loading}
+                className="btn-primary w-full flex items-center justify-center gap-2 text-sm"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Shortlisting...
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="h-4 w-4" />
+                    Shortlist Candidate
+                  </>
+                )}
+              </button>
+            </>
+          )}
+        </>
+      )}
     </div>
   );
 }

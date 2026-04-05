@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Bell, Pencil, ChevronDown, ChevronRight, History } from 'lucide-react';
@@ -72,6 +72,18 @@ export default function RequirementDetailPage() {
 
   const [candidates, setCandidates] = useState<ShortlistedCandidate[]>([]);
   const [candidatesLoading, setCandidatesLoading] = useState(true);
+
+  const fetchCandidates = useCallback(async () => {
+    try {
+      setCandidatesLoading(true);
+      const data = await api.getShortlistedCandidates(requirementId);
+      setCandidates(data.candidates);
+    } catch {
+      // Non-fatal — just show empty list
+    } finally {
+      setCandidatesLoading(false);
+    }
+  }, [requirementId]);
 
   const [viewMode, setViewMode] = useState<'list' | 'pipeline'>('pipeline');
   const [historyExpanded, setHistoryExpanded] = useState(false);
@@ -225,21 +237,9 @@ export default function RequirementDetailPage() {
       }
     };
 
-    const fetchCandidates = async () => {
-      try {
-        setCandidatesLoading(true);
-        const data = await api.getShortlistedCandidates(requirementId);
-        setCandidates(data.candidates);
-      } catch {
-        // Non-fatal — just show empty list
-      } finally {
-        setCandidatesLoading(false);
-      }
-    };
-
     fetchData();
     fetchCandidates();
-  }, [status, requirementId]);
+  }, [status, requirementId, fetchCandidates]);
 
   const handleMarkNotSuitable = async (candidateId: string) => {
     try {
@@ -700,7 +700,7 @@ export default function RequirementDetailPage() {
             </div>
 
             {/* Check Candidate Match */}
-            <CheckCandidateMatch requirementId={requirementId} />
+            <CheckCandidateMatch requirementId={requirementId} onShortlisted={fetchCandidates} />
 
             {/* Contributing Recruiters */}
             {requirement.contributingRecruiters && requirement.contributingRecruiters.length > 1 && (
