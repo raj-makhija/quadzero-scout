@@ -158,9 +158,15 @@ export function CheckCandidateMatch({ requirementId, onShortlisted, additionalFi
 
 interface CheckRequirementProps {
   candidateId: string;
+  candidateName: string;
+  candidateScreening?: {
+    lastScreenedAt?: string;
+    notInterested?: boolean;
+    notInterestedAt?: string;
+  };
 }
 
-export function CheckRequirementMatch({ candidateId }: CheckRequirementProps) {
+export function CheckRequirementMatch({ candidateId, candidateName, candidateScreening }: CheckRequirementProps) {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<RequirementSummary[]>([]);
   const [searching, setSearching] = useState(false);
@@ -169,6 +175,7 @@ export function CheckRequirementMatch({ candidateId }: CheckRequirementProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [candidateForShortlist, setCandidateForShortlist] = useState<CandidateNameSearchResult | null>(null);
 
   const searchRequirements = useCallback(async (q: string) => {
     if (q.length < 2) { setSuggestions([]); return; }
@@ -193,9 +200,22 @@ export function CheckRequirementMatch({ candidateId }: CheckRequirementProps) {
     setSuggestions([]);
     setLoading(true);
     setError('');
+    setCandidateForShortlist(null);
     try {
       const result = await api.matchDebug(candidateId, requirement.requirementId);
       setDebugResult(result);
+      setCandidateForShortlist({
+        candidateId: result.candidate.candidateId,
+        fullName: result.candidate.fullName,
+        primarySkills: result.candidate.primarySkills,
+        totalExperience: result.candidate.totalExperience,
+        seniority: result.candidate.seniority,
+        location: result.candidate.location,
+        lastUpdated: new Date().toISOString(),
+        lastScreenedAt: candidateScreening?.lastScreenedAt,
+        notInterested: candidateScreening?.notInterested,
+        notInterestedAt: candidateScreening?.notInterestedAt,
+      });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to run match check');
     } finally {
@@ -208,6 +228,7 @@ export function CheckRequirementMatch({ candidateId }: CheckRequirementProps) {
     setSelectedRequirement(null);
     setDebugResult(null);
     setError('');
+    setCandidateForShortlist(null);
     setSuggestions([]);
   };
 
@@ -272,6 +293,15 @@ export function CheckRequirementMatch({ candidateId }: CheckRequirementProps) {
       )}
 
       {debugResult && <MatchDebugPanel result={debugResult} />}
+
+      {debugResult && selectedRequirement && candidateForShortlist && (
+        <ShortlistAction
+          requirementId={selectedRequirement.requirementId}
+          candidate={candidateForShortlist}
+          additionalFields={selectedRequirement.additionalFields}
+          onCandidateUpdated={setCandidateForShortlist}
+        />
+      )}
     </div>
   );
 }
