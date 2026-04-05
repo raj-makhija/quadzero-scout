@@ -13,7 +13,7 @@ import {
   UserPlus,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
-import type { MatchDebugResponse, MatchDebugFilterResult, CandidateNameSearchResult, AdditionalFieldDefinition, CandidateSearchResult } from '@/lib/api';
+import type { MatchDebugResponse, MatchDebugFilterResult, CandidateNameSearchResult, AdditionalFieldDefinition, CandidateSearchResult, RequirementSummary } from '@/lib/api';
 import { ScreeningModal, isScreeningExpired, getScreeningStatus } from '@/components/screening-modal';
 
 // ─── Candidate Search Variant ─────────────────────────────────────────────────
@@ -161,19 +161,40 @@ interface CheckRequirementProps {
 }
 
 export function CheckRequirementMatch({ candidateId }: CheckRequirementProps) {
-  const [requirementId, setRequirementId] = useState('');
+  const [query, setQuery] = useState('');
+  const [suggestions, setSuggestions] = useState<RequirementSummary[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [selectedRequirement, setSelectedRequirement] = useState<RequirementSummary | null>(null);
   const [debugResult, setDebugResult] = useState<MatchDebugResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
-  const handleCheck = async () => {
-    const id = requirementId.trim();
-    if (!id) return;
+  const searchRequirements = useCallback(async (q: string) => {
+    if (q.length < 2) { setSuggestions([]); return; }
+    setSearching(true);
+    try {
+      const res = await api.listRequirements({ search: q, status: 'active', limit: 8 });
+      setSuggestions(res.requirements);
+      setShowSuggestions(true);
+    } catch { setSuggestions([]); }
+    finally { setSearching(false); }
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => searchRequirements(query), 300);
+    return () => clearTimeout(timer);
+  }, [query, searchRequirements]);
+
+  const handleSelect = async (requirement: RequirementSummary) => {
+    setSelectedRequirement(requirement);
+    setQuery(requirement.clientName + (requirement.jobTitle ? ` - ${requirement.jobTitle}` : ''));
+    setShowSuggestions(false);
+    setSuggestions([]);
     setLoading(true);
     setError('');
-    setDebugResult(null);
     try {
-      const result = await api.matchDebug(candidateId, id);
+      const result = await api.matchDebug(candidateId, requirement.requirementId);
       setDebugResult(result);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to run match check');
@@ -183,9 +204,11 @@ export function CheckRequirementMatch({ candidateId }: CheckRequirementProps) {
   };
 
   const handleClear = () => {
-    setRequirementId('');
+    setQuery('');
+    setSelectedRequirement(null);
     setDebugResult(null);
     setError('');
+    setSuggestions([]);
   };
 
   return (
@@ -195,30 +218,52 @@ export function CheckRequirementMatch({ candidateId }: CheckRequirementProps) {
         Check Requirement Match
       </h3>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-        Paste a requirement ID to see why this candidate does or doesn&apos;t match it.
+        Search for a requirement to see why this candidate does or doesn&apos;t match it.
       </p>
 
-      <div className="flex gap-2">
-        <div className="relative flex-1">
-          <input
-            type="text"
-            value={requirementId}
-            onChange={(e) => { setRequirementId(e.target.value); setDebugResult(null); }}
-            onKeyDown={(e) => e.key === 'Enter' && handleCheck()}
-            placeholder="Paste requirement ID..."
-            className="input w-full pr-8"
-          />
-          {requirementId && (
-            <button onClick={handleClear} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-              <X className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-        <button onClick={handleCheck} disabled={!requirementId.trim() || loading} className="btn-primary text-sm flex items-center gap-1.5">
-          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-          Check
-        </button>
+      <div className="relative">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setSelectedRequirement(null); setDebugResult(null); }}
+          onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+          placeholder="Type a client name, skill, or job title..."
+          className="input w-full pr-8"
+        />
+        {(query || selectedRequirement) && (
+          <button onClick={handleClear} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+            <X className="w-4 h-4" />
+          </button>
+        )}
+        {searching && (
+          <Loader2 className="absolute right-8 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-gray-400" />
+        )}
+
+        {showSuggestions && suggestions.length > 0 && !selectedRequirement && (
+          <div className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-60 overflow-auto">
+            {suggestions.map((r) => (
+              <button
+                key={r.requirementId}
+                onClick={() => handleSelect(r)}
+                className="w-full text-left px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700 last:border-0"
+              >
+                <div className="font-medium text-sm text-gray-900 dark:text-gray-100">
+                  {r.clientName}{r.endClient ? ` \u2192 ${r.endClient}` : ''}
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  {r.jobTitle || 'No title'} &middot; {r.coreSkill || 'No core skill'} &middot; {r.mustHaveSkills.slice(0, 3).join(', ')}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+
+      {loading && (
+        <div className="mt-4 flex items-center gap-2 text-sm text-gray-500">
+          <Loader2 className="w-4 h-4 animate-spin" /> Analyzing match...
+        </div>
+      )}
 
       {error && (
         <div className="mt-4 text-sm text-red-600 dark:text-red-400 flex items-center gap-2">
