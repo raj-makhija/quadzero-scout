@@ -601,6 +601,18 @@ Links candidates to requirements via recruiter shortlisting (tagging).
 | tagged_at | String | Yes | ISO 8601 timestamp |
 | notes | String | No | Optional notes (max 1000 chars) |
 | status | String | Yes | Shortlist status |
+| pipeline_stage | String | No | Current pipeline stage (see Pipeline Stages enum). Defaults to `shortlisted` on creation. |
+| stage_entered_at | String | No | ISO 8601 timestamp when candidate entered the current pipeline stage |
+| submitted_at | String | No | ISO 8601 timestamp when candidate was submitted to client |
+| submitted_by | String | No | User ID of recruiter who submitted to client |
+| client_feedback_summary | String | No | Summary of client feedback on the candidate |
+| client_feedback_rating | String | No | Client rating: `strong_yes`, `yes`, `maybe`, `no`, `strong_no` |
+| next_interview_at | String | No | ISO 8601 timestamp of next scheduled interview |
+| interview_round_count | Number | No | Number of interview rounds completed |
+| offered_ctc_lpa | Number | No | CTC offered to the candidate in LPA |
+| expected_joining_date | String | No | Expected joining date (YYYY-MM-DD) |
+| rejection_reason | String | No | Reason for rejection or withdrawal |
+| last_activity_at | String | No | ISO 8601 timestamp of most recent pipeline activity |
 
 **Example Item:**
 ```json
@@ -1122,6 +1134,53 @@ type ShortlistStatus = 'shortlisted' | 'submitted' | 'rejected' | 'not_suitable'
 
 - `not_suitable` — Recruiter has marked the candidate as not suitable for this specific requirement. Not-suitable entries are excluded from the shortlisted candidates list (`GET /recruiter/requirements/{id}/shortlisted`) and visually distinct on the search results page. A not-suitable candidate can be re-shortlisted, which changes the status back to `shortlisted`. Unlike the global `not_interested` flag on TalentProfiles, `not_suitable` is requirement-specific.
 
+### Pipeline Stages (State Machine)
+
+Pipeline stages track a candidate's progress after shortlisting through the hiring process.
+
+**Active stages** (linear progression):
+```typescript
+type PipelineActiveStage =
+  | 'shortlisted'
+  | 'submitted_to_client'
+  | 'client_reviewed'
+  | 'interview_scheduled'
+  | 'interview_completed'
+  | 'offered'
+  | 'offer_accepted'
+  | 'joined';
+```
+
+**Exit states** (reachable from any active stage):
+```typescript
+type PipelineExitStage =
+  | 'rejected_by_client'
+  | 'candidate_withdrawn'
+  | 'on_hold';
+```
+
+```typescript
+type PipelineStage = PipelineActiveStage | PipelineExitStage;
+```
+
+### Client Feedback Rating
+```typescript
+type ClientFeedbackRating = 'strong_yes' | 'yes' | 'maybe' | 'no' | 'strong_no';
+```
+
+### Pipeline Activity Types
+```typescript
+type PipelineActivityType =
+  | 'stage_change'
+  | 'client_feedback'
+  | 'interview_scheduled'
+  | 'interview_feedback'
+  | 'email_sent'
+  | 'note'
+  | 'offer_extended'
+  | 'offer_response';
+```
+
 ### Supported File Types
 ```typescript
 const SUPPORTED_CONTENT_TYPES = [
@@ -1491,7 +1550,7 @@ Centralized activity audit trail for all recruiter and admin actions.
 - **ActionTypeIndex**: `action_date` (PK) + `sk` (SK) — query by action type + date
 - **DateIndex**: `log_date` (PK) + `sk` (SK) — query all logs by date, sorted by timestamp descending
 
-**Tracked Actions**: SIGN_IN_SUCCESS, SIGN_IN_FAILURE, CANDIDATE_SEARCH, CANDIDATE_SEARCH_BY_NAME, RESUME_DOWNLOAD_FORMATTED, RESUME_DOWNLOAD_ORIGINAL, SHORTLIST_ADD, SHORTLIST_REMOVE, CANDIDATE_SCREEN, REQUIREMENT_CREATE, REQUIREMENT_UPDATE, REQUIREMENT_UPDATE_STATUS, REQUIREMENT_UPDATE_CRITERIA, REQUIREMENT_CONSOLIDATE, REQUIREMENT_TOGGLE_NOTIFY, REQUIREMENT_CHECK_DUPLICATE, CLIENT_CREATE, CLIENT_UPDATE, SUB_VENDOR_CREATE, SUB_VENDOR_UPDATE, SEARCH_SAVE, SEARCH_DELETE, USER_APPROVE, USER_REJECT, PRICING_CONFIG_UPDATE, PROMPT_UPDATE, BULK_IMPORT_START
+**Tracked Actions**: SIGN_IN_SUCCESS, SIGN_IN_FAILURE, CANDIDATE_SEARCH, CANDIDATE_SEARCH_BY_NAME, RESUME_DOWNLOAD_FORMATTED, RESUME_DOWNLOAD_ORIGINAL, SHORTLIST_ADD, SHORTLIST_REMOVE, CANDIDATE_SCREEN, REQUIREMENT_CREATE, REQUIREMENT_UPDATE, REQUIREMENT_UPDATE_STATUS, REQUIREMENT_UPDATE_CRITERIA, REQUIREMENT_CONSOLIDATE, REQUIREMENT_TOGGLE_NOTIFY, REQUIREMENT_CHECK_DUPLICATE, CLIENT_CREATE, CLIENT_UPDATE, SUB_VENDOR_CREATE, SUB_VENDOR_UPDATE, SEARCH_SAVE, SEARCH_DELETE, USER_APPROVE, USER_REJECT, PRICING_CONFIG_UPDATE, PROMPT_UPDATE, BULK_IMPORT_START, PIPELINE_SUBMIT_TO_CLIENT, PIPELINE_BATCH_SUBMIT, PIPELINE_CLIENT_FEEDBACK, PIPELINE_INTERVIEW_SCHEDULED, PIPELINE_INTERVIEW_FEEDBACK, PIPELINE_STAGE_UPDATE, PIPELINE_NOTE_ADDED
 
 **Access Patterns:**
 
@@ -1567,3 +1626,67 @@ For looking up sub-vendors by normalized name (duplicate prevention).
 | Lookup by name | Query by sub_vendor_name_lower | SubVendorNameLowerIndex |
 | List all sub-vendors | Scan | Table Scan |
 | Update sub-vendor | UpdateItem by sub_vendor_id | Primary |
+
+---
+
+### 14. PipelineActivity
+
+Stores activity log entries for the post-shortlisting candidate pipeline. Each activity records a discrete event (stage change, feedback, interview, note, etc.) against a requirement-candidate pair.
+
+**Table Configuration:**
+- Table Name: `PipelineActivity-{stage}`
+- Billing Mode: PAY_PER_REQUEST
+- TTL: Enabled on `ttl` attribute
+
+**Primary Key:**
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| requirement_candidate_key | String (S) | Partition Key - Format: `{requirement_id}#{candidate_id}` |
+| activity_id | String (S) | Sort Key - Format: `{ISO-timestamp}#{uuid}` |
+
+**Attributes:**
+
+| Attribute | Type | Required | Description |
+|-----------|------|----------|-------------|
+| requirement_candidate_key | String | Yes | Composite PK linking requirement and candidate |
+| activity_id | String | Yes | Chronologically sortable unique ID (SK) |
+| activity_type | String | Yes | Type of activity (see Pipeline Activity Types enum) |
+| created_by | String | Yes | User ID of the actor |
+| created_at | String | Yes | ISO 8601 timestamp |
+| data | Map | No | Activity-specific payload (varies by activity_type) |
+| ttl | Number | No | Unix epoch for automatic expiry |
+
+**Activity Types:**
+
+| activity_type | data fields | Description |
+|---------------|-------------|-------------|
+| `stage_change` | `from_stage`, `to_stage` | Pipeline stage transition |
+| `client_feedback` | `rating`, `summary` | Feedback received from client |
+| `interview_scheduled` | `scheduled_at`, `round`, `interviewer`, `notes` | Interview booked |
+| `interview_feedback` | `round`, `rating`, `summary`, `decision` | Post-interview feedback |
+| `email_sent` | `template`, `recipient`, `subject` | Email dispatched (e.g., candidate submission) |
+| `note` | `text` | Free-text communication note |
+| `offer_extended` | `offered_ctc_lpa`, `expected_joining_date` | Offer made to candidate |
+| `offer_response` | `accepted`, `reason` | Candidate's response to offer |
+
+**Example Item:**
+```json
+{
+  "requirement_candidate_key": "a1b2c3d4-e5f6-7890-abcd-ef1234567890#cand_x1y2z3w4-a5b6-7890-cdef-gh1234567890",
+  "activity_id": "2026-04-01T10:30:00Z#act_f1e2d3c4-b5a6-7890-abcd-ef1234567890",
+  "activity_type": "stage_change",
+  "created_by": "user_r1e2c3",
+  "created_at": "2026-04-01T10:30:00Z",
+  "data": {
+    "from_stage": "shortlisted",
+    "to_stage": "submitted_to_client"
+  }
+}
+```
+
+**Access Patterns:**
+
+| Operation | Access Pattern | Index |
+|-----------|---------------|-------|
+| Get all activities for a requirement-candidate pair | Query by requirement_candidate_key, sorted by activity_id | Primary |
+| Get recent activities | Query with ScanIndexForward=false, Limit=N | Primary |

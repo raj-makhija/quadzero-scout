@@ -2092,6 +2092,450 @@ Authorization: Bearer <jwe_token>
 
 ---
 
+## Recruiter Pipeline Endpoints
+
+Endpoints for managing the post-shortlisting candidate pipeline: submissions to clients, feedback, interviews, stage transitions, and activity tracking.
+
+### POST /recruiter/requirements/{requirementId}/candidates/{candidateId}/submit
+
+Submit a shortlisted candidate to the client. Sends an HTML email with the candidate summary and a 7-day presigned resume download link. Moves pipeline stage to `submitted_to_client`.
+
+**Auth:** Requires `recruiter` role.
+
+**Request Headers:**
+```
+Content-Type: application/json
+Authorization: Bearer <jwe_token>
+```
+
+**Path Parameters:**
+- `requirementId`: The requirement ID
+- `candidateId`: The candidate ID
+
+**Request Body:**
+```json
+{
+  "notes": "Strong match for the role, 3 years React experience",
+  "includeFormatted": true
+}
+```
+
+**Validation:**
+- `notes`: Optional, string, max 2000 characters
+- `includeFormatted`: Optional, boolean, defaults to true (use formatted resume if available)
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "emailSent": true,
+    "pipelineStage": "submitted_to_client",
+    "submittedAt": "2026-04-01T10:30:00Z"
+  }
+}
+```
+
+**Notes:**
+- Returns 404 if the candidate is not shortlisted for this requirement
+- Returns 409 if the candidate has already been submitted (`pipeline_stage` is past `shortlisted`)
+- The email is sent via SES to the client contact email on the requirement. Reply-To is set to the shared Scout mailbox.
+- A `stage_change` and `email_sent` activity are logged to PipelineActivity
+
+---
+
+### POST /recruiter/requirements/{requirementId}/submit-batch
+
+Submit multiple shortlisted candidates to the client in a single email. Moves all candidates' pipeline stages to `submitted_to_client`.
+
+**Auth:** Requires `recruiter` role.
+
+**Request Headers:**
+```
+Content-Type: application/json
+Authorization: Bearer <jwe_token>
+```
+
+**Path Parameters:**
+- `requirementId`: The requirement ID
+
+**Request Body:**
+```json
+{
+  "candidateIds": [
+    "cand_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "cand_x1y2z3w4-a5b6-7890-cdef-gh1234567890"
+  ],
+  "notes": "Batch of 2 candidates for your review"
+}
+```
+
+**Validation:**
+- `candidateIds`: Required, array of strings, min 1, max 20
+- `notes`: Optional, string, max 2000 characters
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "emailSent": true,
+    "submittedCount": 2,
+    "submittedAt": "2026-04-01T10:30:00Z",
+    "skipped": []
+  }
+}
+```
+
+**Notes:**
+- Candidates already past `shortlisted` stage are skipped and listed in the `skipped` array
+- A single batch email is sent with all candidate summaries and presigned resume links
+- Returns 400 if no valid candidates remain after filtering
+
+---
+
+### POST /recruiter/requirements/{requirementId}/candidates/{candidateId}/client-feedback
+
+Record client feedback for a submitted candidate.
+
+**Auth:** Requires `recruiter` role.
+
+**Request Headers:**
+```
+Content-Type: application/json
+Authorization: Bearer <jwe_token>
+```
+
+**Path Parameters:**
+- `requirementId`: The requirement ID
+- `candidateId`: The candidate ID
+
+**Request Body:**
+```json
+{
+  "rating": "yes",
+  "summary": "Client liked the candidate's React experience. Wants to schedule a technical round.",
+  "moveToStage": "client_reviewed"
+}
+```
+
+**Validation:**
+- `rating`: Required, one of `strong_yes`, `yes`, `maybe`, `no`, `strong_no`
+- `summary`: Required, string, max 2000 characters
+- `moveToStage`: Optional, valid pipeline stage (defaults to `client_reviewed`)
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "pipelineStage": "client_reviewed",
+    "clientFeedbackRating": "yes",
+    "clientFeedbackSummary": "Client liked the candidate's React experience. Wants to schedule a technical round."
+  }
+}
+```
+
+---
+
+### POST /recruiter/requirements/{requirementId}/candidates/{candidateId}/interviews
+
+Schedule an interview for a candidate.
+
+**Auth:** Requires `recruiter` role.
+
+**Request Headers:**
+```
+Content-Type: application/json
+Authorization: Bearer <jwe_token>
+```
+
+**Path Parameters:**
+- `requirementId`: The requirement ID
+- `candidateId`: The candidate ID
+
+**Request Body:**
+```json
+{
+  "scheduledAt": "2026-04-10T14:00:00Z",
+  "round": 1,
+  "interviewer": "Jane Smith (Engineering Manager)",
+  "notes": "Technical round - 60 min, focus on system design"
+}
+```
+
+**Validation:**
+- `scheduledAt`: Required, ISO 8601 datetime string, must be in the future
+- `round`: Required, integer, min 1
+- `interviewer`: Optional, string, max 200 characters
+- `notes`: Optional, string, max 2000 characters
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "pipelineStage": "interview_scheduled",
+    "nextInterviewAt": "2026-04-10T14:00:00Z",
+    "interviewRoundCount": 1
+  }
+}
+```
+
+**Notes:**
+- Automatically moves pipeline stage to `interview_scheduled`
+- Updates `next_interview_at` and `interview_round_count` on the shortlist record
+
+---
+
+### POST /recruiter/requirements/{requirementId}/candidates/{candidateId}/interview-feedback
+
+Record feedback after an interview round.
+
+**Auth:** Requires `recruiter` role.
+
+**Request Headers:**
+```
+Content-Type: application/json
+Authorization: Bearer <jwe_token>
+```
+
+**Path Parameters:**
+- `requirementId`: The requirement ID
+- `candidateId`: The candidate ID
+
+**Request Body:**
+```json
+{
+  "round": 1,
+  "rating": "yes",
+  "summary": "Strong system design skills, good communication. Proceed to next round.",
+  "decision": "next_round"
+}
+```
+
+**Validation:**
+- `round`: Required, integer, min 1
+- `rating`: Required, one of `strong_yes`, `yes`, `maybe`, `no`, `strong_no`
+- `summary`: Required, string, max 2000 characters
+- `decision`: Required, one of `next_round`, `offer`, `reject`
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "pipelineStage": "interview_completed",
+    "interviewRoundCount": 1
+  }
+}
+```
+
+**Notes:**
+- Moves pipeline stage to `interview_completed`
+- If `decision` is `reject`, stage moves to `rejected_by_client`
+- If `decision` is `offer`, stage moves to `offered`
+
+---
+
+### PUT /recruiter/requirements/{requirementId}/candidates/{candidateId}/pipeline-stage
+
+Manually update a candidate's pipeline stage. Used for transitions not covered by specific endpoints (e.g., moving to `on_hold`, `candidate_withdrawn`, or `joined`).
+
+**Auth:** Requires `recruiter` role.
+
+**Request Headers:**
+```
+Content-Type: application/json
+Authorization: Bearer <jwe_token>
+```
+
+**Path Parameters:**
+- `requirementId`: The requirement ID
+- `candidateId`: The candidate ID
+
+**Request Body:**
+```json
+{
+  "stage": "on_hold",
+  "reason": "Client paused hiring for Q2",
+  "offeredCtcLpa": null,
+  "expectedJoiningDate": null
+}
+```
+
+**Validation:**
+- `stage`: Required, valid PipelineStage enum value
+- `reason`: Optional, string, max 2000 characters (required for `rejected_by_client`, `candidate_withdrawn`)
+- `offeredCtcLpa`: Optional, number (used when stage is `offered`)
+- `expectedJoiningDate`: Optional, date string YYYY-MM-DD (used when stage is `offer_accepted` or `joined`)
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "previousStage": "interview_completed",
+    "pipelineStage": "on_hold",
+    "stageEnteredAt": "2026-04-04T12:00:00Z"
+  }
+}
+```
+
+---
+
+### GET /recruiter/requirements/{requirementId}/pipeline
+
+Get the pipeline view (kanban board data) for a requirement. Returns all shortlisted candidates grouped by pipeline stage.
+
+**Auth:** Requires `recruiter` role.
+
+**Request Headers:**
+```
+Authorization: Bearer <jwe_token>
+```
+
+**Path Parameters:**
+- `requirementId`: The requirement ID
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "requirementId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "stages": {
+      "shortlisted": [
+        {
+          "candidateId": "cand_x1y2z3w4",
+          "fullName": "John Doe",
+          "headline": "Sr. React Developer",
+          "pipelineStage": "shortlisted",
+          "stageEnteredAt": "2026-04-01T10:30:00Z",
+          "lastActivityAt": "2026-04-01T10:30:00Z",
+          "taggedBy": "user_r1e2c3",
+          "taggedAt": "2026-04-01T10:30:00Z"
+        }
+      ],
+      "submitted_to_client": [],
+      "client_reviewed": [],
+      "interview_scheduled": [],
+      "interview_completed": [],
+      "offered": [],
+      "offer_accepted": [],
+      "joined": [],
+      "rejected_by_client": [],
+      "candidate_withdrawn": [],
+      "on_hold": []
+    },
+    "summary": {
+      "total": 5,
+      "byStage": {
+        "shortlisted": 2,
+        "submitted_to_client": 1,
+        "interview_scheduled": 1,
+        "rejected_by_client": 1
+      }
+    }
+  }
+}
+```
+
+**Notes:**
+- Each candidate card includes denormalized profile fields (name, headline) for display
+- Candidates with `not_suitable` status are excluded
+- Results are sorted by `last_activity_at` descending within each stage
+
+---
+
+### GET /recruiter/requirements/{requirementId}/candidates/{candidateId}/activities
+
+Get the activity timeline for a candidate within a requirement.
+
+**Auth:** Requires `recruiter` role.
+
+**Request Headers:**
+```
+Authorization: Bearer <jwe_token>
+```
+
+**Path Parameters:**
+- `requirementId`: The requirement ID
+- `candidateId`: The candidate ID
+
+**Query Parameters:**
+- `limit`: Optional, integer, default 50, max 200
+- `startKey`: Optional, pagination token (base64-encoded LastEvaluatedKey)
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "activities": [
+      {
+        "activityId": "2026-04-01T10:30:00Z#act_f1e2d3c4",
+        "activityType": "stage_change",
+        "createdBy": "user_r1e2c3",
+        "createdByName": "Recruiter Name",
+        "createdAt": "2026-04-01T10:30:00Z",
+        "data": {
+          "fromStage": "shortlisted",
+          "toStage": "submitted_to_client"
+        }
+      }
+    ],
+    "nextKey": null
+  }
+}
+```
+
+**Notes:**
+- Activities are returned in reverse chronological order (newest first)
+- `createdByName` is denormalized from the Users table for display
+
+---
+
+### POST /recruiter/requirements/{requirementId}/candidates/{candidateId}/notes
+
+Add a free-text communication note to a candidate's pipeline timeline.
+
+**Auth:** Requires `recruiter` role.
+
+**Request Headers:**
+```
+Content-Type: application/json
+Authorization: Bearer <jwe_token>
+```
+
+**Path Parameters:**
+- `requirementId`: The requirement ID
+- `candidateId`: The candidate ID
+
+**Request Body:**
+```json
+{
+  "text": "Spoke with candidate, they confirmed availability and interest. Salary expectation aligned."
+}
+```
+
+**Validation:**
+- `text`: Required, string, min 1, max 5000 characters
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "activityId": "2026-04-04T12:00:00Z#act_a1b2c3d4",
+    "activityType": "note",
+    "createdAt": "2026-04-04T12:00:00Z"
+  }
+}
+```
+
+---
+
 ## Recruiter Screening Endpoints
 
 ### POST /recruiter/screen-candidate
