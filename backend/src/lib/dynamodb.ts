@@ -1443,8 +1443,12 @@ export async function updateShortlistPipelineStage(
       : 'shortlisted',
   };
 
+  // Fields already set in the base expression — skip duplicates from extraFields
+  const baseFields = new Set(['pipeline_stage', 'stage_entered_at', 'last_activity_at', 'status']);
+
   if (extraFields) {
     for (const [key, value] of Object.entries(extraFields)) {
+      if (baseFields.has(key)) continue;
       const safeKey = key.replace(/[^a-zA-Z0-9_]/g, '_');
       updateExpr += `, ${key} = :${safeKey}`;
       exprValues[`:${safeKey}`] = value;
