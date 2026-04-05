@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { Bell, Pencil } from 'lucide-react';
+import { Bell, Pencil, ChevronDown, ChevronRight, History } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { CustomFieldsModal } from '@/components/custom-fields-modal';
 import { CheckCandidateMatch } from '@/components/MatchExplainer';
@@ -74,6 +74,8 @@ export default function RequirementDetailPage() {
   const [candidatesLoading, setCandidatesLoading] = useState(true);
 
   const [viewMode, setViewMode] = useState<'list' | 'pipeline'>('pipeline');
+  const [historyExpanded, setHistoryExpanded] = useState(false);
+  const [historyTab, setHistoryTab] = useState<'requests' | 'status' | 'changes'>('requests');
   const [jdExpanded, setJdExpanded] = useState(false);
   const [statusLoading, setStatusLoading] = useState(false);
   const [showReasonModal, setShowReasonModal] = useState(false);
@@ -716,100 +718,6 @@ export default function RequirementDetailPage() {
               </div>
             )}
 
-            {/* Request History */}
-            {requirement.requestHistory && requirement.requestHistory.length > 0 && (
-              <div className="card p-6 mb-6">
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Request History</h3>
-                <div className="space-y-4">
-                  <div className="flex items-start gap-3 border-l-2 border-green-400 pl-4">
-                    <div>
-                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Original Request</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{formatDate(requirement.createdAt)}</p>
-                    </div>
-                  </div>
-                  {requirement.requestHistory.map((entry, i) => (
-                    <div key={i} className="flex items-start gap-3 border-l-2 border-blue-400 pl-4">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                            Repeat Request #{i + 1}
-                          </p>
-                          <span className="badge bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300 text-xs">
-                            {entry.similarityScore}% match
-                          </span>
-                        </div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">{formatDate(entry.receivedAt)}</p>
-                        {entry.notes && (
-                          <p className="text-xs text-gray-400 italic mt-1">{entry.notes}</p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Status History */}
-            {requirement.statusHistory && requirement.statusHistory.length > 0 && (
-              <div className="card p-6 mb-6">
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Status History</h3>
-                <div className="space-y-4">
-                  {requirement.statusHistory.map((entry, i) => (
-                    <div key={i} className="flex items-start gap-3 border-l-2 border-purple-400 pl-4">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                            {entry.fromStatus === 'active' ? 'Active' : entry.fromStatus === 'closed_on_hold' ? 'Closed / On-hold' : entry.fromStatus}
-                            {' → '}
-                            {entry.toStatus === 'active' ? 'Active' : entry.toStatus === 'closed_on_hold' ? 'Closed / On-hold' : entry.toStatus}
-                          </p>
-                        </div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">{formatDate(entry.changedAt)}</p>
-                        {entry.reason && (
-                          <p className="text-xs text-gray-400 italic mt-1">Reason: {entry.reason}</p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Change History (Edit Audit Trail) */}
-            {requirement.changeHistory && requirement.changeHistory.length > 0 && (
-              <div className="card p-6 mb-6">
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Change History</h3>
-                <div className="space-y-4">
-                  {[...requirement.changeHistory].reverse().map((entry, i) => (
-                    <div key={i} className="border-l-2 border-amber-400 pl-4">
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                        {formatDate(entry.changedAt)}
-                      </p>
-                      <div className="space-y-1.5">
-                        {entry.changes.map((change, j) => (
-                          <div key={j} className="text-sm">
-                            <span className="font-medium text-gray-900 dark:text-gray-100">
-                              {FIELD_LABELS[change.field] || change.field}
-                            </span>
-                            <span className="text-gray-500 dark:text-gray-400">
-                              {': '}
-                              <span className="line-through text-red-500 dark:text-red-400">
-                                {formatFieldValue(change.field, change.oldValue)}
-                              </span>
-                              {' → '}
-                              <span className="text-green-600 dark:text-green-400">
-                                {formatFieldValue(change.field, change.newValue)}
-                              </span>
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* Candidates Pipeline / List View */}
             <div>
               <div className="flex items-center justify-between mb-4">
@@ -951,6 +859,141 @@ export default function RequirementDetailPage() {
             </div>
           </>
         )}
+
+        {/* History Accordion — collapsed by default */}
+        {requirement && (requirement.requestHistory?.length || requirement.statusHistory?.length || requirement.changeHistory?.length) ? (
+          <div className="card overflow-hidden">
+            <button
+              onClick={() => setHistoryExpanded(!historyExpanded)}
+              className="w-full flex items-center gap-3 px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+            >
+              {historyExpanded ? (
+                <ChevronDown className="h-4 w-4 text-gray-400 flex-shrink-0" />
+              ) : (
+                <ChevronRight className="h-4 w-4 text-gray-400 flex-shrink-0" />
+              )}
+              <History className="h-4 w-4 text-gray-400 flex-shrink-0" />
+              <span className="text-sm font-semibold text-gray-600 dark:text-gray-400">History</span>
+            </button>
+
+            {historyExpanded && (
+              <div className="px-6 pb-6">
+                {/* Tabs */}
+                <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700 mb-4">
+                  {requirement.requestHistory && requirement.requestHistory.length > 0 && (
+                    <button
+                      onClick={() => setHistoryTab('requests')}
+                      className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${historyTab === 'requests' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                    >
+                      Requests
+                    </button>
+                  )}
+                  {requirement.statusHistory && requirement.statusHistory.length > 0 && (
+                    <button
+                      onClick={() => setHistoryTab('status')}
+                      className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${historyTab === 'status' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                    >
+                      Status Changes
+                    </button>
+                  )}
+                  {requirement.changeHistory && requirement.changeHistory.length > 0 && (
+                    <button
+                      onClick={() => setHistoryTab('changes')}
+                      className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${historyTab === 'changes' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                    >
+                      Changes
+                    </button>
+                  )}
+                </div>
+
+                {/* Request History tab */}
+                {historyTab === 'requests' && requirement.requestHistory && requirement.requestHistory.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3 border-l-2 border-green-400 pl-4">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Original Request</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{formatDate(requirement.createdAt)}</p>
+                      </div>
+                    </div>
+                    {requirement.requestHistory.map((entry, i) => (
+                      <div key={i} className="flex items-start gap-3 border-l-2 border-blue-400 pl-4">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                              Repeat Request #{i + 1}
+                            </p>
+                            <span className="badge bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300 text-xs">
+                              {entry.similarityScore}% match
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">{formatDate(entry.receivedAt)}</p>
+                          {entry.notes && (
+                            <p className="text-xs text-gray-400 italic mt-1">{entry.notes}</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Status History tab */}
+                {historyTab === 'status' && requirement.statusHistory && requirement.statusHistory.length > 0 && (
+                  <div className="space-y-3">
+                    {requirement.statusHistory.map((entry, i) => (
+                      <div key={i} className="flex items-start gap-3 border-l-2 border-purple-400 pl-4">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                              {entry.fromStatus === 'active' ? 'Active' : entry.fromStatus === 'closed_on_hold' ? 'Closed / On-hold' : entry.fromStatus}
+                              {' → '}
+                              {entry.toStatus === 'active' ? 'Active' : entry.toStatus === 'closed_on_hold' ? 'Closed / On-hold' : entry.toStatus}
+                            </p>
+                          </div>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">{formatDate(entry.changedAt)}</p>
+                          {entry.reason && (
+                            <p className="text-xs text-gray-400 italic mt-1">Reason: {entry.reason}</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Change History tab */}
+                {historyTab === 'changes' && requirement.changeHistory && requirement.changeHistory.length > 0 && (
+                  <div className="space-y-3">
+                    {[...requirement.changeHistory].reverse().map((entry, i) => (
+                      <div key={i} className="border-l-2 border-amber-400 pl-4">
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                          {formatDate(entry.changedAt)}
+                        </p>
+                        <div className="space-y-1.5">
+                          {entry.changes.map((change, j) => (
+                            <div key={j} className="text-sm">
+                              <span className="font-medium text-gray-900 dark:text-gray-100">
+                                {FIELD_LABELS[change.field] || change.field}
+                              </span>
+                              <span className="text-gray-500 dark:text-gray-400">
+                                {': '}
+                                <span className="line-through text-red-500 dark:text-red-400">
+                                  {formatFieldValue(change.field, change.oldValue)}
+                                </span>
+                                {' → '}
+                                <span className="text-green-600 dark:text-green-400">
+                                  {formatFieldValue(change.field, change.newValue)}
+                                </span>
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ) : null}
       </main>
 
       {/* Close / On-hold Reason Modal */}
