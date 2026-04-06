@@ -52,12 +52,17 @@ export abstract class BaseLLMProvider {
   parseJsonResponse<T>(content: string): T {
     // Try to extract JSON from markdown code blocks if present
     const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
-    const jsonString = jsonMatch ? jsonMatch[1].trim() : content.trim();
+    let jsonString = jsonMatch ? jsonMatch[1].trim() : content.trim();
+
+    // If no closing fence was found (truncated response), strip opening fence manually
+    if (!jsonMatch && jsonString.startsWith('```')) {
+      jsonString = jsonString.replace(/^```(?:json)?\s*/, '');
+    }
 
     try {
       return JSON.parse(jsonString) as T;
     } catch {
-      throw new Error(`Failed to parse LLM response as JSON: ${content.substring(0, 200)}...`);
+      throw new Error(`Failed to parse LLM response as JSON: ${content.substring(0, 500)}...`);
     }
   }
 }

@@ -174,7 +174,7 @@ export async function parseResume(resumeText: string, supplementaryText?: string
 
   const response = await provider.completeWithRetry(messages, {
     temperature: 0,
-    maxTokens: 4096,
+    maxTokens: 8192,
   }, config.llm.maxRetries);
 
   const parsed = provider.parseJsonResponse<unknown>(response.content);
