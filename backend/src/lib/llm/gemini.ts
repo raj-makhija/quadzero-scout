@@ -28,6 +28,7 @@ export class GeminiProvider extends BaseLLMProvider {
       generationConfig: {
         maxOutputTokens: options?.maxTokens || 4096,
         temperature: options?.temperature || 0,
+        responseMimeType: 'application/json',
       },
     });
 
