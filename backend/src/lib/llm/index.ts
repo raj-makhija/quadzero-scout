@@ -182,7 +182,10 @@ export async function parseResume(resumeText: string, supplementaryText?: string
   // Validate against schema
   const validated = LLMResumeOutputSchema.safeParse(parsed);
   if (!validated.success) {
-    console.error('LLM output validation failed:', validated.error);
+    console.error('LLM output validation failed:', {
+      zodErrors: validated.error.issues,
+      rawOutput: JSON.stringify(parsed).substring(0, 1000),
+    });
     throw new Error(`Invalid LLM output structure: ${validated.error.message}`);
   }
 

@@ -72,6 +72,70 @@ describe('LLMResumeOutputSchema', () => {
     }
   });
 
+  it('coerces malformed email to null', () => {
+    const result = LLMResumeOutputSchema.safeParse({
+      fullName: 'Test User',
+      email: 'pandey@email',
+      primarySkills: ['python'],
+      primarySkillYears: { python: 2 },
+      totalExperience: 2,
+      seniority: 'mid',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.email).toBeNull();
+    }
+  });
+
+  it('preserves valid email', () => {
+    const result = LLMResumeOutputSchema.safeParse({
+      fullName: 'Test User',
+      email: 'user@example.com',
+      primarySkills: ['python'],
+      primarySkillYears: { python: 2 },
+      totalExperience: 2,
+      seniority: 'mid',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.email).toBe('user@example.com');
+    }
+  });
+
+  it('auto-prepends https:// to URLs without protocol', () => {
+    const result = LLMResumeOutputSchema.safeParse({
+      fullName: 'Test User',
+      linkedinUrl: 'linkedin.com/in/johndoe',
+      githubUrl: 'github.com/johndoe',
+      primarySkills: ['react'],
+      primarySkillYears: { react: 3 },
+      totalExperience: 3,
+      seniority: 'mid',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.linkedinUrl).toBe('https://linkedin.com/in/johndoe');
+      expect(result.data.githubUrl).toBe('https://github.com/johndoe');
+    }
+  });
+
+  it('coerces garbage URLs to null', () => {
+    const result = LLMResumeOutputSchema.safeParse({
+      fullName: 'Test User',
+      linkedinUrl: 'not a url at all',
+      githubUrl: 'also not valid',
+      primarySkills: ['react'],
+      primarySkillYears: { react: 3 },
+      totalExperience: 3,
+      seniority: 'mid',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.linkedinUrl).toBeNull();
+      expect(result.data.githubUrl).toBeNull();
+    }
+  });
+
   it('handles missing optional fields', () => {
     const result = LLMResumeOutputSchema.safeParse({
       fullName: 'Jane',
