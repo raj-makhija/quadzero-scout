@@ -160,7 +160,10 @@ export type SearchCriteria = z.infer<typeof SearchCriteriaSchema>;
 // LLM Resume Output Schema - lenient to handle LLM returning null for any field
 export const LLMResumeOutputSchema = z.object({
   fullName: z.string().nullable().optional().transform(v => v ?? 'Unknown'),
-  email: z.string().email().optional().nullable(),
+  email: z.string().optional().nullable().transform(v => {
+    if (!v) return null;
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? v : null;
+  }),
   phone: z.string().optional().nullable(),
   location: z.string().optional().nullable(),
   primarySkills: z.array(z.string()).nullable().optional().transform(v => v ?? []),
@@ -177,8 +180,16 @@ export const LLMResumeOutputSchema = z.object({
   summary: z.string().optional().nullable(),
   currentCtc: z.number().nullable().optional().transform(v => v ?? null),
   expectedCtc: z.number().nullable().optional().transform(v => v ?? null),
-  linkedinUrl: z.string().url().nullable().optional().transform(v => v ?? null),
-  githubUrl: z.string().url().nullable().optional().transform(v => v ?? null),
+  linkedinUrl: z.string().nullable().optional().transform(v => {
+    if (!v) return null;
+    const url = v.startsWith('http') ? v : `https://${v}`;
+    try { new URL(url); return url; } catch { return null; }
+  }),
+  githubUrl: z.string().nullable().optional().transform(v => {
+    if (!v) return null;
+    const url = v.startsWith('http') ? v : `https://${v}`;
+    try { new URL(url); return url; } catch { return null; }
+  }),
   skillSynonyms: z.record(z.string(), z.array(z.string())).nullable().optional().default(null),
 });
 export type LLMResumeOutput = z.infer<typeof LLMResumeOutputSchema>;
