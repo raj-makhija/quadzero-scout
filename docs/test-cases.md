@@ -2433,7 +2433,8 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | UR-002 | Empty request body (no fields provided) | 400 VALIDATION_ERROR: "At least one field must be provided" | P0 |
 | UR-003 | Request body with no updatable fields (e.g., unknown keys only) | 400 VALIDATION_ERROR: "At least one field must be provided" | P1 |
 | UR-004 | Requirement not found for given `requirementId` | 404 NOT_FOUND | P0 |
-| UR-005 | Authenticated user is not the requirement owner | 403 FORBIDDEN | P0 |
+| UR-005 | Non-internal recruiter (non-admin) attempts update | 403 FORBIDDEN | P0 |
+| UR-005a | Admin user (non-internal) can update requirement | 200 with updated fields; admin bypass allows edit | P0 |
 | UR-006 | Attempt to update a duplicate requirement | 400 VALIDATION_ERROR: "Cannot update a duplicate requirement" | P0 |
 | UR-007 | Successful single field update (e.g., `clientName`) | 200 with `fieldsUpdated: ["clientName"]`; DynamoDB record updated; `change_history` entry appended with old and new values | P0 |
 | UR-008 | No-op when submitted value is identical to current value | 200 with `fieldsUpdated: []` and `message: "No fields changed"`; no `change_history` entry appended | P0 |
@@ -2454,24 +2455,38 @@ All functional and non-functional aspects of Quadzero Scout covering:
 
 | Test ID | Description | Expected Result | Priority |
 |---------|-------------|-----------------|----------|
-| UR-021 | Edit button visible only to requirement owner | Non-owner recruiters do not see the Edit button on the requirement detail page | P1 |
-| UR-022 | Edit mode renders form with all editable fields pre-filled | Form fields populated with current requirement values | P1 |
+| UR-021 | Edit button visible to internal recruiters and admins | Non-internal, non-admin recruiters do not see the Edit button on the requirement detail page. Internal recruiters and admins see the Edit button. | P1 |
+| UR-022 | Edit mode renders form with all editable fields pre-filled | Form shows three sections: (1) Requirement Details with job title, client, engagement, payroll, budget, contract, payment terms fields; (2) Search Criteria (collapsible) with skills, roles, experience, seniority, locations, notice period; (3) Job Description textarea. All fields populated with current requirement values | P1 |
 | UR-023 | Submitting edit form calls `api.updateRequirement(requirementId, payload)` | API client sends PUT request to `/recruiter/requirements/{id}/details` with changed fields | P1 |
 | UR-024 | Successful update refreshes requirement detail with updated values | Page re-fetches requirement data and exits edit mode | P2 |
 | UR-025 | Change History section displays audit trail entries | Each entry shows timestamp, changed-by user, and list of field changes with old/new values | P1 |
+| UR-034 | Edit form includes search criteria editing via CriteriaEditor | Collapsible "Search Criteria" section uses CriteriaEditor component; recruiters can add/remove skills, roles, locations as tags and toggle seniority/availability options | P1 |
+| UR-035 | Editing search criteria saves via PUT /details with audit trail | Modifying must-have skills in edit mode and saving includes `parsedCriteria` in the update payload; `change_history` records the criteria change | P0 |
+| UR-036 | Manual criteria edits take precedence over JD auto-re-parse | When both JD text and criteria are edited in the same save, the manually edited criteria are sent (no auto-re-parse overwrites them) | P0 |
+| UR-037 | Job title editable in edit form | Edit form shows job title as first field spanning full width; saving with a modified job title includes `jobTitle` in payload and updates the header display | P1 |
 
-### 19.3 Auto Re-parse on JD Text Edit
+### 19.3 Inline Rename
 
 | Test ID | Description | Expected Result | Priority |
 |---------|-------------|-----------------|----------|
-| UR-026 | Editing `jdText` triggers automatic JD re-parse | When recruiter modifies `jdText` and saves, frontend calls `api.parseJobDescription()` with the new text before sending the update request | P0 |
+| UR-038 | Clicking requirement title opens inline rename input | Internal recruiters/admins can click the title to reveal an inline text input pre-filled with the current title | P1 |
+| UR-039 | Submitting inline rename saves via PUT /details | Pressing Enter saves the new title; header updates immediately; change_history records the jobTitle change | P1 |
+| UR-040 | Pressing Escape or clicking away cancels inline rename | Rename input closes without saving | P2 |
+| UR-041 | Title display falls back to auto-generated when jobTitle is empty | If stored jobTitle is empty or null, generateJobTitle() is used as fallback | P2 |
+| UR-042 | Non-editable users cannot trigger inline rename | External recruiters and non-admin users do not see the pencil hover icon and clicking the title does nothing | P1 |
+
+### 19.4 Auto Re-parse on JD Text Edit
+
+| Test ID | Description | Expected Result | Priority |
+|---------|-------------|-----------------|----------|
+| UR-026 | Editing `jdText` triggers automatic JD re-parse | When recruiter modifies `jdText` and saves (without manually editing criteria), frontend calls `api.parseJobDescription()` with the new text before sending the update request | P0 |
 | UR-027 | Update payload includes both `jdText` and re-parsed `parsedCriteria` | PUT request body contains both `jdText` (new text) and `parsedCriteria` (freshly parsed from new text); `fieldsUpdated` includes both fields | P0 |
 | UR-028 | Audit trail records both JD text and criteria changes | `change_history` entry contains separate items for `jdText` (old/new text) and `parsedCriteria` (old/new criteria) | P0 |
 | UR-029 | JD re-parse failure still saves `jdText` change | If `api.parseJobDescription()` returns an error or times out, the update payload includes only `jdText` without `parsedCriteria`; JD text is saved successfully | P0 |
 | UR-030 | Non-JD field edits do not trigger re-parse | Changing fields like `clientName` or `budgetMinLpa` without touching `jdText` does not call `api.parseJobDescription()` | P1 |
 | UR-031 | JD text unchanged but other fields edited does not trigger re-parse | If `jdText` is present in the form but its value has not changed from the current requirement value, no re-parse call is made | P1 |
 | UR-032 | Re-parse loading state shown during JD text save | When `jdText` is changed and save is clicked, the UI indicates that JD parsing is in progress before the update completes | P2 |
-| UR-033 | JD text and criteria changes alongside other field edits | Editing `jdText` plus other fields (e.g., `clientName`) in the same save triggers re-parse and includes all changed fields in a single update payload | P1 |
+| UR-033 | JD text and criteria changes alongside other field edits | Editing `jdText` plus other fields (e.g., `clientName`) in the same save triggers re-parse and includes all changed fields in a single update payload. Exception: if criteria were also manually edited, manual criteria edits take precedence | P1 |
 
 ---
 

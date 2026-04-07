@@ -7,13 +7,15 @@ import { Bell, Pencil, ChevronDown, ChevronRight, History } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { CustomFieldsModal } from '@/components/custom-fields-modal';
 import { CheckCandidateMatch } from '@/components/MatchExplainer';
-import { api, RequirementDetail, ShortlistedCandidate, SearchCriteria, UpdateRequirementPayload } from '@/lib/api';
+import { api, RequirementDetail, ShortlistedCandidate, SearchCriteria, UpdateRequirementPayload, ParsedCriteria } from '@/lib/api';
 import { PipelineBoard } from '@/components/pipeline/pipeline-board';
+import { CriteriaEditor } from '@/components/criteria-editor';
 import {
   formatDate,
   formatEngagementModel,
   formatPayroll,
   formatSeniority,
+  formatAvailability,
   generateJobTitle,
 } from '@/lib/utils';
 
@@ -56,6 +58,15 @@ interface EditFormData {
   paymentTermsDays: string;
   contactPersonName: string;
   jdText: string;
+  jobTitle: string;
+  mustHaveSkills: string[];
+  goodToHaveSkills: string[];
+  roles: string[];
+  minExperience: string;
+  maxExperience: string;
+  seniority: string[];
+  availability: string[];
+  location: string;
 }
 
 export default function RequirementDetailPage() {
@@ -64,6 +75,8 @@ export default function RequirementDetailPage() {
   const { data: session, status } = useSession();
   const requirementId = params.requirementId as string;
   const isInternal = (session?.user as { isInternal?: boolean } | undefined)?.isInternal === true;
+  const isAdmin = (session?.user as { role?: string } | undefined)?.role === 'admin';
+  const canEditRequirement = isInternal || isAdmin;
   const currentUserId = (session?.user as { id?: string })?.id ?? '';
 
   const [requirement, setRequirement] = useState<RequirementDetail | null>(null);
@@ -98,6 +111,11 @@ export default function RequirementDetailPage() {
     existingValues: Record<string, string | number>;
   } | null>(null);
 
+  // Inline rename state
+  const [renamingTitle, setRenamingTitle] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameSaving, setRenameSaving] = useState(false);
+
   // Edit mode state
   const [editing, setEditing] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
@@ -112,7 +130,17 @@ export default function RequirementDetailPage() {
     paymentTermsDays: '',
     contactPersonName: '',
     jdText: '',
+    jobTitle: '',
+    mustHaveSkills: [],
+    goodToHaveSkills: [],
+    roles: [],
+    minExperience: '',
+    maxExperience: '',
+    seniority: [],
+    availability: [],
+    location: '',
   });
+  const [criteriaExpanded, setCriteriaExpanded] = useState(true);
 
   const startEditing = () => {
     if (!requirement) return;
@@ -127,8 +155,18 @@ export default function RequirementDetailPage() {
       paymentTermsDays: requirement.paymentTermsDays != null ? String(requirement.paymentTermsDays) : '',
       contactPersonName: requirement.contactPersonName || '',
       jdText: requirement.jdText || '',
+      jobTitle: requirement.jobTitle || '',
+      mustHaveSkills: requirement.parsedCriteria.mustHaveSkills || [],
+      goodToHaveSkills: requirement.parsedCriteria.goodToHaveSkills || [],
+      roles: requirement.parsedCriteria.roles || [],
+      minExperience: requirement.parsedCriteria.minExperience != null ? String(requirement.parsedCriteria.minExperience) : '',
+      maxExperience: requirement.parsedCriteria.maxExperience != null ? String(requirement.parsedCriteria.maxExperience) : '',
+      seniority: requirement.parsedCriteria.seniority || [],
+      availability: requirement.parsedCriteria.availability || [],
+      location: requirement.parsedCriteria.location || '',
     });
     setEditing(true);
+    setCriteriaExpanded(true);
     setError(null);
   };
 
@@ -168,6 +206,23 @@ export default function RequirementDetailPage() {
 
       if (editForm.contactPersonName !== (requirement.contactPersonName || '')) payload.contactPersonName = editForm.contactPersonName || null;
       if (editForm.jdText !== requirement.jdText) payload.jdText = editForm.jdText;
+      if (editForm.jobTitle !== (requirement.jobTitle || '')) payload.jobTitle = editForm.jobTitle || undefined;
+
+      // Build updated parsedCriteria from edit form and check for changes
+      const newParsedCriteria: ParsedCriteria = {
+        ...requirement.parsedCriteria,
+        mustHaveSkills: editForm.mustHaveSkills,
+        goodToHaveSkills: editForm.goodToHaveSkills,
+        roles: editForm.roles,
+        minExperience: editForm.minExperience ? Number(editForm.minExperience) : null,
+        maxExperience: editForm.maxExperience ? Number(editForm.maxExperience) : null,
+        seniority: editForm.seniority,
+        availability: editForm.availability,
+        location: editForm.location || null,
+      };
+      if (JSON.stringify(newParsedCriteria) !== JSON.stringify(requirement.parsedCriteria)) {
+        payload.parsedCriteria = newParsedCriteria;
+      }
 
       // Check if anything changed
       if (Object.keys(payload).length === 0) {
@@ -175,8 +230,8 @@ export default function RequirementDetailPage() {
         return;
       }
 
-      // Auto re-parse JD text when it changes
-      if (payload.jdText) {
+      // Auto re-parse JD text when it changes, but only if criteria were NOT manually edited
+      if (payload.jdText && !payload.parsedCriteria) {
         try {
           const parseResult = await api.parseJobDescription(payload.jdText, requirement.jobTitle);
           payload.parsedCriteria = parseResult.parsedCriteria;
@@ -341,7 +396,51 @@ export default function RequirementDetailPage() {
               <div className="bg-gradient-to-r from-primary-600 to-primary-700 px-6 py-6 text-white">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <div>
-                    <h1 className="text-2xl font-bold">{generateJobTitle(requirement.clientName, requirement.endClient, requirement.parsedCriteria?.coreSkill, requirement.contactPersonName)}</h1>
+                    {renamingTitle ? (
+                      <form
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          if (!renameValue.trim() || renameSaving) return;
+                          try {
+                            setRenameSaving(true);
+                            await api.updateRequirement(requirementId, { jobTitle: renameValue.trim() });
+                            setRequirement(prev => prev ? { ...prev, jobTitle: renameValue.trim() } : prev);
+                            setRenamingTitle(false);
+                          } catch {
+                            setError('Failed to rename requirement');
+                          } finally {
+                            setRenameSaving(false);
+                          }
+                        }}
+                        className="flex items-center gap-2"
+                      >
+                        <input
+                          autoFocus
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onBlur={() => { if (!renameSaving) setRenamingTitle(false); }}
+                          onKeyDown={(e) => { if (e.key === 'Escape') setRenamingTitle(false); }}
+                          className="text-2xl font-bold bg-white/10 border border-white/30 rounded px-2 py-0.5 text-white outline-none w-full"
+                          maxLength={200}
+                        />
+                      </form>
+                    ) : (
+                      <h1
+                        className={`text-2xl font-bold ${canEditRequirement && requirement.status !== 'duplicate' ? 'cursor-pointer group' : ''}`}
+                        onClick={() => {
+                          if (canEditRequirement && requirement.status !== 'duplicate') {
+                            setRenameValue(requirement.jobTitle || generateJobTitle(requirement.clientName, requirement.endClient, requirement.parsedCriteria?.coreSkill, requirement.contactPersonName));
+                            setRenamingTitle(true);
+                          }
+                        }}
+                        title={canEditRequirement && requirement.status !== 'duplicate' ? 'Click to rename' : undefined}
+                      >
+                        {requirement.jobTitle || generateJobTitle(requirement.clientName, requirement.endClient, requirement.parsedCriteria?.coreSkill, requirement.contactPersonName)}
+                        {canEditRequirement && requirement.status !== 'duplicate' && (
+                          <Pencil size={14} className="inline ml-2 opacity-0 group-hover:opacity-60 transition-opacity" />
+                        )}
+                      </h1>
+                    )}
                     <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-primary-100 text-sm">
                       <span className="font-medium">{requirement.clientName}</span>
                       {requirement.endClient && <span>End Client: {requirement.endClient}</span>}
@@ -350,8 +449,8 @@ export default function RequirementDetailPage() {
                   </div>
                   <div className="flex flex-col items-end gap-2 self-start">
                     <div className="flex items-center gap-2">
-                      {/* Edit button — any internal recruiter can edit */}
-                      {isInternal && requirement.status !== 'duplicate' && !editing && (
+                      {/* Edit button — any internal recruiter or admin can edit */}
+                      {canEditRequirement && requirement.status !== 'duplicate' && !editing && (
                         <button
                           onClick={startEditing}
                           title="Edit requirement details"
@@ -393,7 +492,7 @@ export default function RequirementDetailPage() {
                           : requirement.status === 'closed_on_hold' ? 'Closed / On-hold'
                           : 'Duplicate'}
                       </span>
-                      {isInternal && requirement.status !== 'duplicate' && (
+                      {canEditRequirement && requirement.status !== 'duplicate' && (
                         <button
                           onClick={() => {
                             if (requirement.status === 'active') {
@@ -426,7 +525,22 @@ export default function RequirementDetailPage() {
                 {/* Edit Mode */}
                 {editing ? (
                   <div className="space-y-4">
+                    {/* Section 1: Requirement Details */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="sm:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Job Title</label>
+                        <input
+                          type="text"
+                          value={editForm.jobTitle}
+                          onChange={(e) => setEditForm(f => ({ ...f, jobTitle: e.target.value }))}
+                          className="input w-full"
+                          maxLength={200}
+                          placeholder="e.g., Senior React Developer"
+                        />
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                          Leave blank to auto-generate from client and skill info
+                        </p>
+                      </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Client Name *</label>
                         <input
@@ -531,6 +645,40 @@ export default function RequirementDetailPage() {
                         </select>
                       </div>
                     </div>
+
+                    {/* Section 2: Search Criteria */}
+                    <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
+                      <button
+                        type="button"
+                        onClick={() => setCriteriaExpanded(!criteriaExpanded)}
+                        className="flex items-center gap-2 w-full text-left mb-4"
+                      >
+                        {criteriaExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                        <h3 className="font-medium text-gray-900 dark:text-gray-100">Search Criteria</h3>
+                      </button>
+                      {criteriaExpanded && (
+                        <CriteriaEditor
+                          mustHaveSkills={editForm.mustHaveSkills}
+                          goodToHaveSkills={editForm.goodToHaveSkills}
+                          roles={editForm.roles}
+                          minExperience={editForm.minExperience ? Number(editForm.minExperience) : undefined}
+                          maxExperience={editForm.maxExperience ? Number(editForm.maxExperience) : undefined}
+                          seniority={editForm.seniority}
+                          availability={editForm.availability}
+                          location={editForm.location || null}
+                          showBudget={false}
+                          onChange={(field, value) => {
+                            if (field === 'minExperience' || field === 'maxExperience') {
+                              setEditForm(f => ({ ...f, [field]: value != null ? String(value) : '' }));
+                            } else {
+                              setEditForm(f => ({ ...f, [field]: value }));
+                            }
+                          }}
+                        />
+                      )}
+                    </div>
+
+                    {/* Section 3: Job Description */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Job Description</label>
                       <textarea
@@ -628,6 +776,15 @@ export default function RequirementDetailPage() {
                         <label className="text-sm text-gray-500 dark:text-gray-400 block mb-1">Seniority</label>
                         <p className="text-gray-900 dark:text-gray-100">
                           {requirement.parsedCriteria.seniority.map(formatSeniority).join(', ')}
+                        </p>
+                      </div>
+                    )}
+
+                    {requirement.parsedCriteria.availability && requirement.parsedCriteria.availability.length > 0 && (
+                      <div>
+                        <label className="text-sm text-gray-500 dark:text-gray-400 block mb-1">Notice Period</label>
+                        <p className="text-gray-900 dark:text-gray-100">
+                          {requirement.parsedCriteria.availability.map(formatAvailability).join(', ')}
                         </p>
                       </div>
                     )}
