@@ -58,7 +58,8 @@ function makeEvent(
   body: unknown,
   userId = 'rec-owner',
   requirementId = 'req-123',
-  isInternal = true
+  isInternal = true,
+  role = 'recruiter'
 ): APIGatewayProxyEventV2 & { auth: { userId: string; role: string; isInternal: boolean } } {
   return {
     version: '2.0',
@@ -81,7 +82,7 @@ function makeEvent(
     pathParameters: { requirementId },
     body: typeof body === 'string' ? body : JSON.stringify(body),
     isBase64Encoded: false,
-    auth: { userId, role: 'recruiter', isInternal },
+    auth: { userId, role, isInternal },
   } as unknown as APIGatewayProxyEventV2 & { auth: { userId: string; role: string; isInternal: boolean } };
 }
 
@@ -126,9 +127,15 @@ describe('updateRequirement handler', () => {
     expect(result.statusCode).toBe(404);
   });
 
-  it('returns 403 when recruiter is not internal', async () => {
+  it('returns 403 when recruiter is not internal and not admin', async () => {
     const result = parseResponse(await handler(makeEvent({ clientName: 'New Corp' }, 'rec-owner', 'req-123', false)));
     expect(result.statusCode).toBe(403);
+  });
+
+  it('allows admin user to edit even when not internal', async () => {
+    const result = parseResponse(await handler(makeEvent({ clientName: 'New Corp' }, 'admin-user', 'req-123', false, 'admin')));
+    expect(result.statusCode).toBe(200);
+    expect(result.body.data.fieldsUpdated).toContain('clientName');
   });
 
   it('allows a different internal recruiter to edit', async () => {
