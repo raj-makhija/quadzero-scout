@@ -409,7 +409,8 @@ export default function LocateProfilePage() {
       if (filters.engagementModel) criteria.engagementModel = filters.engagementModel;
 
       const pagination = lastKey ? { limit: 20, lastEvaluatedKey: lastKey } : { limit: 20 };
-      const res = await api.searchCandidates(criteria, pagination, 'lastUpdated');
+      const sortBy = filters.skills.length > 0 ? 'matchScore' : 'lastUpdated';
+      const res = await api.searchCandidates(criteria, pagination, sortBy);
 
       // Client-side hard filters (backend treats these as soft scoring factors)
       let items = res.candidates.map(mapSearchResultToListItem);
@@ -934,7 +935,7 @@ export default function LocateProfilePage() {
             {!isLoading && displayProfiles && displayProfiles.length > 0 && (
               <div className="space-y-3">
                 {displayProfiles.map((p) => (
-                  <CandidateCard key={p.candidateId} candidate={p} />
+                  <CandidateCard key={p.candidateId} candidate={p} filterSkills={mode === 'filtered' ? filters.skills : undefined} />
                 ))}
               </div>
             )}
@@ -992,8 +993,19 @@ export default function LocateProfilePage() {
   );
 }
 
-function CandidateCard({ candidate }: { candidate: ProfileListItem }) {
+function CandidateCard({ candidate, filterSkills = [] }: { candidate: ProfileListItem; filterSkills?: string[] }) {
   const screeningStatus = getScreeningStatus(candidate.lastScreenedAt, candidate.notInterested);
+
+  // Sort skills so that those matching active filters appear first
+  const sortedSkills = filterSkills.length > 0
+    ? [...candidate.primarySkills].sort((a, b) => {
+        const aMatch = filterSkills.some(f => a.toLowerCase().includes(f));
+        const bMatch = filterSkills.some(f => b.toLowerCase().includes(f));
+        if (aMatch && !bMatch) return -1;
+        if (!aMatch && bMatch) return 1;
+        return 0;
+      })
+    : candidate.primarySkills;
 
   return (
     <Link
@@ -1025,19 +1037,22 @@ function CandidateCard({ candidate }: { candidate: ProfileListItem }) {
           {candidate.location && <span>{candidate.location}</span>}
           <span>Updated {formatDate(candidate.lastUpdated)}</span>
         </div>
-        {candidate.primarySkills.length > 0 && (
+        {sortedSkills.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
-            {candidate.primarySkills.slice(0, 5).map((skill) => (
-              <span
-                key={skill}
-                className="badge bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 text-xs"
-              >
-                {skill}
-              </span>
-            ))}
-            {candidate.primarySkills.length > 5 && (
+            {sortedSkills.slice(0, 5).map((skill) => {
+              const isMatch = filterSkills.some(f => skill.toLowerCase().includes(f));
+              return (
+                <span
+                  key={skill}
+                  className={`badge text-xs ${isMatch ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}`}
+                >
+                  {skill}
+                </span>
+              );
+            })}
+            {sortedSkills.length > 5 && (
               <span className="text-xs text-gray-400 dark:text-gray-500 self-center">
-                +{candidate.primarySkills.length - 5} more
+                +{sortedSkills.length - 5} more
               </span>
             )}
           </div>

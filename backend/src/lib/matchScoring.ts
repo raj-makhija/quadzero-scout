@@ -1,4 +1,4 @@
-import { calculateSkillMatch } from './skillNormalizer.js';
+import { calculateSkillMatch, normalizeSkill } from './skillNormalizer.js';
 import { isCandidateWithinBudget } from './ctcConversion.js';
 import type { CandidateItem, CandidateSearchResult } from '../types/index.js';
 
@@ -23,6 +23,12 @@ export const MUST_HAVE_WEIGHT = 45;
 
 /** Score weight for good-to-have skills component. */
 export const GOOD_TO_HAVE_WEIGHT = 25;
+
+/** Bonus points for skill prominence — matched skill appearing early in primary_skills. */
+export const SKILL_PROMINENCE_WEIGHT = 8;
+
+/** Bonus points for years of experience in matched skills. */
+export const SKILL_YEARS_WEIGHT = 4;
 
 /** Tolerance (in years) for partial experience match outside the specified range. */
 const EXPERIENCE_PARTIAL_TOLERANCE = 2;
@@ -153,6 +159,65 @@ function matchAvailability(
   return 'none';
 }
 
+/**
+ * Find the 0-based position of a normalized required skill in the candidate's
+ * primary_skills array. Returns -1 if the skill is not found in primary skills
+ * (it may still exist in secondary skills).
+ */
+function findSkillPosition(requiredSkill: string, primarySkills: string[]): number {
+  // First pass: exact normalized match
+  for (let i = 0; i < primarySkills.length; i++) {
+    if (normalizeSkill(primarySkills[i]) === requiredSkill) return i;
+  }
+  // Second pass: substring containment (covers token containment, e.g. "oracle" in "oracle dba")
+  for (let i = 0; i < primarySkills.length; i++) {
+    const norm = normalizeSkill(primarySkills[i]);
+    if (norm.includes(requiredSkill) || requiredSkill.includes(norm)) return i;
+  }
+  return -1;
+}
+
+/**
+ * Calculate a relevance bonus for matched must-have skills based on:
+ * 1. Skill prominence — how early the skill appears in the candidate's primary_skills
+ *    (earlier = more core to the candidate's profile)
+ * 2. Skill experience — years of experience the candidate has in the matched skill
+ *
+ * Returns 0–12 bonus points (8 prominence + 4 years), averaged across matched skills.
+ */
+function calculateSkillRelevanceBonus(
+  matchedSkills: string[],
+  primarySkills: string[],
+  skillYears: Record<string, number>
+): number {
+  if (matchedSkills.length === 0) return 0;
+
+  // Normalize skill years keys for lookup
+  const normalizedYears: Record<string, number> = {};
+  for (const [skill, years] of Object.entries(skillYears || {})) {
+    const norm = normalizeSkill(skill);
+    normalizedYears[norm] = Math.max(normalizedYears[norm] || 0, years);
+  }
+
+  let totalBonus = 0;
+
+  for (const skill of matchedSkills) {
+    // Prominence: position in primary_skills array
+    const pos = findSkillPosition(skill, primarySkills);
+    if (pos >= 0 && pos < 3) totalBonus += SKILL_PROMINENCE_WEIGHT;
+    else if (pos >= 0 && pos < 6) totalBonus += SKILL_PROMINENCE_WEIGHT * 0.5;
+    else if (pos >= 0 && pos < 10) totalBonus += SKILL_PROMINENCE_WEIGHT * 0.25;
+    // pos >= 10 or -1 (secondary-only): no prominence bonus
+
+    // Years of experience in the matched skill
+    const years = normalizedYears[skill] || 0;
+    if (years >= 5) totalBonus += SKILL_YEARS_WEIGHT;
+    else if (years >= 2) totalBonus += SKILL_YEARS_WEIGHT * 0.5;
+  }
+
+  return totalBonus / matchedSkills.length;
+}
+
 export function calculateMatchScore(
   candidate: CandidateItem,
   mustHaveSkills: string[],
@@ -183,6 +248,17 @@ export function calculateMatchScore(
     ? (mustHaveMatch.exactMatched.length + mustHaveMatch.fuzzyMatched.length * FUZZY_MATCH_WEIGHT) / mustHaveSkills.length
     : 1;
   score += mustHaveEffective * MUST_HAVE_WEIGHT;
+
+  // Skill relevance bonus — rewards candidates where matched must-have skills
+  // appear prominently in their primary skills and where they have years of experience.
+  // This differentiates e.g. an Oracle DBA (oracle in top 3 skills, 8+ years) from
+  // a QA tester who lists oracle as skill #25 with no years data.
+  const allMatchedMustHave = [...mustHaveMatch.exactMatched, ...mustHaveMatch.fuzzyMatched];
+  score += calculateSkillRelevanceBonus(
+    allMatchedMustHave,
+    candidate.primary_skills,
+    candidate.primary_skill_years
+  );
 
   // Good-to-have skills match — fuzzy + related allowed at reduced weight
   const goodToHaveMatch = calculateSkillMatch(candidateSkills, goodToHaveSkills, false, requiredSynonyms, candidateSynonyms);

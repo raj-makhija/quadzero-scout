@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import type { CandidateItem } from '../../types/index.js';
-import { calculateMatchScore, parseSearchLocations, MIN_MUST_HAVE_MATCH_RATIO, RELATED_MATCH_WEIGHT, MUST_HAVE_RELATED_WEIGHT, MUST_HAVE_WEIGHT, GOOD_TO_HAVE_WEIGHT } from '../../lib/matchScoring.js';
+import { calculateMatchScore, parseSearchLocations, MIN_MUST_HAVE_MATCH_RATIO, RELATED_MATCH_WEIGHT, MUST_HAVE_RELATED_WEIGHT, MUST_HAVE_WEIGHT, GOOD_TO_HAVE_WEIGHT, SKILL_PROMINENCE_WEIGHT, SKILL_YEARS_WEIGHT } from '../../lib/matchScoring.js';
 
 // ---------------------------------------------------------------------------
 // Match Scoring Algorithm Tests
 // Weights: must-have 45, good-to-have 25, experience 8, seniority 5,
 //          location 10, availability 7 = 100
+// + skill relevance bonus: up to 12 (prominence 8 + years 4) for matched must-have
 // ---------------------------------------------------------------------------
 
 // Test fixture
@@ -33,7 +34,7 @@ function makeCandidate(overrides: Partial<CandidateItem> = {}): CandidateItem {
 
 describe('Match Scoring Algorithm', () => {
   // TC-SCORE-001
-  it('returns 100 for perfect match', () => {
+  it('returns max score for perfect match (base 100 + skill relevance bonus)', () => {
     const candidate = makeCandidate();
     const result = calculateMatchScore(
       candidate,
@@ -43,7 +44,9 @@ describe('Match Scoring Algorithm', () => {
       10,                              // max exp: 6 <= 10
       ['senior', 'lead']              // seniority: matches
     );
-    expect(result.score).toBe(100);
+    // Base 100 + prominence bonus (both in top 3 → 8 each) + years bonus (react:4, nodejs:3 → 2 each)
+    // = 100 + (8+2 + 8+2)/2 = 110
+    expect(result.score).toBe(110);
     expect(result.details.mustHaveMatched).toContain('react');
     expect(result.details.mustHaveMatched).toContain('nodejs');
     expect(result.details.mustHaveRelated).toEqual([]);
@@ -195,8 +198,9 @@ describe('Match Scoring Algorithm', () => {
   it('empty good-to-have skills results in full 25 points', () => {
     const candidate = makeCandidate();
     const result = calculateMatchScore(candidate, ['react'], []);
-    // must-have: 45 (1/1), good-to-have: 25, exp: 8, seniority: 5, location: 10, availability: 7
-    expect(result.score).toBe(100);
+    // must-have: 45 (1/1), good-to-have: 25, exp: 8, seniority: 5, location: 10, availability: 7 = 100
+    // + prominence (react at pos 0 → 8) + years (react: 4yrs → 2) = 10
+    expect(result.score).toBe(110);
   });
 
   // TC-SCORE-012: Related skill does NOT score for must-have (exact-only)
@@ -447,5 +451,90 @@ describe('Match Scoring Algorithm', () => {
     const result = calculateMatchScore(candidate, [], [], undefined, undefined, undefined, undefined, [], ['immediate', '2_weeks']);
     expect(result.details.availabilityMatch).toBe('full');
     expect(result.score).toBe(100);
+  });
+
+  // --- Skill Relevance Bonus Tests ---
+
+  // TC-SCORE-034: Skill in top-3 primary position gets full prominence bonus
+  it('must-have skill in top-3 position gets full prominence bonus', () => {
+    const candidate = makeCandidate({
+      primary_skills: ['oracle', 'java', 'sql'],
+      primary_skill_years: { oracle: 8, java: 5, sql: 4 },
+      secondary_skills: [],
+    });
+    const result = calculateMatchScore(candidate, ['oracle'], []);
+    // Base: 45 + 25 + 8 + 5 + 10 + 7 = 100
+    // Prominence: oracle at pos 0 → 8 points
+    // Years: oracle 8yrs (≥5) → 4 points
+    // Bonus: (8 + 4) / 1 = 12
+    expect(result.score).toBe(112);
+  });
+
+  // TC-SCORE-035: Skill in position 4-6 gets half prominence bonus
+  it('must-have skill in position 4-6 gets half prominence bonus', () => {
+    const candidate = makeCandidate({
+      primary_skills: ['java', 'python', 'react', 'oracle', 'sql'],
+      primary_skill_years: { java: 5, python: 4, react: 3, oracle: 6, sql: 4 },
+      secondary_skills: [],
+    });
+    const result = calculateMatchScore(candidate, ['oracle'], []);
+    // Base: 100
+    // Prominence: oracle at pos 3 → 8 * 0.5 = 4
+    // Years: oracle 6yrs (≥5) → 4
+    // Bonus: (4 + 4) / 1 = 8
+    expect(result.score).toBe(108);
+  });
+
+  // TC-SCORE-036: Skill only in secondary skills gets no prominence bonus
+  it('must-have skill in secondary-only gets no relevance bonus', () => {
+    const candidate = makeCandidate({
+      primary_skills: ['java', 'python'],
+      primary_skill_years: { java: 5, python: 4 },
+      secondary_skills: ['oracle'],
+    });
+    const result = calculateMatchScore(candidate, ['oracle'], []);
+    // Base: 45 + 25 + 8 + 5 + 10 + 7 = 100
+    // Prominence: oracle not in primary → 0
+    // Years: oracle not in primary_skill_years → 0
+    // Bonus: 0
+    expect(result.score).toBe(100);
+  });
+
+  // TC-SCORE-037: Skill with <2 years gets no years bonus
+  it('must-have skill with less than 2 years gets no years bonus', () => {
+    const candidate = makeCandidate({
+      primary_skills: ['oracle'],
+      primary_skill_years: { oracle: 1 },
+      secondary_skills: [],
+    });
+    const result = calculateMatchScore(candidate, ['oracle'], []);
+    // Base: 100
+    // Prominence: oracle at pos 0 → 8
+    // Years: oracle 1yr (<2) → 0
+    // Bonus: (8 + 0) / 1 = 8
+    expect(result.score).toBe(108);
+  });
+
+  // TC-SCORE-038: Skill at position 10+ gets no prominence bonus
+  it('must-have skill at position 10+ gets no prominence bonus', () => {
+    const candidate = makeCandidate({
+      primary_skills: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'oracle'],
+      primary_skill_years: { oracle: 8 },
+      secondary_skills: [],
+    });
+    const result = calculateMatchScore(candidate, ['oracle'], []);
+    // Base: 100
+    // Prominence: oracle at pos 10 → 0
+    // Years: oracle 8yrs (≥5) → 4
+    // Bonus: (0 + 4) / 1 = 4
+    expect(result.score).toBe(104);
+  });
+
+  it('SKILL_PROMINENCE_WEIGHT is 8', () => {
+    expect(SKILL_PROMINENCE_WEIGHT).toBe(8);
+  });
+
+  it('SKILL_YEARS_WEIGHT is 4', () => {
+    expect(SKILL_YEARS_WEIGHT).toBe(4);
   });
 });

@@ -1482,13 +1482,13 @@ All functional and non-functional aspects of Quadzero Scout covering:
 
 ## 11. Module 10: Match Scoring Algorithm
 
-### TC-SCORE-001: Perfect match - 100 points
+### TC-SCORE-001: Perfect match - base 100 + skill relevance bonus
 | Field | Value |
 |-------|-------|
 | **ID** | TC-SCORE-001 |
 | **Priority** | P0 |
 | **Scenario** | Candidate has all must-have skills, all good-to-have skills, experience in range, matching seniority |
-| **Expected Result** | `matchScore: 100` (45 + 25 + 8 + 5 + 10 + 7) |
+| **Expected Result** | Base `matchScore: 100` (45 + 25 + 8 + 5 + 10 + 7) + skill relevance bonus (prominence + years) for matched must-have skills |
 
 ### TC-SCORE-002: Must-have skills contribute 45% of score
 | Field | Value |
@@ -1569,6 +1569,46 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | **Priority** | P1 |
 | **Scenario** | Required skill "aws" is in candidate's `secondary_skills`, not `primary_skills` |
 | **Expected Result** | Skill still counts as matched (search combines both arrays) |
+
+### TC-SCORE-034: Skill in top-3 primary position gets full prominence bonus
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SCORE-034 |
+| **Priority** | P1 |
+| **Scenario** | Must-have skill "oracle" is at position 0 in primary_skills, with 8 years experience |
+| **Expected Result** | Base 100 + prominence bonus 8 (top 3) + years bonus 4 (5+ yrs) = 112 |
+
+### TC-SCORE-035: Skill in position 4-6 gets half prominence bonus
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SCORE-035 |
+| **Priority** | P1 |
+| **Scenario** | Must-have skill "oracle" is at position 3 (4th skill) in primary_skills |
+| **Expected Result** | Prominence bonus = 4 (half of 8). Combined with years bonus for total relevance score |
+
+### TC-SCORE-036: Skill only in secondary skills gets no relevance bonus
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SCORE-036 |
+| **Priority** | P1 |
+| **Scenario** | Must-have skill "oracle" is in secondary_skills only, not in primary_skills |
+| **Expected Result** | No prominence or years bonus. Base score only (100) |
+
+### TC-SCORE-037: Skill with less than 2 years gets no years bonus
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SCORE-037 |
+| **Priority** | P2 |
+| **Scenario** | Must-have skill "oracle" at position 0 with only 1 year experience |
+| **Expected Result** | Full prominence bonus (8) but no years bonus. Score = 108 |
+
+### TC-SCORE-038: Skill at position 10+ gets no prominence bonus
+| Field | Value |
+|-------|-------|
+| **ID** | TC-SCORE-038 |
+| **Priority** | P2 |
+| **Scenario** | Must-have skill "oracle" at position 10 in a long primary_skills list, with 8 years experience |
+| **Expected Result** | No prominence bonus but full years bonus (4). Score = 104 |
 
 ---
 

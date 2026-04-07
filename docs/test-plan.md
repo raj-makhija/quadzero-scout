@@ -382,4 +382,6 @@ Detailed test cases are in [test-cases.md](test-cases.md). Summary below:
 | Good-to-have skills | 20% | All matched | None matched | TC-SCORE-001, TC-SCORE-003 |
 | Experience range | 15% | Within min-max | Below min or above max | TC-SCORE-004 to TC-SCORE-006 |
 | Seniority level | 15% | In required list | Not in list | TC-SCORE-007, TC-SCORE-008 |
-| **Total** | **100%** | **100 points** | **0 points** | TC-SCORE-001, TC-SCORE-009 |
+| **Base Total** | **100%** | **100 points** | **0 points** | TC-SCORE-001, TC-SCORE-009 |
+| Skill prominence bonus | +8 | Matched skill in top 3 primary skills | Skill at position 11+ or secondary-only | TC-SCORE-034 to TC-SCORE-038 |
+| Skill years bonus | +4 | 5+ years in matched skill | <2 years or no data | TC-SCORE-034 to TC-SCORE-038 |

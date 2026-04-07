@@ -928,7 +928,11 @@ Authorization: Bearer <jwe_token> (optional)
 - **Experience** is a soft scoring factor. `experienceMatch` values: `"full"` (within range, +8pts), `"partial"` (within 2 years of boundary, +4pts), `"none"` (way outside, +0pts)
 - **Availability** is a soft scoring factor. `availabilityMatch` values: `"full"` (matches or available earlier, +7pts), `"partial"` (1–2 steps later, +3pts), `"none"` (3+ steps later, +0pts)
 - **Seniority** is a soft scoring factor (not a hard filter). Matched candidates get +5pts
-- Match score weights: must-have skills (45%), good-to-have skills (25%), experience (8%), seniority (5%), location (10%), availability (7%)
+- Match score weights: must-have skills (45%), good-to-have skills (25%), experience (8%), seniority (5%), location (10%), availability (7%) = base 100
+- **Skill relevance bonus** (up to +12 points for matched must-have skills):
+  - **Prominence bonus** (up to +8): Based on matched skill's position in the candidate's `primary_skills` array. Position 1–3 → +8, 4–6 → +4, 7–10 → +2, 11+ or secondary-only → +0. Skills listed earlier in a candidate's profile indicate stronger relevance.
+  - **Years bonus** (up to +4): Based on years of experience in the matched skill from `primary_skill_years`. 5+ years → +4, 2–5 years → +2, <2 years → +0.
+  - Averaged across all matched must-have skills. This differentiates e.g. an Oracle DBA (oracle in top 3, 8+ years) from a QA tester who incidentally lists oracle at position 25.
 - Related skills in the same ontology category count at 0.3x weight for good-to-have scoring (must-have scoring uses exact matches only)
 - Minimum must-have match ratio threshold: 0.40 (exact matches only; related matches do not count toward this ratio)
 
