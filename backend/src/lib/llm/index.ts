@@ -172,15 +172,34 @@ export async function parseResume(resumeText: string, supplementaryText?: string
     { role: 'user', content: userContent },
   ];
 
-  const response = await provider.completeWithRetry(messages, {
-    temperature: 0,
-    maxTokens: 8192,
-  }, config.llm.maxRetries);
+  // Try with a tighter token budget first to control Gemini cost; on parse or
+  // schema failure (most commonly truncation when skillSynonyms inflate the
+  // response), retry once with the larger budget that originally fit everything.
+  const attempt = async (maxTokens: number) => {
+    const response = await provider.completeWithRetry(messages, {
+      temperature: 0,
+      maxTokens,
+    }, config.llm.maxRetries);
+    const parsed = provider.parseJsonResponse<unknown>(response.content);
+    const validated = LLMResumeOutputSchema.safeParse(parsed);
+    return { parsed, validated };
+  };
 
-  const parsed = provider.parseJsonResponse<unknown>(response.content);
+  let parsed: unknown;
+  let validated: ReturnType<typeof LLMResumeOutputSchema.safeParse>;
+  try {
+    ({ parsed, validated } = await attempt(4096));
+    if (!validated.success) {
+      throw new Error('schema validation failed at 4096 tokens');
+    }
+  } catch (err) {
+    console.warn(
+      'parseResume: 4096-token attempt failed, retrying at 8192:',
+      err instanceof Error ? err.message : err
+    );
+    ({ parsed, validated } = await attempt(8192));
+  }
 
-  // Validate against schema
-  const validated = LLMResumeOutputSchema.safeParse(parsed);
   if (!validated.success) {
     console.error('LLM output validation failed:', {
       zodErrors: validated.error.issues,

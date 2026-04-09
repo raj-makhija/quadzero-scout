@@ -588,6 +588,10 @@ Bulk Upload:
 
 The `LLMOptions` interface supports a `responseFormat` field (`'json'` or `'text'`). JSON-expecting callers (resume parser, JD parser, duplicate detector) use `responseFormat: 'json'`, which enables provider-specific JSON output modes (OpenAI's `response_format`, Gemini's `responseMimeType`). The resume formatter uses `responseFormat: 'text'` to receive raw Markdown. A `sanitizeMarkdownOutput()` function provides defense-in-depth by stripping code fences, JSON wrappers, and literal escape sequences from LLM output before Markdown rendering.
 
+**Resume Parser Token-Budget Strategy:**
+
+`parseResume()` issues the LLM call with `maxTokens: 4096` on the first attempt. If the response fails JSON parsing or schema validation — typically because `skillSynonyms` inflated the output past the budget and the response was truncated — it retries once with `maxTokens: 8192`. This keeps per-call output-token cost (the dominant Gemini billing line) low for the common case while preserving the safety net for resumes that legitimately need a larger budget. Both attempts share the same retried network-level call (`completeWithRetry`), so transient errors are still handled by the existing retry loop.
+
 **Resume Formatting Pipeline:**
 
 1. Original resume downloaded from S3 (PDF/DOCX/DOC)
