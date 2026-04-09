@@ -48,10 +48,10 @@ describe('BottomNav responsive behavior', () => {
   });
 
   describe('navigation items', () => {
-    it('renders exactly 4 navigation items', () => {
+    it('renders exactly 5 navigation items', () => {
       render(<BottomNav />);
       const links = screen.getAllByRole('link');
-      expect(links).toHaveLength(4);
+      expect(links).toHaveLength(5);
     });
 
     it('renders Home link with correct href', () => {
@@ -62,6 +62,11 @@ describe('BottomNav responsive behavior', () => {
     it('renders Upload link with correct href', () => {
       render(<BottomNav />);
       expect(screen.getByText('Upload').closest('a')).toHaveAttribute('href', '/candidate/upload');
+    });
+
+    it('renders Requirements link with correct href', () => {
+      render(<BottomNav />);
+      expect(screen.getByText('Requirements').closest('a')).toHaveAttribute('href', '/recruiter/requirements');
     });
 
     it('renders Search link with correct href', () => {
