@@ -404,6 +404,14 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | **Precondition** | LLM provider returns transient error on first call |
 | **Expected Result** | System retries up to 3 times with exponential backoff (2^attempt seconds); succeeds if provider recovers |
 
+### TC-ANALYZE-011a: parseResume token-budget retry
+| Field | Value |
+|-------|-------|
+| **ID** | TC-ANALYZE-011a |
+| **Priority** | P1 |
+| **Precondition** | LLM returns truncated/invalid JSON because the response would not fit in 4096 output tokens |
+| **Expected Result** | `parseResume()` first attempts the call with `maxTokens: 4096`; on parse or schema-validation failure it retries once with `maxTokens: 8192` and returns the parsed output. If the second attempt also fails, the original schema-validation error is thrown. |
+
 ### TC-ANALYZE-012: Textract service error
 | Field | Value |
 |-------|-------|
