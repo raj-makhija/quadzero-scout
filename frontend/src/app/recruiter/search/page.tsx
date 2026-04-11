@@ -251,6 +251,7 @@ export default function RecruiterSearchPage() {
 
       // Convert to search criteria
       setSearchCriteria({
+        coreSkill: response.parsedCriteria.coreSkill || undefined,
         mustHaveSkills: response.parsedCriteria.mustHaveSkills,
         goodToHaveSkills: response.parsedCriteria.goodToHaveSkills,
         minExperience: response.parsedCriteria.minExperience || undefined,
@@ -260,6 +261,7 @@ export default function RecruiterSearchPage() {
         location: response.parsedCriteria.location || undefined,
         roles: response.parsedCriteria.roles || [],
         maxBudgetLpa: response.parsedCriteria.rateLpa || undefined,
+        skillSynonyms: response.parsedCriteria.skillSynonyms || undefined,
       });
 
       // Pre-fill requirement fields from LLM extraction
@@ -628,6 +630,7 @@ export default function RecruiterSearchPage() {
     location: pc.location || undefined,
     roles: pc.roles || [],
     maxBudgetLpa: (budgetMaxLpa ? parseFloat(budgetMaxLpa) : undefined) || pc.rateLpa || undefined,
+    skillSynonyms: pc.skillSynonyms || undefined,
   });
 
   const originalCriteria = parsedCriteria ? deriveSearchCriteria(parsedCriteria) : null;
