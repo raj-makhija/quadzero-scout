@@ -19,7 +19,7 @@ interface InterviewScheduleModalProps {
   candidateName: string;
   isOpen: boolean;
   onClose: () => void;
-  onScheduled: () => void;
+  onScheduled: (toStage?: string) => void;
   currentRound?: number;
 }
 
@@ -79,7 +79,7 @@ export function InterviewScheduleModal({
       setInterviewerEmail('');
       setLocationOrLink('');
       setNotes('');
-      onScheduled();
+      onScheduled('interview_scheduled');
     } catch (err) {
       if (err instanceof ApiError) {
         setErrorMessage(err.message);

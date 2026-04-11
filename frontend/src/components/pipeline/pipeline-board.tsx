@@ -22,8 +22,9 @@ const EXITED_STAGES = [
   'rejected_by_client',
   'candidate_withdrawn',
   'on_hold',
-  'not_suitable',
 ] as const;
+
+const NOT_SUITABLE_STAGES = ['not_suitable'] as const;
 
 const STAGE_LABELS: Record<string, string> = {
   shortlisted: 'Shortlisted',
@@ -102,6 +103,7 @@ export function PipelineBoard({ requirementId }: PipelineBoardProps) {
   const [error, setError] = useState<string | null>(null);
   const [collapsedStages, setCollapsedStages] = useState<Set<string>>(new Set());
   const [exitedExpanded, setExitedExpanded] = useState(false);
+  const [notSuitableExpanded, setNotSuitableExpanded] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [submitModalOpen, setSubmitModalOpen] = useState(false);
   const [submitCandidateIds, setSubmitCandidateIds] = useState<string[]>([]);
@@ -129,6 +131,53 @@ export function PipelineBoard({ requirementId }: PipelineBoardProps) {
     setSelectedIds(new Set());
     fetchData();
   };
+
+  const handleStageChange = useCallback((candidateId: string, toStage: string) => {
+    setData((prev) => {
+      if (!prev) return prev;
+      const newStages: Record<string, PipelineCandidateView[]> = {};
+      let movedCandidate: PipelineCandidateView | undefined;
+
+      // Remove candidate from current stage
+      for (const [stage, candidates] of Object.entries(prev.stages)) {
+        const filtered: PipelineCandidateView[] = [];
+        for (const c of candidates) {
+          if (c.candidateId === candidateId) movedCandidate = c;
+          else filtered.push(c);
+        }
+        if (filtered.length > 0) newStages[stage] = filtered;
+      }
+
+      if (!movedCandidate) return prev;
+
+      // Add candidate to new stage with updated fields
+      const updated: PipelineCandidateView = {
+        ...movedCandidate,
+        pipelineStage: toStage,
+        stageEnteredAt: new Date().toISOString(),
+      };
+      if (!newStages[toStage]) newStages[toStage] = [];
+      newStages[toStage].push(updated);
+
+      // Recalculate summary
+      const activeSet = new Set(ACTIVE_STAGES as readonly string[]);
+      const exitedSet = new Set(EXITED_STAGES as readonly string[]);
+      let activeCount = 0;
+      let exitedCount = 0;
+      const byStage: Record<string, number> = {};
+      let total = 0;
+      for (const [stage, candidates] of Object.entries(newStages)) {
+        byStage[stage] = candidates.length;
+        total += candidates.length;
+        if (activeSet.has(stage)) activeCount += candidates.length;
+        if (exitedSet.has(stage)) exitedCount += candidates.length;
+      }
+
+      return { stages: newStages, summary: { total, activeCount, exitedCount, byStage } };
+    });
+    // Reconcile with server in background
+    fetchData();
+  }, [fetchData]);
 
   const toggleStage = (stage: string) => {
     setCollapsedStages((prev) => {
@@ -185,6 +234,10 @@ export function PipelineBoard({ requirementId }: PipelineBoardProps) {
     return EXITED_STAGES.reduce((sum, s) => sum + getCandidatesForStage(s).length, 0);
   };
 
+  const getNotSuitableCount = (): number => {
+    return NOT_SUITABLE_STAGES.reduce((sum, s) => sum + getCandidatesForStage(s).length, 0);
+  };
+
   if (loading && !data) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -206,6 +259,7 @@ export function PipelineBoard({ requirementId }: PipelineBoardProps) {
   const shortlistedCandidates = getCandidatesForStage('shortlisted');
   const selectedShortlistedCount = shortlistedCandidates.filter((c) => selectedIds.has(c.candidateId)).length;
   const exitedCount = getExitedCount();
+  const notSuitableCount = getNotSuitableCount();
 
   // Stages that have candidates (for grouped list)
   const activeStagesWithCandidates = ACTIVE_STAGES.filter(
@@ -220,7 +274,8 @@ export function PipelineBoard({ requirementId }: PipelineBoardProps) {
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Pipeline</h3>
           {data && (
             <span className="text-sm text-gray-500 dark:text-gray-400">
-              {data.summary.activeCount} active &middot; {data.summary.exitedCount} exited
+              {data.summary.activeCount} active &middot; {exitedCount} exited
+              {notSuitableCount > 0 && <> &middot; {notSuitableCount} not suitable</>}
             </span>
           )}
         </div>
@@ -265,6 +320,17 @@ export function PipelineBoard({ requirementId }: PipelineBoardProps) {
               className="ml-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400 hover:opacity-80 transition-all"
             >
               {exitedCount} exited
+            </button>
+          </div>
+        )}
+        {notSuitableCount > 0 && (
+          <div className="flex items-center flex-shrink-0 ml-2">
+            <span className="text-xs text-gray-400 dark:text-gray-500">·</span>
+            <button
+              onClick={() => setNotSuitableExpanded(!notSuitableExpanded)}
+              className="ml-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700/40 text-gray-500 dark:text-gray-400 hover:opacity-80 transition-all"
+            >
+              {notSuitableCount} not suitable
             </button>
           </div>
         )}
@@ -329,6 +395,7 @@ export function PipelineBoard({ requirementId }: PipelineBoardProps) {
                       candidate={candidate}
                       requirementId={requirementId}
                       onRefresh={handleRefresh}
+                      onStageChange={handleStageChange}
                       selected={selectedIds.has(candidate.candidateId)}
                       onSelect={isShortlisted ? handleSelectCandidate : undefined}
                       onSubmitToClient={isShortlisted ? () => handleSubmitSingle(candidate) : undefined}
@@ -388,6 +455,50 @@ export function PipelineBoard({ requirementId }: PipelineBoardProps) {
         </div>
       )}
 
+      {/* Not Suitable section */}
+      {notSuitableCount > 0 && (
+        <div className="border border-gray-200 dark:border-gray-700 rounded-lg">
+          <button
+            onClick={() => setNotSuitableExpanded(!notSuitableExpanded)}
+            className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors rounded-lg"
+          >
+            <div className="flex items-center gap-2">
+              {notSuitableExpanded ? (
+                <ChevronDown className="h-4 w-4 text-gray-400" />
+              ) : (
+                <ChevronRight className="h-4 w-4 text-gray-400" />
+              )}
+              <span className="text-sm font-semibold text-gray-500 dark:text-gray-400">Not Suitable</span>
+              <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded-full px-2 py-0.5 font-medium">
+                {notSuitableCount}
+              </span>
+            </div>
+          </button>
+          {notSuitableExpanded && (
+            <div className="px-4 pb-4 space-y-3">
+              {NOT_SUITABLE_STAGES.map((stage) => {
+                const candidates = getCandidatesForStage(stage);
+                if (candidates.length === 0) return null;
+                return (
+                  <div key={stage} className={`border-l-[3px] ${STAGE_GROUP_ACCENT[stage] || 'border-l-gray-300'} pl-3`}>
+                    <div className="space-y-2">
+                      {candidates.map((candidate) => (
+                        <PipelineCandidateCard
+                          key={candidate.candidateId}
+                          candidate={candidate}
+                          requirementId={requirementId}
+                          onRefresh={handleRefresh}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Submit to client modal */}
       <SubmitToClientModal
         requirementId={requirementId}
@@ -401,10 +512,13 @@ export function PipelineBoard({ requirementId }: PipelineBoardProps) {
         }}
         onSubmitted={() => {
           setSubmitModalOpen(false);
+          const ids = [...submitCandidateIds];
           setSubmitCandidateIds([]);
           setSubmitCandidateNames([]);
           setSelectedIds(new Set());
-          handleRefresh();
+          for (const id of ids) {
+            handleStageChange(id, 'submitted_to_client');
+          }
         }}
       />
     </div>

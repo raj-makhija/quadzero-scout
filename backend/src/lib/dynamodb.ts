@@ -1387,6 +1387,7 @@ export async function getShortlistsForRequirement(requirementId: string): Promis
       TableName: config.dynamodb.shortlistsTable,
       KeyConditionExpression: 'requirement_id = :rid',
       ExpressionAttributeValues: { ':rid': requirementId },
+      ConsistentRead: true,
     })
   );
   return (result.Items || []) as ShortlistItem[];

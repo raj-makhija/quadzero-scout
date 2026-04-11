@@ -39,6 +39,7 @@ interface PipelineCandidateCardProps {
   candidate: PipelineCandidateView;
   requirementId: string;
   onRefresh: () => void;
+  onStageChange?: (candidateId: string, toStage: string) => void;
   selected?: boolean;
   onSelect?: (id: string) => void;
   onSubmitToClient?: () => void;
@@ -48,6 +49,7 @@ export function PipelineCandidateCard({
   candidate,
   requirementId,
   onRefresh,
+  onStageChange,
   selected,
   onSelect,
   onSubmitToClient,
@@ -72,7 +74,8 @@ export function PipelineCandidateCard({
       setAdvancingToOffer(true);
       await api.updatePipelineStage(requirementId, candidate.candidateId, { stage: 'offered' });
       toast({ variant: 'success', title: 'Candidate advanced to Offered stage' });
-      onRefresh();
+      if (onStageChange) onStageChange(candidate.candidateId, 'offered');
+      else onRefresh();
     } catch {
       toast({ variant: 'error', title: 'Failed to advance candidate' });
     } finally {
@@ -232,9 +235,14 @@ export function PipelineCandidateCard({
         candidateId={candidate.candidateId}
         candidateName={candidate.fullName}
         mode={feedbackMode}
+        currentStage={stage}
         isOpen={feedbackOpen}
         onClose={() => setFeedbackOpen(false)}
-        onRecorded={() => { setFeedbackOpen(false); onRefresh(); }}
+        onRecorded={(toStage) => {
+          setFeedbackOpen(false);
+          if (toStage && onStageChange) onStageChange(candidate.candidateId, toStage);
+          else onRefresh();
+        }}
         currentRound={candidate.interviewRoundCount}
       />
 
@@ -245,7 +253,11 @@ export function PipelineCandidateCard({
         candidateName={candidate.fullName}
         isOpen={interviewOpen}
         onClose={() => setInterviewOpen(false)}
-        onScheduled={() => { setInterviewOpen(false); onRefresh(); }}
+        onScheduled={(toStage) => {
+          setInterviewOpen(false);
+          if (toStage && onStageChange) onStageChange(candidate.candidateId, toStage);
+          else onRefresh();
+        }}
         currentRound={candidate.interviewRoundCount}
       />
     </>

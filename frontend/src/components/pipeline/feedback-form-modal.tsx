@@ -42,9 +42,10 @@ interface FeedbackFormModalProps {
   candidateId: string;
   candidateName: string;
   mode: 'client' | 'interview';
+  currentStage: string;
   isOpen: boolean;
   onClose: () => void;
-  onRecorded: () => void;
+  onRecorded: (toStage?: string) => void;
   currentRound?: number;
 }
 
@@ -53,6 +54,7 @@ export function FeedbackFormModal({
   candidateId,
   candidateName,
   mode,
+  currentStage,
   isOpen,
   onClose,
   onRecorded,
@@ -123,13 +125,27 @@ export function FeedbackFormModal({
         title: isClient ? 'Client feedback recorded' : 'Interview feedback recorded',
       });
 
+      // Determine the target stage for optimistic update
+      let toStage: string | undefined;
+      if (isClient) {
+        if (clientRating === 'negative') {
+          toStage = 'rejected_by_client';
+        } else if (currentStage === 'submitted_to_client' || currentStage === 'submitted') {
+          toStage = 'client_reviewed';
+        }
+      } else {
+        if (decision === 'reject') toStage = 'rejected_by_client';
+        else if (decision === 'proceed') toStage = 'interview_completed';
+        // 'hold' → no stage change
+      }
+
       // Reset form
       setClientRating('');
       setInterviewRating('');
       setDecision('');
       setFeedbackText('');
       setSource('email');
-      onRecorded();
+      onRecorded(toStage);
     } catch (err) {
       if (err instanceof ApiError) {
         setErrorMessage(err.message);

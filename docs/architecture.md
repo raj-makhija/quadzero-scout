@@ -902,12 +902,14 @@ The requirement detail page includes a toggle between **List** view (existing sh
 
 | Component | Responsibility |
 |-----------|----------------|
-| `pipeline-board` | Kanban board layout with columns per active stage + collapsed exit-state columns |
-| `pipeline-candidate-card` | Draggable card showing candidate name, headline, stage duration, and last activity |
+| `pipeline-board` | Kanban board layout with columns per active stage plus separate collapsible **Exited** (rejected_by_client / candidate_withdrawn / on_hold) and **Not Suitable** (not_suitable) sections, each with its own count pill in the summary strip. Owns `handleStageChange` for optimistic local state updates—moves a candidate card to its new stage bucket instantly and reconciles with a background server fetch |
+| `pipeline-candidate-card` | Draggable card showing candidate name, headline, stage duration, and last activity. Receives `onStageChange` callback and forwards resolved target stage from child modals |
 | `pipeline-timeline` | Vertical activity feed in the candidate detail side panel |
 | `submit-to-client-modal` | Form for single/batch candidate submission with notes and email preview |
-| `feedback-form-modal` | Form for recording client feedback or interview feedback with rating |
-| `interview-schedule-modal` | Form for scheduling interviews with date, round, and interviewer fields |
+| `feedback-form-modal` | Form for recording client feedback or interview feedback with rating. Computes the expected target stage from the action (e.g., positive feedback → `client_reviewed`) and passes it to `onRecorded` for optimistic update |
+| `interview-schedule-modal` | Form for scheduling interviews with date, round, and interviewer fields. Passes `interview_scheduled` as target stage to `onScheduled` for optimistic update |
+
+**Data freshness:** The `getPipelineView` backend endpoint reads from DynamoDB with `ConsistentRead: true` to guarantee post-write consistency. The frontend applies optimistic UI updates immediately after successful mutations and reconciles with the consistent server read in the background.
 
 ### Email Templates
 
