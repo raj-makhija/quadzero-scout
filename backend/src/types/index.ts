@@ -466,6 +466,7 @@ export interface RequirementItem {
   notify_recruiter_ids?: string[];
   additional_fields?: AdditionalFieldDefinition[];
   contact_person_name?: string;
+  is_rate_gst_inclusive?: boolean;
 }
 
 // Requirement API types
@@ -485,6 +486,7 @@ export interface SaveRequirementRequest {
   duplicateOf?: string;
   additionalFields?: AdditionalFieldDefinition[];
   contactPersonName?: string;
+  isRateGstInclusive?: boolean;
 }
 
 export interface SaveRequirementResponse {
@@ -539,6 +541,7 @@ export interface RequirementSummary {
   demandScore?: number;
   notifyRecruiterIds?: string[];
   additionalFields?: AdditionalFieldDefinition[];
+  isRateGstInclusive?: boolean;
 }
 
 export interface ConsolidateRequirementRequest {
@@ -630,6 +633,7 @@ export interface PricingInput {
   clientBudgetMinHourly?: number;
   clientBudgetMaxHourly?: number;
   engagementModel?: string;
+  isRateGstInclusive?: boolean;
 }
 
 export interface BudgetOptimizationResult {
@@ -646,6 +650,8 @@ export interface BudgetOptimizationResult {
   marginConstrained: boolean;
   marginUplifted: boolean;
   contributionCapped: boolean;
+  gstDeductedBudgetMinHourly?: number;
+  gstDeductedBudgetMaxHourly?: number;
 }
 
 export interface PricingOutput {
@@ -675,6 +681,7 @@ export interface PricingOutput {
   finalQuotedAnnual: number;
   finalContribution: number;
   finalEffectiveMarkupPct: number;
+  isRateGstInclusive: boolean;
 }
 
 export interface CalculatePricingRequest extends PricingInput {}

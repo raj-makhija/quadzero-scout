@@ -141,6 +141,7 @@ export const SaveRequirementRequestSchema = z.object({
   duplicateOf: z.string().uuid().optional(),
   additionalFields: z.array(AdditionalFieldDefinitionSchema).max(20).optional().default([]),
   contactPersonName: z.string().max(200).optional(),
+  isRateGstInclusive: z.boolean().optional().default(false),
 });
 
 // Check Duplicate Request Validation
@@ -199,6 +200,7 @@ export const UpdateRequirementRequestSchema = z.object({
   parsedCriteria: LLMJDOutputSchema.optional(),
   additionalFields: z.array(AdditionalFieldDefinitionSchema).optional(),
   contactPersonName: z.string().max(200).nullable().optional(),
+  isRateGstInclusive: z.boolean().optional(),
 }).refine(data => Object.values(data).some(v => v !== undefined), {
   message: 'At least one field must be provided for update',
 });
@@ -223,6 +225,7 @@ export const CalculatePricingRequestSchema = z.object({
   clientBudgetMinHourly: z.number().min(0).optional(),
   clientBudgetMaxHourly: z.number().min(0).optional(),
   engagementModel: z.enum(['full_time_regular', 'full_time_contract', 'part_time_contract']).optional(),
+  isRateGstInclusive: z.boolean().optional(),
 }).refine(
   data => {
     const hasMin = data.clientBudgetMinHourly !== undefined;

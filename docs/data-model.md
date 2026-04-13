@@ -405,6 +405,7 @@ Stores job requirements created by recruiters with parsed JD criteria.
 | contract_duration_months | Number | No | Contract duration in months (1-60). Only meaningful for contract engagements |
 | payment_terms_days | Number | No | Payment terms in days (30, 45, 60, or 90) |
 | contact_person_name | String | No | HR contact person name at the client organization |
+| is_rate_gst_inclusive | Boolean | No | When true, budget figures (LPA) are inclusive of 18% GST. Pricing engine deducts GST before computing margins. Defaults to false. |
 | job_title | String | No | Job title (dynamically generated on frontend as "CoreSkill - Client Name (End Client) - Contact Person") |
 | jd_text | String | Yes | Raw job description text |
 | parsed_criteria | Map | Yes | LLM-parsed search criteria |

@@ -9,6 +9,7 @@ import type {
 
 const HOURS_PER_MONTH = 160;
 const LAKHS = 100_000;
+const GST_RATE = 0.18;
 
 export function getExperienceBand(years: number): PricingExperienceBand {
   if (years <= 4) return 'junior';
@@ -127,14 +128,32 @@ export function calculatePricing(
 
   // ── Phase 2: Budget-Aware Optimization ────────────────────────────────
 
+  // When the client rate is inclusive of GST, deduct GST from the budget
+  // before running budget optimization so margins are computed on the
+  // GST-exclusive amount.
+  const effectiveInput = { ...input };
+  if (input.isRateGstInclusive && input.clientBudgetMinHourly != null && input.clientBudgetMaxHourly != null) {
+    effectiveInput.clientBudgetMinHourly = input.clientBudgetMinHourly / (1 + GST_RATE);
+    effectiveInput.clientBudgetMaxHourly = input.clientBudgetMaxHourly / (1 + GST_RATE);
+  }
+
   const budgetOptimization = applyBudgetOptimization(
-    input,
+    effectiveInput,
     config,
     monthlyCtc,
     idealBillingMonthly,
     minimumBillingMonthly,
     workingCapitalCostPerMonth
   );
+
+  // When GST-inclusive, restore original budget values for display and
+  // expose the GST-deducted values separately so the UI can show both.
+  if (input.isRateGstInclusive && budgetOptimization.applied) {
+    budgetOptimization.gstDeductedBudgetMinHourly = budgetOptimization.clientBudgetMinHourly;
+    budgetOptimization.gstDeductedBudgetMaxHourly = budgetOptimization.clientBudgetMaxHourly;
+    budgetOptimization.clientBudgetMinHourly = input.clientBudgetMinHourly!;
+    budgetOptimization.clientBudgetMaxHourly = input.clientBudgetMaxHourly!;
+  }
 
   // Final values: use budget-optimized if applied, otherwise internal
   let finalQuotedHourly: number;
@@ -186,6 +205,7 @@ export function calculatePricing(
     finalQuotedAnnual,
     finalContribution,
     finalEffectiveMarkupPct,
+    isRateGstInclusive: input.isRateGstInclusive ?? false,
   };
 }
 

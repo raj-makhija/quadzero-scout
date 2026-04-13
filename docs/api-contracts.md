@@ -1078,6 +1078,7 @@ Authorization: Bearer <jwe_token>
 - `paymentTermsDays`: Optional, number, must be one of: 30, 45, 60, 90
 - `jobTitle`: Optional, string, max 200 (dynamically generated on frontend as "CoreSkill - Client Name (End Client) - Contact Person")
 - `contactPersonName`: Optional, string, max 200 (HR contact person at the client)
+- `isRateGstInclusive`: Optional, boolean, defaults to `false`. When `true`, budget figures include 18% GST and the pricing engine deducts GST before computing margins.
 - `jdText`: Required, string, min 50, max 10000
 - `parsedCriteria`: Required, LLM JD output schema (includes `coreSkill`)
 - `additionalFields`: Optional, array of `AdditionalFieldDefinition` objects (see Shared Types)
@@ -1251,6 +1252,7 @@ Get a specific requirement by ID.
 | Field | Type | Description |
 |-------|------|-------------|
 | contactPersonName | String | HR contact person name at the client organization (may be absent) |
+| isRateGstInclusive | Boolean | Whether budget figures include 18% GST. Defaults to `false`. |
 | statusHistory | Array | Array of status change records, each containing `status`, `reason`, `changedBy`, and `changedAt` |
 | additionalFields | Array | Array of `AdditionalFieldDefinition` objects defining custom fields for this requirement (see Shared Types). May be empty or absent if none were configured. |
 | changeHistory | Array | Array of field-level change audit records (see `RequirementChangeEntry` in data model). Each entry contains `changedAt`, `changedBy`, and `changes` (array of `{field, oldValue, newValue}`). May be empty or absent if no updates have been made. |
@@ -1565,6 +1567,7 @@ Update one or more fields on a requirement with field-level audit trail. Only th
 | paymentTermsDays | Number \| null | No | Payment terms: 30, 45, 60, or 90 (send `null` to clear) |
 | jobTitle | String | No | Job title |
 | contactPersonName | String \| null | No | HR contact person name at the client (send `null` to clear) |
+| isRateGstInclusive | Boolean | No | Whether budget figures include 18% GST |
 | jdText | String | No | Raw JD text (min 50, max 10000 chars) |
 | parsedCriteria | Object | No | LLM-parsed search criteria (ParsedCriteria) |
 | additionalFields | Array | No | Array of AdditionalFieldDefinition objects |
@@ -3288,7 +3291,8 @@ Authorization: Bearer <jwe_token>
   "paymentTermsDays": 90,
   "engagementModel": "full_time_contract",
   "clientBudgetMinHourly": 700,
-  "clientBudgetMaxHourly": 1000
+  "clientBudgetMaxHourly": 1000,
+  "isRateGstInclusive": false
 }
 ```
 
@@ -3336,7 +3340,8 @@ Authorization: Bearer <jwe_token>
     "finalQuotedMonthly": 144000,
     "finalQuotedAnnual": 1730000,
     "finalContribution": 58166.67,
-    "finalEffectiveMarkupPct": 72.8
+    "finalEffectiveMarkupPct": 72.8,
+    "isRateGstInclusive": false
   }
 }
 ```
@@ -3349,6 +3354,7 @@ Authorization: Bearer <jwe_token>
 - `engagementModel`: Optional, string, one of: `full_time_regular`, `full_time_contract`, `part_time_contract`. When provided, enables contract duration discounts for contract engagements.
 - `clientBudgetMinHourly`: Optional, number, min 0 (must be provided with `clientBudgetMaxHourly`)
 - `clientBudgetMaxHourly`: Optional, number, min 0 (must be provided with `clientBudgetMinHourly`)
+- `isRateGstInclusive`: Optional, boolean. When `true`, budget values are treated as inclusive of 18% GST; the engine deducts GST before computing margins. Defaults to `false`.
 
 **Notes:**
 - Budget fields must both be provided or both omitted
@@ -3356,6 +3362,7 @@ Authorization: Bearer <jwe_token>
 - When no budget is provided, `budgetOptimization.applied` is `false` and final values equal internal quoted values
 - Budget optimization cases: A (over budget, margin constrained), B (within range), C (below floor, uplift opportunity)
 - `marginUplifted` flag is set when budget optimization increases margin beyond internal ideal (audit visibility)
+- When `isRateGstInclusive` is `true`, the response includes `gstDeductedBudgetMinHourly` and `gstDeductedBudgetMaxHourly` in `budgetOptimization` showing the effective budget after GST deduction, and `clientBudgetMinHourly`/`clientBudgetMaxHourly` retain the original (GST-inclusive) values
 
 ---
 

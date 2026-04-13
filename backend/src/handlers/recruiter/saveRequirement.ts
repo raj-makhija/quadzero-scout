@@ -66,6 +66,7 @@ async function handleRequest(
         key: slugifyFieldKey(field.label),
       })),
       contact_person_name: data.contactPersonName,
+      is_rate_gst_inclusive: data.isRateGstInclusive ?? false,
     };
 
     await saveRequirement(item);

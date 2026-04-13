@@ -781,3 +781,104 @@ describe('calculatePricing() — Contract Duration Discount Integration', () => 
     expect(result.platformFee).toBeLessThan(result.originalPlatformFee);
   });
 });
+
+// ===========================================================================
+// TC-GST: GST-inclusive rate adjustment
+// ===========================================================================
+describe('GST-inclusive rate adjustment', () => {
+  const GST_RATE = 0.18;
+
+  // TC-GST-001 — isRateGstInclusive absent or false: budget unchanged
+  it('does not adjust budget when isRateGstInclusive is false', () => {
+    const input = makeInput({
+      clientBudgetMinHourly: 1000,
+      clientBudgetMaxHourly: 2000,
+      isRateGstInclusive: false,
+    });
+    const result = calculatePricing(input, DEFAULT_CONFIG);
+
+    expect(result.budgetOptimization.applied).toBe(true);
+    expect(result.budgetOptimization.clientBudgetMinHourly).toBe(1000);
+    expect(result.budgetOptimization.clientBudgetMaxHourly).toBe(2000);
+    expect(result.budgetOptimization.gstDeductedBudgetMinHourly).toBeUndefined();
+    expect(result.budgetOptimization.gstDeductedBudgetMaxHourly).toBeUndefined();
+    expect(result.isRateGstInclusive).toBe(false);
+  });
+
+  it('does not adjust budget when isRateGstInclusive is omitted', () => {
+    const input = makeInput({
+      clientBudgetMinHourly: 1000,
+      clientBudgetMaxHourly: 2000,
+    });
+    const result = calculatePricing(input, DEFAULT_CONFIG);
+
+    expect(result.budgetOptimization.clientBudgetMinHourly).toBe(1000);
+    expect(result.budgetOptimization.clientBudgetMaxHourly).toBe(2000);
+    expect(result.isRateGstInclusive).toBe(false);
+  });
+
+  // TC-GST-002 — isRateGstInclusive true: budget deducted by 18%
+  it('deducts 18% GST from budget when isRateGstInclusive is true', () => {
+    const input = makeInput({
+      clientBudgetMinHourly: 1180,
+      clientBudgetMaxHourly: 2360,
+      isRateGstInclusive: true,
+    });
+    const result = calculatePricing(input, DEFAULT_CONFIG);
+
+    expect(result.budgetOptimization.applied).toBe(true);
+    // Original budget preserved in clientBudget fields
+    expect(result.budgetOptimization.clientBudgetMinHourly).toBe(1180);
+    expect(result.budgetOptimization.clientBudgetMaxHourly).toBe(2360);
+    // GST-deducted values exposed
+    expect(result.budgetOptimization.gstDeductedBudgetMinHourly).toBeCloseTo(1180 / (1 + GST_RATE), 2);
+    expect(result.budgetOptimization.gstDeductedBudgetMaxHourly).toBeCloseTo(2360 / (1 + GST_RATE), 2);
+  });
+
+  // TC-GST-003 — GST flag with no budget: no effect
+  it('has no effect when isRateGstInclusive is true but no budget provided', () => {
+    const input = makeInput({
+      isRateGstInclusive: true,
+    });
+    const result = calculatePricing(input, DEFAULT_CONFIG);
+
+    expect(result.budgetOptimization.applied).toBe(false);
+    expect(result.isRateGstInclusive).toBe(true);
+  });
+
+  // TC-GST-004 — isRateGstInclusive echoed in PricingOutput
+  it('echoes isRateGstInclusive in PricingOutput', () => {
+    const resultTrue = calculatePricing(
+      makeInput({ isRateGstInclusive: true }),
+      DEFAULT_CONFIG
+    );
+    expect(resultTrue.isRateGstInclusive).toBe(true);
+
+    const resultFalse = calculatePricing(
+      makeInput({ isRateGstInclusive: false }),
+      DEFAULT_CONFIG
+    );
+    expect(resultFalse.isRateGstInclusive).toBe(false);
+  });
+
+  // TC-GST-005 — Budget optimization uses effective (deducted) budget
+  it('uses GST-deducted budget for optimization calculations', () => {
+    // Compare: same nominal budget, one GST-inclusive, one not
+    const budgetMin = 1180;
+    const budgetMax = 2360;
+
+    const withGst = calculatePricing(
+      makeInput({ clientBudgetMinHourly: budgetMin, clientBudgetMaxHourly: budgetMax, isRateGstInclusive: true }),
+      DEFAULT_CONFIG
+    );
+    const withoutGst = calculatePricing(
+      makeInput({ clientBudgetMinHourly: budgetMin, clientBudgetMaxHourly: budgetMax, isRateGstInclusive: false }),
+      DEFAULT_CONFIG
+    );
+
+    // GST-inclusive should yield lower or equal optimized rate (tighter budget)
+    expect(withGst.finalQuotedHourly).toBeLessThanOrEqual(withoutGst.finalQuotedHourly);
+    // GST-inclusive should yield lower or equal contribution
+    expect(withGst.finalContribution).toBeLessThanOrEqual(withoutGst.finalContribution);
+  });
+});

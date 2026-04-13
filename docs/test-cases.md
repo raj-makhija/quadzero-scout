@@ -3346,6 +3346,47 @@ All functional and non-functional aspects of Quadzero Scout covering:
 
 ## Traceability Matrix Summary
 
+## GST-Inclusive Rate Adjustment
+
+### TC-GST-001: Default behavior — GST flag absent or false
+- **Priority:** P0
+- **Steps:** Call pricing engine with `isRateGstInclusive: false` (or omitted) and client budget min/max
+- **Expected:** Budget values pass through unchanged; `gstDeductedBudgetMinHourly`/`gstDeductedBudgetMaxHourly` are absent; `isRateGstInclusive` is `false` in output
+
+### TC-GST-002: GST-inclusive budget deduction
+- **Priority:** P0
+- **Steps:** Call pricing engine with `isRateGstInclusive: true`, `clientBudgetMinHourly: 1180`, `clientBudgetMaxHourly: 2360`
+- **Expected:** `clientBudgetMinHourly`/`clientBudgetMaxHourly` in output retain original values (1180/2360); `gstDeductedBudgetMinHourly` ~ 1000, `gstDeductedBudgetMaxHourly` ~ 2000 (divided by 1.18); budget optimization uses deducted values
+
+### TC-GST-003: GST flag with no budget — no effect
+- **Priority:** P1
+- **Steps:** Call pricing engine with `isRateGstInclusive: true` but no budget fields
+- **Expected:** `budgetOptimization.applied` is `false`; behavior identical to non-GST case
+
+### TC-GST-004: GST-inclusive yields lower/equal rates
+- **Priority:** P1
+- **Steps:** Compare pricing results for same budget with `isRateGstInclusive: true` vs `false`
+- **Expected:** GST-inclusive result has `finalQuotedHourly` <= non-GST result; `finalContribution` <= non-GST contribution
+
+### TC-GST-005: Create requirement with GST flag
+- **Priority:** P1
+- **Steps:** POST /recruiter/requirements with `isRateGstInclusive: true`
+- **Expected:** Requirement saved; GET returns `isRateGstInclusive: true`
+
+### TC-GST-006: Edit existing requirement to toggle GST flag
+- **Priority:** P2
+- **Steps:** PUT /recruiter/requirements/{id}/details with `isRateGstInclusive: true` on an existing requirement
+- **Expected:** 200 OK; change history includes `isRateGstInclusive` field change; GET returns updated flag
+
+### TC-GST-007: PricingPanel GST indicator
+- **Priority:** P2
+- **Steps:** Open shortlist modal for a GST-inclusive requirement; enter client budget and calculate
+- **Expected:** Amber banner "GST-inclusive rate" shown; Budget Optimization section shows both original and effective (excl. GST) budget values
+
+---
+
+## Summary
+
 | Module | Test Count | P0 | P1 | P2 | P3 |
 |--------|-----------|----|----|----|----|
 | Authentication | 12 | 5 | 4 | 2 | 1 |
@@ -3376,4 +3417,5 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | Not Suitable Candidate | 9 | 2 | 5 | 2 | 0 |
 | Sub-Vendor Management | 14 | 5 | 7 | 2 | 0 |
 | Recruiter Activity Dashboard | 20 | 3 | 9 | 5 | 3 |
-| **Total** | **421** | **103** | **174** | **109** | **35** |
+| GST-Inclusive Rate Adjustment | 7 | 2 | 3 | 2 | 0 |
+| **Total** | **428** | **105** | **177** | **111** | **35** |
