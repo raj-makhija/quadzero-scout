@@ -761,6 +761,14 @@ export interface ShortlistItem {
   expected_joining_date?: string;
   rejection_reason?: string;
   last_activity_at?: string;
+  // Proposed billing rates (snapshot at shortlist time)
+  proposed_rate_hourly?: number;
+  proposed_rate_monthly?: number;
+  proposed_rate_annual?: number;
+  internal_rate_hourly?: number;
+  internal_rate_monthly?: number;
+  internal_rate_annual?: number;
+  proposed_rate_calculated_at?: string;
 }
 
 // ─── Pipeline Activity Types ────────────────────────────────────────────────
@@ -922,6 +930,13 @@ export interface PipelineCandidateView {
   linkedinUrl?: string;
   githubUrl?: string;
   notInterested?: boolean;
+  // Proposed billing rates (snapshot from shortlist time)
+  proposedRateHourly?: number;
+  proposedRateMonthly?: number;
+  proposedRateAnnual?: number;
+  internalRateHourly?: number;
+  internalRateMonthly?: number;
+  internalRateAnnual?: number;
 }
 
 export interface PipelineViewResponse {
@@ -930,6 +945,7 @@ export interface PipelineViewResponse {
     total: number;
     activeCount: number;
     exitedCount: number;
+    notSuitableCount: number;
     byStage: Record<string, number>;
   };
 }

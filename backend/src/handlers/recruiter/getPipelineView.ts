@@ -2,7 +2,7 @@ import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { getShortlistsForRequirement, getCandidateById } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
-import { getEffectiveStage, ACTIVE_STAGES, EXIT_STAGES } from '../../lib/pipelineService.js';
+import { getEffectiveStage, ACTIVE_STAGES, EXIT_STAGES, NOT_SUITABLE_STAGES } from '../../lib/pipelineService.js';
 import type { PipelineCandidateView, PipelineViewResponse } from '../../types/index.js';
 
 async function handleRequest(
@@ -26,6 +26,7 @@ async function handleRequest(
     const stages: Record<string, PipelineCandidateView[]> = {};
     let activeCount = 0;
     let exitedCount = 0;
+    let notSuitableCount = 0;
     const byStage: Record<string, number> = {};
 
     for (let i = 0; i < shortlistItems.length; i++) {
@@ -40,6 +41,7 @@ async function handleRequest(
 
       if (ACTIVE_STAGES.has(stage)) activeCount++;
       if (EXIT_STAGES.has(stage)) exitedCount++;
+      if (NOT_SUITABLE_STAGES.has(stage)) notSuitableCount++;
 
       stages[stage].push({
         candidateId: item.candidate_id,
@@ -64,6 +66,12 @@ async function handleRequest(
         linkedinUrl: candidate.linkedin_url,
         githubUrl: candidate.github_url,
         notInterested: candidate.not_interested,
+        proposedRateHourly: item.proposed_rate_hourly,
+        proposedRateMonthly: item.proposed_rate_monthly,
+        proposedRateAnnual: item.proposed_rate_annual,
+        internalRateHourly: item.internal_rate_hourly,
+        internalRateMonthly: item.internal_rate_monthly,
+        internalRateAnnual: item.internal_rate_annual,
       });
     }
 
@@ -73,6 +81,7 @@ async function handleRequest(
         total: shortlistItems.length,
         activeCount,
         exitedCount,
+        notSuitableCount,
         byStage,
       },
     };

@@ -26,7 +26,11 @@ async function handleRequest(
       return error(ErrorCodes.VALIDATION_ERROR, formatZodErrors(validation.errors), 400);
     }
 
-    const { requirementId, candidateId, notes } = validation.data;
+    const {
+      requirementId, candidateId, notes,
+      proposedRateHourly, proposedRateMonthly, proposedRateAnnual,
+      internalRateHourly, internalRateMonthly, internalRateAnnual,
+    } = validation.data;
 
     // Verify requirement and candidate exist in parallel
     const [requirement, candidate] = await Promise.all([
@@ -65,7 +69,20 @@ async function handleRequest(
     if (existing) {
       if (existing.status === 'not_suitable') {
         // Allow re-shortlisting a candidate previously marked as not suitable
-        await updateShortlistStatus(requirementId, candidateId, 'shortlisted', event.auth.userId);
+        const rateFields: Record<string, unknown> = {};
+        if (proposedRateHourly != null) {
+          rateFields.proposed_rate_hourly = proposedRateHourly;
+          rateFields.proposed_rate_monthly = proposedRateMonthly;
+          rateFields.proposed_rate_annual = proposedRateAnnual;
+          rateFields.internal_rate_hourly = internalRateHourly;
+          rateFields.internal_rate_monthly = internalRateMonthly;
+          rateFields.internal_rate_annual = internalRateAnnual;
+          rateFields.proposed_rate_calculated_at = new Date().toISOString();
+        }
+        await updateShortlistStatus(
+          requirementId, candidateId, 'shortlisted', event.auth.userId,
+          Object.keys(rateFields).length > 0 ? rateFields : undefined
+        );
 
         logAuditEvent(event.auth, event, {
           action: 'SHORTLIST_ADD',
@@ -91,6 +108,15 @@ async function handleRequest(
       tagged_at: new Date().toISOString(),
       notes,
       status: 'shortlisted',
+      ...(proposedRateHourly != null && {
+        proposed_rate_hourly: proposedRateHourly,
+        proposed_rate_monthly: proposedRateMonthly,
+        proposed_rate_annual: proposedRateAnnual,
+        internal_rate_hourly: internalRateHourly,
+        internal_rate_monthly: internalRateMonthly,
+        internal_rate_annual: internalRateAnnual,
+        proposed_rate_calculated_at: new Date().toISOString(),
+      }),
     };
 
     await saveShortlist(item);

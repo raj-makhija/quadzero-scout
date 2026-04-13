@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import type { PipelineCandidateView } from '@/lib/api';
 import { api } from '@/lib/api';
-import { formatSeniority } from '@/lib/utils';
+import { formatSeniority, formatInr } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
 import { PipelineTimeline } from './pipeline-timeline';
 import { FeedbackFormModal } from './feedback-form-modal';
@@ -176,6 +176,20 @@ export function PipelineCandidateCard({
                 {candidate.totalExperience}y &middot; {formatSeniority(candidate.seniority)}
               </span>
             </div>
+
+            {/* Proposed rates */}
+            {candidate.proposedRateHourly && (
+              <div className="mt-1.5 flex items-center flex-wrap gap-x-3 gap-y-1 text-xs">
+                <span className="text-green-600 dark:text-green-400">
+                  Quoted: {formatInr(candidate.proposedRateHourly)}/hr &middot; {formatInr(candidate.proposedRateMonthly!)}/mo
+                </span>
+                {candidate.internalRateHourly && (
+                  <span className="text-gray-500 dark:text-gray-400">
+                    Internal: {formatInr(candidate.internalRateHourly)}/hr &middot; {formatInr(candidate.internalRateMonthly!)}/mo
+                  </span>
+                )}
+              </div>
+            )}
 
             {/* Stage-specific info */}
             {stage === 'submitted_to_client' && daysSinceStageEntry !== null && (

@@ -268,6 +268,12 @@ export const ShortlistCandidateRequestSchema = z.object({
   requirementId: z.string().min(1),
   candidateId: z.string().min(1),
   notes: z.string().max(1000).optional(),
+  proposedRateHourly: z.number().positive().optional(),
+  proposedRateMonthly: z.number().positive().optional(),
+  proposedRateAnnual: z.number().positive().optional(),
+  internalRateHourly: z.number().positive().optional(),
+  internalRateMonthly: z.number().positive().optional(),
+  internalRateAnnual: z.number().positive().optional(),
 });
 
 // Mark Not Suitable Request Validation

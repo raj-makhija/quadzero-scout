@@ -1960,6 +1960,12 @@ Authorization: Bearer <jwe_token>
 - `requirementId`: Required, string, UUID format
 - `candidateId`: Required, string, UUID format
 - `notes`: Optional, string, max 1000 characters
+- `proposedRateHourly`: Optional, number, positive — recommended quoted rate per hour (INR)
+- `proposedRateMonthly`: Optional, number, positive — recommended quoted rate per month (INR)
+- `proposedRateAnnual`: Optional, number, positive — recommended quoted rate per annum (INR)
+- `internalRateHourly`: Optional, number, positive — minimum acceptable rate per hour (INR)
+- `internalRateMonthly`: Optional, number, positive — minimum acceptable rate per month (INR)
+- `internalRateAnnual`: Optional, number, positive — minimum acceptable rate per annum (INR)
 
 **Notes:**
 - Returns 409 (`ALREADY_SHORTLISTED`) if the candidate is already shortlisted for the requirement (status is `shortlisted`, `submitted`, or `rejected`)
@@ -2418,7 +2424,13 @@ Authorization: Bearer <jwe_token>
           "stageEnteredAt": "2026-04-01T10:30:00Z",
           "lastActivityAt": "2026-04-01T10:30:00Z",
           "taggedBy": "user_r1e2c3",
-          "taggedAt": "2026-04-01T10:30:00Z"
+          "taggedAt": "2026-04-01T10:30:00Z",
+          "proposedRateHourly": 1250,
+          "proposedRateMonthly": 200000,
+          "proposedRateAnnual": 2400000,
+          "internalRateHourly": 950,
+          "internalRateMonthly": 152000,
+          "internalRateAnnual": 1824000
         }
       ],
       "submitted_to_client": [],
@@ -2434,6 +2446,9 @@ Authorization: Bearer <jwe_token>
     },
     "summary": {
       "total": 5,
+      "activeCount": 4,
+      "exitedCount": 1,
+      "notSuitableCount": 0,
       "byStage": {
         "shortlisted": 2,
         "submitted_to_client": 1,
@@ -2447,7 +2462,10 @@ Authorization: Bearer <jwe_token>
 
 **Notes:**
 - Each candidate card includes denormalized profile fields (name, headline) for display
-- Candidates with `not_suitable` status are excluded
+- `proposedRateHourly/Monthly/Annual`: Recommended quoted billing rate (INR), snapshot from shortlist time. Optional — may be absent for legacy shortlist entries.
+- `internalRateHourly/Monthly/Annual`: Minimum acceptable billing rate (INR), snapshot from shortlist time. Optional — may be absent for legacy shortlist entries.
+- `exitedCount` includes `rejected_by_client`, `candidate_withdrawn`, and `on_hold` candidates
+- `notSuitableCount` is tracked separately from `exitedCount` — not-suitable candidates are not counted as exited
 - Results are sorted by `last_activity_at` descending within each stage
 
 ---

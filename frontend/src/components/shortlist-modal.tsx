@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react';
 import { X, AlertCircle, Loader2 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
-import type { CandidateSearchResult, SearchCriteria } from '@/lib/api';
+import type { CandidateSearchResult, SearchCriteria, PricingOutput } from '@/lib/api';
 import { PricingPanel } from '@/components/PricingPanel';
 import { getScreeningStatus, isScreeningExpired } from '@/components/screening-modal';
 import {
@@ -59,6 +59,7 @@ export function ShortlistModal({
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [confirmNotInterested, setConfirmNotInterested] = useState(false);
+  const [pricingResult, setPricingResult] = useState<PricingOutput | null>(null);
 
   const isShortlistMode = requirementContext != null;
 
@@ -70,7 +71,15 @@ export function ShortlistModal({
       await api.shortlistCandidate(
         requirementContext.requirementId,
         candidate.candidateId,
-        notes || undefined
+        notes || undefined,
+        pricingResult ? {
+          proposedRateHourly: pricingResult.finalQuotedHourly,
+          proposedRateMonthly: pricingResult.finalQuotedMonthly,
+          proposedRateAnnual: pricingResult.finalQuotedAnnual,
+          internalRateHourly: pricingResult.minimumBillingHourly,
+          internalRateMonthly: pricingResult.minimumBillingMonthly,
+          internalRateAnnual: pricingResult.minimumBillingAnnual,
+        } : undefined
       );
       onShortlisted(candidate.candidateId);
     } catch (err) {
@@ -387,6 +396,7 @@ export function ShortlistModal({
               expectedCtcType={candidate.expectedCtcType}
               isInternalRecruiter={isInternalRecruiter}
               onCtcUpdated={onCtcUpdated}
+              onPricingCalculated={setPricingResult}
               requirementContext={requirementContext ? {
                 contractDurationMonths: requirementContext.contractDurationMonths,
                 paymentTermsDays: requirementContext.paymentTermsDays,

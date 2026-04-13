@@ -513,10 +513,18 @@ class ApiClient {
   }
 
   // Shortlist endpoints
-  async shortlistCandidate(requirementId: string, candidateId: string, notes?: string) {
+  async shortlistCandidate(
+    requirementId: string,
+    candidateId: string,
+    notes?: string,
+    rates?: {
+      proposedRateHourly: number; proposedRateMonthly: number; proposedRateAnnual: number;
+      internalRateHourly: number; internalRateMonthly: number; internalRateAnnual: number;
+    }
+  ) {
     return this.request<{ success: boolean }>('/recruiter/shortlist', {
       method: 'POST',
-      body: JSON.stringify({ requirementId, candidateId, notes }),
+      body: JSON.stringify({ requirementId, candidateId, notes, ...rates }),
     });
   }
 
@@ -1697,6 +1705,12 @@ export interface PipelineCandidateView {
   linkedinUrl?: string;
   githubUrl?: string;
   notInterested?: boolean;
+  proposedRateHourly?: number;
+  proposedRateMonthly?: number;
+  proposedRateAnnual?: number;
+  internalRateHourly?: number;
+  internalRateMonthly?: number;
+  internalRateAnnual?: number;
 }
 
 export interface PipelineViewResponse {
@@ -1705,6 +1719,7 @@ export interface PipelineViewResponse {
     total: number;
     activeCount: number;
     exitedCount: number;
+    notSuitableCount: number;
     byStage: Record<string, number>;
   };
 }

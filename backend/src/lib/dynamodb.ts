@@ -1406,19 +1406,32 @@ export async function updateShortlistStatus(
   requirementId: string,
   candidateId: string,
   status: string,
-  updatedBy: string
+  updatedBy: string,
+  extraFields?: Record<string, unknown>
 ): Promise<void> {
+  let updateExpr = 'SET #status = :status, tagged_by = :by, tagged_at = :at';
+  const exprNames: Record<string, string> = { '#status': 'status' };
+  const exprValues: Record<string, unknown> = {
+    ':status': status,
+    ':by': updatedBy,
+    ':at': new Date().toISOString(),
+  };
+
+  if (extraFields) {
+    for (const [key, value] of Object.entries(extraFields)) {
+      const safeKey = key.replace(/[^a-zA-Z0-9_]/g, '_');
+      updateExpr += `, ${key} = :${safeKey}`;
+      exprValues[`:${safeKey}`] = value;
+    }
+  }
+
   await docClient.send(
     new UpdateCommand({
       TableName: config.dynamodb.shortlistsTable,
       Key: { requirement_id: requirementId, candidate_id: candidateId },
-      UpdateExpression: 'SET #status = :status, tagged_by = :by, tagged_at = :at',
-      ExpressionAttributeNames: { '#status': 'status' },
-      ExpressionAttributeValues: {
-        ':status': status,
-        ':by': updatedBy,
-        ':at': new Date().toISOString(),
-      },
+      UpdateExpression: updateExpr,
+      ExpressionAttributeNames: exprNames,
+      ExpressionAttributeValues: exprValues,
     })
   );
 }

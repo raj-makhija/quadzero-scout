@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { api, PricingOutput } from '@/lib/api';
+import { formatInr } from '@/lib/utils';
 
 interface RequirementContext {
   contractDurationMonths?: number;
@@ -17,16 +18,9 @@ interface PricingPanelProps {
   expectedCtcType?: string;
   isInternalRecruiter?: boolean;
   onCtcUpdated?: (expectedCtc: number, currentCtc?: number) => void;
+  onPricingCalculated?: (result: PricingOutput | null) => void;
   requirementContext?: RequirementContext;
 }
-
-const formatInr = (value: number): string => {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(value);
-};
 
 const BUDGET_CASE_LABELS: Record<string, string> = {
   A: 'Above client budget — margin constrained',
@@ -42,6 +36,7 @@ export function PricingPanel({
   expectedCtcType,
   isInternalRecruiter,
   onCtcUpdated,
+  onPricingCalculated,
   requirementContext,
 }: PricingPanelProps) {
   const [contractDuration, setContractDuration] = useState(
@@ -93,8 +88,10 @@ export function PricingPanel({
 
       const res = await api.calculatePricing(input);
       setResult(res);
+      onPricingCalculated?.(res);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Calculation failed');
+      onPricingCalculated?.(null);
     } finally {
       setLoading(false);
     }

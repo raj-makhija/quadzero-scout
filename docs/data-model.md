@@ -613,6 +613,13 @@ Links candidates to requirements via recruiter shortlisting (tagging).
 | expected_joining_date | String | No | Expected joining date (YYYY-MM-DD) |
 | rejection_reason | String | No | Reason for rejection or withdrawal |
 | last_activity_at | String | No | ISO 8601 timestamp of most recent pipeline activity |
+| proposed_rate_hourly | Number | No | Proposed billing rate per hour (INR), snapshot at shortlist time |
+| proposed_rate_monthly | Number | No | Proposed billing rate per month (INR), snapshot at shortlist time |
+| proposed_rate_annual | Number | No | Proposed billing rate per annum (INR), snapshot at shortlist time |
+| internal_rate_hourly | Number | No | Minimum acceptable billing rate per hour (INR), snapshot at shortlist time |
+| internal_rate_monthly | Number | No | Minimum acceptable billing rate per month (INR), snapshot at shortlist time |
+| internal_rate_annual | Number | No | Minimum acceptable billing rate per annum (INR), snapshot at shortlist time |
+| proposed_rate_calculated_at | String | No | ISO 8601 timestamp when the proposed rate was calculated |
 
 **Example Item:**
 ```json
