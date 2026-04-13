@@ -95,7 +95,7 @@ export function ShortlistModal({
     } finally {
       setLoading(false);
     }
-  }, [requirementContext, candidate.candidateId, notes, onShortlisted]);
+  }, [requirementContext, candidate.candidateId, notes, onShortlisted, pricingResult]);
 
   const screeningStatus = getScreeningStatus(candidate.lastScreenedAt, candidate.notInterested);
 

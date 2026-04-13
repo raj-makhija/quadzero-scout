@@ -95,7 +95,7 @@ export function PricingPanel({
     } finally {
       setLoading(false);
     }
-  }, [effectiveExpectedCtc, candidateExperienceYears, contractDuration, paymentTerms, engagementModel, budgetMin, budgetMax]);
+  }, [effectiveExpectedCtc, candidateExperienceYears, contractDuration, paymentTerms, engagementModel, budgetMin, budgetMax, onPricingCalculated]);
 
   // Auto-calculate after CTC is saved
   const [autoCalcPending, setAutoCalcPending] = useState(false);
