@@ -125,6 +125,11 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 
 ### Candidate Resume Upload Flow
 
+The analysis step (step 5) uses a **Lambda Function URL** instead of API Gateway to
+bypass the 30-second HTTP API integration timeout. The frontend calls a same-origin
+Next.js proxy route (`/api/candidate/analyze`) which forwards server-to-server to
+the Function URL, allowing the LLM parsing up to 60 seconds.
+
 ```
 ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
 │ Candidate│     │ Frontend │     │  Lambda  │     │    S3    │     │   LLM    │
@@ -135,7 +140,7 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
      │                │                │                │                │
      │                │ 2. Request     │                │                │
      │                │    Upload URL  │                │                │
-     │                │───────────────>│                │                │
+     │                │───────────────>│ (API Gateway)  │                │
      │                │                │                │                │
      │                │                │ 3. Generate    │                │
      │                │                │    Pre-signed  │                │
@@ -151,6 +156,9 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
      │                │                │                │                │
      │                │ 5. Trigger     │                │                │
      │                │    Analysis    │                │                │
+     │                │  (Next.js SSR  │                │                │
+     │                │   proxy →      │                │                │
+     │                │   Function URL)│                │                │
      │                │───────────────>│                │                │
      │                │                │                │                │
      │                │                │ 6. Download    │                │
@@ -175,12 +183,18 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
      │───────────────>│                │                │                │
      │                │                │                │                │
      │                │ 9. Save Profile│                │                │
-     │                │───────────────>│                │                │
+     │                │───────────────>│ (API Gateway)  │                │
      │                │                │                │                │
      │                │                │ 10. Store in   │                │
      │                │                │     DynamoDB   │                │
      │                │                │                │                │
 ```
+
+**Function URL proxy details:**
+- Frontend route: `POST /api/candidate/analyze` (same-origin, no CORS needed)
+- Server-side proxy at `frontend/src/app/api/candidate/analyze/route.ts`
+- Reads `ANALYZE_FUNCTION_URL` env var (set in Amplify Console per branch)
+- Falls back to API Gateway route if env var not set (local dev)
 
 ### Recruiter Search Flow
 

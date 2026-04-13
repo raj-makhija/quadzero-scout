@@ -186,6 +186,14 @@ functions:
     handler: src/handlers/candidate/analyze.handler
     timeout: 60
     memorySize: 1024
+    url:
+      cors:
+        allowedOrigins:
+          - '*'
+        allowedHeaders:
+          - Content-Type
+        allowedMethods:
+          - POST
     events:
       - httpApi:
           path: /candidate/analyze
@@ -758,3 +766,9 @@ resources:
         Type: AWS::Lambda::Function
         Properties:
           RecursiveLoop: Allow
+    Outputs:
+      CandidateAnalyzeFunctionUrl:
+        Description: Lambda Function URL for candidateAnalyze (bypasses API Gateway 30s timeout)
+        Value: !GetAtt CandidateAnalyzeLambdaFunctionUrl.FunctionUrl
+        Export:
+          Name: ${self:service}-${self:provider.stage}-CandidateAnalyzeFunctionUrl
