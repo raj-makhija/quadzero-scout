@@ -22,6 +22,7 @@ const FIELD_MAP: Record<string, string> = {
   parsedCriteria: 'parsed_criteria',
   additionalFields: 'additional_fields',
   contactPersonName: 'contact_person_name',
+  isRateGstInclusive: 'is_rate_gst_inclusive',
 };
 
 function deepEqual(a: unknown, b: unknown): boolean {

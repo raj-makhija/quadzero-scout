@@ -40,6 +40,7 @@ export default function PostRequirementPage() {
   const [coreSkill, setCoreSkill] = useState('');
   const [additionalFields, setAdditionalFields] = useState<AdditionalFieldDefinition[]>([]);
   const [contactPersonName, setContactPersonName] = useState('');
+  const [isRateGstInclusive, setIsRateGstInclusive] = useState(false);
 
   // Client defaults
   const [clientDefaults, setClientDefaults] = useState<ClientDefaultsResponse | null>(null);
@@ -211,6 +212,7 @@ export default function PostRequirementPage() {
         duplicateOf,
         additionalFields: additionalFields.length > 0 ? additionalFields : undefined,
         contactPersonName: contactPersonName.trim() || undefined,
+        isRateGstInclusive: isRateGstInclusive || undefined,
       });
 
       // Persist payment terms to client if recruiter entered them
@@ -458,6 +460,15 @@ export default function PostRequirementPage() {
                       className="input w-28"
                     />
                   </div>
+                  <label className="flex items-center gap-1.5 mt-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isRateGstInclusive}
+                      onChange={(e) => setIsRateGstInclusive(e.target.checked)}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    Rate inclusive of GST (18%)
+                  </label>
                 </div>
 
                 {/* Contract Duration */}
@@ -758,6 +769,7 @@ export default function PostRequirementPage() {
                   setConsolidated(false);
                   setConsolidateResult(null);
                   setAdditionalFields([]);
+                  setIsRateGstInclusive(false);
                   setError(null);
                 }}
                 className="btn-secondary"

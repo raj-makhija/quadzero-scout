@@ -77,6 +77,7 @@ export default function RecruiterSearchPage() {
     budgetMinLpa?: number;
     budgetMaxLpa?: number;
     additionalFields?: AdditionalFieldDefinition[];
+    isRateGstInclusive?: boolean;
   } | null>(() => {
     if (prefilled?.requirementId && prefilled?.requirementMeta) {
       return { requirementId: prefilled.requirementId, ...prefilled.requirementMeta };
@@ -109,6 +110,7 @@ export default function RecruiterSearchPage() {
   const [endClientOptions, setEndClientOptions] = useState<string[]>([]);
   const [additionalFields, setAdditionalFields] = useState<AdditionalFieldDefinition[]>([]);
   const [contactPersonName, setContactPersonName] = useState('');
+  const [isRateGstInclusive, setIsRateGstInclusive] = useState(false);
 
   // Debounced client defaults lookup
   const lookupClientDefaults = useCallback((name: string) => {
@@ -212,6 +214,7 @@ export default function RecruiterSearchPage() {
             budgetMinLpa: req.budgetMinLpa,
             budgetMaxLpa: req.budgetMaxLpa,
             additionalFields: req.additionalFields,
+            isRateGstInclusive: req.isRateGstInclusive,
           });
         }
       })
@@ -511,6 +514,7 @@ export default function RecruiterSearchPage() {
         status: 'active',
         additionalFields: additionalFields.length > 0 ? additionalFields : undefined,
         contactPersonName: contactPersonName.trim() || undefined,
+        isRateGstInclusive: isRateGstInclusive || undefined,
       });
 
       // Capture requirement ID so shortlisting is available from search results
@@ -525,6 +529,7 @@ export default function RecruiterSearchPage() {
         budgetMinLpa: budgetMinLpa ? parseFloat(budgetMinLpa) : undefined,
         budgetMaxLpa: budgetMaxLpa ? parseFloat(budgetMaxLpa) : undefined,
         additionalFields: additionalFields.length > 0 ? additionalFields : undefined,
+        isRateGstInclusive: isRateGstInclusive || undefined,
       });
 
       // Persist payment terms to client if recruiter entered them for a client without terms
@@ -592,6 +597,7 @@ export default function RecruiterSearchPage() {
           : paymentTermsDays ? parseInt(paymentTermsDays) : undefined,
         budgetMinLpa: budgetMinLpa ? parseFloat(budgetMinLpa) : undefined,
         budgetMaxLpa: budgetMaxLpa ? parseFloat(budgetMaxLpa) : undefined,
+        isRateGstInclusive: isRateGstInclusive || undefined,
       });
 
       setConsolidated(true);
@@ -831,6 +837,15 @@ export default function RecruiterSearchPage() {
                     <span className="text-gray-500 dark:text-gray-400">to</span>
                     <input type="number" min="0" step="0.5" value={budgetMaxLpa} onChange={(e) => setBudgetMaxLpa(e.target.value)} placeholder="Max" className="input w-28" />
                   </div>
+                  <label className="flex items-center gap-1.5 mt-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isRateGstInclusive}
+                      onChange={(e) => setIsRateGstInclusive(e.target.checked)}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    Rate inclusive of GST (18%)
+                  </label>
                 </div>
                 <div>
                   <label className="label">Core Skill</label>

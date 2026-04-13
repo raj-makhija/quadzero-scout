@@ -24,6 +24,7 @@ interface RequirementContext {
   paymentTermsDays?: number;
   budgetMinLpa?: number;
   budgetMaxLpa?: number;
+  isRateGstInclusive?: boolean;
 }
 
 interface ShortlistModalProps {
@@ -401,6 +402,7 @@ export function ShortlistModal({
                 contractDurationMonths: requirementContext.contractDurationMonths,
                 paymentTermsDays: requirementContext.paymentTermsDays,
                 engagementModel: requirementContext.engagementModel,
+                isRateGstInclusive: requirementContext.isRateGstInclusive,
               } : undefined}
             />
           </div>

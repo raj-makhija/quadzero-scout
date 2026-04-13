@@ -8,6 +8,7 @@ interface RequirementContext {
   contractDurationMonths?: number;
   paymentTermsDays?: number;
   engagementModel?: string;
+  isRateGstInclusive?: boolean;
 }
 
 interface PricingPanelProps {
@@ -79,6 +80,10 @@ export function PricingPanel({
 
       if (engagementModel) {
         input.engagementModel = engagementModel;
+      }
+
+      if (requirementContext?.isRateGstInclusive) {
+        input.isRateGstInclusive = true;
       }
 
       if (budgetMin && budgetMax) {
@@ -217,6 +222,15 @@ export function PricingPanel({
           </span>
         )}
       </h3>
+
+      {/* GST-inclusive indicator */}
+      {requirementContext?.isRateGstInclusive && (
+        <div className="mb-3 p-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+          <p className="text-xs text-amber-700 dark:text-amber-400">
+            GST-inclusive rate: Budget will be reduced by 18% for margin calculations.
+          </p>
+        </div>
+      )}
 
       {/* Input Form */}
       <div className="grid grid-cols-2 gap-3 mb-4">
@@ -362,11 +376,21 @@ export function PricingPanel({
               <div className="text-xs font-medium text-blue-800 dark:text-blue-300 mb-2">Budget Optimization</div>
               <div className="space-y-1 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Client Budget</span>
+                  <span className="text-gray-600 dark:text-gray-400">
+                    Client Budget{result.isRateGstInclusive ? ' (incl. GST)' : ''}
+                  </span>
                   <span className="font-medium text-gray-900 dark:text-gray-100">
                     {formatInr(result.budgetOptimization.clientBudgetMinHourly)} &ndash; {formatInr(result.budgetOptimization.clientBudgetMaxHourly)}/hr
                   </span>
                 </div>
+                {result.isRateGstInclusive && result.budgetOptimization.gstDeductedBudgetMinHourly != null && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 dark:text-gray-400">Effective Budget (excl. GST)</span>
+                    <span className="font-medium text-amber-600 dark:text-amber-400">
+                      {formatInr(Math.round(result.budgetOptimization.gstDeductedBudgetMinHourly))} &ndash; {formatInr(Math.round(result.budgetOptimization.gstDeductedBudgetMaxHourly!))}/hr
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-gray-600 dark:text-gray-400">Internal Ideal</span>
                   <span className="font-medium text-gray-900 dark:text-gray-100">

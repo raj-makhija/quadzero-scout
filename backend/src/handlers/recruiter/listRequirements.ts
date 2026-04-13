@@ -45,6 +45,7 @@ async function handleRequest(
       notifyRecruiterIds: item.notify_recruiter_ids,
       additionalFields: item.additional_fields || [],
       contactPersonName: item.contact_person_name,
+      isRateGstInclusive: item.is_rate_gst_inclusive ?? false,
       coreSkill: item.parsed_criteria?.coreSkill || null,
     }));
 

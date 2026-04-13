@@ -30,6 +30,7 @@ const FIELD_LABELS: Record<string, string> = {
   paymentTermsDays: 'Payment Terms',
   jobTitle: 'Job Title',
   contactPersonName: 'Contact Person',
+  isRateGstInclusive: 'Rate GST Inclusive',
   jdText: 'Job Description',
   parsedCriteria: 'Parsed Criteria',
   additionalFields: 'Additional Fields',
@@ -42,6 +43,7 @@ function formatFieldValue(field: string, value: unknown): string {
   if (field === 'contractDurationMonths') return `${value} months`;
   if (field === 'paymentTermsDays') return `Net ${value} days`;
   if (field === 'budgetMinLpa' || field === 'budgetMaxLpa') return `${value} LPA`;
+  if (field === 'isRateGstInclusive') return value ? 'Yes' : 'No';
   if (field === 'parsedCriteria' || field === 'additionalFields') return JSON.stringify(value, null, 2).slice(0, 200) + '...';
   if (field === 'jdText') return String(value).slice(0, 100) + (String(value).length > 100 ? '...' : '');
   return String(value);
@@ -57,6 +59,7 @@ interface EditFormData {
   contractDurationMonths: string;
   paymentTermsDays: string;
   contactPersonName: string;
+  isRateGstInclusive: boolean;
   jdText: string;
   jobTitle: string;
   mustHaveSkills: string[];
@@ -129,6 +132,7 @@ export default function RequirementDetailPage() {
     contractDurationMonths: '',
     paymentTermsDays: '',
     contactPersonName: '',
+    isRateGstInclusive: false,
     jdText: '',
     jobTitle: '',
     mustHaveSkills: [],
@@ -154,6 +158,7 @@ export default function RequirementDetailPage() {
       contractDurationMonths: requirement.contractDurationMonths != null ? String(requirement.contractDurationMonths) : '',
       paymentTermsDays: requirement.paymentTermsDays != null ? String(requirement.paymentTermsDays) : '',
       contactPersonName: requirement.contactPersonName || '',
+      isRateGstInclusive: requirement.isRateGstInclusive ?? false,
       jdText: requirement.jdText || '',
       jobTitle: requirement.jobTitle || '',
       mustHaveSkills: requirement.parsedCriteria.mustHaveSkills || [],
@@ -205,6 +210,7 @@ export default function RequirementDetailPage() {
       if (newPayTerms !== oldPayTerms) payload.paymentTermsDays = newPayTerms;
 
       if (editForm.contactPersonName !== (requirement.contactPersonName || '')) payload.contactPersonName = editForm.contactPersonName || null;
+      if (editForm.isRateGstInclusive !== (requirement.isRateGstInclusive ?? false)) payload.isRateGstInclusive = editForm.isRateGstInclusive;
       if (editForm.jdText !== requirement.jdText) payload.jdText = editForm.jdText;
       if (editForm.jobTitle !== (requirement.jobTitle || '')) payload.jobTitle = editForm.jobTitle || undefined;
 
@@ -338,6 +344,7 @@ export default function RequirementDetailPage() {
         paymentTermsDays: requirement.paymentTermsDays,
         budgetMinLpa: requirement.budgetMinLpa,
         budgetMaxLpa: requirement.budgetMaxLpa,
+        isRateGstInclusive: requirement.isRateGstInclusive,
         additionalFields: requirement.additionalFields,
       },
     }));
@@ -619,6 +626,17 @@ export default function RequirementDetailPage() {
                           step={0.5}
                         />
                       </div>
+                      <div className="sm:col-span-2">
+                        <label className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={editForm.isRateGstInclusive}
+                            onChange={(e) => setEditForm(f => ({ ...f, isRateGstInclusive: e.target.checked }))}
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          Rate inclusive of GST (18%)
+                        </label>
+                      </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Contract Duration (months)</label>
                         <input
@@ -723,6 +741,9 @@ export default function RequirementDetailPage() {
                           <label className="text-xs text-gray-500 dark:text-gray-400">Budget Range</label>
                           <p className="font-medium text-gray-900 dark:text-gray-100">
                             {requirement.budgetMinLpa ?? '0'} - {requirement.budgetMaxLpa ?? '∞'} LPA
+                            {requirement.isRateGstInclusive && (
+                              <span className="ml-1.5 text-xs font-medium text-amber-600 dark:text-amber-400">(incl. GST)</span>
+                            )}
                           </p>
                         </div>
                       )}
