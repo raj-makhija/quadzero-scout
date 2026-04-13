@@ -786,6 +786,14 @@ All functional and non-functional aspects of Quadzero Scout covering:
 | **Precondition** | Primary LLM provider returns error |
 | **Expected Result** | Retry with exponential backoff; after exhausting retries, return HTTP 422 `LLM_PARSE_ERROR` |
 
+### TC-PARSEJD-011a: parseJobDescription token-budget retry
+| Field | Value |
+|-------|-------|
+| **ID** | TC-PARSEJD-011a |
+| **Priority** | P1 |
+| **Precondition** | LLM returns truncated/invalid JSON because the response would not fit in 2048 output tokens |
+| **Expected Result** | `parseJobDescription()` first attempts the call with `maxTokens: 2048`; on parse or schema-validation failure it retries once with `maxTokens: 4096` and returns the parsed output. If the second attempt also fails, the original schema-validation error is thrown. |
+
 ### TC-PARSEJD-012: Frontend JD input and parse flow
 | Field | Value |
 |-------|-------|

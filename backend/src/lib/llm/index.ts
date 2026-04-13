@@ -246,17 +246,39 @@ export async function parseJobDescription(jdText: string, jobTitle?: string): Pr
     { role: 'user', content: userPrompt },
   ];
 
-  const response = await provider.completeWithRetry(messages, {
-    temperature: 0,
-    maxTokens: 2048,
-  }, config.llm.maxRetries);
+  // Try with a tighter token budget first to control cost; on parse or schema
+  // failure (most commonly truncation when skillSynonyms inflate the response),
+  // retry once with a larger budget.
+  const attempt = async (maxTokens: number) => {
+    const response = await provider.completeWithRetry(messages, {
+      temperature: 0,
+      maxTokens,
+    }, config.llm.maxRetries);
+    const parsed = provider.parseJsonResponse<unknown>(response.content);
+    const validated = LLMJDOutputSchema.safeParse(parsed);
+    return { parsed, validated };
+  };
 
-  const parsed = provider.parseJsonResponse<unknown>(response.content);
+  let parsed: unknown;
+  let validated: ReturnType<typeof LLMJDOutputSchema.safeParse>;
+  try {
+    ({ parsed, validated } = await attempt(2048));
+    if (!validated.success) {
+      throw new Error('schema validation failed at 2048 tokens');
+    }
+  } catch (err) {
+    console.warn(
+      'parseJobDescription: 2048-token attempt failed, retrying at 4096:',
+      err instanceof Error ? err.message : err
+    );
+    ({ parsed, validated } = await attempt(4096));
+  }
 
-  // Validate against schema
-  const validated = LLMJDOutputSchema.safeParse(parsed);
   if (!validated.success) {
-    console.error('LLM output validation failed:', validated.error);
+    console.error('LLM output validation failed:', {
+      zodErrors: validated.error.issues,
+      rawOutput: JSON.stringify(parsed).substring(0, 1000),
+    });
     throw new Error(`Invalid LLM output structure: ${validated.error.message}`);
   }
 
