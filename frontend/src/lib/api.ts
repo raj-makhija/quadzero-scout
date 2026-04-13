@@ -79,12 +79,36 @@ class ApiClient {
       (headers as Record<string, string>)['Authorization'] = `Bearer ${this.token}`;
     }
 
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      ...options,
-      headers,
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${endpoint}`, {
+        ...options,
+        headers,
+      });
+    } catch (err) {
+      throw new ApiError(
+        'NETWORK_ERROR',
+        err instanceof Error ? err.message : 'Network request failed'
+      );
+    }
 
-    const data: ApiResponse<T> = await response.json();
+    let data: ApiResponse<T>;
+    try {
+      const raw = await response.json();
+      if (typeof raw === 'object' && raw !== null && 'success' in raw) {
+        data = raw as ApiResponse<T>;
+      } else {
+        // Non-standard response (e.g. API Gateway timeout: {"message":"Internal Server Error"})
+        const gatewayMessage = (raw as Record<string, unknown>)?.message || `HTTP ${response.status}`;
+        throw new ApiError('GATEWAY_ERROR', `Server error: ${gatewayMessage}`);
+      }
+    } catch (err) {
+      if (err instanceof ApiError) throw err;
+      throw new ApiError(
+        'PARSE_ERROR',
+        `Invalid response from server (HTTP ${response.status})`
+      );
+    }
 
     if (!data.success) {
       // Force sign-out on expired session
@@ -116,14 +140,33 @@ class ApiClient {
   }
 
   async analyzeResume(s3Key: string, supplementaryText?: string) {
-    return this.request<{
+    // Route through server-side proxy to bypass API Gateway 30s timeout.
+    // The proxy forwards to the Lambda Function URL which supports up to 60s.
+    const response = await fetch('/api/candidate/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ s3Key, ...(supplementaryText ? { supplementaryText } : {}) }),
+    });
+
+    const data: ApiResponse<{
       extractedProfile: ExtractedProfile;
       confidence: number;
       rawTextLength: number;
-    }>('/candidate/analyze', {
-      method: 'POST',
-      body: JSON.stringify({ s3Key, ...(supplementaryText ? { supplementaryText } : {}) }),
-    });
+    }> = await response.json();
+
+    if (!data.success) {
+      throw new ApiError(
+        data.error?.code || 'UNKNOWN_ERROR',
+        data.error?.message || 'Resume analysis failed',
+        data.error?.details
+      );
+    }
+
+    return data.data as {
+      extractedProfile: ExtractedProfile;
+      confidence: number;
+      rawTextLength: number;
+    };
   }
 
   async uploadAndAnalyze(file: File, supplementaryText?: string) {

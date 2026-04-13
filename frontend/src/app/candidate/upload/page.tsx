@@ -256,7 +256,7 @@ export default function UploadPage() {
           <div className="mt-6 flex justify-center">
             <button
               onClick={handleUpload}
-              disabled={!file || uploadState !== 'idle'}
+              disabled={!file || (uploadState !== 'idle' && uploadState !== 'error')}
               className="btn-primary px-8 py-3 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {uploadState === 'idle' && 'Upload & Analyze'}
