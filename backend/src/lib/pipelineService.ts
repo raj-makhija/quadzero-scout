@@ -25,8 +25,10 @@ export const ACTIVE_STAGES = new Set([
 ]);
 
 export const EXIT_STAGES = new Set([
-  'rejected_by_client', 'rejected', 'candidate_withdrawn', 'on_hold', 'not_suitable',
+  'rejected_by_client', 'rejected', 'candidate_withdrawn', 'on_hold',
 ]);
+
+export const NOT_SUITABLE_STAGES = new Set(['not_suitable']);
 
 /**
  * Get the effective pipeline stage from a shortlist item.

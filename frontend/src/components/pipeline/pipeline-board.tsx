@@ -162,8 +162,10 @@ export function PipelineBoard({ requirementId }: PipelineBoardProps) {
       // Recalculate summary
       const activeSet = new Set(ACTIVE_STAGES as readonly string[]);
       const exitedSet = new Set(EXITED_STAGES as readonly string[]);
+      const notSuitableSet = new Set(NOT_SUITABLE_STAGES as readonly string[]);
       let activeCount = 0;
       let exitedCount = 0;
+      let notSuitableCount = 0;
       const byStage: Record<string, number> = {};
       let total = 0;
       for (const [stage, candidates] of Object.entries(newStages)) {
@@ -171,9 +173,10 @@ export function PipelineBoard({ requirementId }: PipelineBoardProps) {
         total += candidates.length;
         if (activeSet.has(stage)) activeCount += candidates.length;
         if (exitedSet.has(stage)) exitedCount += candidates.length;
+        if (notSuitableSet.has(stage)) notSuitableCount += candidates.length;
       }
 
-      return { stages: newStages, summary: { total, activeCount, exitedCount, byStage } };
+      return { stages: newStages, summary: { total, activeCount, exitedCount, notSuitableCount, byStage } };
     });
     // Reconcile with server in background
     fetchData();
