@@ -111,12 +111,16 @@ export default function PostRequirementPage() {
         if (['full_time_regular', 'full_time_contract', 'part_time_contract'].includes(em)) {
           setEngagementModel(em as EngagementModel);
         }
+      } else {
+        setEngagementModel('full_time_contract');
       }
       if (response.parsedCriteria.payroll) {
         const p = response.parsedCriteria.payroll;
         if (['quadzero', 'client'].includes(p)) {
           setPayroll(p as Payroll);
         }
+      } else {
+        setPayroll('quadzero');
       }
       if (response.parsedCriteria.budgetMinLpa != null) {
         setBudgetMinLpa(response.parsedCriteria.budgetMinLpa.toString());

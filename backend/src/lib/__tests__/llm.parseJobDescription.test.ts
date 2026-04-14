@@ -129,6 +129,74 @@ describe('parseJobDescription() — token-budget retry behavior', () => {
     expect(output.location).toBe('Bangalore');
   });
 
+  it('treats a single budget value as budgetMaxLpa (not min)', async () => {
+    const singleBudgetJson = JSON.stringify({
+      mustHaveSkills: ['java'],
+      goodToHaveSkills: [],
+      minExperience: 3,
+      maxExperience: null,
+      seniority: ['mid'],
+      availability: [],
+      location: null,
+      remote: false,
+      industries: [],
+      roles: ['Java Developer'],
+      rateRaw: null,
+      rateUnit: null,
+      rateLpa: null,
+      clientName: null,
+      endClient: null,
+      engagementModel: null,
+      payroll: null,
+      budgetMinLpa: 20,
+      budgetMaxLpa: null,
+      coreSkill: 'java',
+      contractDurationMonths: null,
+      paymentTermsDays: null,
+      skillSynonyms: { java: ['j2ee'] },
+    });
+    stubProvider.handler = async () => ({ content: singleBudgetJson });
+
+    const { output } = await parseJobDescription('Java developer, budget 20 LPA');
+
+    expect(output.budgetMaxLpa).toBe(20);
+    expect(output.budgetMinLpa).toBeNull();
+  });
+
+  it('keeps both budget values when range is provided', async () => {
+    const rangeBudgetJson = JSON.stringify({
+      mustHaveSkills: ['java'],
+      goodToHaveSkills: [],
+      minExperience: 3,
+      maxExperience: null,
+      seniority: ['mid'],
+      availability: [],
+      location: null,
+      remote: false,
+      industries: [],
+      roles: ['Java Developer'],
+      rateRaw: null,
+      rateUnit: null,
+      rateLpa: null,
+      clientName: null,
+      endClient: null,
+      engagementModel: null,
+      payroll: null,
+      budgetMinLpa: 15,
+      budgetMaxLpa: 25,
+      coreSkill: 'java',
+      contractDurationMonths: null,
+      paymentTermsDays: null,
+      skillSynonyms: { java: ['j2ee'] },
+    });
+    stubProvider.handler = async () => ({ content: rangeBudgetJson });
+
+    const { output } = await parseJobDescription('Java developer, budget 15-25 LPA');
+
+    expect(output.budgetMinLpa).toBe(15);
+    expect(output.budgetMaxLpa).toBe(25);
+  });
+
   it('throws when both 2048 and 4096 attempts fail', async () => {
     const handler = vi.fn(async (): Promise<LLMResponse> => ({
       content: 'not json at all',

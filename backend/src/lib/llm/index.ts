@@ -78,9 +78,10 @@ Rules:
 9. For skillSynonyms: generate 2-3 alternative phrasings for each extracted skill (both primarySkills and secondarySkills). Include common abbreviations, longer/shorter forms, and semantically equivalent terms. This helps with matching against job descriptions that may use different terminology`;
 
 const FALLBACK_RESUME_FORMATTER_PROMPT = `Format the provided resume into a clean, professional Markdown document.
-Use # for the candidate name, ## for major sections (Summary, Experience, Education, Skills, Certifications), ### for job titles.
-Use bullet points (-) for responsibilities and achievements. Use **bold** for dates and emphasis.
-DO NOT use LaTeX markup, HTML tags, or code blocks. Output only valid Markdown, no additional commentary.`;
+Use # for the candidate's FIRST NAME ONLY, ## for major sections (Professional Summary, Technical Skills, Work Experience, Education), ### for role titles.
+Format Technical Skills as a Markdown table with Category and Skills columns (e.g. | Programming Languages | Java, Python |).
+Use bullet points (-) for responsibilities and achievements. Use **bold** for emphasis.
+DO NOT use LaTeX, HTML, code blocks, JSON wrapping, or escaped newlines. Output ONLY raw Markdown text.`;
 
 const FALLBACK_JD_PARSER_PROMPT = `You are an expert job description parser. Your task is to extract search criteria from job descriptions.
 
@@ -118,7 +119,7 @@ Rules:
 5. ONLY output valid JSON, no additional text
 6. For rate/budget/cost: extract the numeric value and its unit separately
 7. For client/engagement details: look for company names, "full-time", "contract", "part-time", "payroll" keywords
-8. For budget range: look for "budget", "salary range", "CTC range". Convert to LPA if in other units
+8. For budget range: look for "budget", "salary range", "CTC range". Convert to LPA if in other units. IMPORTANT: If only a single rate/budget value is mentioned (not a range), set it as budgetMaxLpa (leave budgetMinLpa as null). Only set budgetMinLpa when an explicit minimum is stated
 9. For coreSkill: identify the primary technology, framework, or domain that is central to this role. Pick the single most defining skill from mustHaveSkills. Use title case (e.g. "React", "Java", "DevOps", "Data Engineering")
 10. For contract duration: look for "X month contract", "X year engagement", contract period mentions. Convert to months (e.g. "1 year" = 12, "6 months" = 6)
 11. For payment terms: look for "Net X days", "payment terms X days", "payment cycle". Normalize to the closest of 30, 45, 60, or 90
@@ -179,6 +180,7 @@ export async function parseResume(resumeText: string, supplementaryText?: string
     const response = await provider.completeWithRetry(messages, {
       temperature: 0,
       maxTokens,
+      responseFormat: 'json',
     }, config.llm.maxRetries);
     const parsed = provider.parseJsonResponse<unknown>(response.content);
     const validated = LLMResumeOutputSchema.safeParse(parsed);
@@ -253,6 +255,7 @@ export async function parseJobDescription(jdText: string, jobTitle?: string): Pr
     const response = await provider.completeWithRetry(messages, {
       temperature: 0,
       maxTokens,
+      responseFormat: 'json',
     }, config.llm.maxRetries);
     const parsed = provider.parseJsonResponse<unknown>(response.content);
     const validated = LLMJDOutputSchema.safeParse(parsed);
@@ -293,6 +296,12 @@ export async function parseJobDescription(jdText: string, jobTitle?: string): Pr
     rateLpa = convertToLpa(output.rateRaw, output.rateUnit as RateUnit);
   }
 
+  // If only budgetMinLpa is set (no max), treat the single value as max instead
+  if (output.budgetMinLpa != null && output.budgetMaxLpa == null) {
+    output.budgetMaxLpa = output.budgetMinLpa;
+    output.budgetMinLpa = null;
+  }
+
   // Calculate confidence based on specificity
   let specificityScore = 0;
   if (output.mustHaveSkills.length > 0) specificityScore += 0.3;
@@ -322,6 +331,68 @@ export async function parseJobDescription(jdText: string, jobTitle?: string): Pr
     confidence: specificityScore,
     suggestions,
   };
+}
+
+/**
+ * Sanitizes LLM output that should be raw Markdown but may be wrapped in JSON,
+ * code fences, or contain literal escape sequences.
+ */
+export function sanitizeMarkdownOutput(raw: string): string {
+  let content = raw.trim();
+  if (!content) return '';
+
+  // 1. Strip markdown code fences
+  const fenceMatch = content.match(/^```(?:markdown|md)?\s*\n?([\s\S]*?)```\s*$/);
+  if (fenceMatch) {
+    content = fenceMatch[1].trim();
+  }
+
+  // 2. Detect JSON object wrapper (e.g. {"content": "# Name\\n..."})
+  if (content.startsWith('{') && content.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(content);
+      if (typeof parsed === 'object' && parsed !== null) {
+        const keys = ['content', 'markdown', 'formatted_resume', 'formattedContent', 'resume', 'text', 'output'];
+        for (const key of keys) {
+          if (typeof parsed[key] === 'string') {
+            content = parsed[key];
+            break;
+          }
+        }
+        // Fallback: take first string-valued property
+        if (content.startsWith('{')) {
+          for (const val of Object.values(parsed)) {
+            if (typeof val === 'string' && val.length > 50) {
+              content = val as string;
+              break;
+            }
+          }
+        }
+      }
+    } catch {
+      // Not valid JSON, continue with raw content
+    }
+  }
+
+  // 3. Detect bare JSON string (e.g. "# Name\\n## SUMMARY...")
+  if (content.startsWith('"') && content.endsWith('"')) {
+    try {
+      const parsed = JSON.parse(content);
+      if (typeof parsed === 'string') {
+        content = parsed;
+      }
+    } catch {
+      // Not a valid JSON string, strip quotes manually
+      content = content.slice(1, -1);
+    }
+  }
+
+  // 4. Replace remaining literal \n, \t, \r escape sequences (two-char sequences, not real newlines)
+  content = content.replace(/\\n/g, '\n');
+  content = content.replace(/\\t/g, '\t');
+  content = content.replace(/\\r/g, '');
+
+  return content.trim();
 }
 
 export async function formatResume(
@@ -361,10 +432,11 @@ export async function formatResume(
     const response = await provider.completeWithRetry(messages, {
       temperature: 0.3,
       maxTokens: 8192,
+      responseFormat: 'text',
     }, config.llm.maxRetries);
 
     return {
-      formattedContent: response.content.trim(),
+      formattedContent: sanitizeMarkdownOutput(response.content),
       success: true,
     };
   } catch (err) {
@@ -466,6 +538,7 @@ Identify any existing requirements that are potential duplicates of the new one 
   const response = await provider.completeWithRetry(messages, {
     temperature: 0,
     maxTokens: 2048,
+    responseFormat: 'json',
   }, config.llm.maxRetries);
 
   const parsed = provider.parseJsonResponse<unknown>(response.content);
