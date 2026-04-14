@@ -56,18 +56,23 @@ async function handleRequest(
       lastRequestedAt: req.last_requested_at,
     }));
 
-    const duplicates = await compareRequirements(
-      {
-        jobTitle,
-        mustHaveSkills: parsedCriteria.mustHaveSkills,
-        goodToHaveSkills: parsedCriteria.goodToHaveSkills,
-        minExperience: parsedCriteria.minExperience,
-        maxExperience: parsedCriteria.maxExperience,
-        seniority: parsedCriteria.seniority,
-        location: parsedCriteria.location,
-      },
-      existingSummaries
-    );
+    let duplicates: Awaited<ReturnType<typeof compareRequirements>> = [];
+    try {
+      duplicates = await compareRequirements(
+        {
+          jobTitle,
+          mustHaveSkills: parsedCriteria.mustHaveSkills,
+          goodToHaveSkills: parsedCriteria.goodToHaveSkills,
+          minExperience: parsedCriteria.minExperience,
+          maxExperience: parsedCriteria.maxExperience,
+          seniority: parsedCriteria.seniority,
+          location: parsedCriteria.location,
+        },
+        existingSummaries
+      );
+    } catch (llmErr) {
+      console.error('LLM duplicate comparison failed, proceeding without check:', llmErr);
+    }
 
     logAuditEvent(event.auth, event, {
       action: 'REQUIREMENT_CHECK_DUPLICATE',
