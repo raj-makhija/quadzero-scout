@@ -332,7 +332,7 @@ export function CriteriaEditor({
       <div>
         <label className="label">Notice Period</label>
         <div className="mt-2 flex flex-wrap gap-2">
-          {AVAILABILITY_OPTIONS.slice(0, 4).map((opt) => (
+          {AVAILABILITY_OPTIONS.map((opt) => (
             <button
               key={opt.value}
               onClick={() => {
