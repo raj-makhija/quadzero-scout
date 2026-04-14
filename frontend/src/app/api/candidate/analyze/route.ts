@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Allow up to 60s for this SSR route (Amplify WEB_COMPUTE respects this)
+export const maxDuration = 60;
+
 /**
  * Server-side proxy for the candidate analyze endpoint.
  *
