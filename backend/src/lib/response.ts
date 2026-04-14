@@ -1,10 +1,11 @@
 import type { APIGatewayProxyResultV2 } from 'aws-lambda';
-import type { ApiResponse } from '../types/index.js';
+import type { ApiResponse, ApiWarning } from '../types/index.js';
 
-export function success<T>(data: T, statusCode = 200): APIGatewayProxyResultV2 {
+export function success<T>(data: T, statusCode = 200, warnings?: ApiWarning[]): APIGatewayProxyResultV2 {
   const response: ApiResponse<T> = {
     success: true,
     data,
+    ...(warnings?.length ? { warnings } : {}),
   };
   return {
     statusCode,
@@ -59,3 +60,11 @@ export const ErrorCodes = {
 } as const;
 
 export type ErrorCode = typeof ErrorCodes[keyof typeof ErrorCodes];
+
+export const WarningCodes = {
+  DUPLICATE_CHECK_SKIPPED: 'DUPLICATE_CHECK_SKIPPED',
+  RESUME_FORMAT_SKIPPED: 'RESUME_FORMAT_SKIPPED',
+  NOTIFICATION_SKIPPED: 'NOTIFICATION_SKIPPED',
+} as const;
+
+export type WarningCode = typeof WarningCodes[keyof typeof WarningCodes];

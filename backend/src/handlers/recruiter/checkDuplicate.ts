@@ -1,9 +1,10 @@
 import type { APIGatewayProxyResultV2 } from 'aws-lambda';
-import { success, error, ErrorCodes } from '../../lib/response.js';
+import { success, error, ErrorCodes, WarningCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, CheckDuplicateRequestSchema } from '../../lib/validation.js';
 import { getActiveRequirementsByClient } from '../../lib/dynamodb.js';
 import { compareRequirements } from '../../lib/llm/index.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import type { ApiWarning } from '../../types/index.js';
 import { logAuditEvent } from '../../lib/audit.js';
 
 async function handleRequest(
@@ -56,6 +57,7 @@ async function handleRequest(
       lastRequestedAt: req.last_requested_at,
     }));
 
+    const warnings: ApiWarning[] = [];
     let duplicates: Awaited<ReturnType<typeof compareRequirements>> = [];
     try {
       duplicates = await compareRequirements(
@@ -72,6 +74,10 @@ async function handleRequest(
       );
     } catch (llmErr) {
       console.error('LLM duplicate comparison failed, proceeding without check:', llmErr);
+      warnings.push({
+        code: WarningCodes.DUPLICATE_CHECK_SKIPPED,
+        message: 'Duplicate check was skipped because the AI service is temporarily unavailable. Your requirement will be saved, but duplicates were not verified.',
+      });
     }
 
     logAuditEvent(event.auth, event, {
@@ -81,7 +87,7 @@ async function handleRequest(
       metadata: { clientName, duplicatesFound: duplicates.length },
     });
 
-    return success({ duplicates });
+    return success({ duplicates }, 200, warnings);
   } catch (err) {
     console.error('Error checking duplicates:', err);
     return error(

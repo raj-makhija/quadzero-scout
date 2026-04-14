@@ -1,8 +1,16 @@
+import { toast } from '@/hooks/use-toast';
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
+interface ApiWarning {
+  code: string;
+  message: string;
+}
 
 interface ApiResponse<T> {
   success: boolean;
   data?: T;
+  warnings?: ApiWarning[];
   error?: {
     code: string;
     message: string;
@@ -10,14 +18,72 @@ interface ApiResponse<T> {
   };
 }
 
+const USER_FRIENDLY_ERRORS: Record<string, { title: string; message: string }> = {
+  LLM_ERROR: {
+    title: 'AI Service Unavailable',
+    message: 'Our AI service is temporarily unavailable. Please try again in a few minutes.',
+  },
+  LLM_PARSE_ERROR: {
+    title: 'AI Processing Failed',
+    message: 'The AI could not process this content. Please try again, or simplify the input.',
+  },
+  TEXTRACT_ERROR: {
+    title: 'Document Processing Failed',
+    message: 'We could not read your document. Please ensure it is a clear PDF or DOCX file.',
+  },
+  S3_ERROR: {
+    title: 'File Storage Error',
+    message: 'There was a problem with file storage. Please try uploading again.',
+  },
+  DYNAMODB_ERROR: {
+    title: 'Database Error',
+    message: 'A database error occurred. Please try again in a moment.',
+  },
+  NETWORK_ERROR: {
+    title: 'Connection Error',
+    message: 'Could not reach the server. Check your internet connection and try again.',
+  },
+  GATEWAY_ERROR: {
+    title: 'Server Timeout',
+    message: 'The server took too long to respond. Please try again.',
+  },
+};
+
+const WARNING_TITLES: Record<string, string> = {
+  DUPLICATE_CHECK_SKIPPED: 'Duplicate Check Skipped',
+  RESUME_FORMAT_SKIPPED: 'Formatting Delayed',
+  NOTIFICATION_SKIPPED: 'Notifications Delayed',
+};
+
+const recentWarnings = new Set<string>();
+
+function handleApiWarnings(warnings?: ApiWarning[]): void {
+  if (!warnings?.length || typeof window === 'undefined') return;
+
+  for (const w of warnings) {
+    if (recentWarnings.has(w.code)) continue;
+    recentWarnings.add(w.code);
+    setTimeout(() => recentWarnings.delete(w.code), 10_000);
+
+    toast({
+      variant: 'warning',
+      title: WARNING_TITLES[w.code] || 'Notice',
+      description: w.message,
+      duration: 8000,
+    });
+  }
+}
+
 export class ApiError extends Error {
   code: string;
+  title?: string;
   details?: unknown;
 
   constructor(code: string, message: string, details?: unknown) {
     super(message);
     this.name = 'ApiError';
     this.code = code;
+    this.title = USER_FRIENDLY_ERRORS[code]?.title;
     this.details = details;
   }
 }
@@ -117,12 +183,16 @@ class ApiClient {
           signOut({ callbackUrl: '/auth/signin?reason=session_expired' });
         });
       }
+      const code = data.error?.code || 'UNKNOWN_ERROR';
+      const friendly = USER_FRIENDLY_ERRORS[code];
       throw new ApiError(
-        data.error?.code || 'UNKNOWN_ERROR',
-        data.error?.message || 'API request failed',
+        code,
+        friendly?.message || data.error?.message || 'API request failed',
         data.error?.details
       );
     }
+
+    handleApiWarnings(data.warnings);
 
     return data.data as T;
   }
@@ -167,12 +237,16 @@ class ApiClient {
     }
 
     if (!data.success) {
+      const code = data.error?.code || 'UNKNOWN_ERROR';
+      const friendly = USER_FRIENDLY_ERRORS[code];
       throw new ApiError(
-        data.error?.code || 'UNKNOWN_ERROR',
-        data.error?.message || 'Resume analysis failed',
+        code,
+        friendly?.message || data.error?.message || 'Resume analysis failed',
         data.error?.details
       );
     }
+
+    handleApiWarnings(data.warnings);
 
     return data.data as {
       extractedProfile: ExtractedProfile;

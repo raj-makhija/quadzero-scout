@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { success, error, ErrorCodes } from '../response.js';
+import { success, error, ErrorCodes, WarningCodes } from '../response.js';
 
 // ---------------------------------------------------------------------------
 // TC-NFR-014, TC-NFR-015: Response Utilities & Error Codes
@@ -32,6 +32,31 @@ describe('success()', () => {
     const result = success({ profile: { skills: ['react', 'nodejs'] } });
     const body = JSON.parse(result.body as string);
     expect(body.data.profile.skills).toEqual(['react', 'nodejs']);
+  });
+
+  it('includes warnings when provided', () => {
+    const warnings = [
+      { code: 'DUPLICATE_CHECK_SKIPPED', message: 'AI service unavailable' },
+    ];
+    const result = success({ ok: true }, 200, warnings);
+    const body = JSON.parse(result.body as string);
+    expect(body.success).toBe(true);
+    expect(body.warnings).toHaveLength(1);
+    expect(body.warnings[0].code).toBe('DUPLICATE_CHECK_SKIPPED');
+    expect(body.warnings[0].message).toBe('AI service unavailable');
+  });
+
+  it('omits warnings field when array is empty', () => {
+    const result = success({ ok: true }, 200, []);
+    const body = JSON.parse(result.body as string);
+    expect(body.success).toBe(true);
+    expect(body.warnings).toBeUndefined();
+  });
+
+  it('omits warnings field when not provided', () => {
+    const result = success({ ok: true });
+    const body = JSON.parse(result.body as string);
+    expect(body.warnings).toBeUndefined();
   });
 });
 
@@ -132,5 +157,23 @@ describe('ErrorCodes', () => {
 
   it('has exactly 14 error codes', () => {
     expect(Object.keys(ErrorCodes)).toHaveLength(14);
+  });
+});
+
+describe('WarningCodes', () => {
+  it('defines DUPLICATE_CHECK_SKIPPED', () => {
+    expect(WarningCodes.DUPLICATE_CHECK_SKIPPED).toBe('DUPLICATE_CHECK_SKIPPED');
+  });
+
+  it('defines RESUME_FORMAT_SKIPPED', () => {
+    expect(WarningCodes.RESUME_FORMAT_SKIPPED).toBe('RESUME_FORMAT_SKIPPED');
+  });
+
+  it('defines NOTIFICATION_SKIPPED', () => {
+    expect(WarningCodes.NOTIFICATION_SKIPPED).toBe('NOTIFICATION_SKIPPED');
+  });
+
+  it('has exactly 3 warning codes', () => {
+    expect(Object.keys(WarningCodes)).toHaveLength(3);
   });
 });

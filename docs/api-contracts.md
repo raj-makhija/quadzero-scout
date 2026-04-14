@@ -31,6 +31,33 @@ The backend decrypts NextAuth.js JWE tokens using HKDF-derived encryption keys f
 }
 ```
 
+### Success Response with Warnings
+
+When the server completes a request successfully but with degraded functionality (e.g., an AI service was temporarily unavailable), the response includes a `warnings` array:
+
+```json
+{
+  "success": true,
+  "data": { ... },
+  "warnings": [
+    {
+      "code": "DUPLICATE_CHECK_SKIPPED",
+      "message": "Human readable description of what was skipped and why"
+    }
+  ]
+}
+```
+
+The `warnings` field is only present when at least one warning was generated. Clients should surface these as non-blocking notifications (e.g., toast alerts).
+
+#### Warning Codes
+
+| Code | Description |
+|------|-------------|
+| DUPLICATE_CHECK_SKIPPED | AI-based duplicate detection was unavailable; requirement was saved without duplicate verification |
+| RESUME_FORMAT_SKIPPED | Async resume formatting could not be triggered; will be retried automatically |
+| NOTIFICATION_SKIPPED | Recruiter notification delivery was delayed; will be sent on next sync |
+
 ### Error Response
 
 ```json

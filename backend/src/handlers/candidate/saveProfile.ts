@@ -1,13 +1,13 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
-import { success, error, ErrorCodes } from '../../lib/response.js';
+import { success, error, ErrorCodes, WarningCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, SaveProfileRequestSchema } from '../../lib/validation.js';
 import { saveCandidateProfile, getExperienceBucket, getCandidateById, getCandidateByEmail, getSubVendorById } from '../../lib/dynamodb.js';
 import { deleteObject } from '../../lib/s3.js';
 import { invokeLambdaAsync } from '../../lib/lambdaInvoke.js';
 import { config } from '../../lib/config.js';
 import { normalizeSkill, normalizeSkills, normalizeSkillYears } from '../../lib/skillNormalizer.js';
-import type { CandidateItem, SaveProfileResponse } from '../../types/index.js';
+import type { CandidateItem, SaveProfileResponse, ApiWarning } from '../../types/index.js';
 
 export async function handler(
   event: APIGatewayProxyEventV2
@@ -153,6 +153,8 @@ export async function handler(
       await saveCandidateProfile(candidateItem);
     }
 
+    const warnings: ApiWarning[] = [];
+
     // Trigger async resume formatting if new candidate or resume changed
     if (!preserveFormattedResume && config.lambda.formatResumeWorkerName) {
       try {
@@ -162,6 +164,10 @@ export async function handler(
         console.log('Triggered async resume formatting for candidate:', finalCandidateId);
       } catch (err) {
         console.warn('Failed to trigger async resume formatting:', err);
+        warnings.push({
+          code: WarningCodes.RESUME_FORMAT_SKIPPED,
+          message: 'Resume formatting could not be triggered. It will be retried automatically.',
+        });
       }
     }
 
@@ -174,6 +180,10 @@ export async function handler(
         console.log('Triggered async notification check for candidate:', finalCandidateId);
       } catch (err) {
         console.warn('Failed to trigger notification worker:', err);
+        warnings.push({
+          code: WarningCodes.NOTIFICATION_SKIPPED,
+          message: 'Recruiter notifications could not be sent. They will be delivered on the next sync.',
+        });
       }
     }
 
@@ -182,7 +192,7 @@ export async function handler(
       lastUpdated: now,
     };
 
-    return success(response);
+    return success(response, 200, warnings);
   } catch (err) {
     console.error('Error saving profile:', err);
     return error(

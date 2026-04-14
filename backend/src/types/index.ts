@@ -325,10 +325,17 @@ export interface SearchResponse {
   totalMatches: number;
 }
 
+// API Warning (for graceful degradation signals)
+export interface ApiWarning {
+  code: string;
+  message: string;
+}
+
 // API Response Wrapper
 export interface ApiResponse<T> {
   success: boolean;
   data?: T;
+  warnings?: ApiWarning[];
   error?: {
     code: string;
     message: string;

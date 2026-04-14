@@ -11,11 +11,11 @@ interface ToastProps {
 }
 
 const variantStyles: Record<ToastVariant, string> = {
-  default: 'bg-white border-gray-200',
-  success: 'bg-white border-green-200',
-  error: 'bg-white border-red-200',
-  warning: 'bg-white border-yellow-200',
-  info: 'bg-white border-blue-200',
+  default: 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700',
+  success: 'bg-white dark:bg-gray-800 border-green-200 dark:border-green-800',
+  error: 'bg-white dark:bg-gray-800 border-red-200 dark:border-red-800',
+  warning: 'bg-white dark:bg-gray-800 border-yellow-200 dark:border-yellow-800',
+  info: 'bg-white dark:bg-gray-800 border-blue-200 dark:border-blue-800',
 };
 
 const variantIcons: Record<ToastVariant, React.ReactNode> = {
@@ -69,10 +69,10 @@ export function Toast({ toast, onDismiss }: ToastProps) {
           )}
           <div className="flex-1 min-w-0">
             {toast.title && (
-              <p className="text-sm font-medium text-gray-900">{toast.title}</p>
+              <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{toast.title}</p>
             )}
             {toast.description && (
-              <p className={cn('text-sm text-gray-600', toast.title && 'mt-1')}>
+              <p className={cn('text-sm text-gray-600 dark:text-gray-400', toast.title && 'mt-1')}>
                 {toast.description}
               </p>
             )}
@@ -90,7 +90,7 @@ export function Toast({ toast, onDismiss }: ToastProps) {
           </div>
           <button
             onClick={handleDismiss}
-            className="flex-shrink-0 rounded-md p-1 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-500"
+            className="flex-shrink-0 rounded-md p-1 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
             aria-label="Dismiss"
           >
             <X className="h-4 w-4" />
