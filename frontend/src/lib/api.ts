@@ -148,11 +148,23 @@ class ApiClient {
       body: JSON.stringify({ s3Key, ...(supplementaryText ? { supplementaryText } : {}) }),
     });
 
-    const data: ApiResponse<{
+    let data: ApiResponse<{
       extractedProfile: ExtractedProfile;
       confidence: number;
       rawTextLength: number;
-    }> = await response.json();
+    }>;
+
+    try {
+      data = await response.json();
+    } catch {
+      // Empty or non-JSON response (e.g. Lambda timeout returning 502 with no body)
+      throw new ApiError(
+        'PROXY_ERROR',
+        response.status === 502 || response.status === 504
+          ? 'Resume analysis timed out. Please try again.'
+          : `Server returned an invalid response (HTTP ${response.status})`,
+      );
+    }
 
     if (!data.success) {
       throw new ApiError(

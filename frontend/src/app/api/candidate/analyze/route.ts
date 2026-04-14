@@ -41,6 +41,27 @@ export async function POST(req: NextRequest) {
     });
 
     const data = await response.text();
+
+    // Lambda Function URL returns 502 with an empty body when the Lambda
+    // times out or crashes. Guard against forwarding an empty (non-JSON)
+    // response to the client which would cause "Unexpected end of JSON input".
+    if (!data) {
+      const status = response.ok ? 502 : response.status;
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'PROXY_ERROR',
+            message:
+              response.status === 502 || response.status === 504
+                ? 'Resume analysis timed out. Please try again — the AI service may be temporarily slow.'
+                : `Backend returned an empty response (HTTP ${response.status})`,
+          },
+        },
+        { status }
+      );
+    }
+
     return new NextResponse(data, {
       status: response.status,
       headers: { 'Content-Type': 'application/json' },
