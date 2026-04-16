@@ -37,14 +37,8 @@ export class GeminiProvider extends BaseLLMProvider {
       parts: [{ text: m.content }],
     }));
 
-    // Disable thinking for Gemini 2.5 models — structured JSON extraction
-    // doesn't benefit from chain-of-thought, and thinking tokens consume both
-    // the maxOutputTokens budget and wall-clock time (40s+ vs ~10s without).
-    // The SDK v0.24.x doesn't type thinkingConfig but the API accepts it.
     const result = await model.generateContent({
       contents,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ...(config.llm.geminiModel.includes('2.5') ? { thinkingConfig: { thinkingBudget: 0 } } as any : {}),
     });
 
     const response = result.response;
