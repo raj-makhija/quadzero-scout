@@ -1,4 +1,4 @@
-import { calculateSkillMatch, normalizeSkill } from './skillNormalizer.js';
+import { calculateSkillMatch, normalizeSkill, calculateRoleMatch } from './skillNormalizer.js';
 import { isCandidateWithinBudget } from './ctcConversion.js';
 import type { CandidateItem, CandidateSearchResult } from '../types/index.js';
 
@@ -19,10 +19,13 @@ export const MUST_HAVE_RELATED_WEIGHT = 0.3;
 export const FUZZY_MATCH_WEIGHT = 0.85;
 
 /** Score weight for must-have skills component. */
-export const MUST_HAVE_WEIGHT = 45;
+export const MUST_HAVE_WEIGHT = 40;
 
 /** Score weight for good-to-have skills component. */
-export const GOOD_TO_HAVE_WEIGHT = 25;
+export const GOOD_TO_HAVE_WEIGHT = 22;
+
+/** Score weight for role match component (category-based role alignment). */
+export const ROLE_MATCH_WEIGHT = 8;
 
 /** Bonus points for skill prominence — matched skill appearing early in primary_skills. */
 export const SKILL_PROMINENCE_WEIGHT = 8;
@@ -229,7 +232,8 @@ export function calculateMatchScore(
   searchLocations?: string[],
   searchAvailability?: string[],
   requiredSynonyms?: Record<string, string[]>,
-  candidateSynonyms?: Record<string, string[]>
+  candidateSynonyms?: Record<string, string[]>,
+  searchRoles?: string[]
 ): MatchScoreResult {
   let score = 0;
 
@@ -302,6 +306,15 @@ export function calculateMatchScore(
     score += 3;
   }
 
+  // Role match (8 pts) — category-based alignment between candidate and requirement roles
+  const roleMatch = calculateRoleMatch(candidate.roles || [], searchRoles || []);
+  if (roleMatch === 'full') {
+    score += ROLE_MATCH_WEIGHT;
+  } else if (roleMatch === 'partial') {
+    score += ROLE_MATCH_WEIGHT * 0.5;
+  }
+  // 'none' = 0 points
+
   // CTC budget check
   const ctcMatch = isCandidateWithinBudget(candidate.expected_ctc, maxBudgetLpa);
 
@@ -320,6 +333,7 @@ export function calculateMatchScore(
       ctcMatch,
       locationMatch,
       availabilityMatch,
+      roleMatch,
     },
   };
 }

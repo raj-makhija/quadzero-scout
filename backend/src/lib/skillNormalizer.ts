@@ -1,6 +1,7 @@
 import skillsOntology from '../data/skills_ontology.json';
 
 const mappings = skillsOntology.mappings as Record<string, string>;
+const roleTaxonomy = (skillsOntology as Record<string, unknown>).roleTaxonomy as Record<string, string[]>;
 
 export function normalizeSkill(skill: string): string {
   const lowercased = skill.toLowerCase().trim();
@@ -148,4 +149,67 @@ export function calculateSkillMatch(
   }
 
   return { exactMatched, fuzzyMatched, relatedMatched, missing };
+}
+
+/**
+ * Get the role category for a given role title using token-containment matching
+ * against the roleTaxonomy in skills_ontology.json.
+ * Returns the category name (e.g. 'development', 'testing') or null if no match.
+ */
+export function getRoleCategory(role: string): string | null {
+  const roleLower = role.toLowerCase().trim();
+
+  for (const [category, titles] of Object.entries(roleTaxonomy)) {
+    for (const title of titles) {
+      // Exact match
+      if (roleLower === title) return category;
+      // Token containment: all tokens of the taxonomy entry appear in the role
+      const titleTokens = title.split(/\s+/);
+      const roleTokens = new Set(roleLower.split(/\s+/));
+      if (titleTokens.length > 0 && titleTokens.every(t => roleTokens.has(t))) return category;
+      // Reverse: all tokens of the role appear in the taxonomy entry
+      const roleTokensArr = roleLower.split(/\s+/);
+      const titleTokenSet = new Set(titleTokens);
+      if (roleTokensArr.length > 0 && roleTokensArr.every(t => titleTokenSet.has(t))) return category;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Calculate role match between candidate roles and requirement/search roles.
+ * Returns 'full' if any roles share the same category or have token overlap,
+ * 'partial' if either side has no roles (no data to compare),
+ * 'none' if both have roles but no category overlap.
+ */
+export function calculateRoleMatch(
+  candidateRoles: string[],
+  searchRoles: string[]
+): 'full' | 'partial' | 'none' {
+  if (!searchRoles || searchRoles.length === 0) return 'full';
+  if (!candidateRoles || candidateRoles.length === 0) return 'partial';
+
+  // Get categories for both sides
+  const candidateCategories = new Set<string>();
+  for (const role of candidateRoles) {
+    const cat = getRoleCategory(role);
+    if (cat) candidateCategories.add(cat);
+  }
+
+  const searchCategories = new Set<string>();
+  for (const role of searchRoles) {
+    const cat = getRoleCategory(role);
+    if (cat) searchCategories.add(cat);
+  }
+
+  // If either side has no classifiable roles, treat as partial (unknown)
+  if (candidateCategories.size === 0 || searchCategories.size === 0) return 'partial';
+
+  // Check for category overlap
+  for (const cat of searchCategories) {
+    if (candidateCategories.has(cat)) return 'full';
+  }
+
+  return 'none';
 }

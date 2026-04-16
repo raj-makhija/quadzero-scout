@@ -89,7 +89,8 @@ export async function handler(
         searchLocations,
         criteria.availability,
         reqSynonyms,
-        candSynonyms
+        candSynonyms,
+        criteria.roles
       );
 
       // Filter out requirements below minimum must-have effective match ratio
@@ -140,6 +141,7 @@ export async function handler(
           budgetFit,
           locationMatch: details.locationMatch,
           availabilityMatch: details.availabilityMatch,
+          roleMatch: details.roleMatch,
         },
         isShortlisted: shortlistedRequirementIds.has(req.requirement_id),
         createdAt: req.created_at,

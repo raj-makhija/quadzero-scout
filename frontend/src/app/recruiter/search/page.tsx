@@ -1233,6 +1233,9 @@ export default function RecruiterSearchPage() {
                             )}
                           </span>
                         )}
+                        {searchCriteria.roles && searchCriteria.roles.length > 0 && candidate.matchDetails.roleMatch === 'none' && (
+                          <span className="text-xs text-amber-600 dark:text-amber-400">(different role type)</span>
+                        )}
                       </div>
 
                       {isAuthenticated ? (

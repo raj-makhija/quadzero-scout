@@ -123,7 +123,8 @@ async function handleRequest(
           searchLocations,
           criteria.availability,
           reqSynonyms,
-          candSynonyms
+          candSynonyms,
+          criteria.roles
         );
 
         return {
@@ -234,6 +235,7 @@ async function handleRequest(
             ctcMatch: candidate.matchDetails.ctcMatch,
             locationMatch: candidate.matchDetails.locationMatch,
             availabilityMatch: candidate.matchDetails.availabilityMatch,
+            roleMatch: candidate.matchDetails.roleMatch,
           },
           lastUpdated: candidate.lastUpdated,
           lastScreenedAt: undefined, // Hide screening info

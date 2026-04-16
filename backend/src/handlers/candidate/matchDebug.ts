@@ -85,7 +85,8 @@ export async function handler(
       searchLocations,
       criteria.availability,
       reqSynonyms,
-      candSynonyms
+      candSynonyms,
+      criteria.roles
     );
 
     // --- Filter 2: Must-have match ratio (exact + fuzzy) ---
