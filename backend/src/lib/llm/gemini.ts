@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, Content } from '@google/generative-ai';
+import { GoogleGenerativeAI, Content, FinishReason } from '@google/generative-ai';
 import { BaseLLMProvider, LLMMessage, LLMResponse, LLMOptions } from './base.js';
 import { config } from '../config.js';
 
@@ -28,7 +28,7 @@ export class GeminiProvider extends BaseLLMProvider {
       generationConfig: {
         maxOutputTokens: options?.maxTokens || 4096,
         temperature: options?.temperature || 0,
-        responseMimeType: 'application/json',
+        responseMimeType: options?.responseFormat === 'text' ? 'text/plain' : 'application/json',
       },
     });
 
@@ -43,6 +43,16 @@ export class GeminiProvider extends BaseLLMProvider {
     });
 
     const response = result.response;
+
+    // Check for truncation due to maxOutputTokens
+    const candidate = response.candidates?.[0];
+    if (candidate?.finishReason === FinishReason.MAX_TOKENS) {
+      const used = response.usageMetadata?.candidatesTokenCount || 0;
+      throw new Error(
+        `Gemini response truncated at ${used} output tokens (maxOutputTokens: ${options?.maxTokens || 4096}). Increase the token budget.`
+      );
+    }
+
     const content = response.text();
 
     if (!content) {

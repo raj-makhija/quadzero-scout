@@ -187,19 +187,22 @@ export async function parseResume(resumeText: string, supplementaryText?: string
     return { parsed, validated };
   };
 
+  // Token budgets must account for Gemini 2.5 thinking tokens which consume
+  // part of maxOutputTokens.  The original 4096/8192 budgets caused truncated
+  // JSON responses for resumes with many skills + skillSynonyms.
   let parsed: unknown;
   let validated: ReturnType<typeof LLMResumeOutputSchema.safeParse>;
   try {
-    ({ parsed, validated } = await attempt(4096));
+    ({ parsed, validated } = await attempt(16384));
     if (!validated.success) {
-      throw new Error('schema validation failed at 4096 tokens');
+      throw new Error('schema validation failed at 16384 tokens');
     }
   } catch (err) {
     console.warn(
-      'parseResume: 4096-token attempt failed, retrying at 8192:',
+      'parseResume: 16384-token attempt failed, retrying at 32768:',
       err instanceof Error ? err.message : err
     );
-    ({ parsed, validated } = await attempt(8192));
+    ({ parsed, validated } = await attempt(32768));
   }
 
   if (!validated.success) {
