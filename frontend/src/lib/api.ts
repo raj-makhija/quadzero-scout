@@ -932,6 +932,7 @@ export interface ExtractedProfile {
   totalExperience: number;
   seniority: string;
   availability?: string | null;
+  lastWorkingDay?: string | null;
   engagementModel?: string | null;
   industries?: string[];
   roles?: string[];
@@ -1040,6 +1041,7 @@ export interface CandidateSearchResult {
     ctcMatch: boolean;
     locationMatch: 'full' | 'partial' | 'none';
     availabilityMatch: 'full' | 'partial' | 'none';
+    roleMatch?: 'full' | 'partial' | 'none';
   };
   lastUpdated: string;
   lastScreenedAt?: string;
@@ -1440,6 +1442,7 @@ export interface MatchedRequirement {
     experienceMatch: boolean;
     seniorityMatch: boolean;
     budgetFit: boolean;
+    roleMatch?: 'full' | 'partial' | 'none';
   };
   isShortlisted: boolean;
   createdAt: string;
@@ -1568,6 +1571,7 @@ export interface ScreeningUpdatedValues {
   totalExperience?: number;
   seniority?: string;
   availability?: string;
+  lastWorkingDay?: string | null;
   engagementModel?: string;
   industries?: string[];
   roles?: string[];
@@ -1603,6 +1607,7 @@ export interface ScreeningProfileData {
   total_experience?: number;
   seniority?: string;
   availability?: string;
+  last_working_day?: string;
   engagement_model?: string;
   industries?: string[];
   roles?: string[];
@@ -1933,5 +1938,6 @@ export interface MatchDebugResponse {
     ctcMatch: boolean;
     locationMatch: string;
     availabilityMatch: string;
+    roleMatch?: string;
   };
 }

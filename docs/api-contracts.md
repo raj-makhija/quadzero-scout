@@ -602,7 +602,8 @@ Content-Type: application/json
           "seniorityMatch": true,
           "budgetFit": true,
           "locationMatch": "full",
-          "availabilityMatch": "full"
+          "availabilityMatch": "full",
+          "roleMatch": "full"
         },
         "isShortlisted": false,
         "createdAt": "2024-01-15T10:30:00Z"
@@ -722,7 +723,8 @@ Content-Type: application/json
       "seniorityMatch": true,
       "ctcMatch": true,
       "locationMatch": "full",
-      "availabilityMatch": "full"
+      "availabilityMatch": "full",
+      "roleMatch": "full"
     }
   }
 }
@@ -883,7 +885,8 @@ Authorization: Bearer <jwe_token> (optional)
           "seniorityMatch": true,
           "ctcMatch": true,
           "locationMatch": "full",
-          "availabilityMatch": "full"
+          "availabilityMatch": "full",
+          "roleMatch": "full"
         },
         "lastUpdated": "2024-01-15T10:30:00Z"
       }
@@ -921,7 +924,8 @@ Authorization: Bearer <jwe_token> (optional)
           "seniorityMatch": true,
           "ctcMatch": true,
           "locationMatch": "full",
-          "availabilityMatch": "full"
+          "availabilityMatch": "full",
+          "roleMatch": "full"
         },
         "lastUpdated": "2024-01-15T10:30:00Z"
       }
@@ -957,7 +961,8 @@ Authorization: Bearer <jwe_token> (optional)
 - **Experience** is a soft scoring factor. `experienceMatch` values: `"full"` (within range, +8pts), `"partial"` (within 2 years of boundary, +4pts), `"none"` (way outside, +0pts)
 - **Availability** is a soft scoring factor. `availabilityMatch` values: `"full"` (matches or available earlier, +7pts), `"partial"` (1–2 steps later, +3pts), `"none"` (3+ steps later, +0pts)
 - **Seniority** is a soft scoring factor (not a hard filter). Matched candidates get +5pts
-- Match score weights: must-have skills (45%), good-to-have skills (25%), experience (8%), seniority (5%), location (10%), availability (7%) = base 100
+- **Role match** is a soft scoring factor. `roleMatch` values: `"full"` (candidate and JD roles share a category, +8pts), `"partial"` (no role data to compare, +4pts), `"none"` (different role categories, +0pts). Role categories: development, testing, devops, data, management, design, support, security, consulting
+- Match score weights: must-have skills (40pts), good-to-have skills (22pts), role match (8pts), experience (8pts), seniority (5pts), location (10pts), availability (7pts) = base 100
 - **Skill relevance bonus** (up to +12 points for matched must-have skills):
   - **Prominence bonus** (up to +8): Based on matched skill's position in the candidate's `primary_skills` array. Position 1–3 → +8, 4–6 → +4, 7–10 → +2, 11+ or secondary-only → +0. Skills listed earlier in a candidate's profile indicate stronger relevance.
   - **Years bonus** (up to +4): Based on years of experience in the matched skill from `primary_skill_years`. 5+ years → +4, 2–5 years → +2, <2 years → +0.
@@ -2639,7 +2644,8 @@ Authorization: Bearer <jwe_token>
 
 **Validation Rules:**
 - `candidateId`: Required, string
-- `updatedValues`: Required, object containing one or more of: `fullName`, `email`, `phone`, `location`, `primarySkills`, `primarySkillYears`, `secondarySkills`, `totalExperience`, `seniority`, `availability`, `engagementModel`, `industries`, `roles`, `education`, `certifications`, `summary`, `currentCtc`, `expectedCtc`, `expectedCtcType`, `linkedinUrl`, `githubUrl`, `customFields`, `notInterested`
+- `updatedValues`: Required, object containing one or more of: `fullName`, `email`, `phone`, `location`, `primarySkills`, `primarySkillYears`, `secondarySkills`, `totalExperience`, `seniority`, `availability`, `lastWorkingDay`, `engagementModel`, `industries`, `roles`, `education`, `certifications`, `summary`, `currentCtc`, `expectedCtc`, `expectedCtcType`, `linkedinUrl`, `githubUrl`, `customFields`, `notInterested`
+- `updatedValues.lastWorkingDay`: Optional, string (YYYY-MM-DD format) or `null`. Last working day at current employer.
 - `updatedValues.notInterested`: Optional, boolean. When `true`, marks the candidate as not interested in joining. When `false`, clears the not-interested flag. Setting this updates `not_interested`, `not_interested_at`, and `not_interested_by` on the candidate profile.
 - `updatedValues.expectedCtcType`: Optional, enum: `"explicit"` (default, manually entered) or `"negotiable"` (auto-calculated from current CTC + experience-based increment: 0-3 yrs +20%, 3-8 yrs +25%, 8+ yrs +30%). When `"negotiable"`, the server computes `expectedCtc` from `currentCtc` and `totalExperience` — requires both to be present.
 - `updatedValues.linkedinUrl`: Optional, string (URL), LinkedIn profile URL

@@ -152,6 +152,7 @@ export const SearchCriteriaSchema = z.object({
   location: z.string().optional(),
   remote: z.boolean().optional(),
   industries: z.array(z.string()).optional(),
+  roles: z.array(z.string()).optional(),
   maxBudgetLpa: z.number().min(0).optional(),
   engagementModel: z.enum(['contract', 'full_time', 'either']).optional()
 });
@@ -300,6 +301,7 @@ export interface CandidateSearchResult {
     ctcMatch: boolean;
     locationMatch: 'full' | 'partial' | 'none';
     availabilityMatch: 'full' | 'partial' | 'none';
+    roleMatch: 'full' | 'partial' | 'none';
   };
   lastUpdated: string;
   lastScreenedAt?: string;
@@ -1001,6 +1003,7 @@ export interface MatchedRequirement {
     budgetFit: boolean;
     locationMatch: 'full' | 'partial' | 'none';
     availabilityMatch: 'full' | 'partial' | 'none';
+    roleMatch: 'full' | 'partial' | 'none';
   };
   isShortlisted: boolean;
   createdAt: string;
@@ -1142,6 +1145,7 @@ export interface ScreeningProfileData {
   total_experience?: number;
   seniority?: string;
   availability?: string;
+  last_working_day?: string;
   engagement_model?: string;
   industries?: string[];
   roles?: string[];
@@ -1181,6 +1185,7 @@ export interface ScreenCandidateRequest {
     totalExperience?: number;
     seniority?: string;
     availability?: string;
+    lastWorkingDay?: string;
     engagementModel?: string;
     industries?: string[];
     roles?: string[];

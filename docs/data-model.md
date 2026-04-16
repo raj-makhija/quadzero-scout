@@ -38,6 +38,7 @@ Stores candidate profile data extracted from resumes and edited by candidates.
 | total_experience | Number | Yes | Total years of experience |
 | seniority | String | Yes | Career level |
 | availability | String | Yes | Notice period (displayed as "Notice Period" in the UI) |
+| last_working_day | String | No | Last working day at current employer (YYYY-MM-DD format). Optional |
 | engagement_model | String | No | Candidate's preferred engagement model. Values: `contract`, `full_time`, `either`. Default: `either` |
 | industries | List<String> | No | Industry experience |
 | roles | List<String> | No | Job titles held |
@@ -1430,7 +1431,7 @@ The skill ontology normalizes variant skill names to canonical forms and groups 
 }
 ```
 
-See `backend/src/data/skills_ontology.json` for the full list of mappings, categories, and synonym groups.
+See `backend/src/data/skills_ontology.json` for the full list of mappings, categories, synonym groups, and **role taxonomy** (maps job titles to categories like development, testing, devops, data, management, design, support, security, consulting — used for role-based match scoring).
 
 ---
 

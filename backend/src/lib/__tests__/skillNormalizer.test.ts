@@ -6,6 +6,8 @@ import {
   getSkillCategory,
   getRelatedSkills,
   calculateSkillMatch,
+  getRoleCategory,
+  calculateRoleMatch,
 } from '../skillNormalizer.js';
 
 // ---------------------------------------------------------------------------
@@ -431,5 +433,108 @@ describe('calculateSkillMatch() — fuzzy matching', () => {
     );
     expect(result.exactMatched).toEqual(['react']);
     expect(result.fuzzyMatched).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Role taxonomy matching
+// ---------------------------------------------------------------------------
+
+describe('getRoleCategory()', () => {
+  it('maps "Software Engineer" to development', () => {
+    expect(getRoleCategory('Software Engineer')).toBe('development');
+  });
+
+  it('maps "QA Engineer" to testing', () => {
+    expect(getRoleCategory('QA Engineer')).toBe('testing');
+  });
+
+  it('maps "DevOps Engineer" to devops', () => {
+    expect(getRoleCategory('DevOps Engineer')).toBe('devops');
+  });
+
+  it('maps "Data Scientist" to data', () => {
+    expect(getRoleCategory('Data Scientist')).toBe('data');
+  });
+
+  it('maps "Project Manager" to management', () => {
+    expect(getRoleCategory('Project Manager')).toBe('management');
+  });
+
+  it('maps "SDET" to testing', () => {
+    expect(getRoleCategory('SDET')).toBe('testing');
+  });
+
+  it('maps "Full Stack Developer" to development', () => {
+    expect(getRoleCategory('Full Stack Developer')).toBe('development');
+  });
+
+  it('maps "UI Designer" to design', () => {
+    expect(getRoleCategory('UI Designer')).toBe('design');
+  });
+
+  it('maps "SAP Consultant" to consulting', () => {
+    expect(getRoleCategory('SAP Consultant')).toBe('consulting');
+  });
+
+  it('is case-insensitive', () => {
+    expect(getRoleCategory('SOFTWARE ENGINEER')).toBe('development');
+    expect(getRoleCategory('qa engineer')).toBe('testing');
+  });
+
+  it('returns null for unknown roles', () => {
+    expect(getRoleCategory('Chief Happiness Officer')).toBeNull();
+  });
+});
+
+describe('calculateRoleMatch()', () => {
+  it('returns full when candidate and search roles share a category', () => {
+    expect(calculateRoleMatch(
+      ['Backend Developer'],
+      ['Software Engineer']
+    )).toBe('full');
+  });
+
+  it('returns none when candidate and search roles are in different categories', () => {
+    expect(calculateRoleMatch(
+      ['QA Engineer'],
+      ['Software Engineer']
+    )).toBe('none');
+  });
+
+  it('returns full when no search roles specified', () => {
+    expect(calculateRoleMatch(['QA Engineer'], [])).toBe('full');
+  });
+
+  it('returns partial when candidate has no roles', () => {
+    expect(calculateRoleMatch([], ['Software Engineer'])).toBe('partial');
+  });
+
+  it('returns partial when candidate roles are unclassifiable', () => {
+    expect(calculateRoleMatch(
+      ['Chief Happiness Officer'],
+      ['Software Engineer']
+    )).toBe('partial');
+  });
+
+  it('matches across multiple roles (any overlap is full)', () => {
+    expect(calculateRoleMatch(
+      ['QA Engineer', 'Backend Developer'],
+      ['Software Engineer']
+    )).toBe('full');
+  });
+
+  it('correctly separates tester from developer', () => {
+    expect(calculateRoleMatch(
+      ['Automation Tester'],
+      ['Java Developer', 'Backend Engineer']
+    )).toBe('none');
+  });
+
+  it('correctly matches devops roles', () => {
+    expect(calculateRoleMatch(
+      ['SRE'],
+      ['DevOps Engineer']
+    )).toBe('full');
   });
 });

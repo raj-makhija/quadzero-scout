@@ -419,6 +419,71 @@
       "sailpoint", "sailpoint_iiq", "sailpoint_idn"
     ]
   },
+  "roleTaxonomy": {
+    "development": [
+      "software engineer", "developer", "programmer", "full stack developer",
+      "full stack engineer", "frontend developer", "frontend engineer",
+      "backend developer", "backend engineer", "web developer",
+      "application developer", "software developer", "sde",
+      "software architect", "solutions architect", "technical architect",
+      "mobile developer", "ios developer", "android developer",
+      "embedded developer", "embedded engineer", "firmware engineer",
+      "systems engineer", "integration engineer"
+    ],
+    "testing": [
+      "qa engineer", "qa analyst", "quality analyst", "quality assurance",
+      "test engineer", "test analyst", "test lead", "qa lead",
+      "sdet", "automation tester", "automation engineer",
+      "manual tester", "performance tester", "security tester",
+      "qa manager", "quality assurance engineer", "testing engineer"
+    ],
+    "devops": [
+      "devops engineer", "site reliability engineer", "sre",
+      "platform engineer", "infrastructure engineer", "cloud engineer",
+      "release engineer", "build engineer", "systems administrator",
+      "network engineer", "network administrator", "cloud architect",
+      "devops architect", "devsecops engineer"
+    ],
+    "data": [
+      "data engineer", "data scientist", "data analyst",
+      "ml engineer", "machine learning engineer", "ai engineer",
+      "bi developer", "bi analyst", "business intelligence developer",
+      "etl developer", "data architect", "analytics engineer",
+      "big data engineer", "database administrator", "dba"
+    ],
+    "management": [
+      "project manager", "engineering manager", "tech lead",
+      "technical lead", "team lead", "scrum master",
+      "delivery manager", "program manager", "product manager",
+      "product owner", "agile coach", "cto", "vp engineering",
+      "director of engineering", "head of engineering",
+      "it manager", "it director"
+    ],
+    "design": [
+      "ui designer", "ux designer", "ui/ux designer",
+      "product designer", "graphic designer", "visual designer",
+      "interaction designer", "ux researcher", "design lead",
+      "creative director", "web designer"
+    ],
+    "support": [
+      "support engineer", "technical support", "helpdesk engineer",
+      "system administrator", "it support", "l1 support", "l2 support",
+      "l3 support", "application support", "production support",
+      "incident manager"
+    ],
+    "security": [
+      "security engineer", "security analyst", "cybersecurity analyst",
+      "information security", "soc analyst", "penetration tester",
+      "security architect", "security consultant", "iam engineer",
+      "identity access management"
+    ],
+    "consulting": [
+      "technical consultant", "solution consultant", "erp consultant",
+      "sap consultant", "salesforce consultant", "functional consultant",
+      "business analyst", "business consultant", "crm consultant",
+      "implementation consultant"
+    ]
+  },
   "synonymGroups": {
     "frontend_frameworks": ["react", "vue", "angular", "svelte"],
     "backend_frameworks": ["expressjs", "django", "flask", "spring_boot", "rails"],

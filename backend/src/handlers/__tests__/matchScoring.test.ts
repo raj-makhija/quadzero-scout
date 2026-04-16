@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import type { CandidateItem } from '../../types/index.js';
-import { calculateMatchScore, parseSearchLocations, MIN_MUST_HAVE_MATCH_RATIO, RELATED_MATCH_WEIGHT, MUST_HAVE_RELATED_WEIGHT, MUST_HAVE_WEIGHT, GOOD_TO_HAVE_WEIGHT, SKILL_PROMINENCE_WEIGHT, SKILL_YEARS_WEIGHT } from '../../lib/matchScoring.js';
+import { calculateMatchScore, parseSearchLocations, MIN_MUST_HAVE_MATCH_RATIO, RELATED_MATCH_WEIGHT, MUST_HAVE_RELATED_WEIGHT, MUST_HAVE_WEIGHT, GOOD_TO_HAVE_WEIGHT, SKILL_PROMINENCE_WEIGHT, SKILL_YEARS_WEIGHT, ROLE_MATCH_WEIGHT } from '../../lib/matchScoring.js';
 
 // ---------------------------------------------------------------------------
 // Match Scoring Algorithm Tests
-// Weights: must-have 45, good-to-have 25, experience 8, seniority 5,
+// Weights: must-have 40, good-to-have 22, role 8, experience 8, seniority 5,
 //          location 10, availability 7 = 100
 // + skill relevance bonus: up to 12 (prominence 8 + years 4) for matched must-have
 // ---------------------------------------------------------------------------
@@ -44,7 +44,7 @@ describe('Match Scoring Algorithm', () => {
       10,                              // max exp: 6 <= 10
       ['senior', 'lead']              // seniority: matches
     );
-    // Base 100 + prominence bonus (both in top 3 → 8 each) + years bonus (react:4, nodejs:3 → 2 each)
+    // Base 100 (40+22+8+8+5+10+7) + prominence bonus (both in top 3 → 8 each) + years bonus (react:4, nodejs:3 → 2 each)
     // = 100 + (8+2 + 8+2)/2 = 110
     expect(result.score).toBe(110);
     expect(result.details.mustHaveMatched).toContain('react');
@@ -56,7 +56,7 @@ describe('Match Scoring Algorithm', () => {
   });
 
   // TC-SCORE-002
-  it('must-have skills contribute 45% of score (prorated)', () => {
+  it('must-have skills contribute 40 pts of score (prorated)', () => {
     const candidate = makeCandidate({
       primary_skills: ['react', 'python'],
       secondary_skills: [],
@@ -70,17 +70,17 @@ describe('Match Scoring Algorithm', () => {
       undefined,
       undefined
     );
-    // 1 out of 4 must-have = 45 * 0.25 = 11.25
-    // good-to-have: none specified → full 25
+    // 1 out of 4 must-have = 40 * 0.25 = 10
+    // good-to-have: none specified → full 22, role: no filter → 8
     // experience: no filter → 8, seniority: no filter → 5, location: no filter → 10, availability: no filter → 7
-    // Total: 11.25 + 25 + 8 + 5 + 10 + 7 = 66.25 → 66
+    // Total: 10 + 22 + 8 + 8 + 5 + 10 + 7 = 70
     expect(result.details.mustHaveMatched).toContain('react');
     expect(result.details.mustHaveMatched).not.toContain('golang');
     expect(result.score).toBeLessThan(100);
   });
 
   // TC-SCORE-003
-  it('good-to-have skills contribute 25% of score (prorated)', () => {
+  it('good-to-have skills contribute 22 pts of score (prorated)', () => {
     const candidate = makeCandidate({
       primary_skills: ['react', 'nodejs'],
       secondary_skills: ['typescript'],
@@ -90,11 +90,11 @@ describe('Match Scoring Algorithm', () => {
       [],                           // no must-have
       ['typescript', 'kubernetes'], // 1 of 2 good-to-have (exact)
     );
-    // must-have: none specified → 45
-    // good-to-have: 1/2 exact = (1 + 0) / 2 * 25 = 12.5
-    // experience: 8, seniority: 5, location: 10, availability: 7
-    // Total: 45 + 12.5 + 8 + 5 + 10 + 7 = 87.5 → 88
-    expect(result.score).toBe(88);
+    // must-have: none specified → 40
+    // good-to-have: 1/2 exact = (1 + 0) / 2 * 22 = 11
+    // role: no filter → 8, experience: 8, seniority: 5, location: 10, availability: 7
+    // Total: 40 + 11 + 8 + 8 + 5 + 10 + 7 = 89
+    expect(result.score).toBe(89);
   });
 
   // TC-SCORE-004
@@ -109,7 +109,7 @@ describe('Match Scoring Algorithm', () => {
     const candidate = makeCandidate({ total_experience: 2 });
     const result = calculateMatchScore(candidate, [], [], 5);
     expect(result.details.experienceMatch).toBe('none');
-    // 45 + 25 + 0 + 5 + 10 + 7 = 92
+    // 40 + 22 + 8 + 0 + 5 + 10 + 7 = 92
     expect(result.score).toBe(92);
   });
 
@@ -118,7 +118,7 @@ describe('Match Scoring Algorithm', () => {
     const candidate = makeCandidate({ total_experience: 12 });
     const result = calculateMatchScore(candidate, [], [], undefined, 8);
     expect(result.details.experienceMatch).toBe('none');
-    // 45 + 25 + 0 + 5 + 10 + 7 = 92
+    // 40 + 22 + 8 + 0 + 5 + 10 + 7 = 92
     expect(result.score).toBe(92);
   });
 
@@ -134,7 +134,7 @@ describe('Match Scoring Algorithm', () => {
     const candidate = makeCandidate({ seniority: 'junior' });
     const result = calculateMatchScore(candidate, [], [], undefined, undefined, ['senior', 'lead']);
     expect(result.details.seniorityMatch).toBe(false);
-    // 45 + 25 + 8 + 0 + 10 + 7 = 95
+    // 40 + 22 + 8 + 8 + 0 + 10 + 7 = 95
     expect(result.score).toBe(95);
   });
 
@@ -152,7 +152,7 @@ describe('Match Scoring Algorithm', () => {
       secondary_skills: [],
     });
     // 1 exact (react) of 3 must-have — nodejs and typescript are missing or related (not scored)
-    // = 1/3 * 45 = 15 + 25 + 8 + 5 + 10 + 7 = 70
+    // = 1/3 * 40 ≈ 13.3 + 22 + 8 + 8 + 5 + 10 + 7 ≈ 73
     const result = calculateMatchScore(
       candidate,
       ['react', 'nodejs', 'typescript'],
@@ -188,17 +188,17 @@ describe('Match Scoring Algorithm', () => {
     expect(result2.details.experienceMatch).toBe('full');
   });
 
-  it('empty must-have skills results in full 45 points', () => {
+  it('empty must-have skills results in full 40 points', () => {
     const candidate = makeCandidate();
     const result = calculateMatchScore(candidate, [], ['typescript']);
-    // must-have: 45, good-to-have: 25, exp: 8, seniority: 5, location: 10, availability: 7
+    // must-have: 40, good-to-have: 22, role: 8, exp: 8, seniority: 5, location: 10, availability: 7
     expect(result.score).toBe(100);
   });
 
-  it('empty good-to-have skills results in full 25 points', () => {
+  it('empty good-to-have skills results in full 22 points', () => {
     const candidate = makeCandidate();
     const result = calculateMatchScore(candidate, ['react'], []);
-    // must-have: 45 (1/1), good-to-have: 25, exp: 8, seniority: 5, location: 10, availability: 7 = 100
+    // must-have: 40 (1/1), good-to-have: 22, role: 8, exp: 8, seniority: 5, location: 10, availability: 7 = 100
     // + prominence (react at pos 0 → 8) + years (react: 4yrs → 2) = 10
     expect(result.score).toBe(110);
   });
@@ -213,8 +213,8 @@ describe('Match Scoring Algorithm', () => {
     expect(result.details.mustHaveMatched).not.toContain('react');
     expect(result.details.mustHaveRelated).toContain('react'); // related shown for display only
     expect(result.details.mustHaveMissing).toEqual([]);
-    // Score: 0/1 * 45 = 0 + 25 + 8 + 5 + 10 + 7 = 55
-    expect(result.score).toBe(55);
+    // Score: 0/1 * 40 = 0 + 22 + 8 + 8 + 5 + 10 + 7 = 60
+    expect(result.score).toBe(60);
   });
 
   // TC-SCORE-013: Related skill counts at 0.3x for good-to-have
@@ -226,8 +226,8 @@ describe('Match Scoring Algorithm', () => {
     const result = calculateMatchScore(candidate, [], ['react']); // react is good-to-have
     expect(result.details.goodToHaveMatched).toEqual([]);
     expect(result.details.goodToHaveRelated).toContain('react');
-    // Score: 45 + (0 + 1*0.3)/1 * 25 = 7.5 + 8 + 5 + 10 + 7 = 82.5 → 83
-    expect(result.score).toBe(83);
+    // Score: 40 + (0 + 1*0.3)/1 * 22 = 6.6 + 8 + 8 + 5 + 10 + 7 = 84.6 → 85
+    expect(result.score).toBe(85);
   });
 
   // TC-SCORE-014: Salesforce and ServiceNow are in different categories after split
@@ -304,12 +304,16 @@ describe('Match Scoring Algorithm', () => {
     expect(MIN_MUST_HAVE_MATCH_RATIO).toBe(0.40);
   });
 
-  it('MUST_HAVE_WEIGHT is 45', () => {
-    expect(MUST_HAVE_WEIGHT).toBe(45);
+  it('MUST_HAVE_WEIGHT is 40', () => {
+    expect(MUST_HAVE_WEIGHT).toBe(40);
   });
 
-  it('GOOD_TO_HAVE_WEIGHT is 25', () => {
-    expect(GOOD_TO_HAVE_WEIGHT).toBe(25);
+  it('GOOD_TO_HAVE_WEIGHT is 22', () => {
+    expect(GOOD_TO_HAVE_WEIGHT).toBe(22);
+  });
+
+  it('ROLE_MATCH_WEIGHT is 8', () => {
+    expect(ROLE_MATCH_WEIGHT).toBe(8);
   });
 
   // --- Location Tests ---
@@ -327,7 +331,7 @@ describe('Match Scoring Algorithm', () => {
     const candidate = makeCandidate({ location: 'Mumbai, India' });
     const result = calculateMatchScore(candidate, [], [], undefined, undefined, undefined, undefined, ['bangalore']);
     expect(result.details.locationMatch).toBe('none');
-    // 45 + 25 + 8 + 5 + 0 + 7 = 90
+    // 40 + 22 + 8 + 8 + 5 + 0 + 7 = 90
     expect(result.score).toBe(90);
   });
 
@@ -336,7 +340,7 @@ describe('Match Scoring Algorithm', () => {
     const candidate = makeCandidate({ location: undefined });
     const result = calculateMatchScore(candidate, [], [], undefined, undefined, undefined, undefined, ['bangalore']);
     expect(result.details.locationMatch).toBe('partial');
-    // 45 + 25 + 8 + 5 + 5 + 7 = 95
+    // 40 + 22 + 8 + 8 + 5 + 5 + 7 = 95
     expect(result.score).toBe(95);
   });
 
@@ -373,7 +377,7 @@ describe('Match Scoring Algorithm', () => {
     // min = 5, candidate = 4, diff = 1 ≤ 2 → partial
     const result = calculateMatchScore(candidate, [], [], 5);
     expect(result.details.experienceMatch).toBe('partial');
-    // 45 + 25 + 4 + 5 + 10 + 7 = 96
+    // 40 + 22 + 8 + 4 + 5 + 10 + 7 = 96
     expect(result.score).toBe(96);
   });
 
@@ -383,7 +387,7 @@ describe('Match Scoring Algorithm', () => {
     // min = 5, candidate = 1, diff = 4 > 2 → none
     const result = calculateMatchScore(candidate, [], [], 5);
     expect(result.details.experienceMatch).toBe('none');
-    // 45 + 25 + 0 + 5 + 10 + 7 = 92
+    // 40 + 22 + 8 + 0 + 5 + 10 + 7 = 92
     expect(result.score).toBe(92);
   });
 
@@ -393,7 +397,7 @@ describe('Match Scoring Algorithm', () => {
     // max = 8, candidate = 9, diff = 1 ≤ 2 → partial
     const result = calculateMatchScore(candidate, [], [], undefined, 8);
     expect(result.details.experienceMatch).toBe('partial');
-    // 45 + 25 + 4 + 5 + 10 + 7 = 96
+    // 40 + 22 + 8 + 4 + 5 + 10 + 7 = 96
     expect(result.score).toBe(96);
   });
 
@@ -423,7 +427,7 @@ describe('Match Scoring Algorithm', () => {
     // Let me use a closer example: looking for 2_weeks (idx 2), candidate is 1_month (idx 3), diff = 1 → partial
     const result = calculateMatchScore(candidate, [], [], undefined, undefined, undefined, undefined, [], ['2_weeks']);
     expect(result.details.availabilityMatch).toBe('partial');
-    // 45 + 25 + 8 + 5 + 10 + 3 = 96
+    // 40 + 22 + 8 + 8 + 5 + 10 + 3 = 96
     expect(result.score).toBe(96);
   });
 
@@ -433,7 +437,7 @@ describe('Match Scoring Algorithm', () => {
     // Looking for immediate (idx 0), candidate is 3_months (idx 5), diff = 5 > 2 → none
     const result = calculateMatchScore(candidate, [], [], undefined, undefined, undefined, undefined, [], ['immediate']);
     expect(result.details.availabilityMatch).toBe('none');
-    // 45 + 25 + 8 + 5 + 10 + 0 = 93
+    // 40 + 22 + 8 + 8 + 5 + 10 + 0 = 93
     expect(result.score).toBe(93);
   });
 
@@ -536,5 +540,79 @@ describe('Match Scoring Algorithm', () => {
 
   it('SKILL_YEARS_WEIGHT is 4', () => {
     expect(SKILL_YEARS_WEIGHT).toBe(4);
+  });
+
+  // --- Role Match Tests ---
+
+  // TC-SCORE-039: Same role category gives full role points (+8)
+  it('same role category gives full role points', () => {
+    const candidate = makeCandidate({ roles: ['Backend Developer'] });
+    const result = calculateMatchScore(
+      candidate, [], [], undefined, undefined, undefined, undefined, [], [],
+      undefined, undefined, ['Software Engineer']
+    );
+    expect(result.details.roleMatch).toBe('full');
+    expect(result.score).toBe(100);
+  });
+
+  // TC-SCORE-040: Different role category gives 0 role points
+  it('different role category gives 0 role points', () => {
+    const candidate = makeCandidate({ roles: ['QA Engineer'] });
+    const result = calculateMatchScore(
+      candidate, [], [], undefined, undefined, undefined, undefined, [], [],
+      undefined, undefined, ['Software Engineer']
+    );
+    expect(result.details.roleMatch).toBe('none');
+    // 40 + 22 + 0 + 8 + 5 + 10 + 7 = 92
+    expect(result.score).toBe(92);
+  });
+
+  // TC-SCORE-041: No search roles gives full role points (no filter)
+  it('no search roles gives full role points', () => {
+    const candidate = makeCandidate({ roles: ['QA Engineer'] });
+    const result = calculateMatchScore(
+      candidate, [], [], undefined, undefined, undefined, undefined, [], [],
+      undefined, undefined, []
+    );
+    expect(result.details.roleMatch).toBe('full');
+    expect(result.score).toBe(100);
+  });
+
+  // TC-SCORE-042: No candidate roles gives partial role points
+  it('no candidate roles gives partial role points', () => {
+    const candidate = makeCandidate({ roles: [] });
+    const result = calculateMatchScore(
+      candidate, [], [], undefined, undefined, undefined, undefined, [], [],
+      undefined, undefined, ['Software Engineer']
+    );
+    expect(result.details.roleMatch).toBe('partial');
+    // 40 + 22 + 4 + 8 + 5 + 10 + 7 = 96
+    expect(result.score).toBe(96);
+  });
+
+  // TC-SCORE-043: Developer outranks tester for developer JD (role scoring impact)
+  it('developer candidate scores higher than tester for developer JD', () => {
+    const developerCandidate = makeCandidate({
+      primary_skills: ['java', 'rest_api', 'sql'],
+      roles: ['Java Developer'],
+    });
+    const testerCandidate = makeCandidate({
+      primary_skills: ['java', 'rest_api', 'sql'],
+      roles: ['QA Automation Engineer'],
+    });
+    const searchRoles = ['Java Developer', 'Backend Engineer'];
+
+    const devResult = calculateMatchScore(
+      developerCandidate, ['java', 'rest_api'], [], undefined, undefined, undefined, undefined, [], [],
+      undefined, undefined, searchRoles
+    );
+    const testResult = calculateMatchScore(
+      testerCandidate, ['java', 'rest_api'], [], undefined, undefined, undefined, undefined, [], [],
+      undefined, undefined, searchRoles
+    );
+
+    expect(devResult.details.roleMatch).toBe('full');
+    expect(testResult.details.roleMatch).toBe('none');
+    expect(devResult.score).toBeGreaterThan(testResult.score);
   });
 });

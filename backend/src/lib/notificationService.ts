@@ -84,7 +84,8 @@ export async function notifyMatchingRecruiters(candidateIds: string[]): Promise<
         searchLocations,
         criteria.availability,
         reqSynonyms,
-        candSynonyms
+        candSynonyms,
+        criteria.roles
       );
 
       // Apply minimum must-have effective match ratio filter

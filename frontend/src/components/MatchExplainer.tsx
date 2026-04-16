@@ -535,8 +535,9 @@ function MatchDebugPanel({ result }: { result: MatchDebugResponse }) {
           <div>
             <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Score Breakdown</h4>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              <ScoreItem label="Must-Have Skills" value={matchDetails.mustHaveMatched.length} max={result.requirement.normalizedMustHave.length} maxScore={45} />
-              <ScoreItem label="Good-to-Have" value={matchDetails.goodToHaveMatched.length} max={result.requirement.normalizedGoodToHave.length} maxScore={25} />
+              <ScoreItem label="Must-Have Skills" value={matchDetails.mustHaveMatched.length} max={result.requirement.normalizedMustHave.length} maxScore={40} />
+              <ScoreItem label="Good-to-Have" value={matchDetails.goodToHaveMatched.length} max={result.requirement.normalizedGoodToHave.length} maxScore={22} />
+              <ScoreItem label="Role Match" value={matchDetails.roleMatch || 'partial'} maxScore={8} />
               <ScoreItem label="Experience" value={matchDetails.experienceMatch} maxScore={8} />
               <ScoreItem label="Seniority" value={matchDetails.seniorityMatch ? 'match' : 'none'} maxScore={5} />
               <ScoreItem label="Location" value={matchDetails.locationMatch} maxScore={10} />
