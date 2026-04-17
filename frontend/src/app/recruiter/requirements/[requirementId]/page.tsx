@@ -436,13 +436,13 @@ export default function RequirementDetailPage() {
                         className={`text-2xl font-bold ${canEditRequirement && requirement.status !== 'duplicate' ? 'cursor-pointer group' : ''}`}
                         onClick={() => {
                           if (canEditRequirement && requirement.status !== 'duplicate') {
-                            setRenameValue(requirement.jobTitle || generateJobTitle(requirement.clientName, requirement.endClient, requirement.parsedCriteria?.coreSkill, requirement.contactPersonName));
+                            setRenameValue(requirement.jobTitle || generateJobTitle(requirement.parsedCriteria?.coreSkill, requirement.parsedCriteria?.roles));
                             setRenamingTitle(true);
                           }
                         }}
                         title={canEditRequirement && requirement.status !== 'duplicate' ? 'Click to rename' : undefined}
                       >
-                        {requirement.jobTitle || generateJobTitle(requirement.clientName, requirement.endClient, requirement.parsedCriteria?.coreSkill, requirement.contactPersonName)}
+                        {requirement.jobTitle || generateJobTitle(requirement.parsedCriteria?.coreSkill, requirement.parsedCriteria?.roles)}
                         {canEditRequirement && requirement.status !== 'duplicate' && (
                           <Pencil size={14} className="inline ml-2 opacity-0 group-hover:opacity-60 transition-opacity" />
                         )}

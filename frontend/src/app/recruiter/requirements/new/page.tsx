@@ -170,7 +170,7 @@ export default function PostRequirementPage() {
       setCheckingDuplicates(true);
       setError(null);
 
-      const generatedTitle = generateJobTitle(clientName, endClient, coreSkill, contactPersonName);
+      const generatedTitle = generateJobTitle(coreSkill, parsedCriteria?.roles);
       const response = await api.checkRequirementDuplicate(clientName, parsedCriteria, generatedTitle || undefined);
 
       if (response.duplicates.length > 0) {
@@ -199,7 +199,7 @@ export default function PostRequirementPage() {
         ? clientDefaults.defaultPaymentTermsDays
         : paymentTermsDays ? parseInt(paymentTermsDays) : undefined;
 
-      const generatedTitle = generateJobTitle(clientName, endClient, coreSkill, contactPersonName);
+      const generatedTitle = generateJobTitle(coreSkill, parsedCriteria?.roles);
       const response = await api.saveRequirement({
         clientName: clientName.trim(),
         endClient: endClient.trim() || undefined,

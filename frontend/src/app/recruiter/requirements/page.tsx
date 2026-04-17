@@ -210,7 +210,7 @@ export default function RequirementsListPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2 mb-1">
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                      {generateJobTitle(req.clientName, req.endClient, req.coreSkill, req.contactPersonName)}
+                      {req.jobTitle || generateJobTitle(req.coreSkill, req.roles)}
                     </h3>
                     {req.status === 'duplicate' && (
                       <span className="badge bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300 text-xs">

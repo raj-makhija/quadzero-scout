@@ -189,10 +189,8 @@ export const PAYROLL_OPTIONS = [
 ];
 
 export function generateJobTitle(
-  clientName?: string,
-  endClient?: string,
   coreSkill?: string | null,
-  contactPersonName?: string,
+  roles?: string[],
 ): string {
   const parts: string[] = [];
 
@@ -200,14 +198,9 @@ export function generateJobTitle(
     parts.push(coreSkill.trim());
   }
 
-  if (clientName?.trim()) {
-    let clientPart = clientName.trim();
-    if (endClient?.trim()) clientPart += ` (${endClient.trim()})`;
-    parts.push(clientPart);
-  }
-
-  if (contactPersonName?.trim()) {
-    parts.push(contactPersonName.trim());
+  if (roles && roles.length > 0) {
+    const roleStr = roles.filter(r => r.trim()).join(', ');
+    if (roleStr) parts.push(roleStr);
   }
 
   return parts.join(' - ') || 'Untitled Requirement';
