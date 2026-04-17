@@ -916,6 +916,29 @@ class ApiClient {
       { method: 'POST', body: JSON.stringify({ text, source }) }
     );
   }
+
+  // Public Requirements Board endpoints (no auth)
+  async listPublicRequirements(limit?: number, offset?: number): Promise<{
+    requirements: PublicRequirementSummary[];
+    pagination: { count: number; total: number; hasMore: boolean; offset: number };
+  }> {
+    const params = new URLSearchParams();
+    if (limit) params.set('limit', String(limit));
+    if (offset) params.set('offset', String(offset));
+    const qs = params.toString();
+    const response = await fetch(`${this.baseUrl}/public/requirements${qs ? `?${qs}` : ''}`);
+    const data = await response.json();
+    return data.data;
+  }
+
+  async getPublicRequirement(requirementId: string): Promise<{ requirement: PublicRequirementSummary }> {
+    const response = await fetch(`${this.baseUrl}/public/requirements/${requirementId}`);
+    const data = await response.json();
+    if (!data.success) {
+      throw new ApiError(data.error?.code || 'NOT_FOUND', data.error?.message || 'Requirement not found');
+    }
+    return data.data;
+  }
 }
 
 export const api = new ApiClient(API_URL);
@@ -1881,6 +1904,24 @@ export interface PipelineActivitiesResponse {
     hasMore: boolean;
     lastEvaluatedKey?: string;
   };
+}
+
+export interface PublicRequirementSummary {
+  requirementId: string;
+  jobTitle?: string;
+  coreSkill?: string | null;
+  mustHaveSkills: string[];
+  goodToHaveSkills: string[];
+  minExperience: number | null;
+  maxExperience: number | null;
+  seniority: string[];
+  availability: string[];
+  location: string | null;
+  remote: boolean;
+  roles: string[];
+  additionalFields?: AdditionalFieldDefinition[];
+  createdAt: string;
+  lastUpdated: string;
 }
 
 export interface MatchDebugResponse {

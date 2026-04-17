@@ -742,8 +742,27 @@ The platform supports admin-configurable session timeouts to automatically log o
 **Caching:**
 - The backend caches session timeout settings for 5 minutes to avoid repeated DynamoDB reads on every authenticated request.
 
-**Public Endpoint:**
+**Public Endpoints:**
 - `GET /public/session-timeout` exposes the timeout value without authentication, allowing the frontend to configure the guard before the user is fully authenticated.
+- `GET /public/requirements` lists all active requirements with sensitive fields (client, budget, commercial terms, raw JD) stripped. Used by the vendor-facing requirements board at `/vendor/requirements`.
+- `GET /public/requirements/{requirementId}` returns a single active requirement with the same field stripping. Returns 404 for non-active or non-existent requirements.
+
+### Public Requirements Board (Vendor-Facing)
+
+A read-only, unauthenticated page at `/vendor/requirements` that lists open positions for sub-vendors. Sub-vendors can browse requirements and email candidate profiles.
+
+**Security model:** The backend uses an allow-list mapper (`publicRequirementMapper.ts`) that explicitly picks only safe fields from `RequirementItem`. New fields added to the data model are never exposed unless explicitly added to the mapper. The `jd_text` field is excluded because raw job descriptions often contain client names.
+
+**Frontend routes:**
+- `/vendor/requirements` — Card grid listing all active positions with client-side skill/location filtering
+- `/vendor/requirements/[id]` — Full detail view for a single position with mailto CTA
+
+**Key files:**
+- `backend/src/lib/publicRequirementMapper.ts` — Allow-list mapper and `PublicRequirementSummary` type
+- `backend/src/handlers/public/listPublicRequirements.ts` — List handler
+- `backend/src/handlers/public/getPublicRequirement.ts` — Detail handler
+- `frontend/src/app/vendor/` — Vendor-facing pages (no auth required)
+- `frontend/src/components/VendorHeader.tsx` — Minimal branded header
 
 ## Scalability Considerations
 

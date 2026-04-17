@@ -722,6 +722,21 @@ functions:
           path: /public/session-timeout
           method: GET
 
+  # Public Requirements Board Endpoints
+  publicListRequirements:
+    handler: src/handlers/public/listPublicRequirements.handler
+    events:
+      - httpApi:
+          path: /public/requirements
+          method: GET
+
+  publicGetRequirement:
+    handler: src/handlers/public/getPublicRequirement.handler
+    events:
+      - httpApi:
+          path: /public/requirements/{requirementId}
+          method: GET
+
   # Admin Audit Log Endpoints
   adminListAuditLogs:
     handler: src/handlers/admin/listAuditLogs.handler

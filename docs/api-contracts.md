@@ -3735,6 +3735,100 @@ Retrieve the current session timeout value. No authentication required. Used by 
 
 ---
 
+### GET /public/requirements
+
+List all active requirements with sensitive fields stripped. Designed for sharing with sub-vendors. No authentication required.
+
+**Auth**: None (public endpoint)
+
+**Query Parameters**:
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `limit` | number | 20 | Number of results per page (max 50) |
+| `offset` | number | 0 | Offset for pagination |
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "requirements": [
+      {
+        "requirementId": "uuid",
+        "jobTitle": "Senior React Developer",
+        "coreSkill": "react",
+        "mustHaveSkills": ["react", "typescript", "node.js"],
+        "goodToHaveSkills": ["aws", "graphql"],
+        "minExperience": 5,
+        "maxExperience": 10,
+        "seniority": ["senior", "lead"],
+        "availability": ["immediate", "1_week"],
+        "location": "Bangalore",
+        "remote": true,
+        "roles": ["frontend developer"],
+        "additionalFields": [
+          { "key": "notice_period", "label": "Notice Period", "type": "text", "required": true }
+        ],
+        "createdAt": "2026-04-10T12:00:00.000Z",
+        "lastUpdated": "2026-04-15T09:30:00.000Z"
+      }
+    ],
+    "pagination": {
+      "count": 20,
+      "total": 45,
+      "hasMore": true,
+      "offset": 0
+    }
+  }
+}
+```
+
+**Excluded Fields** (never returned by this endpoint):
+- `client_name`, `end_client`, `contact_person_name` (client identity)
+- `budget_min_lpa`, `budget_max_lpa` (budget)
+- `engagement_model`, `contract_duration_months` (commercial terms)
+- `payroll`, `payment_terms_days`, `is_rate_gst_inclusive` (commercial terms)
+- `jd_text` (may contain client names in raw text)
+- `recruiter_id`, `contributing_recruiters`, `notify_recruiter_ids` (internal users)
+- `request_history`, `change_history`, `status_history` (internal audit)
+- `demand_score`, `request_count` (internal metrics)
+- Budget and commercial fields from `parsed_criteria`
+
+---
+
+### GET /public/requirements/{requirementId}
+
+Get a single active requirement with sensitive fields stripped. Returns 404 if the requirement does not exist or is not active.
+
+**Auth**: None (public endpoint)
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "requirement": {
+      "requirementId": "uuid",
+      "jobTitle": "Senior React Developer",
+      "coreSkill": "react",
+      "mustHaveSkills": ["react", "typescript"],
+      "goodToHaveSkills": ["aws"],
+      "minExperience": 5,
+      "maxExperience": 10,
+      "seniority": ["senior"],
+      "availability": ["immediate"],
+      "location": "Bangalore",
+      "remote": true,
+      "roles": ["frontend developer"],
+      "createdAt": "2026-04-10T12:00:00.000Z",
+      "lastUpdated": "2026-04-15T09:30:00.000Z"
+    }
+  }
+}
+```
+
+---
+
 ## Webhook Events (Future)
 
 For future integrations, the system can emit webhook events:
