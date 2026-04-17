@@ -575,6 +575,10 @@ export interface ListRequirementsResponse {
   };
 }
 
+// ─── Public Requirements Board Types ────────────────────────────────────────
+
+export type { PublicRequirementSummary } from '../lib/publicRequirementMapper.js';
+
 // ─── Pricing Engine Types ───────────────────────────────────────────────────
 
 export const PricingExperienceBandEnum = z.enum(['junior', 'mid', 'senior', 'architect']);
