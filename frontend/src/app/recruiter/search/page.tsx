@@ -468,7 +468,7 @@ export default function RecruiterSearchPage() {
       setError(null);
 
       // Check for duplicates first
-      const generatedTitle = generateJobTitle(clientName, endClient, coreSkill, contactPersonName);
+      const generatedTitle = generateJobTitle(coreSkill, parsedCriteria?.roles);
       const dupResponse = await api.checkRequirementDuplicate(clientName, parsedCriteria, generatedTitle || undefined);
 
       if (dupResponse.duplicates.length > 0) {
@@ -498,7 +498,7 @@ export default function RecruiterSearchPage() {
         ? clientDefaults.defaultPaymentTermsDays
         : paymentTermsDays ? parseInt(paymentTermsDays) : undefined;
 
-      const generatedTitle = generateJobTitle(clientName, endClient, coreSkill, contactPersonName);
+      const generatedTitle = generateJobTitle(coreSkill, parsedCriteria?.roles);
       const saveResult = await api.saveRequirement({
         clientName: clientName.trim(),
         endClient: endClient.trim() || undefined,
@@ -589,7 +589,7 @@ export default function RecruiterSearchPage() {
       setRequirementContext({
         requirementId: match.requirementId,
         clientName: clientName.trim(),
-        jobTitle: generateJobTitle(clientName, endClient, coreSkill, contactPersonName) || undefined,
+        jobTitle: generateJobTitle(coreSkill, parsedCriteria?.roles) || undefined,
         engagementModel: engagementModel as string,
         contractDurationMonths: contractDurationMonths ? parseInt(contractDurationMonths) : undefined,
         paymentTermsDays: clientDefaults?.found && clientDefaults.defaultPaymentTermsDays
