@@ -3786,8 +3786,7 @@ List all active requirements with sensitive fields stripped. Designed for sharin
 **Excluded Fields** (never returned by this endpoint):
 - `client_name`, `end_client`, `contact_person_name` (client identity)
 - `budget_min_lpa`, `budget_max_lpa` (budget)
-- `engagement_model`, `contract_duration_months` (commercial terms)
-- `payroll`, `payment_terms_days`, `is_rate_gst_inclusive` (commercial terms)
+- `contract_duration_months`, `payroll`, `payment_terms_days`, `is_rate_gst_inclusive` (commercial terms)
 - `jd_text` (may contain client names in raw text)
 - `recruiter_id`, `contributing_recruiters`, `notify_recruiter_ids` (internal users)
 - `request_history`, `change_history`, `status_history` (internal audit)
