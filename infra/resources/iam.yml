@@ -69,6 +69,14 @@ sesPolicy:
     - !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/*'
     - !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:configuration-set/*'
 
+# Textract Policy (OCR fallback for scanned PDF resumes)
+textractPolicy:
+  Effect: Allow
+  Action:
+    - textract:StartDocumentTextDetection
+    - textract:GetDocumentTextDetection
+  Resource: '*'
+
 # SSM Parameter Store Policy
 ssmPolicy:
   Effect: Allow

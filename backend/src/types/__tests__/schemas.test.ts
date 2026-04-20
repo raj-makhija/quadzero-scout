@@ -136,6 +136,25 @@ describe('LLMResumeOutputSchema', () => {
     }
   });
 
+  it('strips null values from primarySkillYears (LLM may emit nulls per skill)', () => {
+    const result = LLMResumeOutputSchema.safeParse({
+      fullName: 'Priyanka',
+      primarySkills: ['java', 'appium', 'rest assured', 'api testing'],
+      primarySkillYears: {
+        java: 4,
+        appium: null,
+        'rest assured': null,
+        'api testing': null,
+      },
+      totalExperience: 4,
+      seniority: 'mid',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.primarySkillYears).toEqual({ java: 4 });
+    }
+  });
+
   it('handles missing optional fields', () => {
     const result = LLMResumeOutputSchema.safeParse({
       fullName: 'Jane',

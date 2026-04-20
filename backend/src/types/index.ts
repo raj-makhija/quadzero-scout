@@ -168,7 +168,10 @@ export const LLMResumeOutputSchema = z.object({
   phone: z.string().optional().nullable(),
   location: z.string().optional().nullable(),
   primarySkills: z.array(z.string()).nullable().optional().transform(v => v ?? []),
-  primarySkillYears: z.record(z.string(), z.number()).nullable().optional().transform(v => v ?? {}),
+  primarySkillYears: z.record(z.string(), z.number().nullable()).nullable().optional().transform(v => {
+    if (!v) return {};
+    return Object.fromEntries(Object.entries(v).filter(([, years]) => typeof years === 'number')) as Record<string, number>;
+  }),
   secondarySkills: z.array(z.string()).nullable().optional().transform(v => v ?? []),
   totalExperience: z.number().nullable().optional().transform(v => v ?? 0),
   seniority: z.string().nullable().optional().transform(v => v ?? 'mid'),

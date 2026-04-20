@@ -583,7 +583,7 @@ Bulk Upload:
 | AWS SDK | v3 | AWS service integration |
 | Auth | jose (JWE) | Token decryption & verification |
 | Password Hashing | bcryptjs | Credential authentication |
-| Text Extraction | pdf-parse, mammoth | PDF and DOCX text extraction |
+| Text Extraction | pdf-parse, mammoth, AWS Textract (OCR fallback) | PDF/DOCX text extraction; Textract async OCR for scanned PDFs |
 | PDF Generation | puppeteer-core, @sparticuz/chromium | Resume formatting to PDF |
 | Markdown | marked | Resume content rendering |
 
@@ -634,6 +634,14 @@ The formatter prompt instructs the LLM to output Technical Skills as a Markdown 
 | OpenRouter | openai (compatible API) | anthropic/claude-3.5-sonnet |
 
 The active provider is configured via the `LLM_PROVIDER` environment variable.
+
+**Rate-Limit Handling and Provider Fallback:**
+
+The Gemini provider implements in-provider exponential backoff on rate-limit errors (HTTP 429 / `Resource exhausted`): up to 3 retries with delays of 2s, 8s, 32s plus jitter. If retries are exhausted, the `withProviderFallback()` orchestrator in `lib/llm/index.ts` re-runs the call against the provider configured in `LLM_FALLBACK_PROVIDER` (e.g., set to `claude` or `openrouter` when primary is `gemini`). Fallback only triggers on rate-limit errors — other failures propagate untouched. The fallback applies to `parseResume()`, `parseJobDescription()`, `formatResume()`, and `compareRequirements()`.
+
+**OCR Fallback for Scanned PDFs:**
+
+`extractTextFromResume()` first tries `pdf-parse` (embedded text layer). If it returns fewer than 50 characters — typical for scanned/image-only PDFs — it falls back to AWS Textract's async `StartDocumentTextDetection` API using the document's S3 reference (supports multi-page PDFs). The Lambda polls `GetDocumentTextDetection` every 2 seconds for up to 60 seconds. Required IAM actions: `textract:StartDocumentTextDetection`, `textract:GetDocumentTextDetection` (granted via `textractPolicy` in `infra/resources/iam.yml`). Cost: ~$0.0015 per page, billed only for fallback invocations.
 
 ### Data Layer
 
