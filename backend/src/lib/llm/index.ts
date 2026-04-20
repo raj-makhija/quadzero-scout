@@ -6,7 +6,7 @@ import { BaseLLMProvider, LLMMessage, LLMOptions } from './base.js';
 import { ClaudeProvider } from './claude.js';
 import { OpenAIProvider } from './openai.js';
 import { OpenRouterProvider } from './openrouter.js';
-import { GeminiProvider } from './gemini.js';
+import { GeminiProvider, isRateLimitError } from './gemini.js';
 import { LLMResumeOutputSchema, LLMJDOutputSchema } from '../../types/index.js';
 import { normalizeSeniorityArray } from '../seniorityNormalizer.js';
 import type { LLMResumeOutput, LLMJDOutput } from '../../types/index.js';
@@ -15,27 +15,59 @@ import { getActivePrompt } from '../dynamodb.js';
 
 // Singleton instances
 let llmProvider: BaseLLMProvider | null = null;
+let fallbackLlmProvider: BaseLLMProvider | null = null;
+
+function buildProvider(name: string): BaseLLMProvider {
+  switch (name) {
+    case 'claude':
+      return new ClaudeProvider();
+    case 'openai':
+      return new OpenAIProvider();
+    case 'openrouter':
+      return new OpenRouterProvider();
+    case 'gemini':
+      return new GeminiProvider();
+    default:
+      throw new Error(`Unknown LLM provider: ${name}`);
+  }
+}
 
 export function getLLMProvider(): BaseLLMProvider {
   if (!llmProvider) {
-    switch (config.llm.provider) {
-      case 'claude':
-        llmProvider = new ClaudeProvider();
-        break;
-      case 'openai':
-        llmProvider = new OpenAIProvider();
-        break;
-      case 'openrouter':
-        llmProvider = new OpenRouterProvider();
-        break;
-      case 'gemini':
-        llmProvider = new GeminiProvider();
-        break;
-      default:
-        throw new Error(`Unknown LLM provider: ${config.llm.provider}`);
-    }
+    llmProvider = buildProvider(config.llm.provider);
   }
   return llmProvider;
+}
+
+export function getFallbackLLMProvider(): BaseLLMProvider | null {
+  const fallbackName = config.llm.fallbackProvider;
+  if (!fallbackName || fallbackName === config.llm.provider) return null;
+  if (!fallbackLlmProvider) {
+    fallbackLlmProvider = buildProvider(fallbackName);
+  }
+  return fallbackLlmProvider;
+}
+
+/**
+ * Run an LLM call against the primary provider; on rate-limit error, retry
+ * once on the configured fallback provider (LLM_FALLBACK_PROVIDER). Other
+ * errors propagate untouched.
+ */
+async function withProviderFallback<T>(
+  primary: BaseLLMProvider,
+  call: (provider: BaseLLMProvider) => Promise<T>
+): Promise<T> {
+  try {
+    return await call(primary);
+  } catch (err) {
+    if (!isRateLimitError(err)) throw err;
+    const fallback = getFallbackLLMProvider();
+    if (!fallback) throw err;
+    console.warn(
+      `Primary LLM provider (${primary.name}) rate-limited; falling back to ${fallback.name}.`
+    );
+    return await call(fallback);
+  }
 }
 
 // Fallback prompts (used if database is unavailable)
@@ -177,11 +209,13 @@ export async function parseResume(resumeText: string, supplementaryText?: string
   // schema failure (most commonly truncation when skillSynonyms inflate the
   // response), retry once with the larger budget that originally fit everything.
   const attempt = async (maxTokens: number) => {
-    const response = await provider.completeWithRetry(messages, {
-      temperature: 0,
-      maxTokens,
-      responseFormat: 'json',
-    }, config.llm.maxRetries);
+    const response = await withProviderFallback(provider, (p) =>
+      p.completeWithRetry(messages, {
+        temperature: 0,
+        maxTokens,
+        responseFormat: 'json',
+      }, config.llm.maxRetries)
+    );
     const parsed = provider.parseJsonResponse<unknown>(response.content);
     const validated = LLMResumeOutputSchema.safeParse(parsed);
     return { parsed, validated };
@@ -254,11 +288,13 @@ export async function parseJobDescription(jdText: string, jobTitle?: string): Pr
   // failure (most commonly truncation when skillSynonyms inflate the response),
   // retry once with a larger budget.
   const attempt = async (maxTokens: number) => {
-    const response = await provider.completeWithRetry(messages, {
-      temperature: 0,
-      maxTokens,
-      responseFormat: 'json',
-    }, config.llm.maxRetries);
+    const response = await withProviderFallback(provider, (p) =>
+      p.completeWithRetry(messages, {
+        temperature: 0,
+        maxTokens,
+        responseFormat: 'json',
+      }, config.llm.maxRetries)
+    );
     const parsed = provider.parseJsonResponse<unknown>(response.content);
     const validated = LLMJDOutputSchema.safeParse(parsed);
     return { parsed, validated };
@@ -431,11 +467,13 @@ export async function formatResume(
       { role: 'user', content: resumeText },
     ];
 
-    const response = await provider.completeWithRetry(messages, {
-      temperature: 0.3,
-      maxTokens: 8192,
-      responseFormat: 'text',
-    }, config.llm.maxRetries);
+    const response = await withProviderFallback(provider, (p) =>
+      p.completeWithRetry(messages, {
+        temperature: 0.3,
+        maxTokens: 8192,
+        responseFormat: 'text',
+      }, config.llm.maxRetries)
+    );
 
     return {
       formattedContent: sanitizeMarkdownOutput(response.content),
@@ -537,11 +575,13 @@ Identify any existing requirements that are potential duplicates of the new one 
     { role: 'user', content: userPrompt },
   ];
 
-  const response = await provider.completeWithRetry(messages, {
-    temperature: 0,
-    maxTokens: 2048,
-    responseFormat: 'json',
-  }, config.llm.maxRetries);
+  const response = await withProviderFallback(provider, (p) =>
+    p.completeWithRetry(messages, {
+      temperature: 0,
+      maxTokens: 2048,
+      responseFormat: 'json',
+    }, config.llm.maxRetries)
+  );
 
   const parsed = provider.parseJsonResponse<unknown>(response.content);
   const validated = DuplicateComparisonSchema.safeParse(parsed);

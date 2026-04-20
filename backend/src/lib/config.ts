@@ -54,6 +54,7 @@ interface Config {
     geminiApiKey: string;
     geminiModel: string;
     maxRetries: number;
+    fallbackProvider: LLMProvider | '';
   };
 }
 
@@ -119,5 +120,6 @@ export const config: Config = {
     geminiApiKey: getEnvVar('GEMINI_API_KEY', ''),
     geminiModel: getEnvVar('GEMINI_MODEL', 'gemini-2.5-flash'),
     maxRetries: 3,
+    fallbackProvider: getEnvVar('LLM_FALLBACK_PROVIDER', '') as LLMProvider | '',
   },
 };

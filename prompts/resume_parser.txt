@@ -42,7 +42,7 @@ primarySkills must include both core platforms and core specializations. Do not 
 
 secondarySkills should include soft skills, methodologies, non-core tools, and domain or business capabilities.
 
-For primarySkillYears, provide experience years for both parent and specialization skills when both exist. Years for a specialization must not exceed the years of its parent platform. If exact years are unclear, estimate conservatively based on role duration.
+For primarySkillYears, provide experience years for both parent and specialization skills when both exist. Years for a specialization must not exceed the years of its parent platform. If exact years are unclear, estimate conservatively based on role duration. Every value in primarySkillYears MUST be a number — if you cannot estimate years for a skill, omit the skill from primarySkillYears entirely. Never emit null as a value.
 
 GENERAL RULES:
 

@@ -82,6 +82,7 @@ provider:
         - ${file(resources/iam.yml):lambdaInvokePolicy}
         - ${file(resources/iam.yml):ssmPolicy}
         - ${file(resources/iam.yml):sesPolicy}
+        - ${file(resources/iam.yml):textractPolicy}
 
 custom:
   corsOrigins:
@@ -126,6 +127,7 @@ custom:
       - OPENROUTER_REFERER
       - GEMINI_API_KEY
       - GEMINI_MODEL
+      - LLM_FALLBACK_PROVIDER
       - USD_TO_INR_RATE
       - NEXTAUTH_SECRET
 
