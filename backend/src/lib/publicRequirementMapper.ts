@@ -3,6 +3,7 @@ import type { RequirementItem, AdditionalFieldDefinition } from '../types/index.
 export interface PublicRequirementSummary {
   requirementId: string;
   jobTitle?: string;
+  engagementModel: string;
   coreSkill?: string | null;
   mustHaveSkills: string[];
   goodToHaveSkills: string[];
@@ -29,6 +30,7 @@ export function toPublicRequirement(item: RequirementItem): PublicRequirementSum
   return {
     requirementId: item.requirement_id,
     jobTitle: item.job_title,
+    engagementModel: item.engagement_model,
     coreSkill: criteria?.coreSkill ?? null,
     mustHaveSkills: criteria?.mustHaveSkills ?? [],
     goodToHaveSkills: criteria?.goodToHaveSkills ?? [],

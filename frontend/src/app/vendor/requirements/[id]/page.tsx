@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, MapPin, Briefcase, Clock, Mail, CheckCircle2, Star } from 'lucide-react';
+import { ArrowLeft, MapPin, Briefcase, Clock, Mail, CheckCircle2, Star, FileText } from 'lucide-react';
 import { api, PublicRequirementSummary } from '@/lib/api';
+import { formatEngagementModel } from '@/lib/utils';
 
 const VENDOR_CONTACT_EMAIL = 'vendors@quadzero.com';
 
@@ -175,6 +176,15 @@ export default function VendorRequirementDetailPage() {
             Position Details
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Engagement Model */}
+            <div>
+              <dt className="text-xs text-gray-400 dark:text-gray-500 mb-1">Engagement Type</dt>
+              <dd className="flex items-center gap-1.5 text-sm text-gray-900 dark:text-white">
+                <FileText className="w-4 h-4 text-gray-400" />
+                {formatEngagementModel(requirement.engagementModel)}
+              </dd>
+            </div>
+
             {/* Experience */}
             <div>
               <dt className="text-xs text-gray-400 dark:text-gray-500 mb-1">Experience</dt>

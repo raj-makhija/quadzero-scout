@@ -1909,6 +1909,7 @@ export interface PipelineActivitiesResponse {
 export interface PublicRequirementSummary {
   requirementId: string;
   jobTitle?: string;
+  engagementModel: string;
   coreSkill?: string | null;
   mustHaveSkills: string[];
   goodToHaveSkills: string[];
