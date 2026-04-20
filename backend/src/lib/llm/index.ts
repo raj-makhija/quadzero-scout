@@ -275,9 +275,17 @@ export async function parseJobDescription(jdText: string, jobTitle?: string): Pr
   const provider = getLLMProvider();
   const systemPrompt = await getPromptContent('jd_parser');
 
+  // Normalize Unicode punctuation that can confuse the LLM's JSON output
+  // (en/em dashes, smart quotes, non-breaking space) to ASCII equivalents.
+  const sanitized = jdText
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/\u00A0/g, ' ');
+
   const userPrompt = jobTitle
-    ? `Job Title: ${jobTitle}\n\nJob Description:\n${jdText}`
-    : `Job Description:\n${jdText}`;
+    ? `Job Title: ${jobTitle}\n\nJob Description:\n${sanitized}`
+    : `Job Description:\n${sanitized}`;
 
   const messages: LLMMessage[] = [
     { role: 'system', content: systemPrompt },
@@ -301,24 +309,29 @@ export async function parseJobDescription(jdText: string, jobTitle?: string): Pr
   };
 
   let parsed: unknown;
-  let validated: ReturnType<typeof LLMJDOutputSchema.safeParse>;
+  let validated!: ReturnType<typeof LLMJDOutputSchema.safeParse>;
   try {
-    ({ parsed, validated } = await attempt(2048));
+    ({ parsed, validated } = await attempt(8192));
     if (!validated.success) {
-      throw new Error('schema validation failed at 2048 tokens');
+      throw new Error('schema validation failed at 8192 tokens');
     }
   } catch (err) {
+    const firstZodErrors =
+      validated && !validated.success ? validated.error.issues.slice(0, 5) : undefined;
+    const firstRawOutput =
+      parsed !== undefined ? JSON.stringify(parsed).substring(0, 1000) : undefined;
     console.warn(
-      'parseJobDescription: 2048-token attempt failed, retrying at 4096:',
-      err instanceof Error ? err.message : err
+      'parseJobDescription: 8192-token attempt failed, retrying at 16384:',
+      err instanceof Error ? err.message : err,
+      { firstZodErrors, firstRawOutput }
     );
-    ({ parsed, validated } = await attempt(4096));
+    ({ parsed, validated } = await attempt(16384));
   }
 
   if (!validated.success) {
     console.error('LLM output validation failed:', {
       zodErrors: validated.error.issues,
-      rawOutput: JSON.stringify(parsed).substring(0, 1000),
+      rawOutput: JSON.stringify(parsed).substring(0, 2000),
     });
     throw new Error(`Invalid LLM output structure: ${validated.error.message}`);
   }

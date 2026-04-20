@@ -80,7 +80,7 @@ describe('parseJobDescription() — token-budget retry behavior', () => {
     vi.clearAllMocks();
   });
 
-  it('uses 2048-token budget on the first attempt and does not retry when output is valid', async () => {
+  it('uses 8192-token budget on the first attempt and does not retry when output is valid', async () => {
     const handler = vi.fn(async (_msgs: LLMMessage[], options?: LLMOptions): Promise<LLMResponse> => ({
       content: VALID_JD_JSON,
     }));
@@ -89,14 +89,13 @@ describe('parseJobDescription() — token-budget retry behavior', () => {
     const { output } = await parseJobDescription('Senior React developer, 5-9 years experience, Bangalore');
 
     expect(handler).toHaveBeenCalledTimes(1);
-    expect(handler.mock.calls[0][1]?.maxTokens).toBe(2048);
+    expect(handler.mock.calls[0][1]?.maxTokens).toBe(8192);
     expect(output.mustHaveSkills).toContain('react');
   });
 
-  it('retries with 4096-token budget when the 2048 attempt returns truncated/invalid JSON', async () => {
+  it('retries with 16384-token budget when the 8192 attempt returns truncated/invalid JSON', async () => {
     const handler = vi.fn(async (_msgs: LLMMessage[], options?: LLMOptions): Promise<LLMResponse> => {
-      // First call (2048) returns truncated JSON; second call (4096) succeeds.
-      if (options?.maxTokens === 2048) {
+      if (options?.maxTokens === 8192) {
         return { content: '{"mustHaveSkills": ["react"], "goodToHave' }; // truncated
       }
       return { content: VALID_JD_JSON };
@@ -106,15 +105,14 @@ describe('parseJobDescription() — token-budget retry behavior', () => {
     const { output } = await parseJobDescription('Complex JD with many skills');
 
     expect(handler).toHaveBeenCalledTimes(2);
-    expect(handler.mock.calls[0][1]?.maxTokens).toBe(2048);
-    expect(handler.mock.calls[1][1]?.maxTokens).toBe(4096);
+    expect(handler.mock.calls[0][1]?.maxTokens).toBe(8192);
+    expect(handler.mock.calls[1][1]?.maxTokens).toBe(16384);
     expect(output.mustHaveSkills).toContain('react');
   });
 
-  it('retries with 4096-token budget when the 2048 attempt fails schema validation', async () => {
+  it('retries with 16384-token budget when the 8192 attempt fails schema validation', async () => {
     const handler = vi.fn(async (_msgs: LLMMessage[], options?: LLMOptions): Promise<LLMResponse> => {
-      // First call returns valid JSON but missing required fields; second call succeeds.
-      if (options?.maxTokens === 2048) {
+      if (options?.maxTokens === 8192) {
         return { content: '{"mustHaveSkills": ["react"]}' }; // missing required fields
       }
       return { content: VALID_JD_JSON };
@@ -124,8 +122,8 @@ describe('parseJobDescription() — token-budget retry behavior', () => {
     const { output } = await parseJobDescription('JD text');
 
     expect(handler).toHaveBeenCalledTimes(2);
-    expect(handler.mock.calls[0][1]?.maxTokens).toBe(2048);
-    expect(handler.mock.calls[1][1]?.maxTokens).toBe(4096);
+    expect(handler.mock.calls[0][1]?.maxTokens).toBe(8192);
+    expect(handler.mock.calls[1][1]?.maxTokens).toBe(16384);
     expect(output.location).toBe('Bangalore');
   });
 
@@ -197,7 +195,7 @@ describe('parseJobDescription() — token-budget retry behavior', () => {
     expect(output.budgetMaxLpa).toBe(25);
   });
 
-  it('throws when both 2048 and 4096 attempts fail', async () => {
+  it('throws when both 8192 and 16384 attempts fail', async () => {
     const handler = vi.fn(async (): Promise<LLMResponse> => ({
       content: 'not json at all',
     }));
@@ -205,7 +203,22 @@ describe('parseJobDescription() — token-budget retry behavior', () => {
 
     await expect(parseJobDescription('JD text')).rejects.toThrow();
     expect(handler).toHaveBeenCalledTimes(2);
-    expect(handler.mock.calls[0][1]?.maxTokens).toBe(2048);
-    expect(handler.mock.calls[1][1]?.maxTokens).toBe(4096);
+    expect(handler.mock.calls[0][1]?.maxTokens).toBe(8192);
+    expect(handler.mock.calls[1][1]?.maxTokens).toBe(16384);
+  });
+
+  it('sanitizes Unicode en-dash, em-dash, smart quotes, and NBSP in the JD before sending to LLM', async () => {
+    let capturedUserContent = '';
+    stubProvider.handler = async (messages) => {
+      capturedUserContent = messages.find((m) => m.role === 'user')?.content ?? '';
+      return { content: VALID_JD_JSON };
+    };
+
+    await parseJobDescription('Shift: 06:00 AM \u2013 02:00 PM \u2014 note \u201Cremote\u201D \u2018ok\u2019\u00A0end');
+
+    expect(capturedUserContent).not.toMatch(/[\u2013\u2014\u2018\u2019\u201C\u201D\u00A0]/);
+    expect(capturedUserContent).toContain('06:00 AM - 02:00 PM');
+    expect(capturedUserContent).toContain('"remote"');
+    expect(capturedUserContent).toContain("'ok'");
   });
 });
