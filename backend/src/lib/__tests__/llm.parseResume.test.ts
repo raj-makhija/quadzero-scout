@@ -67,7 +67,7 @@ describe('parseResume() — token-budget retry behavior', () => {
     vi.clearAllMocks();
   });
 
-  it('uses 4096-token budget on the first attempt and does not retry when output is valid', async () => {
+  it('uses 8192-token budget on the first attempt and does not retry when output is valid', async () => {
     const handler = vi.fn(async (_msgs: LLMMessage[], options?: LLMOptions): Promise<LLMResponse> => ({
       content: VALID_RESUME_JSON,
     }));
@@ -76,14 +76,14 @@ describe('parseResume() — token-budget retry behavior', () => {
     const { output } = await parseResume('John Doe\nReact developer\n5 years experience');
 
     expect(handler).toHaveBeenCalledTimes(1);
-    expect(handler.mock.calls[0][1]?.maxTokens).toBe(4096);
+    expect(handler.mock.calls[0][1]?.maxTokens).toBe(8192);
     expect(output.fullName).toBe('Jane Doe');
   });
 
-  it('retries with 8192-token budget when the 4096 attempt returns truncated/invalid JSON', async () => {
+  it('retries with 16384-token budget when the 8192 attempt returns truncated/invalid JSON', async () => {
     const handler = vi.fn(async (_msgs: LLMMessage[], options?: LLMOptions): Promise<LLMResponse> => {
-      // First call (4096) returns truncated JSON; second call (8192) succeeds.
-      if (options?.maxTokens === 4096) {
+      // First call (8192) returns truncated JSON; second call (16384) succeeds.
+      if (options?.maxTokens === 8192) {
         return { content: '{"fullName": "Jane Doe", "primarySki' }; // truncated
       }
       return { content: VALID_RESUME_JSON };
@@ -93,12 +93,12 @@ describe('parseResume() — token-budget retry behavior', () => {
     const { output } = await parseResume('resume text');
 
     expect(handler).toHaveBeenCalledTimes(2);
-    expect(handler.mock.calls[0][1]?.maxTokens).toBe(4096);
-    expect(handler.mock.calls[1][1]?.maxTokens).toBe(8192);
+    expect(handler.mock.calls[0][1]?.maxTokens).toBe(8192);
+    expect(handler.mock.calls[1][1]?.maxTokens).toBe(16384);
     expect(output.fullName).toBe('Jane Doe');
   });
 
-  it('throws with the original validation error when both 4096 and 8192 attempts fail', async () => {
+  it('throws with the original validation error when both 8192 and 16384 attempts fail', async () => {
     const handler = vi.fn(async (): Promise<LLMResponse> => ({
       content: 'not json at all',
     }));
@@ -106,7 +106,7 @@ describe('parseResume() — token-budget retry behavior', () => {
 
     await expect(parseResume('resume text')).rejects.toThrow();
     expect(handler).toHaveBeenCalledTimes(2);
-    expect(handler.mock.calls[0][1]?.maxTokens).toBe(4096);
-    expect(handler.mock.calls[1][1]?.maxTokens).toBe(8192);
+    expect(handler.mock.calls[0][1]?.maxTokens).toBe(8192);
+    expect(handler.mock.calls[1][1]?.maxTokens).toBe(16384);
   });
 });
