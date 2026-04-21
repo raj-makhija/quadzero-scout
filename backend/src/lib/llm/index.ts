@@ -592,7 +592,7 @@ Identify any existing requirements that are potential duplicates of the new one 
   const response = await withProviderFallback(provider, (p) =>
     p.completeWithRetry(messages, {
       temperature: 0,
-      maxTokens: 2048,
+      maxTokens: 4096,
       responseFormat: 'json',
     }, config.llm.maxRetries)
   );
