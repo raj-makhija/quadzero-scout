@@ -18,6 +18,14 @@ export default function RequirementsListPage() {
   const [hasMore, setHasMore] = useState(false);
   const [currentOffset, setCurrentOffset] = useState(0);
 
+  const isInternal = (session?.user as { isInternal?: boolean } | undefined)?.isInternal === true;
+  const isAdmin = (session?.user as { role?: string } | undefined)?.role === 'admin';
+  const canEditRequirement = isInternal || isAdmin;
+
+  const [statusTarget, setStatusTarget] = useState<RequirementSummary | null>(null);
+  const [reason, setReason] = useState('');
+  const [statusLoadingId, setStatusLoadingId] = useState<string | null>(null);
+
   // Filters
   const [searchFilter, setSearchFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -87,6 +95,29 @@ export default function RequirementsListPage() {
 
   const handleLoadMore = () => {
     fetchRequirements(false);
+  };
+
+  const handleStatusToggle = async (
+    req: RequirementSummary,
+    newStatus: 'active' | 'closed_on_hold',
+    reasonText?: string
+  ) => {
+    try {
+      setStatusLoadingId(req.requirementId);
+      setError(null);
+      await api.updateRequirementStatus(req.requirementId, newStatus, reasonText);
+      setRequirements((prev) =>
+        prev.map((r) =>
+          r.requirementId === req.requirementId ? { ...r, status: newStatus } : r
+        )
+      );
+      setStatusTarget(null);
+      setReason('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update status');
+    } finally {
+      setStatusLoadingId(null);
+    }
   };
 
   return (
@@ -305,6 +336,30 @@ export default function RequirementsListPage() {
                   <span className="text-sm text-gray-400 dark:text-gray-500 whitespace-nowrap">
                     {formatDate(req.createdAt)}
                   </span>
+                  {canEditRequirement && req.status !== 'duplicate' && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (req.status === 'active') {
+                          setStatusTarget(req);
+                        } else {
+                          handleStatusToggle(req, 'active');
+                        }
+                      }}
+                      disabled={statusLoadingId === req.requirementId}
+                      className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors whitespace-nowrap ${
+                        req.status === 'active'
+                          ? 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
+                          : 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-900/50'
+                      } disabled:opacity-50`}
+                    >
+                      {statusLoadingId === req.requirementId
+                        ? 'Updating...'
+                        : req.status === 'active'
+                        ? 'Close / On-hold'
+                        : 'Re-open'}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -350,6 +405,42 @@ export default function RequirementsListPage() {
           )}
         </div>
       </main>
+
+      {statusTarget && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full shadow-xl">
+            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">
+              Close / Put On-hold
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              Optionally provide a reason for closing this requirement.
+            </p>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Reason (optional)"
+              className="input w-full mb-4"
+              rows={3}
+              maxLength={500}
+            />
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => { setStatusTarget(null); setReason(''); }}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleStatusToggle(statusTarget, 'closed_on_hold', reason || undefined)}
+                disabled={statusLoadingId === statusTarget.requirementId}
+                className="btn-primary"
+              >
+                {statusLoadingId === statusTarget.requirementId ? 'Updating...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
