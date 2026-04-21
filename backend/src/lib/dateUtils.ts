@@ -1,6 +1,6 @@
-export type ActivityPeriod = 'previousDay' | 'week' | 'month' | 'year';
+export type ActivityPeriod = 'today' | 'previousDay' | 'week' | 'month' | 'year';
 
-const VALID_PERIODS: ActivityPeriod[] = ['previousDay', 'week', 'month', 'year'];
+const VALID_PERIODS: ActivityPeriod[] = ['today', 'previousDay', 'week', 'month', 'year'];
 
 export function isValidPeriod(value: string): value is ActivityPeriod {
   return VALID_PERIODS.includes(value as ActivityPeriod);
@@ -17,6 +17,8 @@ export function getDateRangeForPeriod(period: ActivityPeriod): { startDate: stri
   const yesterdayIst = new Date(nowIst.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
   switch (period) {
+    case 'today':
+      return { startDate: todayIst, endDate: todayIst };
     case 'previousDay':
       return { startDate: yesterdayIst, endDate: yesterdayIst };
     case 'week': {

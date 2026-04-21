@@ -1747,7 +1747,7 @@ export interface AuditLogFilters {
 }
 
 // Activity Dashboard types
-export type ActivityPeriod = 'previousDay' | 'week' | 'month' | 'year';
+export type ActivityPeriod = 'today' | 'previousDay' | 'week' | 'month' | 'year';
 
 export interface ActivitySummary {
   [actionType: string]: number;

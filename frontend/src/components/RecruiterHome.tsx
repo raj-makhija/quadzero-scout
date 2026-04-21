@@ -32,7 +32,7 @@ export function RecruiterHome({ userName }: RecruiterHomeProps) {
   const [errorProfiles, setErrorProfiles] = useState<string | null>(null);
 
   // Activity state
-  const [activityPeriod, setActivityPeriod] = useState<ActivityPeriod>('previousDay');
+  const [activityPeriod, setActivityPeriod] = useState<ActivityPeriod>('today');
   const [activitySummary, setActivitySummary] = useState<ActivitySummary>({});
   const [loadingActivity, setLoadingActivity] = useState(true);
   const [errorActivity, setErrorActivity] = useState<string | null>(null);

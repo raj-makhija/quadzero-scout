@@ -14,7 +14,7 @@ export default function RecruiterActivityPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
 
-  const [period, setPeriod] = useState<ActivityPeriod>('previousDay');
+  const [period, setPeriod] = useState<ActivityPeriod>('today');
   const [activeTab, setActiveTab] = useState<'summary' | 'detailed'>('summary');
   const [summary, setSummary] = useState<ActivitySummary>({});
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);

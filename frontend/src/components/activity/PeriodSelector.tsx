@@ -8,6 +8,7 @@ interface PeriodSelectorProps {
 }
 
 const PERIOD_OPTIONS: { value: ActivityPeriod; label: string }[] = [
+  { value: 'today', label: 'Today' },
   { value: 'previousDay', label: 'Previous Day' },
   { value: 'week', label: 'Last 7 Days' },
   { value: 'month', label: 'Last 30 Days' },

@@ -3557,8 +3557,8 @@ Get the authenticated recruiter's own activity summary and logs for a given peri
 **Auth**: Required (recruiter or admin)
 
 **Query Parameters**:
-- `period` (optional): `previousDay` (default), `week`, `month`, `year`
-- `detail` (optional): `true` to include individual log entries. For `previousDay`/`week` logs are included by default; for `month`/`year` only summary is returned unless `detail=true`.
+- `period` (optional): `today` (default), `previousDay`, `week`, `month`, `year`
+- `detail` (optional): `true` to include individual log entries. For `today`/`previousDay`/`week` logs are included by default; for `month`/`year` only summary is returned unless `detail=true`.
 - `limit` (optional): Max results per page (default 100, max 100)
 - `nextToken` (optional): Pagination token
 
@@ -3609,7 +3609,7 @@ Get activity summary across all recruiters (cumulative) or for a specific recrui
 **Auth**: Required (admin only)
 
 **Query Parameters**:
-- `period` (optional): `previousDay` (default), `week`, `month`, `year`
+- `period` (optional): `today` (default), `previousDay`, `week`, `month`, `year`
 - `userId` (optional): If provided, returns activity for that specific recruiter. If absent, returns cumulative activity across all users.
 - `detail` (optional): `true` to include individual log entries (only applicable when `userId` is provided)
 - `limit` (optional): Max results per page (default 100, max 100)

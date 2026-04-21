@@ -15,7 +15,7 @@ import type {
 import { ACTION_CATEGORIES, getCategoryCount, getTotalCount } from '@/components/activity/activityConstants';
 
 export default function AdminActivityDashboardPage() {
-  const [period, setPeriod] = useState<ActivityPeriod>('previousDay');
+  const [period, setPeriod] = useState<ActivityPeriod>('today');
   const [viewMode, setViewMode] = useState<'cumulative' | 'individual'>('cumulative');
   const [selectedRecruiterId, setSelectedRecruiterId] = useState<string>('');
   const [recruiters, setRecruiters] = useState<RecruiterListItem[]>([]);
