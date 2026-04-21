@@ -17,6 +17,12 @@ export interface LLMOptions {
   responseFormat?: 'json' | 'text';
 }
 
+export function isRateLimitError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  const status = (err as any)?.status ?? (err as any)?.statusCode;
+  return status === 429 || /\b429\b|rate.?limit|resource exhausted|too many requests|quota/i.test(message);
+}
+
 export abstract class BaseLLMProvider {
   abstract readonly name: string;
 
@@ -39,11 +45,12 @@ export abstract class BaseLLMProvider {
         lastError = error as Error;
         console.error(`LLM attempt ${attempt} failed:`, error);
 
-        // Don't retry truncation errors — a larger token budget is needed,
-        // retrying at the same limit will produce the same result.
-        if (lastError.message.includes('response truncated')) {
-          throw lastError;
-        }
+        // Don't retry truncation errors — a larger token budget is needed.
+        if (lastError.message.includes('response truncated')) throw lastError;
+
+        // Don't retry 429s — propagate immediately so withProviderFallback
+        // can switch to a fallback provider rather than amplifying the spike.
+        if (isRateLimitError(lastError)) throw lastError;
 
         if (attempt < maxRetries) {
           // Exponential backoff

@@ -37,7 +37,7 @@ export class GeminiProvider extends BaseLLMProvider {
       parts: [{ text: m.content }],
     }));
 
-    const result = await this.generateWithRetry(() => model.generateContent({ contents }));
+    const result = await model.generateContent({ contents });
 
     const response = result.response;
 
@@ -70,25 +70,4 @@ export class GeminiProvider extends BaseLLMProvider {
     };
   }
 
-  private async generateWithRetry<T>(fn: () => Promise<T>, maxAttempts = 4): Promise<T> {
-    const delaysMs = [2000, 8000, 32000];
-    let lastErr: unknown;
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      try {
-        return await fn();
-      } catch (err: any) {
-        lastErr = err;
-        if (!isRateLimitError(err) || attempt === maxAttempts - 1) throw err;
-        const jitter = Math.floor(Math.random() * 500);
-        await new Promise((r) => setTimeout(r, delaysMs[attempt] + jitter));
-      }
-    }
-    throw lastErr;
-  }
-}
-
-export function isRateLimitError(err: unknown): boolean {
-  const message = err instanceof Error ? err.message : String(err);
-  const status = (err as any)?.status ?? (err as any)?.statusCode;
-  return status === 429 || /\b429\b|rate.?limit|resource exhausted|too many requests|quota/i.test(message);
 }

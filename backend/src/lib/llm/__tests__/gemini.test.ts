@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isRateLimitError } from '../gemini.js';
+import { isRateLimitError } from '../base.js';
 
 describe('isRateLimitError', () => {
   it('detects Gemini 429 error message', () => {
