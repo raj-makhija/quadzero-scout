@@ -41,18 +41,20 @@ export class GeminiProvider extends BaseLLMProvider {
 
     const response = result.response;
 
-    // Check for truncation due to maxOutputTokens
     const candidate = response.candidates?.[0];
-    if (candidate?.finishReason === FinishReason.MAX_TOKENS) {
-      const used = response.usageMetadata?.candidatesTokenCount || 0;
-      throw new Error(
-        `Gemini response truncated at ${used} output tokens (maxOutputTokens: ${options?.maxTokens || 4096}). Increase the token budget.`
-      );
-    }
-
     const content = response.text();
 
+    // Gemini 2.0 Flash with JSON response format sometimes reports
+    // finishReason=MAX_TOKENS while returning usable content well under the
+    // budget. Only treat it as fatal when there is no content to return;
+    // otherwise let the caller decide whether the payload is parseable.
     if (!content) {
+      if (candidate?.finishReason === FinishReason.MAX_TOKENS) {
+        const used = response.usageMetadata?.candidatesTokenCount || 0;
+        throw new Error(
+          `Gemini response truncated at ${used} output tokens (maxOutputTokens: ${options?.maxTokens || 4096}) with no content. Increase the token budget.`
+        );
+      }
       throw new Error('No content in Gemini response');
     }
 
