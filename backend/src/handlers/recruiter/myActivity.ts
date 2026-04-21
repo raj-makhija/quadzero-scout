@@ -8,9 +8,9 @@ async function handleRequest(event: AuthenticatedEvent): Promise<APIGatewayProxy
   try {
     const params = event.queryStringParameters || {};
 
-    const periodParam = params.period || 'previousDay';
+    const periodParam = params.period || 'today';
     if (!isValidPeriod(periodParam)) {
-      return error(ErrorCodes.VALIDATION_ERROR, 'Invalid period. Must be: previousDay, week, month, year', 400);
+      return error(ErrorCodes.VALIDATION_ERROR, 'Invalid period. Must be: today, previousDay, week, month, year', 400);
     }
 
     const { startDate, endDate } = getDateRangeForPeriod(periodParam);
