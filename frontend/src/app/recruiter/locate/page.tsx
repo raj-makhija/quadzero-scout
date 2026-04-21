@@ -109,6 +109,29 @@ const EMPTY_FILTERS: FilterState = {
   screeningStatus: [],
 };
 
+const STORAGE_KEY = 'scout_recruiter_locate';
+
+type PersistedState = {
+  query: string;
+  filters: FilterState;
+  mode: 'recent' | 'filtered' | 'nameSearch';
+  filteredResults: ProfileListItem[];
+  filterPagination: { hasMore: boolean; lastKey?: string };
+  nameResults: CandidateNameSearchResult[] | null;
+  filtersExpanded: boolean;
+};
+
+function readPersistedState(): PersistedState | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const saved = sessionStorage.getItem(STORAGE_KEY);
+    if (!saved) return null;
+    return JSON.parse(saved) as PersistedState;
+  } catch {
+    return null;
+  }
+}
+
 function countActiveFilters(f: FilterState): number {
   let count = 0;
   if (f.minExperience != null) count++;
@@ -229,14 +252,17 @@ export default function LocateProfilePage() {
   const { data: session } = useSession();
   const isInternal = (session?.user as { isInternal?: boolean } | undefined)?.isInternal === true;
 
+  // Pre-read persisted state synchronously to avoid flash of empty results on back-navigation
+  const [persisted] = useState<PersistedState | null>(() => readPersistedState());
+
   // Bench list state
   const [showBenchList, setShowBenchList] = useState(false);
   const [loadingBenchList, setLoadingBenchList] = useState(false);
   const [benchListProfiles, setBenchListProfiles] = useState<ProfileListItem[] | null>(null);
 
   // Name search state
-  const [query, setQuery] = useState('');
-  const [nameResults, setNameResults] = useState<CandidateNameSearchResult[] | null>(null);
+  const [query, setQuery] = useState(persisted?.query ?? '');
+  const [nameResults, setNameResults] = useState<CandidateNameSearchResult[] | null>(persisted?.nameResults ?? null);
   const [suggestions, setSuggestions] = useState<CandidateNameSearchResult[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -251,20 +277,48 @@ export default function LocateProfilePage() {
   const [loadingMoreRecent, setLoadingMoreRecent] = useState(false);
 
   // Filter state
-  const [filtersExpanded, setFiltersExpanded] = useState(false);
-  const [filters, setFilters] = useState<FilterState>({ ...EMPTY_FILTERS });
+  const [filtersExpanded, setFiltersExpanded] = useState(persisted?.filtersExpanded ?? false);
+  const [filters, setFilters] = useState<FilterState>(persisted?.filters ?? { ...EMPTY_FILTERS });
   const [skillInput, setSkillInput] = useState('');
 
   // Filtered results state
-  const [mode, setMode] = useState<'recent' | 'filtered' | 'nameSearch'>('recent');
-  const [filteredResults, setFilteredResults] = useState<ProfileListItem[]>([]);
+  const [mode, setMode] = useState<'recent' | 'filtered' | 'nameSearch'>(persisted?.mode ?? 'recent');
+  const [filteredResults, setFilteredResults] = useState<ProfileListItem[]>(persisted?.filteredResults ?? []);
   const [loadingFiltered, setLoadingFiltered] = useState(false);
-  const [filterPagination, setFilterPagination] = useState<{ hasMore: boolean; lastKey?: string }>({ hasMore: false });
+  const [filterPagination, setFilterPagination] = useState<{ hasMore: boolean; lastKey?: string }>(persisted?.filterPagination ?? { hasMore: false });
   const [loadingMore, setLoadingMore] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement>(null);
 
   const [errorMessage, setErrorMessage] = useState('');
+
+  // Persist search/filter state to sessionStorage so browser back-navigation
+  // from a candidate detail page restores the same results and criteria.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const snapshot: PersistedState = {
+        query,
+        filters,
+        mode,
+        filteredResults,
+        filterPagination,
+        nameResults,
+        filtersExpanded,
+      };
+      const isDefault =
+        mode === 'recent' &&
+        !query &&
+        !hasActiveFilters(filters) &&
+        filteredResults.length === 0 &&
+        !nameResults;
+      if (isDefault) {
+        sessionStorage.removeItem(STORAGE_KEY);
+      } else {
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+      }
+    } catch { /* sessionStorage may be full or unavailable — ignore */ }
+  }, [query, filters, mode, filteredResults, filterPagination, nameResults, filtersExpanded]);
 
   // Load recent profiles on mount
   useEffect(() => {
@@ -301,9 +355,15 @@ export default function LocateProfilePage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Typeahead
+  // Typeahead — skip on initial mount when the query was restored from sessionStorage,
+  // otherwise the suggestions dropdown would pop open immediately on back-navigation.
+  const skipNextTypeaheadRef = useRef<boolean>(!!persisted?.query);
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (skipNextTypeaheadRef.current) {
+      skipNextTypeaheadRef.current = false;
+      return;
+    }
     if (query.trim().length < 2) {
       setSuggestions([]);
       setShowSuggestions(false);
