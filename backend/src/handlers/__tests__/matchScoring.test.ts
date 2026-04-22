@@ -162,17 +162,18 @@ describe('Match Scoring Algorithm', () => {
   });
 
   // TC-SCORE-011
-  it('secondary skills are considered in matching', () => {
+  it('must-have skill found only in secondary_skills is flagged as secondary, not a primary match', () => {
     const candidate = makeCandidate({
       primary_skills: ['react'],
       secondary_skills: ['aws'],
     });
     const result = calculateMatchScore(
       candidate,
-      ['aws'],  // aws is in secondary skills
+      ['aws'],
       [],
     );
-    expect(result.details.mustHaveMatched).toContain('aws');
+    expect(result.details.mustHaveMatched).not.toContain('aws');
+    expect(result.details.mustHaveSecondary).toContain('aws');
     expect(result.details.mustHaveMissing).toEqual([]);
   });
 
@@ -489,19 +490,18 @@ describe('Match Scoring Algorithm', () => {
     expect(result.score).toBe(108);
   });
 
-  // TC-SCORE-036: Skill only in secondary skills gets no prominence bonus
-  it('must-have skill in secondary-only gets no relevance bonus', () => {
+  // TC-SCORE-036: Skill only in secondary skills gets partial must-have credit (0.5 weight) and no prominence bonus
+  it('must-have skill in secondary-only gets half credit and no relevance bonus', () => {
     const candidate = makeCandidate({
       primary_skills: ['java', 'python'],
       primary_skill_years: { java: 5, python: 4 },
       secondary_skills: ['oracle'],
     });
     const result = calculateMatchScore(candidate, ['oracle'], []);
-    // Base: 45 + 25 + 8 + 5 + 10 + 7 = 100
-    // Prominence: oracle not in primary → 0
-    // Years: oracle not in primary_skill_years → 0
-    // Bonus: 0
-    expect(result.score).toBe(100);
+    // Base (full-match baseline): 100.
+    // Must-have match is secondary-only → 0.5 ratio × 40 = 20 (vs 40 full) → -20.
+    // Prominence: 0 (secondary). Years: 0. Bonus total: 0.
+    expect(result.score).toBe(80);
   });
 
   // TC-SCORE-037: Skill with <2 years gets no years bonus
@@ -614,5 +614,39 @@ describe('Match Scoring Algorithm', () => {
     expect(devResult.details.roleMatch).toBe('full');
     expect(testResult.details.roleMatch).toBe('none');
     expect(devResult.score).toBeGreaterThan(testResult.score);
+  });
+
+  // --- Secondary-skill weighting (primary vs secondary bucket) ---
+
+  it('mixed must-have: 1 in primary + 1 in secondary scores primary higher', () => {
+    const primaryOnly = makeCandidate({
+      primary_skills: ['react', 'nodejs'],
+      secondary_skills: [],
+    });
+    const primaryPlusSecondary = makeCandidate({
+      primary_skills: ['react'],
+      secondary_skills: ['nodejs'],
+    });
+    const primaryResult = calculateMatchScore(primaryOnly, ['react', 'nodejs'], []);
+    const splitResult = calculateMatchScore(primaryPlusSecondary, ['react', 'nodejs'], []);
+    expect(primaryResult.score).toBeGreaterThan(splitResult.score);
+    expect(splitResult.details.mustHaveMatched).toEqual(['react']);
+    expect(splitResult.details.mustHaveSecondary).toEqual(['nodejs']);
+  });
+
+  it('candidate whose only evidence of must-have is in secondary fails the 40% filter', () => {
+    const candidate = makeCandidate({
+      primary_skills: ['react'],
+      secondary_skills: ['aws', 'docker'],
+    });
+    // Must-haves: aws, docker, kubernetes — two match in secondary, one missing
+    const result = calculateMatchScore(candidate, ['aws', 'docker', 'kubernetes'], []);
+    // effective = (0 + 0*0.85 + 2*0.5) / 3 = 0.333 — below 0.40 threshold
+    const effective = (
+      result.details.mustHaveMatched.length
+      + result.details.mustHaveFuzzy.length * 0.85
+      + result.details.mustHaveSecondary.length * 0.5
+    ) / 3;
+    expect(effective).toBeLessThan(MIN_MUST_HAVE_MATCH_RATIO);
   });
 });

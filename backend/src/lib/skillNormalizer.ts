@@ -32,6 +32,24 @@ export function normalizeSkillYears(
   return normalized;
 }
 
+const CORE_SKILL_SET: Set<string> = (() => {
+  const set = new Set<string>();
+  const categories = skillsOntology.categories as Record<string, string[]>;
+  for (const skills of Object.values(categories)) {
+    for (const s of skills) set.add(s);
+  }
+  return set;
+})();
+
+/**
+ * Returns true if the skill is classified as a core technical skill by the
+ * skills ontology (i.e. appears in any `categories` bucket). Used to partition
+ * legacy profiles' skills into primary (core) vs secondary (non-core) buckets.
+ */
+export function isCoreSkill(skill: string): boolean {
+  return CORE_SKILL_SET.has(normalizeSkill(skill));
+}
+
 export function getSkillCategory(skill: string): string | null {
   const normalizedSkill = normalizeSkill(skill);
   const categories = skillsOntology.categories as Record<string, string[]>;

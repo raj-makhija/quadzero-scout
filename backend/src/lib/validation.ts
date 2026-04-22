@@ -59,6 +59,7 @@ export const SaveProfileRequestSchema = z.object({
     }
   }),
   resumeS3Key: z.string().min(1).max(500),
+  skillsSchemaVersion: z.string().min(1).max(20).optional(),
 });
 
 // Parse JD Request Validation

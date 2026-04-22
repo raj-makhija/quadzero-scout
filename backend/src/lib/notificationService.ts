@@ -1,5 +1,5 @@
 import { getCandidateById, getAllActiveRequirements, getUserById } from './dynamodb.js';
-import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, FUZZY_MATCH_WEIGHT, parseSearchLocations, isEngagementModelCompatible } from './matchScoring.js';
+import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, FUZZY_MATCH_WEIGHT, MUST_HAVE_SECONDARY_WEIGHT, parseSearchLocations, isEngagementModelCompatible } from './matchScoring.js';
 import { normalizeSkill, normalizeSkills } from './skillNormalizer.js';
 import { isCandidateWithinBudget } from './ctcConversion.js';
 import { sendNewProfilesNotificationEmail, type MatchedProfile } from './emailService.js';
@@ -90,7 +90,11 @@ export async function notifyMatchingRecruiters(candidateIds: string[]): Promise<
 
       // Apply minimum must-have effective match ratio filter
       if (normalizedMustHave.length > 0) {
-        const effectiveRatio = (details.mustHaveMatched.length + (details.mustHaveFuzzy?.length || 0) * FUZZY_MATCH_WEIGHT) / normalizedMustHave.length;
+        const effectiveRatio = (
+          details.mustHaveMatched.length
+          + (details.mustHaveFuzzy?.length || 0) * FUZZY_MATCH_WEIGHT
+          + (details.mustHaveSecondary?.length || 0) * MUST_HAVE_SECONDARY_WEIGHT
+        ) / normalizedMustHave.length;
         if (effectiveRatio < MIN_MUST_HAVE_MATCH_RATIO) continue;
       }
 

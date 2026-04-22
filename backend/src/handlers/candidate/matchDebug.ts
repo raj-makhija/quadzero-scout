@@ -3,7 +3,7 @@ import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, MatchDebugRequestSchema } from '../../lib/validation.js';
 import { getCandidateById, getRequirementById } from '../../lib/dynamodb.js';
 import { normalizeSkill, normalizeSkills } from '../../lib/skillNormalizer.js';
-import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, FUZZY_MATCH_WEIGHT, parseSearchLocations, isEngagementModelCompatible } from '../../lib/matchScoring.js';
+import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, FUZZY_MATCH_WEIGHT, MUST_HAVE_SECONDARY_WEIGHT, parseSearchLocations, isEngagementModelCompatible } from '../../lib/matchScoring.js';
 import { isCandidateWithinBudget } from '../../lib/ctcConversion.js';
 
 /** Normalize a synonym map: lowercase keys and values. Returns undefined if input is null/undefined. */
@@ -91,7 +91,11 @@ export async function handler(
 
     // --- Filter 2: Must-have match ratio (exact + fuzzy) ---
     const effectiveRatio = normalizedMustHave.length > 0
-      ? (details.mustHaveMatched.length + (details.mustHaveFuzzy?.length || 0) * FUZZY_MATCH_WEIGHT) / normalizedMustHave.length
+      ? (
+          details.mustHaveMatched.length
+          + (details.mustHaveFuzzy?.length || 0) * FUZZY_MATCH_WEIGHT
+          + (details.mustHaveSecondary?.length || 0) * MUST_HAVE_SECONDARY_WEIGHT
+        ) / normalizedMustHave.length
       : 1;
     const mustHaveRatioPassed = normalizedMustHave.length === 0 || effectiveRatio >= MIN_MUST_HAVE_MATCH_RATIO;
 
@@ -162,6 +166,7 @@ export async function handler(
           threshold: MIN_MUST_HAVE_MATCH_RATIO,
           matched: details.mustHaveMatched,
           fuzzy: details.mustHaveFuzzy,
+          secondary: details.mustHaveSecondary,
           related: details.mustHaveRelated,
           missing: details.mustHaveMissing,
         },

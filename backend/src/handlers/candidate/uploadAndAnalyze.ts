@@ -61,7 +61,7 @@ export async function handler(
 
     // Parse resume using LLM
     console.log('Parsing resume with LLM, text length:', extractedText.length);
-    let parseResult: { output: unknown; confidence: number };
+    let parseResult: { output: unknown; confidence: number; promptVersion: number | null };
 
     try {
       parseResult = await parseResume(extractedText, body.supplementaryText);
@@ -79,6 +79,7 @@ export async function handler(
       extractedProfile: parseResult.output as AnalyzeResponse['extractedProfile'],
       confidence: parseResult.confidence,
       rawTextLength: extractedText.length,
+      skillsSchemaVersion: parseResult.promptVersion != null ? `v${parseResult.promptVersion}` : null,
     };
 
     return success(response);

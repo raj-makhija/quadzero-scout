@@ -2,7 +2,7 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda
 import { v4 as uuidv4 } from 'uuid';
 import { success, error, ErrorCodes, WarningCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, SaveProfileRequestSchema } from '../../lib/validation.js';
-import { saveCandidateProfile, getExperienceBucket, getCandidateById, getCandidateByEmail, getSubVendorById } from '../../lib/dynamodb.js';
+import { saveCandidateProfile, getExperienceBucket, getCandidateById, getCandidateByEmail, getSubVendorById, getActivePrompt } from '../../lib/dynamodb.js';
 import { deleteObject } from '../../lib/s3.js';
 import { invokeLambdaAsync } from '../../lib/lambdaInvoke.js';
 import { config } from '../../lib/config.js';
@@ -35,7 +35,7 @@ export async function handler(
       );
     }
 
-    const { candidateId, profile, resumeS3Key } = validation.data;
+    const { candidateId, profile, resumeS3Key, skillsSchemaVersion: clientSkillsSchemaVersion } = validation.data;
 
     // Resolve sub-vendor if provided
     const subVendor = profile.subVendorId
@@ -87,6 +87,20 @@ export async function handler(
     // Reuse existing candidate ID or generate a new one
     const finalCandidateId = existingCandidate?.candidate_id || candidateId || `cand_${uuidv4()}`;
     const now = new Date().toISOString();
+
+    // Determine skills schema version. Prefer the version the parser used
+     // (passed through by the analyze flow). Fall back to the currently active
+     // resume_parser prompt version — applies to save-only paths where the
+     // candidate record is being updated after an earlier parse.
+    let skillsSchemaVersion: string | undefined = clientSkillsSchemaVersion;
+    if (!skillsSchemaVersion) {
+      try {
+        const activePrompt = await getActivePrompt('resume_parser');
+        if (activePrompt) skillsSchemaVersion = `v${activePrompt.version}`;
+      } catch (err) {
+        console.warn('Could not resolve active resume_parser version for skills_schema_version stamp:', err);
+      }
+    }
 
     // Normalize skills using ontology
     const normalizedPrimarySkills = normalizeSkills(profile.primarySkills);
@@ -140,6 +154,7 @@ export async function handler(
       sub_vendor_contact_phone: subVendor?.contact_person_phone || existingCandidate?.sub_vendor_contact_phone,
       sub_vendor_contact_email: subVendor?.contact_person_email || existingCandidate?.sub_vendor_contact_email,
       skill_synonyms: skillSynonyms || existingCandidate?.skill_synonyms,
+      skills_schema_version: skillsSchemaVersion || existingCandidate?.skills_schema_version,
       ...(preserveFormattedResume ? preserveFormattedResume : {}),
       created_at: existingCandidate?.created_at || now,
       last_updated: now,
