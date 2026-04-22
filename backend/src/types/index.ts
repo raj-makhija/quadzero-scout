@@ -135,6 +135,7 @@ export interface CandidateItem {
   sub_vendor_contact_phone?: string;
   sub_vendor_contact_email?: string;
   skill_synonyms?: Record<string, string[]>;
+  skills_schema_version?: string;
   _type?: string;
   created_at: string;
   last_updated: string;
@@ -246,12 +247,14 @@ export interface AnalyzeResponse {
   extractedProfile: LLMResumeOutput;
   confidence: number;
   rawTextLength: number;
+  skillsSchemaVersion: string | null;
 }
 
 export interface SaveProfileRequest {
   candidateId?: string;
   profile: CandidateProfile;
   resumeS3Key: string;
+  skillsSchemaVersion?: string;
 }
 
 export interface SaveProfileResponse {
@@ -294,6 +297,7 @@ export interface CandidateSearchResult {
   matchDetails: {
     mustHaveMatched: string[];
     mustHaveFuzzy: string[];
+    mustHaveSecondary: string[];
     mustHaveRelated: string[];
     mustHaveMissing: string[];
     goodToHaveMatched: string[];
@@ -1000,6 +1004,7 @@ export interface MatchedRequirement {
   matchDetails: {
     mustHaveMatched: string[];
     mustHaveFuzzy: string[];
+    mustHaveSecondary: string[];
     mustHaveRelated: string[];
     mustHaveMissing: string[];
     goodToHaveMatched: string[];

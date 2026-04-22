@@ -70,6 +70,7 @@ Stores candidate profile data extracted from resumes and edited by candidates.
 | sub_vendor_contact_phone | String | No | Denormalized sub-vendor contact person phone |
 | sub_vendor_contact_email | String | No | Denormalized sub-vendor contact person email |
 | _type | String | Yes | Fixed value `"PROFILE"` for RecentProfilesIndex GSI partitioning |
+| skills_schema_version | String | No | Which resume-parser prompt version produced this profile's skills split. Format: `v<N>` (e.g. `v7`) for LLM-parsed profiles, `v1.5` for profiles migrated from legacy single-list skills via the ontology-driven partition script. Absent → pre-migration legacy. Used by matching to understand whether empty `secondary_skills` means "none" or "unknown". |
 
 **Example Item:**
 ```json

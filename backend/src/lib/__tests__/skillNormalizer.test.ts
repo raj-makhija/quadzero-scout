@@ -8,6 +8,7 @@ import {
   calculateSkillMatch,
   getRoleCategory,
   calculateRoleMatch,
+  isCoreSkill,
 } from '../skillNormalizer.js';
 
 // ---------------------------------------------------------------------------
@@ -536,5 +537,26 @@ describe('calculateRoleMatch()', () => {
       ['SRE'],
       ['DevOps Engineer']
     )).toBe('full');
+  });
+});
+
+describe('isCoreSkill', () => {
+  it('returns true for skills in the ontology categories', () => {
+    expect(isCoreSkill('react')).toBe(true);
+    expect(isCoreSkill('docker')).toBe(true);
+    expect(isCoreSkill('postgresql')).toBe(true);
+  });
+
+  it('returns true via alias normalization', () => {
+    expect(isCoreSkill('JS')).toBe(true);
+    expect(isCoreSkill('node.js')).toBe(true);
+    expect(isCoreSkill('k8s')).toBe(true);
+  });
+
+  it('returns false for soft skills and methodologies not in categories', () => {
+    expect(isCoreSkill('communication')).toBe(false);
+    expect(isCoreSkill('leadership')).toBe(false);
+    expect(isCoreSkill('agile')).toBe(false);
+    expect(isCoreSkill('problem solving')).toBe(false);
   });
 });

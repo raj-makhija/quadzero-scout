@@ -18,6 +18,11 @@ export const MUST_HAVE_RELATED_WEIGHT = 0.3;
 /** Weight applied to fuzzy (token-containment / synonym) matches toward must-have ratio and scoring. */
 export const FUZZY_MATCH_WEIGHT = 0.85;
 
+/** Weight applied to must-have skills that match only against a candidate's
+ *  secondary_skills (non-core). These are weaker signals than primary-bucket
+ *  matches because the skill is not a core competency for the candidate. */
+export const MUST_HAVE_SECONDARY_WEIGHT = 0.5;
+
 /** Score weight for must-have skills component. */
 export const MUST_HAVE_WEIGHT = 40;
 
@@ -237,19 +242,40 @@ export function calculateMatchScore(
 ): MatchScoreResult {
   let score = 0;
 
-  // Get candidate skills
-  const candidateSkills = [
-    ...candidate.primary_skills,
-    ...candidate.secondary_skills,
-  ];
+  // Get candidate skills — split by bucket so a must-have that only matches a
+  // candidate's secondary_skills is treated as a weaker signal than a match
+  // against primary_skills (core competency).
+  const primaryBucket = candidate.primary_skills;
+  const secondaryBucket = candidate.secondary_skills;
+  const candidateSkills = [...primaryBucket, ...secondaryBucket];
 
-  // Must-have skills match — exact + fuzzy (token containment / synonym) for scoring
-  const mustHaveMatch = calculateSkillMatch(candidateSkills, mustHaveSkills, true, requiredSynonyms, candidateSynonyms);
-  // Second pass on remaining missing must-haves to find related skills for display only (not scored)
-  const mustHaveRelatedDisplay = calculateSkillMatch(candidateSkills, mustHaveMatch.missing, false);
+  // First, match must-haves against the primary bucket only (full weight).
+  const primaryMustHaveMatch = calculateSkillMatch(primaryBucket, mustHaveSkills, true, requiredSynonyms, candidateSynonyms);
+
+  // For must-haves not found in primary, try the secondary bucket (weighted 0.5).
+  const secondaryMustHaveMatch = calculateSkillMatch(secondaryBucket, primaryMustHaveMatch.missing, true, requiredSynonyms, candidateSynonyms);
+  const mustHaveSecondary = [...secondaryMustHaveMatch.exactMatched, ...secondaryMustHaveMatch.fuzzyMatched];
+
+  // Second pass on still-missing must-haves to surface related skills for display only (not scored).
+  const mustHaveRelatedDisplay = calculateSkillMatch(candidateSkills, secondaryMustHaveMatch.missing, false);
+
+  // Combined view used by the scoring bonus and by downstream consumers that
+  // still expect aggregated exact/fuzzy arrays (e.g. the existing filter
+  // callsites). Primary-bucket matches populate these; secondary-only matches
+  // are surfaced via the dedicated mustHaveSecondary field.
+  const mustHaveMatch = {
+    exactMatched: primaryMustHaveMatch.exactMatched,
+    fuzzyMatched: primaryMustHaveMatch.fuzzyMatched,
+    relatedMatched: [] as string[],
+    missing: secondaryMustHaveMatch.missing,
+  };
 
   const mustHaveEffective = mustHaveSkills.length > 0
-    ? (mustHaveMatch.exactMatched.length + mustHaveMatch.fuzzyMatched.length * FUZZY_MATCH_WEIGHT) / mustHaveSkills.length
+    ? (
+        primaryMustHaveMatch.exactMatched.length
+        + primaryMustHaveMatch.fuzzyMatched.length * FUZZY_MATCH_WEIGHT
+        + mustHaveSecondary.length * MUST_HAVE_SECONDARY_WEIGHT
+      ) / mustHaveSkills.length
     : 1;
   score += mustHaveEffective * MUST_HAVE_WEIGHT;
 
@@ -323,6 +349,7 @@ export function calculateMatchScore(
     details: {
       mustHaveMatched: mustHaveMatch.exactMatched,
       mustHaveFuzzy: mustHaveMatch.fuzzyMatched,
+      mustHaveSecondary,
       mustHaveRelated: mustHaveRelatedDisplay.relatedMatched,
       mustHaveMissing: mustHaveRelatedDisplay.missing,
       goodToHaveMatched: goodToHaveMatch.exactMatched,

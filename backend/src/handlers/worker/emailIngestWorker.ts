@@ -340,6 +340,9 @@ async function processAttachment(
       linkedin_url: profile.linkedinUrl ?? undefined,
       github_url: profile.githubUrl ?? undefined,
       cover_letter: emailBodyText || undefined,
+      skills_schema_version: parseResult.promptVersion != null
+        ? `v${parseResult.promptVersion}`
+        : existingCandidate?.skills_schema_version,
       ...(preserveFormattedResume || {}),
       created_at: existingCandidate?.created_at || nowIso,
       last_updated: nowIso,

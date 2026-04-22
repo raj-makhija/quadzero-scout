@@ -159,7 +159,7 @@ Rules:
 12. For skillSynonyms: generate 2-4 alternative phrasings for each extracted skill (both mustHaveSkills and goodToHaveSkills). Include common abbreviations, longer/shorter forms, and semantically equivalent terms. This is critical for matching — different documents may use different phrasings for the same concept`;
 
 // Prompt cache with TTL
-const promptCache = new Map<string, { content: string; fetchedAt: number }>();
+const promptCache = new Map<string, { content: string; version: number | null; fetchedAt: number }>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 const FALLBACK_PROMPTS: Record<string, string> = {
@@ -168,34 +168,35 @@ const FALLBACK_PROMPTS: Record<string, string> = {
   resume_formatter: FALLBACK_RESUME_FORMATTER_PROMPT,
 };
 
-async function getPromptContent(promptKey: string): Promise<string> {
+async function getPromptContent(promptKey: string): Promise<{ content: string; version: number | null }> {
   // Check cache first
   const cached = promptCache.get(promptKey);
   if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
-    return cached.content;
+    return { content: cached.content, version: cached.version };
   }
 
   // Fetch from database
   try {
     const prompt = await getActivePrompt(promptKey);
     if (prompt) {
-      promptCache.set(promptKey, { content: prompt.content, fetchedAt: Date.now() });
-      return prompt.content;
+      promptCache.set(promptKey, { content: prompt.content, version: prompt.version, fetchedAt: Date.now() });
+      return { content: prompt.content, version: prompt.version };
     }
   } catch (err) {
     console.warn(`Failed to fetch prompt ${promptKey} from DB, using fallback:`, err);
   }
 
   // Return fallback
-  return FALLBACK_PROMPTS[promptKey] || '';
+  return { content: FALLBACK_PROMPTS[promptKey] || '', version: null };
 }
 
 export async function parseResume(resumeText: string, supplementaryText?: string): Promise<{
   output: LLMResumeOutput;
   confidence: number;
+  promptVersion: number | null;
 }> {
   const provider = getLLMProvider();
-  const systemPrompt = await getPromptContent('resume_parser');
+  const { content: systemPrompt, version: promptVersion } = await getPromptContent('resume_parser');
 
   const userContent = supplementaryText?.trim()
     ? `Parse this resume:\n\n${resumeText}\n\n---\n\nSupplementary information (email body / cover letter — use this to fill in fields not found in the resume, especially CTC, notice period, and engagement preferences):\n\n${supplementaryText}`
@@ -265,7 +266,7 @@ export async function parseResume(resumeText: string, supplementaryText?: string
 
   const confidence = filledFields / totalFields;
 
-  return { output, confidence };
+  return { output, confidence, promptVersion };
 }
 
 export async function parseJobDescription(jdText: string, jobTitle?: string): Promise<{
@@ -274,7 +275,7 @@ export async function parseJobDescription(jdText: string, jobTitle?: string): Pr
   suggestions: string[];
 }> {
   const provider = getLLMProvider();
-  const systemPrompt = await getPromptContent('jd_parser');
+  const { content: systemPrompt } = await getPromptContent('jd_parser');
 
   // Normalize Unicode punctuation that can confuse the LLM's JSON output
   // (en/em dashes, smart quotes, non-breaking space) to ASCII equivalents.
@@ -451,7 +452,7 @@ export async function formatResume(
   documentBuffer: Buffer,
   contentType: string
 ): Promise<{ formattedContent: string; success: boolean }> {
-  const systemPrompt = await getPromptContent('resume_formatter');
+  const { content: systemPrompt } = await getPromptContent('resume_formatter');
 
   try {
     let resumeText: string;

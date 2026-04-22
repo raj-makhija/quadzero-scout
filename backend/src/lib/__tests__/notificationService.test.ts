@@ -27,6 +27,7 @@ vi.mock('../matchScoring.js', () => {
     calculateMatchScore: (...args: unknown[]) => mockCalculateMatchScore(...args),
     MIN_MUST_HAVE_MATCH_RATIO: 0.40,
     FUZZY_MATCH_WEIGHT: 0.85,
+    MUST_HAVE_SECONDARY_WEIGHT: 0.5,
     parseSearchLocations: (loc?: string) => loc ? loc.split(/[,;]/).map((s: string) => s.trim().toLowerCase()).filter(Boolean) : [],
     isEngagementModelCompatible: (reqModel: string, candidateModel: string) => {
       if (!reqModel || reqModel === 'either' || candidateModel === 'either') return true;
