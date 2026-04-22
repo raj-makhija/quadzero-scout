@@ -67,7 +67,11 @@ function partition(p: Profile): Partitioned {
   const retainedPrimarySet = new Set(newPrimary);
   const newYears: Record<string, number> = {};
   for (const [k, v] of Object.entries(years)) {
-    if (retainedPrimarySet.has(normalizeSkill(k))) newYears[k] = v;
+    const nk = normalizeSkill(k);
+    if (!retainedPrimarySet.has(nk)) continue;
+    // Write normalized key. If aliases collide (e.g. "React" and "react.js"),
+    // keep the max years — matches the rule in normalizeSkillYears().
+    newYears[nk] = Math.max(newYears[nk] ?? 0, v);
   }
 
   return { newPrimary, newSecondary, newYears, demoted };
