@@ -1,0 +1,120 @@
+{
+  "owner": "raj-makhija",
+  "project": {
+    "number": 1,
+    "id": "PVT_kwHOAbQ0ys4BVgNB",
+    "title": "Quadzero Scout Pipeline"
+  },
+  "fields": {
+    "Title": {
+      "id": "PVTF_lAHOAbQ0ys4BVgNBzhQ7khM",
+      "name": "Title",
+      "dataType": "TITLE",
+      "options": null
+    },
+    "Assignees": {
+      "id": "PVTF_lAHOAbQ0ys4BVgNBzhQ7khQ",
+      "name": "Assignees",
+      "dataType": "ASSIGNEES",
+      "options": null
+    },
+    "Status": {
+      "id": "PVTSSF_lAHOAbQ0ys4BVgNBzhQ7khU",
+      "name": "Status",
+      "dataType": "SINGLE_SELECT",
+      "options": {
+        "Todo": "f75ad846",
+        "In Progress": "47fc9ee4",
+        "Done": "98236657"
+      }
+    },
+    "Labels": {
+      "id": "PVTF_lAHOAbQ0ys4BVgNBzhQ7khY",
+      "name": "Labels",
+      "dataType": "LABELS",
+      "options": null
+    },
+    "Linked pull requests": {
+      "id": "PVTF_lAHOAbQ0ys4BVgNBzhQ7khc",
+      "name": "Linked pull requests",
+      "dataType": "LINKED_PULL_REQUESTS",
+      "options": null
+    },
+    "Milestone": {
+      "id": "PVTF_lAHOAbQ0ys4BVgNBzhQ7khg",
+      "name": "Milestone",
+      "dataType": "MILESTONE",
+      "options": null
+    },
+    "Repository": {
+      "id": "PVTF_lAHOAbQ0ys4BVgNBzhQ7khk",
+      "name": "Repository",
+      "dataType": "REPOSITORY",
+      "options": null
+    },
+    "Reviewers": {
+      "id": "PVTF_lAHOAbQ0ys4BVgNBzhQ7kho",
+      "name": "Reviewers",
+      "dataType": "REVIEWERS",
+      "options": null
+    },
+    "Parent issue": {
+      "id": "PVTF_lAHOAbQ0ys4BVgNBzhQ7khs",
+      "name": "Parent issue",
+      "dataType": "PARENT_ISSUE",
+      "options": null
+    },
+    "Sub-issues progress": {
+      "id": "PVTF_lAHOAbQ0ys4BVgNBzhQ7khw",
+      "name": "Sub-issues progress",
+      "dataType": "SUB_ISSUES_PROGRESS",
+      "options": null
+    },
+    "Pipeline Status": {
+      "id": "PVTSSF_lAHOAbQ0ys4BVgNBzhQ7qQY",
+      "name": "Pipeline Status",
+      "dataType": "SINGLE_SELECT",
+      "options": {
+        "new": "316b19e0",
+        "tests-pending": "3633fd43",
+        "dev-pending": "78b18bc0",
+        "validation-pending": "91d5d0f5",
+        "pr-pending": "bc8792a0",
+        "pr-review-pending": "e69c5d81",
+        "merged-to-develop": "66e36641",
+        "rework": "e0801734",
+        "needs-human": "78d62f1f",
+        "cost-review-pending": "4384baa6"
+      }
+    },
+    "Agent": {
+      "id": "PVTSSF_lAHOAbQ0ys4BVgNBzhQ7qSE",
+      "name": "Agent",
+      "dataType": "SINGLE_SELECT",
+      "options": {
+        "manager": "84ce06dd",
+        "tester": "d685822b",
+        "developer": "935a7f92",
+        "pr-reviewer": "95c6f169"
+      }
+    },
+    "Attempt": {
+      "id": "PVTF_lAHOAbQ0ys4BVgNBzhQ7qS8",
+      "name": "Attempt",
+      "dataType": "NUMBER",
+      "options": null
+    },
+    "PR Number": {
+      "id": "PVTF_lAHOAbQ0ys4BVgNBzhQ7qUs",
+      "name": "PR Number",
+      "dataType": "TEXT",
+      "options": null
+    },
+    "Base SHA": {
+      "id": "PVTF_lAHOAbQ0ys4BVgNBzhQ7qXM",
+      "name": "Base SHA",
+      "dataType": "TEXT",
+      "options": null
+    }
+  }
+}
