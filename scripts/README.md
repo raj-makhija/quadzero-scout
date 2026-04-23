@@ -23,7 +23,6 @@ Idempotent. Creates (or adopts) the "Quadzero Scout Pipeline" Projects v2
 board, adds custom fields (`Pipeline Status`, `Agent`, `Attempt`, `PR
 Number`, `Base SHA`), adds labels (`type:*`, `scope:*`, `auto-pipeline`),
 and runs discover-ids to write `.pipeline-config.json` at the repo root.
-Commit the generated file — downstream scripts read it.
 
 > **Field naming note:** We use `Pipeline Status` instead of the design doc's
 > `Status` because Projects v2 reserves the latter name for its built-in
@@ -37,7 +36,7 @@ Commit the generated file — downstream scripts read it.
 |---|---|
 | `setup-pipeline.sh` | Idempotent initial setup: project + fields + labels + config. |
 | `discover-ids.sh` | Fetches opaque Projects v2 IDs, writes `.pipeline-config.json`. Re-run if you add/rename fields or options. |
-| `set-field.sh` | `<issue> <field> <value>` — update a project field on an issue. Pass `""` as value to clear. |
+| `set-field.sh` | `<issue> <field> <value>` — update a project field. Pass `""` as value to clear. |
 | `get-field.sh` | `<issue> <field>` — read a project field value. |
 | `next-ticket.sh` | Lists actionable tickets (has `auto-pipeline` label, `Pipeline Status` is not terminal/blocked). |
 
@@ -48,17 +47,87 @@ Commit the generated file — downstream scripts read it.
 | `create-branch.sh` | `<ticket> <slug>` — branch from `develop` HEAD using `<type>/ticket-<N>-<slug>` (type inferred from ticket's `type:*` label). Pushes to origin. Records Base SHA on the ticket. |
 | `check-staleness.sh` | `<pr> <base-sha>` — compares files changed in the PR against files changed on `develop` since `base-sha`. Exit 0 clean, exit 1 stale (prints overlap). |
 | `open-pr.sh` | `<ticket> <branch> <title>` — opens a PR against `develop`, writes PR number to ticket. |
-| `merge-pr.sh` | `<ticket> <pr>` — runs staleness check. Clean → squash-merge + mark `merged-to-develop`. Stale → close PR, clear Base SHA + PR Number, set `rework`. |
+| `merge-pr.sh` | `<ticket> <pr>` — runs staleness check. Clean → checkout develop + squash-merge + mark `merged-to-develop`. Stale → close PR, clear Base SHA + PR Number, delete local branch, set `rework`. |
+
+### Phase 3 — manager + dummy agents
+
+These exercise the full state machine without invoking Claude. Swap in
+real agent invocations once the plumbing is trusted.
+
+| Script | Purpose |
+|---|---|
+| `manager.sh` | `[<ticket>]` — advance one ticket by one state transition. Dumb router over `Pipeline Status`. Auto-picks from `next-ticket.sh` if no arg. |
+| `dummy-tester.sh` | `<ticket> write\|validate` — simulated tester: posts a comment, flips state. |
+| `dummy-developer.sh` | `<ticket> implement\|open_pr\|rework` — simulated developer: does real git work (branches + commits + PRs) via Phase 2 scripts. |
+| `dummy-pr-reviewer.sh` | `<ticket>` — simulated reviewer: posts approval, delegates to `merge-pr.sh` for the terminal step. |
 
 ### Shared
 
 | Script | Purpose |
 |---|---|
-| `_pipeline-lib.sh` | Shared helpers (config loader, field lookup, item-id resolution, label-type extraction, clean-tree check). Not executed directly. |
+| `_pipeline-lib.sh` | Shared helpers (config loader, field lookup, item-id resolution, label-type extraction, clean-tree check, slug-from-title). Not executed directly. |
+
+## State machine
+
+```
+               ┌─ manager primes
+               ▼
+            new → tests-pending → dev-pending → validation-pending → pr-pending
+                   (tester)       (developer)    (tester)            (developer)
+                                                                          │
+                                                                          ▼
+                                                                    pr-review-pending
+                                                                     (pr-reviewer)
+                                                                          │
+                                             ┌────────────────────────────┴──┐
+                                     clean merge                       stale overlap
+                                             │                              │
+                                             ▼                              ▼
+                                      merged-to-develop                  rework
+                                                                           │
+                                                                ┌──────────┤
+                                                     attempt ≤ 3          else
+                                                                │           │
+                                                                ▼           ▼
+                                                 (manager bumps Attempt  needs-human
+                                                  & calls developer      (terminal)
+                                                  rework mode)
+                                                                │
+                                                                ▼
+                                                       validation-pending
+                                                         (back to tester)
+```
+
+Three terminal/blocked states: `merged-to-develop`, `needs-human`,
+`cost-review-pending`. `next-ticket.sh` skips all three.
 
 ## Examples
 
-### Move a ticket through early states (manual drive)
+### Walk a single ticket with the manager
+
+```bash
+# Create a ticket labeled auto-pipeline + type:chore. It lands on the
+# project automatically via the auto-add workflow. Then:
+scripts/manager.sh <ticket>   # new → tests-pending
+scripts/manager.sh <ticket>   # tests-pending → dev-pending
+scripts/manager.sh <ticket>   # dev-pending → validation-pending (branch + commit pushed)
+scripts/manager.sh <ticket>   # validation-pending → pr-pending
+scripts/manager.sh <ticket>   # pr-pending → pr-review-pending (PR opened)
+scripts/manager.sh <ticket>   # pr-review-pending → merged-to-develop (squash merged)
+```
+
+Or loop until terminal:
+
+```bash
+for _ in $(seq 1 20); do
+  S=$(scripts/get-field.sh "$TICKET" "Pipeline Status")
+  case "$S" in merged-to-develop|needs-human|cost-review-pending) break ;; esac
+  scripts/manager.sh "$TICKET"
+  sleep 1
+done
+```
+
+### Drive individual scripts manually
 
 ```bash
 scripts/set-field.sh 42 "Pipeline Status" new
@@ -70,16 +139,12 @@ scripts/get-field.sh 42 "Pipeline Status"   # -> new
 scripts/get-field.sh 42 "Base SHA"          # -> abc123...
 ```
 
-### Walk a ticket through the Phase 2 happy path
+### Phase 2 happy path (manual)
 
 ```bash
-# Branch from develop for ticket #42, slug "add-foo"
 BRANCH=$(scripts/create-branch.sh 42 add-foo)
-# Developer work happens here: edit files, commit, push
-# ...
-# Open PR
+# developer work happens here
 PR=$(scripts/open-pr.sh 42 "$BRANCH" "feat: add foo (#42)")
-# Merge — will refuse and route to rework if stale
 scripts/merge-pr.sh 42 "$PR"
 ```
 
@@ -94,8 +159,7 @@ scripts/next-ticket.sh
 
 Issues labeled `auto-pipeline` land on the project automatically (via the
 Projects v2 "Auto-add to project" workflow, configured to point at
-`raj-makhija/quadzero-scout`). If for some reason an issue isn't on the
-board, add it manually:
+`raj-makhija/quadzero-scout`). If an issue isn't on the board, add manually:
 
 ```bash
 gh project item-add <project-number> --owner raj-makhija \
@@ -103,6 +167,15 @@ gh project item-add <project-number> --owner raj-makhija \
 ```
 
 The project number is in `.pipeline-config.json` under `.project.number`.
+
+## Environment overrides
+
+| Variable | Default | Effect |
+|---|---|---|
+| `PIPELINE_OWNER` | `raj-makhija` | Project owner for discover-ids.sh / setup-pipeline.sh |
+| `PIPELINE_PROJECT_TITLE` | `Quadzero Scout Pipeline` | Project title lookup/create |
+| `PIPELINE_MAX_ATTEMPTS` | `3` | Rework attempts before manager.sh escalates to `needs-human` |
+| `PL_STATE_FIELD` | `Pipeline Status` | Field name used for the pipeline state machine |
 
 ## Re-running `discover-ids.sh`
 

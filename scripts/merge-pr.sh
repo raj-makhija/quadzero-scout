@@ -5,11 +5,13 @@
 #   scripts/merge-pr.sh <ticket> <pr>
 #
 # Reads the ticket's Base SHA, runs check-staleness.sh against it.
-#   clean  → squash-merge the PR, delete the branch, set Pipeline Status
-#            to merged-to-develop.
+#   clean  → checkout develop (so --delete-branch can clean local/remote),
+#            squash-merge the PR, pull develop, set Pipeline Status to
+#            merged-to-develop.
 #   stale  → post a comment on the PR explaining the overlap, close the PR
-#            (and its branch), clear Base SHA + PR Number, set Pipeline
-#            Status to rework. Developer agent opens a fresh PR next pass.
+#            with its branch, remove local branch too, clear Base SHA +
+#            PR Number, set Pipeline Status to rework. Developer agent
+#            opens a fresh PR next pass.
 
 set -euo pipefail
 
@@ -35,6 +37,9 @@ if [[ -z "$BASE_SHA" ]]; then
   exit 1
 fi
 
+# Resolve the PR's head branch — needed to clean up local copy after merge/close.
+HEAD_BRANCH="$(gh pr view "$PR" --json headRefName -q .headRefName)"
+
 # Run staleness check; capture both stdout and exit code without set -e aborting.
 set +e
 OVERLAP="$("$SCRIPT_DIR/check-staleness.sh" "$PR" "$BASE_SHA")"
@@ -44,7 +49,15 @@ set -e
 case "$STALE_EXIT" in
   0)
     echo "clean; squash-merging PR #$PR" >&2
-    gh pr merge "$PR" --squash --delete-branch
+    # Move off the branch before --delete-branch runs.
+    CUR="$(git branch --show-current)"
+    if [[ "$CUR" != "develop" ]]; then
+      git checkout develop >&2
+    fi
+    gh pr merge "$PR" --squash --delete-branch >&2
+    git pull origin develop --quiet >&2
+    # Belt-and-suspenders: if gh didn't clean up our local branch, do it.
+    git branch -D "$HEAD_BRANCH" 2>/dev/null >&2 || true
     "$SCRIPT_DIR/set-field.sh" "$TICKET" "Pipeline Status" merged-to-develop
     echo "merged"
     ;;
@@ -57,8 +70,14 @@ Overlapping files:
 ${OVERLAP}
 \`\`\`
 
-Ticket moved to \`rework\`. The developer agent will branch fresh from develop HEAD and open a new PR."
-    gh pr close "$PR" --delete-branch
+Ticket moved to \`rework\`. The developer agent will branch fresh from develop HEAD and open a new PR." >&2
+    gh pr close "$PR" --delete-branch >&2
+    # Move off the branch if we're on it, and delete local copy too.
+    CUR="$(git branch --show-current)"
+    if [[ "$CUR" == "$HEAD_BRANCH" ]]; then
+      git checkout develop >&2
+    fi
+    git branch -D "$HEAD_BRANCH" 2>/dev/null >&2 || true
     # Clear stale state so the next pass starts clean.
     "$SCRIPT_DIR/set-field.sh" "$TICKET" "PR Number" ""
     "$SCRIPT_DIR/set-field.sh" "$TICKET" "Base SHA" ""
