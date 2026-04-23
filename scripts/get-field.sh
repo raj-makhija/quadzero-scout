@@ -62,8 +62,16 @@ RESP="$(gh api graphql \
     }' \
   -f item="$ITEM_ID")"
 
+# Collapse whole-number floats ("1.0" -> "1") using math, not regex — no
+# backslash escaping to worry about. For .name and .text we pass them through.
 echo "$RESP" | jq -r --arg fid "$FIELD_ID" '
   .data.node.fieldValues.nodes[]
   | select(.field.id == $fid)
-  | (.name // .text // .number)
-  | tostring' | head -n1
+  | if .name != null then .name
+    elif .text != null then .text
+    elif .number != null then
+      (if .number == (.number | floor)
+        then (.number | floor | tostring)
+        else (.number | tostring) end)
+    else empty end
+' | head -n1
