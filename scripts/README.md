@@ -31,37 +31,71 @@ Commit the generated file — downstream scripts read it.
 
 ## Scripts
 
+### Phase 1 — state helpers
+
 | Script | Purpose |
 |---|---|
 | `setup-pipeline.sh` | Idempotent initial setup: project + fields + labels + config. |
 | `discover-ids.sh` | Fetches opaque Projects v2 IDs, writes `.pipeline-config.json`. Re-run if you add/rename fields or options. |
-| `set-field.sh` | `<issue> <field> <value>` — update a project field on an issue. |
+| `set-field.sh` | `<issue> <field> <value>` — update a project field on an issue. Pass `""` as value to clear. |
 | `get-field.sh` | `<issue> <field>` — read a project field value. |
 | `next-ticket.sh` | Lists actionable tickets (has `auto-pipeline` label, `Pipeline Status` is not terminal/blocked). |
-| `_pipeline-lib.sh` | Shared helpers; not executed directly. |
+
+### Phase 2 — git operations
+
+| Script | Purpose |
+|---|---|
+| `create-branch.sh` | `<ticket> <slug>` — branch from `develop` HEAD using `<type>/ticket-<N>-<slug>` (type inferred from ticket's `type:*` label). Pushes to origin. Records Base SHA on the ticket. |
+| `check-staleness.sh` | `<pr> <base-sha>` — compares files changed in the PR against files changed on `develop` since `base-sha`. Exit 0 clean, exit 1 stale (prints overlap). |
+| `open-pr.sh` | `<ticket> <branch> <title>` — opens a PR against `develop`, writes PR number to ticket. |
+| `merge-pr.sh` | `<ticket> <pr>` — runs staleness check. Clean → squash-merge + mark `merged-to-develop`. Stale → close PR, clear Base SHA + PR Number, set `rework`. |
+
+### Shared
+
+| Script | Purpose |
+|---|---|
+| `_pipeline-lib.sh` | Shared helpers (config loader, field lookup, item-id resolution, label-type extraction, clean-tree check). Not executed directly. |
 
 ## Examples
 
+### Move a ticket through early states (manual drive)
+
 ```bash
-# Move a ticket through early states (manual drive, for testing).
 scripts/set-field.sh 42 "Pipeline Status" new
 scripts/set-field.sh 42 "Agent" tester
 scripts/set-field.sh 42 "Attempt" 1
-scripts/set-field.sh 42 "Base SHA" $(git rev-parse origin/develop)
+scripts/set-field.sh 42 "Base SHA" "$(git rev-parse origin/develop)"
 
-# Read back.
 scripts/get-field.sh 42 "Pipeline Status"   # -> new
-scripts/get-field.sh 42 "Base SHA"           # -> abc123...
+scripts/get-field.sh 42 "Base SHA"          # -> abc123...
+```
 
-# Ask the manager (once it exists) "what's next".
+### Walk a ticket through the Phase 2 happy path
+
+```bash
+# Branch from develop for ticket #42, slug "add-foo"
+BRANCH=$(scripts/create-branch.sh 42 add-foo)
+# Developer work happens here: edit files, commit, push
+# ...
+# Open PR
+PR=$(scripts/open-pr.sh 42 "$BRANCH" "feat: add foo (#42)")
+# Merge — will refuse and route to rework if stale
+scripts/merge-pr.sh 42 "$PR"
+```
+
+### Ask "what's next"
+
+```bash
 scripts/next-ticket.sh
 # 42  tests-pending  tester  Fix login redirect loop
 ```
 
 ## Adding an issue to the project
 
-Issues must be **added to the project** before the scripts can see them.
-From Git Bash:
+Issues labeled `auto-pipeline` land on the project automatically (via the
+Projects v2 "Auto-add to project" workflow, configured to point at
+`raj-makhija/quadzero-scout`). If for some reason an issue isn't on the
+board, add it manually:
 
 ```bash
 gh project item-add <project-number> --owner raj-makhija \

@@ -6,11 +6,13 @@
 #
 # For single-select fields, <value> is the option name (e.g. "tests-pending").
 # For text fields, any string. For number fields, an integer or float.
+# Pass an empty string ("") to CLEAR the field (works on any field type).
 #
 # Example:
 #   scripts/set-field.sh 42 "Pipeline Status" tests-pending
 #   scripts/set-field.sh 42 "PR Number" "123"
 #   scripts/set-field.sh 42 "Attempt" 2
+#   scripts/set-field.sh 42 "PR Number" ""       # clear
 
 set -euo pipefail
 
@@ -38,9 +40,24 @@ DATA_TYPE="$(echo "$FIELD_JSON" | jq -r '.dataType')"
 
 ITEM_ID="$(pl_item_id_for_issue "$ISSUE")"
 
+# Empty value means CLEAR. Uses a different mutation.
+if [[ -z "$VALUE" ]]; then
+  gh api graphql \
+    -f query='
+      mutation($project: ID!, $item: ID!, $field: ID!) {
+        clearProjectV2ItemFieldValue(input: {
+          projectId: $project, itemId: $item, fieldId: $field
+        }) { projectV2Item { id } }
+      }' \
+    -f project="$PL_PROJECT_ID" \
+    -f item="$ITEM_ID" \
+    -f field="$FIELD_ID" \
+    > /dev/null
+  echo "cleared #$ISSUE '$FIELD_NAME'" >&2
+  exit 0
+fi
+
 # GraphQL variable type + value fragment + gh api arg vary by field dataType.
-# gh api: -f passes the value as a string; -F passes it as a JSON scalar
-# (number, boolean, null) — important so `number:` gets a real number.
 case "$DATA_TYPE" in
   SINGLE_SELECT)
     OPT_ID="$(echo "$FIELD_JSON" | jq -r --arg v "$VALUE" '.options[$v] // empty')"

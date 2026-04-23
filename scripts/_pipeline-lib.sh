@@ -6,6 +6,9 @@
 # rather than "Status" because Projects v2 reserves the "Status" name.
 PL_STATE_FIELD="${PL_STATE_FIELD:-Pipeline Status}"
 
+# Allowed ticket types (must match the type:* labels on the repo).
+PL_VALID_TYPES="feature bugfix chore docs refactor"
+
 _pl_repo_root() {
   git rev-parse --show-toplevel 2>/dev/null || {
     echo "error: not inside a git repo" >&2
@@ -32,7 +35,6 @@ pl_load_config() {
 }
 
 # Resolve a field name to its metadata. Prints JSON {id, dataType, options}.
-# Usage: pl_field "Pipeline Status"
 pl_field() {
   local name="$1"
   local out
@@ -48,12 +50,10 @@ pl_field() {
 pl_repo_slug() {
   local url
   url="$(git config --get remote.origin.url)"
-  # Normalize ssh and https forms into "owner/repo".
   echo "$url" | sed -E 's#^git@github\.com:##; s#^https?://github\.com/##; s#\.git$##'
 }
 
 # Find the project-item ID for an issue number in the origin repo.
-# Prints the item id, or exits non-zero if the issue isn't on the project.
 pl_item_id_for_issue() {
   local issue="$1"
   local slug owner repo
@@ -86,4 +86,57 @@ pl_item_id_for_issue() {
     return 1
   fi
   printf '%s' "$item_id"
+}
+
+# Extract the `type` from a ticket's `type:*` label. Errors if 0 or 2+.
+# Prints the type (e.g. "feature", "bugfix") to stdout.
+pl_type_from_labels() {
+  local issue="$1"
+  local labels
+  labels="$(gh issue view "$issue" --json labels -q '.labels[].name')"
+
+  local types
+  types="$(echo "$labels" | grep -E '^type:' | sed 's/^type://')"
+
+  local count
+  count="$(echo -n "$types" | grep -c . || true)"
+
+  if [[ "$count" -eq 0 ]]; then
+    echo "error: issue #$issue has no type:* label" >&2
+    return 1
+  fi
+  if [[ "$count" -gt 1 ]]; then
+    echo "error: issue #$issue has multiple type:* labels: $types" >&2
+    return 1
+  fi
+
+  # Validate against allowed list.
+  if ! echo " $PL_VALID_TYPES " | grep -q " $types "; then
+    echo "error: unknown type '$types'; must be one of: $PL_VALID_TYPES" >&2
+    return 1
+  fi
+
+  printf '%s' "$types"
+}
+
+# Abort if the working tree has uncommitted changes. Respects gitignore.
+# Tolerates the tsbuildinfo noise by filtering well-known transient paths.
+pl_require_clean_tree() {
+  local dirty
+  dirty="$(git status --porcelain | grep -v -E '(tsconfig\.tsbuildinfo|\.next/|node_modules/)$' || true)"
+  if [[ -n "$dirty" ]]; then
+    echo "error: working tree has uncommitted changes; commit or stash first:" >&2
+    echo "$dirty" >&2
+    return 1
+  fi
+}
+
+# Generate a kebab-case slug from a free-form title.
+# "Fix: login bug (#42)" -> "fix-login-bug-42"
+pl_slug_from_title() {
+  local title="$1"
+  echo "$title" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' \
+    | head -c 50
 }
