@@ -8,7 +8,8 @@
 # <type>/ticket-<N>-<slug>, pushes it to origin, and writes the Base SHA
 # (develop HEAD at branch time) to the ticket's "Base SHA" field.
 #
-# Prints the branch name to stdout.
+# Prints the branch name to stdout; everything else goes to stderr so
+# callers can safely do BRANCH=$(scripts/create-branch.sh ...).
 
 set -euo pipefail
 
@@ -49,8 +50,12 @@ if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
   exit 1
 fi
 
-git checkout -b "$BRANCH" "$BASE_SHA"
-git push -u origin "$BRANCH"
+# Redirect stdout to stderr for both git commands. On Git Bash for Windows,
+# `git checkout -b` emits 'M <file>' lines for working-tree modifications
+# and `git push -u` emits 'branch set up to track' — both on stdout. We
+# need stdout clean so the caller can capture just the branch name.
+git checkout -b "$BRANCH" "$BASE_SHA" >&2
+git push -u origin "$BRANCH" >&2
 
 "$SCRIPT_DIR/set-field.sh" "$TICKET" "Base SHA" "$BASE_SHA"
 
