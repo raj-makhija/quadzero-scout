@@ -1,0 +1,77 @@
+# Pipeline Manager — cron-driven advancement of one ticket per run.
+#
+# Each run invokes scripts/manager.sh, which advances the next actionable
+# ticket by exactly one state transition. Cron fires every 10 minutes; a
+# `workflow_dispatch` button lets you kick a run manually (with an optional
+# ticket override) or target a specific stuck ticket.
+#
+# Kill-switch: disable this workflow in the GitHub Actions UI
+# (Actions tab → "Pipeline Manager" → "..." → Disable workflow).
+#
+# Auth: uses PIPELINE_TOKEN (fine-grained PAT) instead of the default
+# GITHUB_TOKEN because GITHUB_TOKEN cannot modify Projects v2.
+
+name: Pipeline Manager
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'   # every 10 minutes
+  workflow_dispatch:
+    inputs:
+      ticket:
+        description: 'Optional: specific issue number to advance (empty = pick from next-ticket.sh)'
+        required: false
+        type: string
+
+# Serialize runs so two managers never touch the same ticket concurrently.
+# Waiting (not cancelling) because each run is a discrete, useful unit of work.
+concurrency:
+  group: pipeline-manager
+  cancel-in-progress: false
+
+# Explicit permissions on the default GITHUB_TOKEN. We actually use
+# PIPELINE_TOKEN for gh/git, but keep defaults scoped narrowly.
+permissions:
+  contents: read
+
+jobs:
+  advance-one-ticket:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout develop (with PAT so later pushes work)
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+          token: ${{ secrets.PIPELINE_TOKEN }}
+
+      - name: Configure git identity for any pipeline commits
+        run: |
+          git config user.name  "quadzero-pipeline[bot]"
+          git config user.email "pipeline-bot@users.noreply.github.com"
+
+      - name: Disable husky hooks (lint/commitlint) for unattended runs
+        run: git config core.hooksPath /dev/null
+
+      - name: Verify gh + jq are present (preinstalled on ubuntu-latest)
+        env:
+          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+        run: |
+          gh --version
+          jq --version
+          gh auth status
+
+      - name: Run manager.sh
+        env:
+          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+          PIPELINE_MAX_ATTEMPTS: '3'
+        run: |
+          if [[ -n "${{ inputs.ticket }}" ]]; then
+            echo "manager: advancing specific ticket #${{ inputs.ticket }}"
+            scripts/manager.sh "${{ inputs.ticket }}"
+          else
+            echo "manager: picking from next-ticket.sh"
+            scripts/manager.sh
+          fi
