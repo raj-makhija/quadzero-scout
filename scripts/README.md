@@ -44,22 +44,28 @@ and runs discover-ids to write `.pipeline-config.json` at the repo root.
 
 | Script | Purpose |
 |---|---|
-| `create-branch.sh` | `<ticket> <slug>` — branch from `develop` HEAD using `<type>/ticket-<N>-<slug>` (type inferred from ticket's `type:*` label). Pushes to origin. Records Base SHA on the ticket. |
-| `check-staleness.sh` | `<pr> <base-sha>` — compares files changed in the PR against files changed on `develop` since `base-sha`. Exit 0 clean, exit 1 stale (prints overlap). |
-| `open-pr.sh` | `<ticket> <branch> <title>` — opens a PR against `develop`, writes PR number to ticket. |
-| `merge-pr.sh` | `<ticket> <pr>` — runs staleness check. Clean → checkout develop + squash-merge + mark `merged-to-develop`. Stale → close PR, clear Base SHA + PR Number, delete local branch, set `rework`. |
+| `create-branch.sh` | `<ticket> <slug>` — branch from `develop` HEAD using `<type>/ticket-<N>-<slug>`. Pushes to origin. Records Base SHA on the ticket. |
+| `check-staleness.sh` | `<pr> <base-sha>` — file-overlap check. Exit 0 clean, exit 1 stale. |
+| `open-pr.sh` | `<ticket> <branch> <title>` — opens PR targeting `develop`, writes PR number to ticket. |
+| `merge-pr.sh` | `<ticket> <pr>` — staleness check; clean → squash-merge + `merged-to-develop`; stale → close PR + `rework`. |
 
 ### Phase 3 — manager + dummy agents
 
-These exercise the full state machine without invoking Claude. Swap in
-real agent invocations once the plumbing is trusted.
+| Script | Purpose |
+|---|---|
+| `manager.sh` | `[<ticket>]` — advance one ticket by one state transition. |
+| `dummy-tester.sh` | `<ticket> write\|validate` — simulated tester. |
+| `dummy-developer.sh` | `<ticket> implement\|open_pr\|rework` — simulated developer, does real git work. |
+| `dummy-pr-reviewer.sh` | `<ticket>` — simulated reviewer; delegates to `merge-pr.sh`. |
+
+### Phase 4 — QA + prod (human-invoked)
 
 | Script | Purpose |
 |---|---|
-| `manager.sh` | `[<ticket>]` — advance one ticket by one state transition. Dumb router over `Pipeline Status`. Auto-picks from `next-ticket.sh` if no arg. |
-| `dummy-tester.sh` | `<ticket> write\|validate` — simulated tester: posts a comment, flips state. |
-| `dummy-developer.sh` | `<ticket> implement\|open_pr\|rework` — simulated developer: does real git work (branches + commits + PRs) via Phase 2 scripts. |
-| `dummy-pr-reviewer.sh` | `<ticket>` — simulated reviewer: posts approval, delegates to `merge-pr.sh` for the terminal step. |
+| `qa-deploy.sh` | `<sha>` — checkout qa, fast-forward merge SHA, push (Amplify), `serverless deploy --stage qa`. |
+| `qa-approve.sh` | `<sha>` — advance the `frontier` tag to SHA (refuses to move backward unless `PIPELINE_FORCE=1`). |
+| `qa-reject.sh` | `<sha> <reason> [ticket]` — reopen ticket, clear Base SHA + PR Number, set `rework`. Infers ticket from commit if not given. |
+| `prod-release.sh` | `[<sha>]` — safety-check target is at-or-before `frontier`, merge to main, push, `serverless deploy --stage prod`. Defaults to `frontier` if no SHA. |
 
 ### Shared
 
@@ -67,7 +73,7 @@ real agent invocations once the plumbing is trusted.
 |---|---|
 | `_pipeline-lib.sh` | Shared helpers (config loader, field lookup, item-id resolution, label-type extraction, clean-tree check, slug-from-title). Not executed directly. |
 
-## State machine
+## State machine (Belt 1 — agents to develop)
 
 ```
                ┌─ manager primes
@@ -89,25 +95,45 @@ real agent invocations once the plumbing is trusted.
                                                      attempt ≤ 3          else
                                                                 │           │
                                                                 ▼           ▼
-                                                 (manager bumps Attempt  needs-human
-                                                  & calls developer      (terminal)
-                                                  rework mode)
-                                                                │
-                                                                ▼
-                                                       validation-pending
-                                                         (back to tester)
+                                                       validation-pending  needs-human
 ```
 
 Three terminal/blocked states: `merged-to-develop`, `needs-human`,
 `cost-review-pending`. `next-ticket.sh` skips all three.
 
+## Release model (Belts 2 + 3 — QA and prod)
+
+```
+develop HEAD moves forward as agents merge tickets.
+   │
+   ├──► qa-deploy.sh <sha>   ──►  qa branch   ──►  Amplify + serverless (stage=qa)
+   │
+   │    (human tests on QA)
+   │         │
+   │         ├─ approve ──► qa-approve.sh <sha>   ──►  `frontier` tag moves to sha
+   │         │
+   │         └─ reject  ──► qa-reject.sh <sha> <reason>
+   │                          → ticket reopened, Pipeline Status = rework,
+   │                            Base SHA + PR Number cleared, pipeline retries
+   │
+   └──► prod-release.sh [<sha>]  (default: frontier)
+              safety: refuses if sha > frontier
+              → main branch fast-forwards → Amplify + serverless (stage=prod)
+```
+
+- **Agents never idle waiting for humans.** They merge to `develop` as soon
+  as the reviewer agent approves.
+- **QA is decoupled from `develop`.** QA runs against a specific SHA the
+  human points to, not against `develop` HEAD.
+- **The `frontier` tag is a watermark.** Prod can only deploy at or before
+  frontier. Agents pile work up on develop; human walks the frontier
+  forward at their own pace.
+
 ## Examples
 
-### Walk a single ticket with the manager
+### Walk a single ticket with the manager (Phase 3 dummies)
 
 ```bash
-# Create a ticket labeled auto-pipeline + type:chore. It lands on the
-# project automatically via the auto-add workflow. Then:
 scripts/manager.sh <ticket>   # new → tests-pending
 scripts/manager.sh <ticket>   # tests-pending → dev-pending
 scripts/manager.sh <ticket>   # dev-pending → validation-pending (branch + commit pushed)
@@ -116,37 +142,40 @@ scripts/manager.sh <ticket>   # pr-pending → pr-review-pending (PR opened)
 scripts/manager.sh <ticket>   # pr-review-pending → merged-to-develop (squash merged)
 ```
 
-Or loop until terminal:
+### Walk a SHA from develop through QA to prod
 
 ```bash
-for _ in $(seq 1 20); do
-  S=$(scripts/get-field.sh "$TICKET" "Pipeline Status")
-  case "$S" in merged-to-develop|needs-human|cost-review-pending) break ;; esac
-  scripts/manager.sh "$TICKET"
-  sleep 1
-done
+# Pick a SHA you want to push to QA (e.g., the latest develop HEAD)
+SHA=$(git rev-parse origin/develop)
+
+# Deploy to QA (Amplify picks up the qa push; serverless deploys backend)
+scripts/qa-deploy.sh "$SHA"
+
+# Manually test the QA environment...
+
+# Approve: advances the frontier tag
+scripts/qa-approve.sh "$SHA"
+
+# Release to prod (defaults to frontier)
+scripts/prod-release.sh
 ```
 
-### Drive individual scripts manually
+### Reject a QA'd SHA
 
 ```bash
-scripts/set-field.sh 42 "Pipeline Status" new
-scripts/set-field.sh 42 "Agent" tester
-scripts/set-field.sh 42 "Attempt" 1
-scripts/set-field.sh 42 "Base SHA" "$(git rev-parse origin/develop)"
-
-scripts/get-field.sh 42 "Pipeline Status"   # -> new
-scripts/get-field.sh 42 "Base SHA"          # -> abc123...
+scripts/qa-reject.sh "$SHA" "Login redirect loops on Safari iOS"
+# Ticket reopened, Pipeline Status = rework, Base SHA + PR Number cleared
+# Next manager.sh pass will re-branch fresh from develop HEAD
 ```
 
-### Phase 2 happy path (manual)
+### Dry-run a deploy (no AWS cost)
 
 ```bash
-BRANCH=$(scripts/create-branch.sh 42 add-foo)
-# developer work happens here
-PR=$(scripts/open-pr.sh 42 "$BRANCH" "feat: add foo (#42)")
-scripts/merge-pr.sh 42 "$PR"
+PIPELINE_SKIP_DEPLOY=1 scripts/qa-deploy.sh "$SHA"
 ```
+
+The branch topology changes (qa is fast-forwarded + pushed, Amplify still
+fires on the push), but the `serverless deploy` is skipped.
 
 ### Ask "what's next"
 
@@ -157,9 +186,8 @@ scripts/next-ticket.sh
 
 ## Adding an issue to the project
 
-Issues labeled `auto-pipeline` land on the project automatically (via the
-Projects v2 "Auto-add to project" workflow, configured to point at
-`raj-makhija/quadzero-scout`). If an issue isn't on the board, add manually:
+Issues labeled `auto-pipeline` land on the project automatically via the
+Projects v2 auto-add workflow. If an issue isn't on the board, add manually:
 
 ```bash
 gh project item-add <project-number> --owner raj-makhija \
@@ -172,10 +200,12 @@ The project number is in `.pipeline-config.json` under `.project.number`.
 
 | Variable | Default | Effect |
 |---|---|---|
-| `PIPELINE_OWNER` | `raj-makhija` | Project owner for discover-ids.sh / setup-pipeline.sh |
-| `PIPELINE_PROJECT_TITLE` | `Quadzero Scout Pipeline` | Project title lookup/create |
-| `PIPELINE_MAX_ATTEMPTS` | `3` | Rework attempts before manager.sh escalates to `needs-human` |
-| `PL_STATE_FIELD` | `Pipeline Status` | Field name used for the pipeline state machine |
+| `PIPELINE_OWNER` | `raj-makhija` | Project owner for discover-ids.sh / setup-pipeline.sh. |
+| `PIPELINE_PROJECT_TITLE` | `Quadzero Scout Pipeline` | Project title for setup-pipeline.sh lookup/create. |
+| `PIPELINE_MAX_ATTEMPTS` | `3` | Rework attempts before manager.sh escalates to `needs-human`. |
+| `PIPELINE_SKIP_DEPLOY` | unset | If `1`, qa-deploy.sh / prod-release.sh skip the `serverless deploy` step. |
+| `PIPELINE_FORCE` | unset | If `1`, qa-approve.sh allows moving the frontier tag backward. |
+| `PL_STATE_FIELD` | `Pipeline Status` | Field name used for the pipeline state machine. |
 
 ## Re-running `discover-ids.sh`
 
