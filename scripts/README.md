@@ -217,3 +217,44 @@ scripts/discover-ids.sh $(jq -r .project.number .pipeline-config.json)
 ```
 
 Commit the updated `.pipeline-config.json`.
+
+## Phase 5 — GitHub Actions scheduler
+
+The workflow at `.github/workflows/pipeline-manager.yml` invokes
+`manager.sh` on a cron (every 10 minutes) and via `workflow_dispatch`.
+Each run advances one actionable ticket by one state transition.
+
+### One-time setup
+
+1. **Create `PIPELINE_TOKEN`** (fine-grained PAT) — the default
+   `GITHUB_TOKEN` in Actions cannot modify Projects v2, so we need a
+   PAT scoped to:
+   - Repository (Only `raj-makhija/quadzero-scout`):
+     Contents R/W, Issues R/W, Pull requests R/W, Metadata R
+   - Account: Projects R/W
+   Create at <https://github.com/settings/personal-access-tokens/new>.
+2. **Store it as a repo secret** named `PIPELINE_TOKEN`:
+   ```bash
+   gh secret set PIPELINE_TOKEN --body "<paste>"
+   ```
+
+### Manual trigger
+
+From the Actions tab → **Pipeline Manager** → **Run workflow**. You can
+pass an optional `ticket` input to target a specific issue.
+
+Or from the CLI:
+```bash
+gh workflow run pipeline-manager.yml -f ticket=42
+gh workflow run pipeline-manager.yml            # auto-pick next actionable
+```
+
+### Kill-switch
+
+Actions tab → **Pipeline Manager** → **...** → **Disable workflow**.
+Scheduled runs stop immediately; in-flight ones finish cleanly.
+
+### Concurrency
+
+A `concurrency: pipeline-manager` group serializes runs. If two cron
+firings stack up (e.g., slow run), the second waits rather than cancelling.
