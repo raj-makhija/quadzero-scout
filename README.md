@@ -1,3 +1,5 @@
+# quadzero-scout — automated recruiter scout pipeline
+
 # Quadzero Scout
 
 AI-powered talent matching platform for IT professionals and recruiters.
