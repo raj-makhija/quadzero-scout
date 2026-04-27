@@ -3,18 +3,18 @@
 # Triggers:
 #   - cron every 5 min (safety net for missed events)
 #   - issues.labeled / opened           (kicks pipeline on new auto-pipeline tickets)
-#   - repository_dispatch [pipeline-tick] (fired by human-driven scripts after they
-#                                          touch ticket state, so the pipeline can
-#                                          react in seconds instead of waiting for cron)
+#   - repository_dispatch [pipeline-tick] (fired by human-driven scripts)
 #   - workflow_dispatch                 (manual trigger, optional ticket override)
 #
 # Each run drains the queue: it loops calling manager.sh while next-ticket.sh
-# returns something. One Actions run takes a fresh ticket from new all the way
-# to merged-to-develop in one go. Loop bounded by iteration count + timeout-minutes.
+# returns something. One Actions run can take a fresh ticket from new all the
+# way to merged-to-develop. Loop bounded by iteration count + timeout-minutes.
 #
-# Kill-switch: disable the workflow in the Actions UI.
-# Auth: PIPELINE_TOKEN classic PAT (repo + workflow + project scopes).
-# Real developer agent: ANTHROPIC_API_KEY + PIPELINE_DEVELOPER_AGENT=claude.
+# Auth:
+#   - PIPELINE_TOKEN: classic PAT (repo + workflow + project) for gh ops
+#   - CLAUDE_CODE_OAUTH_TOKEN: from `claude setup-token` on the user's laptop;
+#     ties Claude usage to the Claude.ai Pro/Max subscription. If you'd
+#     rather use the API, swap for ANTHROPIC_API_KEY.
 
 name: Pipeline Manager
 
@@ -76,7 +76,7 @@ jobs:
       - name: Drain the queue
         env:
           GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           PIPELINE_DEVELOPER_AGENT: claude
           PIPELINE_MAX_ATTEMPTS: '3'
         run: |
