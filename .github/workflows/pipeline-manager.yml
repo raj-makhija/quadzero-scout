@@ -78,6 +78,7 @@ jobs:
           GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           PIPELINE_DEVELOPER_AGENT: claude
+          PIPELINE_PR_REVIEWER_AGENT: claude
           PIPELINE_MAX_ATTEMPTS: '3'
         run: |
           set -euo pipefail
