@@ -2,6 +2,8 @@
 
 # Quadzero Scout
 
+*AI-powered scout that matches IT talent to recruiter job descriptions automatically.*
+
 AI-powered talent matching platform for IT professionals and recruiters.
 
 ## Quick Start
