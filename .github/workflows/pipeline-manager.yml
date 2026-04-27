@@ -3,7 +3,6 @@
 # Triggers:
 #   - cron every 5 min (safety net for missed events)
 #   - issues.labeled / opened           (kicks pipeline on new auto-pipeline tickets)
-#   - pull_request.opened / closed      (kicks on developer-agent PRs + reviewer merges)
 #   - repository_dispatch [pipeline-tick] (fired by human-driven scripts after they
 #                                          touch ticket state, so the pipeline can
 #                                          react in seconds instead of waiting for cron)
@@ -30,8 +29,6 @@ on:
         type: string
   issues:
     types: [labeled, opened]
-  pull_request:
-    types: [opened, closed]
   repository_dispatch:
     types: [pipeline-tick]
 
