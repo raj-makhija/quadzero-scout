@@ -4,6 +4,15 @@
 
 *AI-powered scout that matches IT talent to recruiter job descriptions automatically.*
 
+## Status
+
+The current status of each component is as follows:
+
+- Active development
+- Pending QA review
+- Active maintenance
+- Documentation in progress
+
 ## Requirements
 
 To run this project, you will need the following:
