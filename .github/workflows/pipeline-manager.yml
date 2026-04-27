@@ -1,41 +1,51 @@
-# Pipeline Manager — cron-driven advancement of one ticket per run.
+# Pipeline Manager — drives one or more ticket transitions per Actions run.
 #
-# Each run invokes scripts/manager.sh, which advances the next actionable
-# ticket by exactly one state transition. Cron fires every 10 minutes; a
-# `workflow_dispatch` button lets you kick a run manually (with an optional
-# ticket override) or target a specific stuck ticket.
+# Triggers:
+#   - cron every 5 min (safety net for missed events)
+#   - issues.labeled / opened           (kicks pipeline on new auto-pipeline tickets)
+#   - pull_request.opened / closed      (kicks on developer-agent PRs + reviewer merges)
+#   - repository_dispatch [pipeline-tick] (fired by human-driven scripts after they
+#                                          touch ticket state, so the pipeline can
+#                                          react in seconds instead of waiting for cron)
+#   - workflow_dispatch                 (manual trigger, optional ticket override)
 #
-# Kill-switch: disable this workflow in the GitHub Actions UI
-# (Actions tab → "Pipeline Manager" → "..." → Disable workflow).
+# Each run drains the queue: it loops calling manager.sh while next-ticket.sh
+# returns something. One Actions run takes a fresh ticket from new all the way
+# to merged-to-develop in one go (~60-90 sec wall clock). Loop bounded by
+# iteration count + timeout-minutes.
 #
-# Auth: uses PIPELINE_TOKEN (fine-grained PAT) instead of the default
-# GITHUB_TOKEN because GITHUB_TOKEN cannot modify Projects v2.
+# Kill-switch: disable the workflow in the Actions UI.
+# Auth: PIPELINE_TOKEN classic PAT (repo + workflow + project scopes).
 
 name: Pipeline Manager
 
 on:
   schedule:
-    - cron: '*/10 * * * *'   # every 10 minutes
+    - cron: '*/5 * * * *'
   workflow_dispatch:
     inputs:
       ticket:
-        description: 'Optional: specific issue number to advance (empty = pick from next-ticket.sh)'
+        description: 'Optional issue number; if set, advance only that ticket by ONE state'
         required: false
         type: string
+  issues:
+    types: [labeled, opened]
+  pull_request:
+    types: [opened, closed]
+  repository_dispatch:
+    types: [pipeline-tick]
 
 # Serialize runs so two managers never touch the same ticket concurrently.
-# Waiting (not cancelling) because each run is a discrete, useful unit of work.
+# Wait, don't cancel — every run is a discrete unit of useful work.
 concurrency:
   group: pipeline-manager
   cancel-in-progress: false
 
-# Explicit permissions on the default GITHUB_TOKEN. We actually use
-# PIPELINE_TOKEN for gh/git, but keep defaults scoped narrowly.
 permissions:
   contents: read
 
 jobs:
-  advance-one-ticket:
+  drain:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -55,7 +65,7 @@ jobs:
       - name: Disable husky hooks (lint/commitlint) for unattended runs
         run: git config core.hooksPath /dev/null
 
-      - name: Verify gh + jq are present (preinstalled on ubuntu-latest)
+      - name: Verify gh + jq
         env:
           GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
         run: |
@@ -63,15 +73,32 @@ jobs:
           jq --version
           gh auth status
 
-      - name: Run manager.sh
+      - name: Drain the queue
         env:
           GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
           PIPELINE_MAX_ATTEMPTS: '3'
         run: |
+          set -euo pipefail
+
+          # If a specific ticket was requested via workflow_dispatch, do ONE
+          # transition only. Useful for debugging stuck tickets without the
+          # loop racing past your inspection point.
           if [[ -n "${{ inputs.ticket }}" ]]; then
-            echo "manager: advancing specific ticket #${{ inputs.ticket }}"
+            echo "manager: single-step on requested ticket #${{ inputs.ticket }}"
             scripts/manager.sh "${{ inputs.ticket }}"
-          else
-            echo "manager: picking from next-ticket.sh"
-            scripts/manager.sh
+            exit 0
           fi
+
+          # Otherwise drain. 25 iterations × ~5s each = ~2 min worst case
+          # for several tickets simultaneously. Safety bounded by
+          # timeout-minutes anyway.
+          for i in $(seq 1 25); do
+            NEXT="$(scripts/next-ticket.sh | head -1 | awk '{print $1}' || true)"
+            if [[ -z "$NEXT" ]]; then
+              echo "manager: queue drained after $((i-1)) iterations"
+              break
+            fi
+            echo "manager: iter $i, advancing #$NEXT"
+            scripts/manager.sh
+            sleep 3
+          done

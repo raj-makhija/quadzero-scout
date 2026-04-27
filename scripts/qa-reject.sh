@@ -7,7 +7,7 @@
 # Finds the ticket associated with the SHA (from its commit message) unless
 # one is passed explicitly as the third arg. Reopens the issue, posts the
 # rejection reason, clears Base SHA + PR Number, sets Pipeline Status to
-# rework. Does NOT touch the frontier tag (which stays wherever it was).
+# rework. Does NOT touch the frontier tag.
 
 set -euo pipefail
 
@@ -39,8 +39,6 @@ fi
 
 SHA="$(git rev-parse "$TARGET")"
 
-# Infer ticket from commit message if not given. Our PR bodies include
-# `Closes #N` and squash-merge titles usually end with `(#N)`.
 if [[ -z "$TICKET" ]]; then
   MSG="$(git log -1 --format=%B "$SHA")"
   TICKET="$(echo "$MSG" | grep -oE '#[0-9]+' | head -1 | tr -d '#' || true)"
@@ -65,3 +63,11 @@ Ticket moved to \`rework\`. Base SHA and PR Number cleared so the pipeline re-br
 "$SCRIPT_DIR/set-field.sh" "$TICKET" "Base SHA" ""
 
 echo "qa-reject complete: #$TICKET now rework" >&2
+
+# Kick the Actions pipeline-manager so the rework starts immediately
+# instead of waiting up to ~5 min for the safety-net cron.
+if gh workflow run pipeline-manager.yml >/dev/null 2>&1; then
+  echo "kicked pipeline-manager workflow" >&2
+else
+  echo "(workflow kick failed; cron will catch up)" >&2
+fi
