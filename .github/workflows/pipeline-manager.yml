@@ -10,11 +10,11 @@
 #
 # Each run drains the queue: it loops calling manager.sh while next-ticket.sh
 # returns something. One Actions run takes a fresh ticket from new all the way
-# to merged-to-develop in one go (~60-90 sec wall clock). Loop bounded by
-# iteration count + timeout-minutes.
+# to merged-to-develop in one go. Loop bounded by iteration count + timeout-minutes.
 #
 # Kill-switch: disable the workflow in the Actions UI.
 # Auth: PIPELINE_TOKEN classic PAT (repo + workflow + project scopes).
+# Real developer agent: ANTHROPIC_API_KEY + PIPELINE_DEVELOPER_AGENT=claude.
 
 name: Pipeline Manager
 
@@ -32,8 +32,6 @@ on:
   repository_dispatch:
     types: [pipeline-tick]
 
-# Serialize runs so two managers never touch the same ticket concurrently.
-# Wait, don't cancel — every run is a discrete unit of useful work.
 concurrency:
   group: pipeline-manager
   cancel-in-progress: false
@@ -84,18 +82,19 @@ jobs:
         run: |
           set -euo pipefail
 
-          # If a specific ticket was requested via workflow_dispatch, do ONE
-          # transition only. Useful for debugging stuck tickets without the
-          # loop racing past your inspection point.
           if [[ -n "${{ inputs.ticket }}" ]]; then
             echo "manager: single-step on requested ticket #${{ inputs.ticket }}"
             scripts/manager.sh "${{ inputs.ticket }}"
             exit 0
           fi
 
-          # Otherwise drain. 25 iterations × ~5s each = ~2 min worst case
-          # for several tickets simultaneously. Safety bounded by
-          # timeout-minutes anyway.
           for i in $(seq 1 25); do
             NEXT="$(scripts/next-ticket.sh | head -1 | awk '{print $1}' || true)"
-            if [[ -z "$NEXT
+            if [[ -z "$NEXT" ]]; then
+              echo "manager: queue drained after $((i-1)) iterations"
+              break
+            fi
+            echo "manager: iter $i, advancing #$NEXT"
+            scripts/manager.sh
+            sleep 3
+          done
