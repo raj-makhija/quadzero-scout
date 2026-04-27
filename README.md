@@ -4,6 +4,14 @@
 
 *AI-powered scout that matches IT talent to recruiter job descriptions automatically.*
 
+## Requirements
+
+To run this project, you will need the following:
+
+1. Node.js 20+
+2. AWS account with Lambda and DynamoDB access
+3. GitHub PAT with repo + workflow scopes
+
 AI-powered talent matching platform for IT professionals and recruiters.
 
 ## Quick Start
