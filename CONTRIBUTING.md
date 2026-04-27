@@ -79,6 +79,10 @@ All checks must pass before merging.
 Frontend deploys automatically via AWS Amplify on any branch push.
 Backend deploys to qa and prod via the scheduled GitHub Actions workflow.
 
+## Commit Messages
+
+This repository follows the Conventional Commits standard for all commit messages. Every commit must begin with a type prefix that describes the nature of the change. The five primary types used in this project are `feat` (new feature), `fix` (bug fix), `chore` (maintenance tasks), `docs` (documentation changes), and `refactor` (code restructuring without behaviour change). Using Conventional Commits keeps the history readable and enables automated tooling such as changelogs and release notes. If your commit message does not match the required format, the `commit-msg` hook will reject it.
+
 ## Commit Types
 
 | Type       | When to use                              |
