@@ -4,18 +4,8 @@
 # Usage:
 #   scripts/prod-release.sh [<sha>]
 #
-# Safety model:
-#   - The `frontier` tag marks the latest QA-approved commit.
-#   - This script refuses to release any SHA that's past the frontier.
-#   - If no SHA is given, defaults to the frontier itself.
-#
-# Workflow:
-#   1. Validate frontier tag exists (must qa-approve first).
-#   2. Validate target SHA is at or before frontier.
-#   3. Checkout main. Fast-forward merge the SHA.
-#   4. Push main (Amplify auto-deploys frontend).
-#   5. Run `npx serverless deploy --stage prod` from infra/.
-#   6. Return to develop.
+# Safety: refuses to release anything past the `frontier` tag (latest
+# QA-approved SHA). Defaults to frontier itself if no SHA given.
 #
 # Set PIPELINE_SKIP_DEPLOY=1 to skip the serverless deploy step.
 
@@ -36,14 +26,12 @@ cd "$REPO_ROOT"
 echo "==> fetching origin (branches + tags)" >&2
 git fetch origin --tags --quiet
 
-# Frontier must exist
 if ! git rev-parse frontier >/dev/null 2>&1; then
   echo "error: \`frontier\` tag not found. Run qa-approve.sh on at least one SHA first." >&2
   exit 1
 fi
 FRONTIER_SHA="$(git rev-parse frontier)"
 
-# Default target to frontier
 TARGET="${1:-$FRONTIER_SHA}"
 
 if ! git cat-file -e "$TARGET^{commit}" 2>/dev/null; then
@@ -52,7 +40,6 @@ if ! git cat-file -e "$TARGET^{commit}" 2>/dev/null; then
 fi
 SHA="$(git rev-parse "$TARGET")"
 
-# Safety: target must be an ancestor of frontier (or equal to it)
 if [[ "$SHA" != "$FRONTIER_SHA" ]] && ! git merge-base --is-ancestor "$SHA" "$FRONTIER_SHA"; then
   echo "error: target $SHA is past frontier $FRONTIER_SHA — refusing" >&2
   echo "run qa-approve.sh $SHA first if it's been tested" >&2
@@ -72,7 +59,6 @@ git pull origin main --ff-only --quiet
 echo "==> merging $SHA into main (fast-forward only)" >&2
 if ! git merge --ff-only "$SHA" >&2; then
   echo "error: main can't fast-forward to $SHA" >&2
-  echo "main has diverged from develop (maybe a hotfix not back-merged)" >&2
   git checkout develop >&2
   exit 1
 fi
@@ -89,3 +75,11 @@ fi
 
 git checkout develop >&2
 echo "prod-release complete: $SHA on main" >&2
+
+# Kick the Actions pipeline-manager. Defensive — usually nothing for the
+# pipeline to do post-release, but keeps the model consistent.
+if gh workflow run pipeline-manager.yml >/dev/null 2>&1; then
+  echo "kicked pipeline-manager workflow" >&2
+else
+  echo "(workflow kick failed; cron will catch up)" >&2
+fi

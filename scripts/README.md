@@ -218,43 +218,99 @@ scripts/discover-ids.sh $(jq -r .project.number .pipeline-config.json)
 
 Commit the updated `.pipeline-config.json`.
 
-## Phase 5 — GitHub Actions scheduler
+## Phase 5 — Actions scheduler
 
-The workflow at `.github/workflows/pipeline-manager.yml` invokes
-`manager.sh` on a cron (every 10 minutes) and via `workflow_dispatch`.
-Each run advances one actionable ticket by one state transition.
+The workflow at `.github/workflows/pipeline-manager.yml` runs `manager.sh`
+in a drain-queue loop. One Actions run takes any actionable ticket from
+its current state through every transition until it hits a terminal state
+or the queue empties.
 
-### One-time setup
+### Triggers
 
-1. **Create `PIPELINE_TOKEN`** (fine-grained PAT) — the default
-   `GITHUB_TOKEN` in Actions cannot modify Projects v2, so we need a
-   PAT scoped to:
-   - Repository (Only `raj-makhija/quadzero-scout`):
-     Contents R/W, Issues R/W, Pull requests R/W, Metadata R
-   - Account: Projects R/W
-   Create at <https://github.com/settings/personal-access-tokens/new>.
-2. **Store it as a repo secret** named `PIPELINE_TOKEN`:
+| Source | When it fires |
+|---|---|
+| `cron: '*/5 * * * *'` | Every 5 minutes — safety net for missed events |
+| `issues: [labeled, opened]` | New ticket gets `auto-pipeline` label, or new ticket created |
+| `pull_request: [opened, closed]` | Developer agent's PR is created or merged/closed |
+| `repository_dispatch: [pipeline-tick]` | Anyone fires a `pipeline-tick` dispatch |
+| `workflow_dispatch` | Manual trigger from Actions UI or `gh workflow run`, optional ticket override |
+
+### Loop behaviour
+
+When the workflow runs without a specific ticket arg, it loops:
+
+```
+while next-ticket.sh has output:
+  manager.sh    # advance one transition
+  sleep 3       # let GraphQL state propagate
+```
+
+Bounded by 25 iterations or `timeout-minutes: 10`. With a `ticket` input
+provided via `workflow_dispatch`, only ONE transition happens — useful for
+debugging stuck tickets without the loop racing past your inspection point.
+
+### Human-script kicks
+
+Each Phase 4 script ends with a workflow kick so pipeline-relevant state
+changes get picked up immediately rather than waiting for the next cron:
+
+- `qa-deploy.sh` — defensive kick (pipeline usually idle; keeps model consistent)
+- `qa-approve.sh` — defensive kick
+- `qa-reject.sh` — **important** — pipeline must pick up the new `rework` state
+- `prod-release.sh` — defensive kick
+
+The kick is non-fatal: if it fails (auth issue, network), the cron will
+catch up within ~5 min.
+
+### Setup
+
+1. Create the `PIPELINE_TOKEN` classic PAT (scopes: `repo`, `workflow`,
+   `project`) — fine-grained PATs don't expose user-level Projects v2
+   permission. Store as a repo secret:
    ```bash
-   gh secret set PIPELINE_TOKEN --body "<paste>"
+   gh secret set PIPELINE_TOKEN
+   ```
+2. Confirm the default branch is `develop` (otherwise scheduled runs and
+   `gh workflow run` won't find the workflow file):
+   ```bash
+   gh api repos/raj-makhija/quadzero-scout | jq .default_branch
+   # expect: "develop"
    ```
 
 ### Manual trigger
 
-From the Actions tab → **Pipeline Manager** → **Run workflow**. You can
-pass an optional `ticket` input to target a specific issue.
-
-Or from the CLI:
 ```bash
-gh workflow run pipeline-manager.yml -f ticket=42
-gh workflow run pipeline-manager.yml            # auto-pick next actionable
+gh workflow run pipeline-manager.yml                  # auto-pick + drain
+gh workflow run pipeline-manager.yml -f ticket=42     # single transition on #42
 ```
 
 ### Kill-switch
 
 Actions tab → **Pipeline Manager** → **...** → **Disable workflow**.
-Scheduled runs stop immediately; in-flight ones finish cleanly.
 
 ### Concurrency
 
-A `concurrency: pipeline-manager` group serializes runs. If two cron
-firings stack up (e.g., slow run), the second waits rather than cancelling.
+`concurrency: pipeline-manager` serializes runs. If a kick fires while the
+previous run is still draining, the second run queues and starts after.
+
+## Environment overrides
+
+| Variable | Default | Effect |
+|---|---|---|
+| `PIPELINE_OWNER` | `raj-makhija` | Project owner for setup-pipeline.sh / discover-ids.sh. |
+| `PIPELINE_PROJECT_TITLE` | `Quadzero Scout Pipeline` | Project title for setup-pipeline.sh lookup/create. |
+| `PIPELINE_MAX_ATTEMPTS` | `3` | Rework attempts before manager.sh escalates to `needs-human`. |
+| `PIPELINE_SKIP_DEPLOY` | unset | If `1`, qa-deploy.sh / prod-release.sh skip the `serverless deploy` step. |
+| `PIPELINE_FORCE` | unset | If `1`, qa-approve.sh allows moving the frontier tag backward. |
+| `PL_STATE_FIELD` | `Pipeline Status` | Field name used for the pipeline state machine. |
+
+## Re-running `discover-ids.sh`
+
+Any time you rename a field, add an option to a single-select, or otherwise
+change the project schema, re-run:
+
+```bash
+scripts/discover-ids.sh $(jq -r .project.number .pipeline-config.json)
+```
+
+Commit the updated `.pipeline-config.json`.

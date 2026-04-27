@@ -10,10 +10,9 @@
 #   3. Fast-forward merge the SHA into qa.
 #   4. Push qa to origin (Amplify auto-deploys frontend).
 #   5. Run `npx serverless deploy --stage qa` from infra/.
-#   6. Return to develop.
+#   6. Return to develop, kick pipeline-manager workflow.
 #
-# Set PIPELINE_SKIP_DEPLOY=1 to skip the serverless deploy (useful for
-# dry-running the script against a clean branch topology without hitting AWS).
+# Set PIPELINE_SKIP_DEPLOY=1 to skip the serverless deploy.
 
 set -euo pipefail
 
@@ -39,7 +38,6 @@ cd "$REPO_ROOT"
 echo "==> fetching origin" >&2
 git fetch origin --quiet
 
-# Validate SHA is known
 if ! git cat-file -e "$TARGET^{commit}" 2>/dev/null; then
   echo "error: SHA '$TARGET' not found after fetch" >&2
   exit 1
@@ -47,7 +45,6 @@ fi
 
 SHA="$(git rev-parse "$TARGET")"
 
-# Validate SHA is reachable from origin/develop
 if ! git merge-base --is-ancestor "$SHA" origin/develop; then
   echo "error: SHA '$SHA' is not reachable from origin/develop" >&2
   exit 1
@@ -64,7 +61,6 @@ fi
 echo "==> merging $SHA into qa (fast-forward only)" >&2
 if ! git merge --ff-only "$SHA" >&2; then
   echo "error: qa can't fast-forward to $SHA" >&2
-  echo "qa has diverged from develop, or target is older than qa HEAD" >&2
   git checkout develop >&2
   exit 1
 fi
@@ -81,3 +77,11 @@ fi
 
 git checkout develop >&2
 echo "qa-deploy complete: $SHA on qa" >&2
+
+# Kick the Actions pipeline-manager so any pipeline-related state changes
+# get picked up immediately. Non-fatal: cron will catch up within ~5 min.
+if gh workflow run pipeline-manager.yml >/dev/null 2>&1; then
+  echo "kicked pipeline-manager workflow" >&2
+else
+  echo "(workflow kick failed; cron will catch up)" >&2
+fi

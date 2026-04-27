@@ -5,8 +5,7 @@
 #   scripts/qa-approve.sh <sha>
 #
 # The `frontier` tag marks the latest commit that has been human-QA-approved.
-# prod-release.sh refuses to release anything past the frontier. This script
-# is the ONLY way to move the frontier forward.
+# prod-release.sh refuses to release anything past the frontier.
 #
 # Guardrail: refuses to move frontier backward (target is an ancestor of
 # current frontier). Set PIPELINE_FORCE=1 to override.
@@ -30,7 +29,6 @@ fi
 
 SHA="$(git rev-parse "$TARGET")"
 
-# If frontier exists, enforce monotonic forward motion.
 if git rev-parse frontier >/dev/null 2>&1; then
   CURRENT="$(git rev-parse frontier)"
 
@@ -54,3 +52,11 @@ git tag -f frontier "$SHA"
 git push origin frontier --force
 
 echo "frontier now at $SHA" >&2
+
+# Kick the Actions pipeline-manager so any pipeline-related state changes
+# get picked up immediately. Non-fatal: cron will catch up within ~5 min.
+if gh workflow run pipeline-manager.yml >/dev/null 2>&1; then
+  echo "kicked pipeline-manager workflow" >&2
+else
+  echo "(workflow kick failed; cron will catch up)" >&2
+fi
