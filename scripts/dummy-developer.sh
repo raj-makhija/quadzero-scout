@@ -1,20 +1,18 @@
 #!/usr/bin/env bash
-# dummy-developer.sh — simulate the developer agent for pipeline validation.
+# dummy-developer.sh — developer agent script.
 #
-# This dummy does real git work (branches, commits, pushes, PRs) so the
-# Phase 2 plumbing gets exercised. The "code" it writes is a marker file
-# under dummy-work/ticket-<N>.md — nothing meaningful, just a real-enough
-# change to make a real PR.
+# Despite the "dummy-" prefix (kept for stable manager.sh references),
+# this can dispatch to a real Claude Code agent when PIPELINE_DEVELOPER_AGENT
+# is set to "claude" and ANTHROPIC_API_KEY is available. Otherwise it falls
+# back to the dummy implementation that writes a marker file under
+# dummy-work/ — useful for testing the plumbing without burning tokens.
 #
 # Usage:
 #   scripts/dummy-developer.sh <ticket> <mode>
 # Modes:
 #   implement — dev-pending → validation-pending
-#                 create-branch, write dummy file, commit, push
-#   open_pr   — pr-pending → pr-review-pending
-#                 call open-pr.sh against the existing attempt branch
+#   open_pr   — pr-pending → pr-review-pending  (always plumbing, no agent)
 #   rework    — rework → validation-pending
-#                 fresh branch (new attempt number), write, commit, push
 
 set -euo pipefail
 
@@ -34,7 +32,13 @@ pl_load_config
 
 TITLE="$(gh issue view "$TICKET" --json title -q .title)"
 
-# Helper: make the dummy implementation file + real commit + push.
+# When false, use the dummy-marker-file behaviour. When true, invoke claude.
+USE_REAL_AGENT="false"
+if [[ "${PIPELINE_DEVELOPER_AGENT:-dummy}" == "claude" ]]; then
+  USE_REAL_AGENT="true"
+fi
+
+# Helper: dummy commit (marker file under dummy-work/).
 _dummy_commit_and_push() {
   local ticket="$1" attempt="$2" note="$3"
   mkdir -p dummy-work
@@ -47,12 +51,89 @@ Note: $note
 Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 This file is written by the dummy developer agent to exercise the
-pipeline end-to-end without a real Claude Code invocation. Safe to
-delete in bulk after pipeline validation is complete.
+pipeline end-to-end without a real Claude Code invocation.
 DUMMY
   git add "$file"
   git commit -m "chore: dummy developer work (#$ticket attempt $attempt)" >&2
   git push >&2
+}
+
+# Helper: invoke claude as the developer agent. Verifies the agent
+# produced at least one commit on the branch beyond Base SHA.
+_real_agent_commit_and_push() {
+  local ticket="$1" attempt="$2" mode_label="$3" branch="$4"
+  local base_sha
+  base_sha="$("$SCRIPT_DIR/get-field.sh" "$ticket" "Base SHA")"
+
+  local prompt
+  prompt="$(cat <<PROMPT
+You are the developer agent in an automated CI/CD pipeline. Your job is
+to implement the change requested by issue #${ticket} on this repository.
+
+CONTEXT
+- Repo working directory: \$(pwd) — the repository root.
+- You are on branch: \`${branch}\` (already created from develop HEAD;
+  Base SHA is ${base_sha}).
+- Attempt: ${attempt} (max 3 before manager escalates to needs-human).
+- Mode: ${mode_label}  (implement = first attempt; rework = retry after stale merge)
+
+MUST-DO STEPS
+1. Read the ticket: run \`gh issue view ${ticket} --comments\` to see
+   the spec, labels, and any prior agent comments. Pay attention to
+   acceptance criteria and prior \`/reject\` reasons if present.
+2. Read \`/docs/\` per CLAUDE.md ("Context Loading at Agent Start").
+3. CLAUDE.md is already loaded. Follow its four coding principles
+   (Think Before Coding, Simplicity First, Surgical Changes, Goal-Driven
+   Execution). Do not touch unrelated files.
+4. **Cost gate** (per CLAUDE.md "Cloud Cost Impact Assessment" + "LLM
+   Cost Impact Assessment"): If your change introduces, modifies, or
+   removes AWS resources/usage patterns, OR affects LLM call sites,
+   prompts, models, or call frequency:
+   a. Post a cost-assessment comment on issue #${ticket}:
+      \`gh issue comment ${ticket} --body "..."\`
+   b. Set status:
+      \`scripts/set-field.sh ${ticket} "Pipeline Status" cost-review-pending\`
+   c. Exit. Do NOT commit cost-impacting code without /approve-cost.
+5. Otherwise, implement the change. Stage with \`git add\`, commit with
+   a conventional commit message that references the ticket
+   (\`feat: ... (#${ticket})\`, \`fix: ... (#${ticket})\`, etc.). NO
+   "Co-Authored-By" lines (CLAUDE.md says agents must strip them).
+6. Push to origin/${branch}: \`git push\`.
+7. Update \`/docs/\` per CLAUDE.md "Documentation" if the code change
+   affects what's documented.
+
+DO NOT
+- Open a PR. The pipeline does that on the next iteration.
+- Switch branches.
+- Push to develop, qa, or main directly.
+- Add unrelated cleanup or refactoring.
+
+Report a one-sentence summary of what you did at the end of your output.
+PROMPT
+)"
+
+  echo "==> invoking real developer agent (claude) for #$ticket attempt $attempt" >&2
+  echo "$prompt" | "$SCRIPT_DIR/_agent-claude.sh" - >/dev/null
+
+  # Post-condition: did the agent actually commit something on the branch?
+  local commits_ahead
+  commits_ahead="$(git rev-list --count "$base_sha..HEAD" 2>/dev/null || echo 0)"
+  if [[ "$commits_ahead" -lt 1 ]]; then
+    # Check if the agent moved to cost-review-pending — that's a valid no-commit exit.
+    local current_status
+    current_status="$("$SCRIPT_DIR/get-field.sh" "$ticket" "Pipeline Status" 2>/dev/null || true)"
+    if [[ "$current_status" == "cost-review-pending" ]]; then
+      echo "agent escalated to cost-review-pending without committing — that's fine" >&2
+      return 0
+    fi
+    echo "error: developer agent produced no commits on $branch (and didn't escalate)" >&2
+    return 1
+  fi
+
+  # Make sure pushed (agent should have done it; double-check).
+  git push >&2 || echo "(push already complete)" >&2
+
+  echo "==> agent produced $commits_ahead commit(s); pushed to origin/$branch" >&2
 }
 
 case "$MODE" in
@@ -62,12 +143,20 @@ case "$MODE" in
 
     BRANCH="$("$SCRIPT_DIR/create-branch.sh" "$TICKET" "$SLUG")"
 
-    _dummy_commit_and_push "$TICKET" "$ATTEMPT" "initial implementation"
+    if [[ "$USE_REAL_AGENT" == "true" ]]; then
+      _real_agent_commit_and_push "$TICKET" "$ATTEMPT" "implement" "$BRANCH"
+    else
+      _dummy_commit_and_push "$TICKET" "$ATTEMPT" "initial implementation"
+    fi
 
-    gh issue comment "$TICKET" --body "[dummy developer] Implementation pushed to \`$BRANCH\` (attempt $ATTEMPT). Handing to tester for validation." >&2
-    "$SCRIPT_DIR/set-field.sh" "$TICKET" "Agent" tester
-    "$SCRIPT_DIR/set-field.sh" "$TICKET" "Pipeline Status" validation-pending
-    echo "developer → implemented; #$TICKET now validation-pending on $BRANCH" >&2
+    # If the agent escalated to cost-review-pending, don't override.
+    CUR_STATUS="$("$SCRIPT_DIR/get-field.sh" "$TICKET" "Pipeline Status" 2>/dev/null || true)"
+    if [[ "$CUR_STATUS" != "cost-review-pending" ]]; then
+      gh issue comment "$TICKET" --body "[developer] Implementation pushed to \`$BRANCH\` (attempt $ATTEMPT). Handing to tester for validation." >&2
+      "$SCRIPT_DIR/set-field.sh" "$TICKET" "Agent" tester
+      "$SCRIPT_DIR/set-field.sh" "$TICKET" "Pipeline Status" validation-pending
+      echo "developer → implemented; #$TICKET now validation-pending on $BRANCH" >&2
+    fi
     ;;
 
   open_pr)
@@ -79,27 +168,31 @@ case "$MODE" in
 
     PR="$("$SCRIPT_DIR/open-pr.sh" "$TICKET" "$BRANCH" "$PR_TITLE")"
 
-    gh issue comment "$TICKET" --body "[dummy developer] PR #$PR opened. Handing to pr-reviewer." >&2
+    gh issue comment "$TICKET" --body "[developer] PR #$PR opened. Handing to pr-reviewer." >&2
     "$SCRIPT_DIR/set-field.sh" "$TICKET" "Agent" pr-reviewer
     "$SCRIPT_DIR/set-field.sh" "$TICKET" "Pipeline Status" pr-review-pending
     echo "developer → opened PR #$PR; #$TICKET now pr-review-pending" >&2
     ;;
 
   rework)
-    # The manager already bumped Attempt before calling us; read it back.
     ATTEMPT="$("$SCRIPT_DIR/get-field.sh" "$TICKET" "Attempt")"
     SLUG="attempt-$ATTEMPT"
 
-    # Fresh branch from current develop HEAD (merge-pr stale path cleared
-    # Base SHA + PR Number; create-branch writes a new Base SHA).
     BRANCH="$("$SCRIPT_DIR/create-branch.sh" "$TICKET" "$SLUG")"
 
-    _dummy_commit_and_push "$TICKET" "$ATTEMPT" "rework after stale merge"
+    if [[ "$USE_REAL_AGENT" == "true" ]]; then
+      _real_agent_commit_and_push "$TICKET" "$ATTEMPT" "rework" "$BRANCH"
+    else
+      _dummy_commit_and_push "$TICKET" "$ATTEMPT" "rework after stale merge"
+    fi
 
-    gh issue comment "$TICKET" --body "[dummy developer] Rework pushed to \`$BRANCH\` (attempt $ATTEMPT). Handing to tester for validation." >&2
-    "$SCRIPT_DIR/set-field.sh" "$TICKET" "Agent" tester
-    "$SCRIPT_DIR/set-field.sh" "$TICKET" "Pipeline Status" validation-pending
-    echo "developer → reworked; #$TICKET now validation-pending on $BRANCH" >&2
+    CUR_STATUS="$("$SCRIPT_DIR/get-field.sh" "$TICKET" "Pipeline Status" 2>/dev/null || true)"
+    if [[ "$CUR_STATUS" != "cost-review-pending" ]]; then
+      gh issue comment "$TICKET" --body "[developer] Rework pushed to \`$BRANCH\` (attempt $ATTEMPT). Handing to tester for validation." >&2
+      "$SCRIPT_DIR/set-field.sh" "$TICKET" "Agent" tester
+      "$SCRIPT_DIR/set-field.sh" "$TICKET" "Pipeline Status" validation-pending
+      echo "developer → reworked; #$TICKET now validation-pending on $BRANCH" >&2
+    fi
     ;;
 
   *)
