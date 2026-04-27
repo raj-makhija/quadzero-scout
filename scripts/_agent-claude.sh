@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # _agent-claude.sh — invoke Claude Code CLI as a headless agent.
+#
 # Sourced or executed by the per-agent scripts (developer, tester, reviewer)
 # when PIPELINE_*_AGENT=claude is set.
 #
@@ -10,11 +11,12 @@
 # Reads the agent prompt from a file (or stdin via "-"). Runs `claude -p`
 # with --dangerously-skip-permissions in the current working directory
 # (the repo root, where CLAUDE.md auto-loads). Streams claude's output
-# to stderr so it shows up in Actions logs; final summary text printed to
-# stdout for the caller to capture and post as a ticket comment.
+# to stderr so it shows up in Actions logs; final summary text printed
+# to stdout for the caller to capture.
 #
-# Required env: ANTHROPIC_API_KEY.
-# Optional env: PIPELINE_AGENT_TIMEOUT_SEC (default 600 = 10 min per call).
+# Auth: requires either ANTHROPIC_API_KEY (API billing) or
+# CLAUDE_CODE_OAUTH_TOKEN (Pro/Max subscription).
+# Optional: PIPELINE_AGENT_TIMEOUT_SEC (default 600 = 10 min per call).
 
 set -euo pipefail
 
@@ -25,8 +27,9 @@ fi
 
 PROMPT_SRC="$1"
 
-if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
-  echo "error: ANTHROPIC_API_KEY env var is not set" >&2
+if [[ -z "${ANTHROPIC_API_KEY:-}" && -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
+  echo "error: neither ANTHROPIC_API_KEY nor CLAUDE_CODE_OAUTH_TOKEN is set" >&2
+  echo "       (one of them is required to authenticate the claude CLI)" >&2
   exit 1
 fi
 
@@ -53,9 +56,6 @@ fi
 
 TIMEOUT_SEC="${PIPELINE_AGENT_TIMEOUT_SEC:-600}"
 
-# Stream claude's stdout/stderr to our stderr so the Actions log shows
-# the agent's reasoning/tool use as it happens. Capture the final
-# response separately by saving to a file too.
 RESPONSE_FILE="$(mktemp -t claude-agent.XXXXXX)"
 trap 'rm -f "$RESPONSE_FILE"' EXIT
 
@@ -70,7 +70,6 @@ timeout "$TIMEOUT_SEC" claude \
 RC=$?
 set -e
 
-# Echo the full output to stderr for the Actions log
 cat "$RESPONSE_FILE" >&2
 
 if [[ $RC -eq 124 ]]; then
@@ -82,5 +81,4 @@ if [[ $RC -ne 0 ]]; then
   exit "$RC"
 fi
 
-# Emit the response on stdout for the caller to capture
 cat "$RESPONSE_FILE"
