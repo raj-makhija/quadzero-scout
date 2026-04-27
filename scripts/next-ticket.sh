@@ -1,18 +1,17 @@
 #!/usr/bin/env bash
-# next-ticket.sh — find the next actionable ticket in the pipeline.
+# next-ticket.sh — find actionable tickets in the pipeline.
 #
 # Criteria (all must hold):
 #   - Issue is on the pipeline project.
 #   - Issue has the `auto-pipeline` label.
 #   - Issue is open.
-#   - Its "Pipeline Status" is one of the actionable states (not merged,
-#     needs-human, or cost-review-pending).
+#   - Pipeline Status is either unset (treated as `new`, will be primed by
+#     manager.sh) OR is set to a non-terminal state.
 #
 # Output: one line per actionable ticket, oldest first:
 #   <issue-number>\t<status>\t<agent>\t<title>
 #
 # Exits 0 with no output if nothing is actionable.
-# Use `| head -1` in callers that want just the next one.
 
 set -euo pipefail
 
@@ -28,8 +27,6 @@ pl_load_config
 # States the pipeline should NOT pick up (terminal or blocked on human).
 EXCLUDE_STATES='["merged-to-develop","needs-human","cost-review-pending"]'
 
-# Page through all items on the project. For v1 the project is small; one
-# page of 100 is plenty. Grow with pagination if it ever matters.
 RESP="$(gh api graphql \
   -f query='
     query($project: ID!) {
@@ -64,6 +61,9 @@ RESP="$(gh api graphql \
     }' \
   -f project="$PL_PROJECT_ID")"
 
+# A ticket is actionable when:
+#   - content is an open Issue with the auto-pipeline label
+#   - AND Pipeline Status is either unset OR not in the exclude list
 echo "$RESP" | jq -r --argjson exclude "$EXCLUDE_STATES" --arg sf "$PL_STATE_FIELD" '
   .data.node.items.nodes[]
   | select(.content.__typename == "Issue")
@@ -74,9 +74,14 @@ echo "$RESP" | jq -r --argjson exclude "$EXCLUDE_STATES" --arg sf "$PL_STATE_FIE
       | map(select(.field != null))
       | map({key: .field.name, value: .name})
       | from_entries) as $fv
-  | select($fv[$sf] != null)
-  | select($exclude | index($fv[$sf]) | not)
-  | [$item.content.createdAt, $item.content.number, $fv[$sf], ($fv["Agent"] // "-"), $item.content.title]
+  | select($fv[$sf] == null or ($exclude | index($fv[$sf]) | not))
+  | [
+      $item.content.createdAt,
+      ($item.content.number | tostring),
+      ($fv[$sf] // "new"),
+      ($fv["Agent"] // "-"),
+      $item.content.title
+    ]
   | @tsv' \
   | sort \
   | cut -f2-
