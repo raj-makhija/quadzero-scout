@@ -71,14 +71,23 @@ git push origin qa >&2
 if [[ "${PIPELINE_SKIP_DEPLOY:-}" == "1" ]]; then
   echo "==> PIPELINE_SKIP_DEPLOY=1 — skipping serverless deploy" >&2
 else
-  echo "==> verifying AWS credentials (aws sts get-caller-identity)" >&2
-  if ! aws sts get-caller-identity --output text >/dev/null 2>&1; then
-    echo "error: AWS credentials not configured or invalid." >&2
-    echo "       Required: AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY env vars" >&2
-    echo "       (set as repo secrets in GitHub Actions, or in ~/.aws/credentials locally)." >&2
-    echo "       The IAM user must have at least sts:GetCallerIdentity permission" >&2
-    echo "       (which every IAM user has by default) plus the policy in" >&2
-    echo "       infra/github-actions-deployer-policy.json." >&2
+  echo "==> verifying AWS credentials" >&2
+  echo "    AWS_ACCESS_KEY_ID:     ${AWS_ACCESS_KEY_ID:+set (${#AWS_ACCESS_KEY_ID} chars)}${AWS_ACCESS_KEY_ID:-EMPTY}" >&2
+  echo "    AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:+set (${#AWS_SECRET_ACCESS_KEY} chars)}${AWS_SECRET_ACCESS_KEY:-EMPTY}" >&2
+  echo "    AWS_REGION:            ${AWS_REGION:-unset}" >&2
+  echo "    AWS_DEFAULT_REGION:    ${AWS_DEFAULT_REGION:-unset}" >&2
+  if AWS_OUT="$(aws sts get-caller-identity --output text 2>&1)"; then
+    echo "    aws sts get-caller-identity OK: $AWS_OUT" >&2
+  else
+    echo "error: aws sts get-caller-identity failed:" >&2
+    echo "       $AWS_OUT" >&2
+    echo "" >&2
+    echo "       Common causes:" >&2
+    echo "       - AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY not set in repo secrets" >&2
+    echo "         (Settings -> Secrets and variables -> Actions -> Secrets tab)" >&2
+    echo "       - Access key was deactivated or deleted in IAM" >&2
+    echo "       - Secret value was pasted with leading/trailing whitespace" >&2
+    echo "       - Wrong AWS account (key belongs to a different account)" >&2
     exit 1
   fi
   echo "==> installing infra/ dependencies (serverless v3 + plugins)" >&2
