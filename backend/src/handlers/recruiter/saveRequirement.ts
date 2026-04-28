@@ -7,6 +7,7 @@ import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
 import type { RequirementItem, LLMJDOutput } from '../../types/index.js';
 import { slugifyFieldKey } from '../../lib/slugify.js';
+import { normalizeLocation } from '../../lib/locationNormalizer.js';
 
 async function handleRequest(
   event: AuthenticatedEvent
@@ -51,7 +52,10 @@ async function handleRequest(
       payment_terms_days: data.paymentTermsDays,
       job_title: data.jobTitle,
       jd_text: data.jdText,
-      parsed_criteria: data.parsedCriteria as LLMJDOutput,
+      parsed_criteria: {
+        ...data.parsedCriteria,
+        location: normalizeLocation(data.parsedCriteria.location) ?? null,
+      } as LLMJDOutput,
       status: data.status || 'active',
       duplicate_of: data.duplicateOf,
       created_at: now,

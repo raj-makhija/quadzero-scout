@@ -3,6 +3,7 @@ import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, UpdateRequirementCriteriaRequestSchema } from '../../lib/validation.js';
 import { getRequirementById, updateRequirementCriteria } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import { normalizeLocation } from '../../lib/locationNormalizer.js';
 import { logAuditEvent } from '../../lib/audit.js';
 
 async function handleRequest(
@@ -48,9 +49,13 @@ async function handleRequest(
     }
 
     const now = new Date().toISOString();
+    const normalizedCriteria = {
+      ...data.parsedCriteria,
+      location: normalizeLocation(data.parsedCriteria.location) ?? null,
+    };
     await updateRequirementCriteria(
       requirementId,
-      data.parsedCriteria,
+      normalizedCriteria,
       data.maxBudgetLpa,
       now
     );

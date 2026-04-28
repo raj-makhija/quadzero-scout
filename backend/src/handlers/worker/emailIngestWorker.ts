@@ -33,6 +33,7 @@ import { putObject, deleteObject } from '../../lib/s3.js';
 import { extractTextFromResume } from '../../lib/textract.js';
 import { parseResume } from '../../lib/llm/index.js';
 import { normalizeSkills, normalizeSkillYears } from '../../lib/skillNormalizer.js';
+import { normalizeLocation } from '../../lib/locationNormalizer.js';
 import {
   getCandidateByEmail,
   saveCandidateProfile,
@@ -320,7 +321,7 @@ async function processAttachment(
       full_name: fullName,
       email,
       phone: profile.phone || undefined,
-      location: profile.location || undefined,
+      location: normalizeLocation(profile.location) ?? undefined,
       primary_skills: normalizedPrimarySkills,
       primary_skill_years: normalizedSkillYears,
       secondary_skills: normalizedSecondarySkills,

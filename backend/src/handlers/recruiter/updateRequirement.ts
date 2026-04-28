@@ -5,6 +5,7 @@ import { getRequirementById, updateRequirementFields } from '../../lib/dynamodb.
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
 import { slugifyFieldKey } from '../../lib/slugify.js';
+import { normalizeLocation } from '../../lib/locationNormalizer.js';
 import type { RequirementChangeEntry, RequirementChangeDetail } from '../../types/index.js';
 
 // Maps camelCase request fields to snake_case DynamoDB attribute names
@@ -104,6 +105,15 @@ async function handleRequest(
           ...field,
           key: slugifyFieldKey(field.label as string),
         }));
+      }
+
+      // Normalize location within parsedCriteria to city-only
+      if (camelKey === 'parsedCriteria' && newValue != null && typeof newValue === 'object' && !Array.isArray(newValue)) {
+        const criteria = newValue as Record<string, unknown>;
+        newValue = {
+          ...criteria,
+          location: normalizeLocation(criteria.location as string | null | undefined) ?? null,
+        };
       }
 
       // Also update client_name_lower when clientName changes

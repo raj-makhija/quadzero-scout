@@ -133,4 +133,24 @@ describe('saveRequirement handler', () => {
     expect(savedItem.recruiter_id).toBe('rec_xyz');
     expect(savedItem.notify_recruiter_ids).toEqual(['rec_xyz']);
   });
+
+  it('TC-SAVEREQ-004: normalizes parsed_criteria.location to city-only', async () => {
+    const bodyWithCity = {
+      ...validBody,
+      parsedCriteria: { ...validBody.parsedCriteria, location: 'Mumbai, India' },
+    };
+    const event = makeEvent(bodyWithCity, 'rec_creator');
+    await handler(event as never);
+
+    const savedItem = mockSaveRequirement.mock.calls[0][0];
+    expect(savedItem.parsed_criteria.location).toBe('Mumbai');
+  });
+
+  it('TC-SAVEREQ-005: preserves null location in parsed_criteria', async () => {
+    const event = makeEvent(validBody, 'rec_creator');
+    await handler(event as never);
+
+    const savedItem = mockSaveRequirement.mock.calls[0][0];
+    expect(savedItem.parsed_criteria.location).toBeNull();
+  });
 });

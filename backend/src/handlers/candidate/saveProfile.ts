@@ -7,6 +7,7 @@ import { deleteObject } from '../../lib/s3.js';
 import { invokeLambdaAsync } from '../../lib/lambdaInvoke.js';
 import { config } from '../../lib/config.js';
 import { normalizeSkill, normalizeSkills, normalizeSkillYears } from '../../lib/skillNormalizer.js';
+import { normalizeLocation } from '../../lib/locationNormalizer.js';
 import type { CandidateItem, SaveProfileResponse, ApiWarning } from '../../types/index.js';
 
 export async function handler(
@@ -124,7 +125,7 @@ export async function handler(
       full_name: profile.fullName,
       email: profile.email || existingCandidate?.email || '',
       phone: profile.phone ?? undefined,
-      location: profile.location ?? undefined,
+      location: normalizeLocation(profile.location) ?? undefined,
       primary_skills: normalizedPrimarySkills,
       primary_skill_years: normalizedSkillYears,
       secondary_skills: normalizedSecondarySkills,
