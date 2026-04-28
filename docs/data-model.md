@@ -31,7 +31,7 @@ Stores candidate profile data extracted from resumes and edited by candidates.
 | full_name | String | Yes | Candidate's full name |
 | email | String | Yes | Email address |
 | phone | String | No | Phone number |
-| location | String | No | City, Country |
+| location | String | No | City name only (e.g. "Mumbai"). Normalized at ingestion — country is stripped. |
 | primary_skills | List<String> | Yes | Main skills (lowercase, normalized) |
 | primary_skill_years | Map | Yes | Skill -> years of experience |
 | secondary_skills | List<String> | No | Additional skills |
@@ -80,7 +80,7 @@ Stores candidate profile data extracted from resumes and edited by candidates.
   "full_name": "John Doe",
   "email": "john.doe@example.com",
   "phone": "+91-9876543210",
-  "location": "Bangalore, India",
+  "location": "Bangalore",
   "primary_skills": ["javascript", "typescript", "react", "nodejs"],
   "primary_skill_years": {
     "javascript": 5,
