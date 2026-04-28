@@ -54,6 +54,8 @@ export function PricingPanel({
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<PricingOutput | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [internalRatesExpanded, setInternalRatesExpanded] = useState(false);
+  const [analysisExpanded, setAnalysisExpanded] = useState(false);
 
   // CTC editing state
   const [ctcCurrentInput, setCtcCurrentInput] = useState('');
@@ -361,13 +363,27 @@ export function PricingPanel({
 
           {/* Internal Rates */}
           <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-            <div className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Internal Rates</div>
-            <div className="text-sm">
-              <span className="text-gray-500 dark:text-gray-400">Minimum: </span>
-              <span className="font-medium text-gray-900 dark:text-gray-100">
-                {formatInr(result.minimumBillingMonthly)}/mo | {formatInr(result.minimumBillingHourly)}/hr
-              </span>
-            </div>
+            <button
+              onClick={() => setInternalRatesExpanded(prev => !prev)}
+              className="flex w-full items-center justify-between text-xs font-medium text-gray-600 dark:text-gray-400"
+              aria-expanded={internalRatesExpanded}
+            >
+              <span>Internal Rates</span>
+              <svg
+                className={`w-4 h-4 transition-transform ${internalRatesExpanded ? 'rotate-180' : ''}`}
+                fill="none" viewBox="0 0 24 24" stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {internalRatesExpanded && (
+              <div className="mt-2 text-sm">
+                <span className="text-gray-500 dark:text-gray-400">Minimum: </span>
+                <span className="font-medium text-gray-900 dark:text-gray-100">
+                  {formatInr(result.minimumBillingMonthly)}/mo | {formatInr(result.minimumBillingHourly)}/hr
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Budget Optimization Details */}
@@ -412,31 +428,45 @@ export function PricingPanel({
 
           {/* Analysis */}
           <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-            <div className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Analysis</div>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-500 dark:text-gray-400">Markup on CTC</span>
-                <span className="font-medium text-gray-900 dark:text-gray-100">{result.finalEffectiveMarkupPct.toFixed(1)}%</span>
+            <button
+              onClick={() => setAnalysisExpanded(prev => !prev)}
+              className="flex w-full items-center justify-between text-xs font-medium text-gray-600 dark:text-gray-400"
+              aria-expanded={analysisExpanded}
+            >
+              <span>Analysis</span>
+              <svg
+                className={`w-4 h-4 transition-transform ${analysisExpanded ? 'rotate-180' : ''}`}
+                fill="none" viewBox="0 0 24 24" stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {analysisExpanded && (
+              <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">Markup on CTC</span>
+                  <span className="font-medium text-gray-900 dark:text-gray-100">{result.finalEffectiveMarkupPct.toFixed(1)}%</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">Net Contribution</span>
+                  <span className={`font-medium ${
+                    result.finalContribution >= result.netContribution
+                      ? 'text-green-600 dark:text-green-400'
+                      : 'text-yellow-600 dark:text-yellow-400'
+                  }`}>
+                    {formatInr(result.finalContribution)}/mo
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">Working Capital</span>
+                  <span className="font-medium text-gray-900 dark:text-gray-100">{formatInr(result.workingCapitalCostPerMonth)}/mo</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">Break-even</span>
+                  <span className="font-medium text-gray-900 dark:text-gray-100">{result.recruiterBreakeven} engineers</span>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500 dark:text-gray-400">Net Contribution</span>
-                <span className={`font-medium ${
-                  result.finalContribution >= result.netContribution
-                    ? 'text-green-600 dark:text-green-400'
-                    : 'text-yellow-600 dark:text-yellow-400'
-                }`}>
-                  {formatInr(result.finalContribution)}/mo
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500 dark:text-gray-400">Working Capital</span>
-                <span className="font-medium text-gray-900 dark:text-gray-100">{formatInr(result.workingCapitalCostPerMonth)}/mo</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500 dark:text-gray-400">Break-even</span>
-                <span className="font-medium text-gray-900 dark:text-gray-100">{result.recruiterBreakeven} engineers</span>
-              </div>
-            </div>
+            )}
           </div>
 
           {/* Warning Badges */}
