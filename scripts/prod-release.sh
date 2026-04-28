@@ -97,6 +97,12 @@ else
     echo "==> creating infra/src symlink -> ../backend/src (Linux equivalent of the Windows junction)" >&2
     ln -s ../backend/src infra/src
   fi
+  # serverless-esbuild resolves npm packages relative to the source file's
+  # location. Since handlers live under backend/src/, esbuild walks up to
+  # backend/node_modules/ -- not infra/node_modules/. Install backend deps
+  # so zod/mammoth/openai/etc. resolve at bundle time.
+  echo "==> installing backend/ dependencies (handler runtime deps)" >&2
+  (cd backend/ && npm ci --silent)
   echo "==> deploying backend to prod (npx serverless deploy --stage prod)" >&2
   (cd infra/ && npx serverless deploy --stage prod)
 fi
