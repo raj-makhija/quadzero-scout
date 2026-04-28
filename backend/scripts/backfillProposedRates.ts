@@ -1,7 +1,7 @@
 /**
  * Backfill script to calculate and persist proposed billing rates on existing shortlist items.
  * Fetches candidate CTC/experience and requirement contract terms, then calls the pricing engine
- * to compute both recommended quoted rates and internal rates.
+ * to compute both recommended rates and internal rates.
  *
  * Run with: npx ts-node scripts/backfillProposedRates.ts
  *
