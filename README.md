@@ -8,10 +8,9 @@
 
 The current status of each component is as follows:
 
-- Active development
+- In development
 - Pending QA review
-- Active maintenance
-- Documentation in progress
+- Stable maintenance
 
 ## Requirements
 
