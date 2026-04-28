@@ -36,3 +36,6 @@ Thumbs.db
 # Logs
 *.log
 qwen-prompt.txt
+
+# Next.js incremental build cache (tracked-but-noisy; .gitignore + untrack it)
+frontend/tsconfig.tsbuildinfo

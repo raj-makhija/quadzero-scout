@@ -2,9 +2,15 @@
 #
 # Triggers:
 #   - cron every 5 min (safety net for missed events)
-#   - issues.labeled / opened           (kicks pipeline on new auto-pipeline tickets)
+#   - issues.labeled                    (kicks pipeline when auto-pipeline label added)
 #   - repository_dispatch [pipeline-tick] (fired by human-driven scripts)
 #   - workflow_dispatch                 (manual trigger, optional ticket override)
+#
+# Note: issues.opened is intentionally NOT a trigger. It used to be, but every
+# new ticket fired a doomed 1s run before the project-add and label
+# automation completed. issues.labeled fires reliably the moment the
+# auto-pipeline label is added (which happens immediately after open),
+# so coverage is preserved without the noisy phantom runs.
 #
 # Each run drains the queue: it loops calling manager.sh while next-ticket.sh
 # returns something. One Actions run can take a fresh ticket from new all the
@@ -28,7 +34,7 @@ on:
         required: false
         type: string
   issues:
-    types: [labeled, opened]
+    types: [labeled]
   repository_dispatch:
     types: [pipeline-tick]
 
