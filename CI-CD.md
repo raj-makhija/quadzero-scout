@@ -40,10 +40,10 @@ they're excluded from the actionable queue until a human resolves them.
 
 Beyond `develop`, promotion is **human-driven** by design:
 
-- `scripts/qa-deploy.sh <ticket>` -> deploy to QA from develop tip
-- `scripts/qa-approve.sh <ticket>` -> human verdict after QA testing;
+- `scripts/qa-deploy.sh <sha>` -> deploy a develop-reachable SHA to QA (frontend via Amplify auto-deploy from qa-branch push, backend via npx serverless deploy --stage qa)
+- `scripts/qa-approve.sh <sha>` -> human verdict after QA testing;
   advances the `frontier` git tag
-- `scripts/qa-reject.sh <ticket>` -> bounces back with reason
+- `scripts/qa-reject.sh <sha> <reason> [ticket]` -> bounces back; reopens issue, routes to rework. Ticket inferred from commit message if omitted
 - `scripts/prod-release.sh <SHA>` -> ships to prod (must be at or
   before the `frontier` tag)
 
@@ -312,15 +312,15 @@ done
 ### 5.3 Promotion to QA / prod (human-in-the-loop)
 
 ```bash
-# After a ticket merges to develop, deploy that develop tip to QA
-scripts/qa-deploy.sh <N>
+# After a ticket merges to develop, deploy its merge SHA to QA
+scripts/qa-deploy.sh <SHA>
 
 # Human tests in QA. If acceptable:
-scripts/qa-approve.sh <N>
+scripts/qa-approve.sh <SHA>
 # This advances the `frontier` git tag to the QA-approved SHA.
 
 # If QA finds issues:
-scripts/qa-reject.sh <N> "describe what's wrong"
+scripts/qa-reject.sh <SHA> "describe what's wrong"
 # This routes the ticket back to rework so the dev agent can fix.
 
 # Ship a frontier-or-earlier SHA to prod
@@ -352,6 +352,69 @@ git fetch --prune
 # Force-delete a stuck remote branch
 git push origin --delete <branch>
 ```
+
+---
+
+### 5.5 Web-only operation via labels (no CLI)
+
+Every human-in-the-loop operation can be triggered by adding a
+`pipeline:*` label to a ticket. The `pipeline-commands.yml` workflow
+fires on `issues.labeled`, dispatches the appropriate action, posts a
+result comment to the ticket, and removes the label so the action
+can be re-fired later.
+
+**Available labels:**
+
+| Label | What happens | Param needed |
+|---|---|---|
+| `pipeline:qa-deploy` | Deploy ticket's merge SHA to QA (Amplify auto-deploys frontend; serverless deploys backend) | none — SHA inferred |
+| `pipeline:qa-approve` | Advance `frontier` git tag to merge SHA | none |
+| `pipeline:qa-reject` | Re-open ticket, route to rework with reason | reason — read from latest non-bracket comment |
+| `pipeline:prod-release` | Ship merge SHA to `main` (must be at or before frontier) | none |
+| `pipeline:approve-cost` | Unblock cost-review-pending ticket; post `[cost-approved]` marker; route back to dev-pending | none |
+| `pipeline:reject-cost` | Reject cost change; park at needs-human | reason — from latest comment |
+| `pipeline:retry` | Reset to rework, Attempt=1, clear Base SHA + PR Number | none |
+| `pipeline:park` | Halt processing; set Pipeline Status=needs-human | none |
+| `pipeline:show-status` | Bot replies with current Pipeline Status / Agent / Attempt / Base SHA / PR Number | none |
+
+**Why labels rather than slash commands**: GitHub's label picker is a
+dropdown with predefined options — no typo risk on the command name.
+Labels also live visibly on the ticket while the action runs.
+
+**For the two commands that need a reason** (`pipeline:qa-reject`,
+`pipeline:reject-cost`):
+
+1. Write the reason as a normal issue comment first (e.g. "the LWD
+   field doesn't pre-fill on re-open").
+2. Add the label.
+
+The workflow reads the most recent comment that does NOT start with
+`[` (i.e. not a bot or marker comment) and uses that as the reason.
+If no human comment exists, the workflow posts a friendly error and
+asks you to write one first.
+
+**One-time label setup** (only run when bootstrapping a fresh repo;
+labels persist forever once created):
+
+```bash
+gh label create "pipeline:qa-deploy"     --color "0E8A16" --description "Trigger: deploy ticket's merge SHA to QA"
+gh label create "pipeline:qa-approve"    --color "0E8A16" --description "Trigger: advance frontier to merge SHA"
+gh label create "pipeline:qa-reject"     --color "B60205" --description "Trigger: reject; route to rework. Add a comment with reason first"
+gh label create "pipeline:prod-release"  --color "5319E7" --description "Trigger: release merge SHA to main"
+gh label create "pipeline:approve-cost"  --color "0E8A16" --description "Trigger: unblock cost-review-pending ticket"
+gh label create "pipeline:reject-cost"   --color "B60205" --description "Trigger: reject cost change; park at needs-human. Add comment with reason"
+gh label create "pipeline:retry"         --color "FBCA04" --description "Trigger: reset ticket to rework, Attempt=1"
+gh label create "pipeline:park"          --color "C5DEF5" --description "Trigger: halt processing; set Pipeline Status=needs-human"
+gh label create "pipeline:show-status"   --color "C5DEF5" --description "Trigger: bot replies with current ticket state"
+```
+
+**Concurrency**: the commands workflow has a per-ticket concurrency
+group (`pipeline-commands-<N>`), so two labels added simultaneously
+to the same ticket serialize. Different tickets run in parallel.
+
+**Audit trail**: every command posts a result comment. `[/qa-deploy] OK`,
+`[/approve-cost] OK`, etc. The comment thread is the durable record
+of who triggered what, when, and with what outcome.
 
 ---
 

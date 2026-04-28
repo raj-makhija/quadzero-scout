@@ -86,14 +86,24 @@ MUST-DO STEPS
    (Think Before Coding, Simplicity First, Surgical Changes, Goal-Driven
    Execution). Do not touch unrelated files.
 4. **Cost gate** (per CLAUDE.md "Cloud Cost Impact Assessment" + "LLM
-   Cost Impact Assessment"): If your change introduces, modifies, or
-   removes AWS resources/usage patterns, OR affects LLM call sites,
-   prompts, models, or call frequency:
+   Cost Impact Assessment").
+
+   First, scan the comments you read in step 1. If ANY comment starts
+   with the literal text \`[cost-approved]\`, treat the cost gate as
+   already approved by a human and SKIP the rest of step 4 entirely
+   (proceed to step 5). The human approves cost by adding the
+   \`pipeline:approve-cost\` label to the ticket, which posts that
+   marker comment.
+
+   Otherwise, if your change introduces, modifies, or removes AWS
+   resources/usage patterns, OR affects LLM call sites, prompts,
+   models, or call frequency:
    a. Post a cost-assessment comment on issue #${ticket}:
       \`gh issue comment ${ticket} --body "..."\`
    b. Set status:
       \`scripts/set-field.sh ${ticket} "Pipeline Status" cost-review-pending\`
-   c. Exit. Do NOT commit cost-impacting code without /approve-cost.
+   c. Exit. The human can then add the \`pipeline:approve-cost\` label
+      to the ticket to approve and unblock you on the next dispatch.
 5. Otherwise, implement the change. Stage with \`git add\`, commit with
    a conventional commit message that references the ticket
    (\`feat: ... (#${ticket})\`, \`fix: ... (#${ticket})\`, etc.). NO

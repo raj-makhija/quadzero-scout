@@ -1,0 +1,203 @@
+# Pipeline Commands -- human-in-the-loop operations triggered by labels.
+#
+# Add a `pipeline:<command>` label to a ticket to trigger the corresponding
+# action. The workflow auto-removes the label after success so the action
+# can be re-fired. All command results post a comment on the ticket for
+# audit trail.
+#
+# Available commands:
+#   pipeline:qa-deploy     -- deploy ticket's merge SHA to QA
+#   pipeline:qa-approve    -- advance frontier to merge SHA
+#   pipeline:qa-reject     -- reject; route to rework. Reason from latest non-bracket comment
+#   pipeline:prod-release  -- ship merge SHA to main (must be at or before frontier)
+#   pipeline:approve-cost  -- unblock cost-review-pending ticket
+#   pipeline:reject-cost   -- reject cost change; park at needs-human. Reason from comment
+#   pipeline:retry         -- reset to rework, Attempt=1, kick pipeline-manager
+#   pipeline:park          -- halt processing; set Pipeline Status=needs-human
+#   pipeline:show-status   -- bot replies with current ticket state
+#
+# For commands that need a reason (qa-reject, reject-cost): write the reason
+# as a normal issue comment FIRST, then add the label. The workflow reads
+# the most recent comment that doesn't start with `[` (i.e. not a bot/marker
+# comment) and uses it as the reason.
+
+name: Pipeline Commands
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pipeline-commands-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  route:
+    # Only fire for pipeline:* labels; all other label adds are no-ops here
+    # (the pipeline-manager workflow handles auto-pipeline labels separately).
+    if: startsWith(github.event.label.name, 'pipeline:')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout develop (with PAT for git ops + label edits)
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+          token: ${{ secrets.PIPELINE_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name  "quadzero-pipeline[bot]"
+          git config user.email "pipeline-bot@users.noreply.github.com"
+          git config core.hooksPath /dev/null
+
+      - name: Verify gh + jq
+        env:
+          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+        run: |
+          gh --version
+          jq --version
+
+      - name: Route command
+        env:
+          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+          TICKET: ${{ github.event.issue.number }}
+          LABEL: ${{ github.event.label.name }}
+          ACTOR: ${{ github.event.sender.login }}
+        run: |
+          set -euo pipefail
+
+          # Helper: fetch merge SHA for this ticket's PR.
+          merge_sha_for_ticket() {
+            local pr
+            pr="$(scripts/get-field.sh "$TICKET" "PR Number" 2>/dev/null || true)"
+            if [[ -z "$pr" ]]; then
+              # Fallback: query the issue's closedByPullRequestsReferences
+              pr="$(gh issue view "$TICKET" --json closedByPullRequestsReferences \
+                -q '.closedByPullRequestsReferences[0].number // empty' 2>/dev/null || true)"
+            fi
+            [[ -z "$pr" ]] && { echo ""; return; }
+            gh pr view "$pr" --json mergeCommit -q '.mergeCommit.oid // empty' 2>/dev/null || echo ""
+          }
+
+          # Helper: most recent non-bracket comment (treated as user's reason).
+          # Bot/marker comments all start with `[` (e.g. [manager], [tester:...],
+          # [pr-reviewer], [/qa-deploy], [cost-approved]).
+          latest_user_comment() {
+            gh issue view "$TICKET" --json comments \
+              -q '.comments | reverse | map(select(.body | startswith("[") | not)) | .[0].body // empty' \
+              2>/dev/null || echo ""
+          }
+
+          # Helpers: post result + always remove the trigger label so the
+          # command can be re-fired.
+          finish_success() {
+            gh issue comment "$TICKET" --body "$1" >&2
+            gh issue edit "$TICKET" --remove-label "$LABEL" >&2
+          }
+          finish_error() {
+            gh issue comment "$TICKET" --body "$1" >&2
+            gh issue edit "$TICKET" --remove-label "$LABEL" >&2
+            exit 1
+          }
+
+          echo "==> routing $LABEL on ticket #$TICKET (actor: @$ACTOR)" >&2
+
+          case "$LABEL" in
+            # ----------------------------------------------------- promotion
+            pipeline:qa-deploy)
+              SHA="$(merge_sha_for_ticket)"
+              [[ -z "$SHA" ]] && finish_error "[/qa-deploy] no merge SHA found for #$TICKET (is the PR merged?)"
+              gh issue comment "$TICKET" --body "[/qa-deploy] @$ACTOR -- deploying \`$SHA\` to QA..." >&2
+              if scripts/qa-deploy.sh "$SHA"; then
+                finish_success "[/qa-deploy] OK -- deployed \`$SHA\` to qa branch. Amplify auto-deploys the frontend; serverless deployed the backend (or skipped if PIPELINE_SKIP_DEPLOY=1)."
+              else
+                finish_error "[/qa-deploy] FAIL -- deploy step errored. Check the workflow run logs."
+              fi
+              ;;
+
+            pipeline:qa-approve)
+              SHA="$(merge_sha_for_ticket)"
+              [[ -z "$SHA" ]] && finish_error "[/qa-approve] no merge SHA found for #$TICKET"
+              if scripts/qa-approve.sh "$SHA"; then
+                finish_success "[/qa-approve] OK -- frontier advanced to \`$SHA\` by @$ACTOR. Eligible for prod-release."
+              else
+                finish_error "[/qa-approve] FAIL -- qa-approve errored. Check workflow logs (likely the SHA is behind current frontier; use PIPELINE_FORCE=1 to override)."
+              fi
+              ;;
+
+            pipeline:qa-reject)
+              SHA="$(merge_sha_for_ticket)"
+              REASON="$(latest_user_comment)"
+              [[ -z "$SHA" ]] && finish_error "[/qa-reject] no merge SHA found for #$TICKET"
+              [[ -z "$REASON" ]] && finish_error "[/qa-reject] no reason found in recent comments. Please write the reason in a comment first, then re-add this label."
+              if scripts/qa-reject.sh "$SHA" "$REASON" "$TICKET"; then
+                finish_success "[/qa-reject] OK -- ticket re-opened and routed to rework. Reason captured from @$ACTOR's comment."
+              else
+                finish_error "[/qa-reject] FAIL -- qa-reject errored."
+              fi
+              ;;
+
+            pipeline:prod-release)
+              SHA="$(merge_sha_for_ticket)"
+              [[ -z "$SHA" ]] && finish_error "[/prod-release] no merge SHA found for #$TICKET"
+              if scripts/prod-release.sh "$SHA"; then
+                finish_success "[/prod-release] OK -- released \`$SHA\` to main by @$ACTOR."
+              else
+                finish_error "[/prod-release] FAIL -- prod-release errored. The SHA must be at or before the \`frontier\` tag (set via /qa-approve)."
+              fi
+              ;;
+
+            # ----------------------------------------------------- cost gate
+            pipeline:approve-cost)
+              # Post the [cost-approved] marker that the developer agent
+              # prompt looks for to bypass the cost gate on next dispatch.
+              gh issue comment "$TICKET" --body "[cost-approved] approved by @$ACTOR via \`pipeline:approve-cost\` label." >&2
+              scripts/set-field.sh "$TICKET" "Pipeline Status" dev-pending
+              gh workflow run pipeline-manager.yml >&2 || true
+              finish_success "[/approve-cost] OK -- cost approved by @$ACTOR. Ticket back to \`dev-pending\`; pipeline-manager kicked. Developer agent will see the [cost-approved] marker and skip the cost gate."
+              ;;
+
+            pipeline:reject-cost)
+              REASON="$(latest_user_comment)"
+              [[ -z "$REASON" ]] && finish_error "[/reject-cost] no reason found in recent comments. Please write the reason in a comment first, then re-add this label."
+              gh issue comment "$TICKET" --body "[/reject-cost] cost change rejected by @$ACTOR. Reason: $REASON. Parking ticket at \`needs-human\` -- requires redesign or close." >&2
+              scripts/set-field.sh "$TICKET" "Pipeline Status" needs-human
+              gh issue edit "$TICKET" --remove-label "$LABEL" >&2
+              ;;
+
+            # ----------------------------------------------------- recovery
+            pipeline:retry)
+              scripts/set-field.sh "$TICKET" "Attempt" 1
+              scripts/set-field.sh "$TICKET" "Pipeline Status" rework
+              scripts/set-field.sh "$TICKET" "Base SHA" ""
+              scripts/set-field.sh "$TICKET" "PR Number" ""
+              gh workflow run pipeline-manager.yml >&2 || true
+              finish_success "[/retry] OK -- ticket reset to \`rework\`, Attempt=1, Base SHA + PR Number cleared by @$ACTOR. Pipeline-manager kicked."
+              ;;
+
+            pipeline:park)
+              scripts/set-field.sh "$TICKET" "Pipeline Status" needs-human
+              finish_success "[/park] OK -- ticket parked at \`needs-human\` by @$ACTOR. Use \`pipeline:retry\` to release."
+              ;;
+
+            # -------------------------------------------------- diagnostics
+            pipeline:show-status)
+              S="$(scripts/get-field.sh "$TICKET" "Pipeline Status" 2>/dev/null || echo unset)"
+              A="$(scripts/get-field.sh "$TICKET" "Agent" 2>/dev/null || echo unset)"
+              T="$(scripts/get-field.sh "$TICKET" "Attempt" 2>/dev/null || echo unset)"
+              B="$(scripts/get-field.sh "$TICKET" "Base SHA" 2>/dev/null || echo unset)"
+              P="$(scripts/get-field.sh "$TICKET" "PR Number" 2>/dev/null || echo unset)"
+              finish_success "[/status] Pipeline Status: \`${S:-unset}\` | Agent: \`${A:-unset}\` | Attempt: \`${T:-unset}\` | Base SHA: \`${B:-unset}\` | PR Number: \`${P:-unset}\`"
+              ;;
+
+            # ----------------------------------------------------- unknown
+            *)
+              finish_error "[/$LABEL] unknown pipeline command. Recognized: qa-deploy, qa-approve, qa-reject, prod-release, approve-cost, reject-cost, retry, park, show-status."
+              ;;
+          esac
