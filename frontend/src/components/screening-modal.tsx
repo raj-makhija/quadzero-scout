@@ -721,14 +721,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                     />
                   </FormField>
                 </div>
-              </div>
-
-              {/* Section: Last Working Day */}
-              <div>
-                <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                  Last Working Day{notInterested ? ' — optional' : ''}
-                </h3>
-                <div className="grid grid-cols-2 gap-4 items-end">
+                <div className="grid grid-cols-2 gap-4 mt-3 items-end">
                   <FormField
                     label="Last Working Day (LWD)"
                     htmlFor="lastWorkingDay"
