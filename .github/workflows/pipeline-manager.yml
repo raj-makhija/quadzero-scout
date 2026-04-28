@@ -1,26 +1,20 @@
-# Pipeline Manager — drives one or more ticket transitions per Actions run.
+# Pipeline Manager -- drives one or more ticket transitions per Actions run.
 #
 # Triggers:
 #   - cron every 5 min (safety net for missed events)
-#   - issues.labeled                    (kicks pipeline when auto-pipeline label added)
+#   - issues.labeled                    (only fires on auto-pipeline label, see if-filter)
 #   - repository_dispatch [pipeline-tick] (fired by human-driven scripts)
 #   - workflow_dispatch                 (manual trigger, optional ticket override)
 #
-# Note: issues.opened is intentionally NOT a trigger. It used to be, but every
-# new ticket fired a doomed 1s run before the project-add and label
-# automation completed. issues.labeled fires reliably the moment the
-# auto-pipeline label is added (which happens immediately after open),
-# so coverage is preserved without the noisy phantom runs.
-#
-# Each run drains the queue: it loops calling manager.sh while next-ticket.sh
-# returns something. One Actions run can take a fresh ticket from new all the
-# way to merged-to-develop. Loop bounded by iteration count + timeout-minutes.
+# The drain job has an if-filter so the issues.labeled trigger ONLY acts on
+# the auto-pipeline label specifically. Other label adds (status:*,
+# pipeline:*, type:*) made by our own scripts do NOT retrigger the manager.
+# Schedule, workflow_dispatch, repository_dispatch always proceed.
 #
 # Auth:
 #   - PIPELINE_TOKEN: classic PAT (repo + workflow + project) for gh ops
-#   - CLAUDE_CODE_OAUTH_TOKEN: from `claude setup-token` on the user's laptop;
-#     ties Claude usage to the Claude.ai Pro/Max subscription. If you'd
-#     rather use the API, swap for ANTHROPIC_API_KEY.
+#   - CLAUDE_CODE_OAUTH_TOKEN: from `claude setup-token`; ties Claude usage
+#     to the user's Pro/Max subscription. Use ANTHROPIC_API_KEY for API.
 
 name: Pipeline Manager
 
@@ -47,6 +41,14 @@ permissions:
 
 jobs:
   drain:
+    # Skip when triggered by an issues event for any label OTHER than auto-pipeline.
+    # All other event types proceed unconditionally. Explicit per-event check
+    # avoids null access on github.event.label for non-issues events.
+    if: |
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'repository_dispatch' ||
+      (github.event_name == 'issues' && github.event.label.name == 'auto-pipeline')
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
