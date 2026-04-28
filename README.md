@@ -170,3 +170,5 @@ serverless deploy --stage prod
 Proprietary - All rights reserved.
 
 TODO: pipeline injection test
+
+# pipeline housekeeping smoke
