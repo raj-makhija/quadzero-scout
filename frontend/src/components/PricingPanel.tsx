@@ -361,14 +361,14 @@ export function PricingPanel({
             </div>
           </div>
 
-          {/* Internal Rates */}
+          {/* Minimum Rates */}
           <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
             <button
               onClick={() => setInternalRatesExpanded(prev => !prev)}
               className="flex w-full items-center justify-between text-xs font-medium text-gray-600 dark:text-gray-400"
               aria-expanded={internalRatesExpanded}
             >
-              <span>Internal Rates</span>
+              <span>Minimum Rates</span>
               <svg
                 className={`w-4 h-4 transition-transform ${internalRatesExpanded ? 'rotate-180' : ''}`}
                 fill="none" viewBox="0 0 24 24" stroke="currentColor"
@@ -377,11 +377,19 @@ export function PricingPanel({
               </svg>
             </button>
             {internalRatesExpanded && (
-              <div className="mt-2 text-sm">
-                <span className="text-gray-500 dark:text-gray-400">Minimum: </span>
-                <span className="font-medium text-gray-900 dark:text-gray-100">
-                  {formatInr(result.minimumBillingMonthly)}/mo | {formatInr(result.minimumBillingHourly)}/hr
-                </span>
+              <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <div className="text-lg font-bold text-gray-700 dark:text-gray-300">{formatInr(result.minimumBillingHourly)}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">per hour</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold text-gray-700 dark:text-gray-300">{formatInr(result.minimumBillingMonthly)}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">per month</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold text-gray-700 dark:text-gray-300">{formatInr(result.minimumBillingAnnual ?? 0)}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">per annum</div>
+                </div>
               </div>
             )}
           </div>
