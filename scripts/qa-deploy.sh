@@ -71,6 +71,8 @@ git push origin qa >&2
 if [[ "${PIPELINE_SKIP_DEPLOY:-}" == "1" ]]; then
   echo "==> PIPELINE_SKIP_DEPLOY=1 — skipping serverless deploy" >&2
 else
+  echo "==> installing infra/ dependencies (serverless v3 + plugins)" >&2
+  (cd infra/ && npm ci --silent)
   echo "==> deploying backend to qa (npx serverless deploy --stage qa)" >&2
   (cd infra/ && npx serverless deploy --stage qa)
 fi
