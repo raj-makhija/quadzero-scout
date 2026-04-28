@@ -12,6 +12,7 @@ import { api, ApiError } from '@/lib/api';
 import type { CandidateNameSearchResult, RecentProfileSummary, CandidateSearchResult, SearchCriteria } from '@/lib/api';
 import { formatDate, formatSeniority, formatAvailability, formatCandidateEngagement, generateHeadline, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS, CANDIDATE_ENGAGEMENT_OPTIONS } from '@/lib/utils';
 import { getScreeningStatus } from '@/components/screening-modal';
+import { expandLocationAliases } from '@/lib/locationUtils';
 
 // Unified type for displaying profiles from different sources
 export type ProfileListItem = {
@@ -168,7 +169,9 @@ function applyClientSideFilters(items: ProfileListItem[], filters: FilterState):
     result = result.filter(c => {
       if (!c.location) return false;
       const candidateLoc = c.location.toLowerCase();
-      return searchLocs.some(loc => candidateLoc.includes(loc));
+      return searchLocs.some(loc =>
+        expandLocationAliases(loc).some(alias => candidateLoc.includes(alias))
+      );
     });
   }
   if (filters.screeningStatus.length > 0) {
