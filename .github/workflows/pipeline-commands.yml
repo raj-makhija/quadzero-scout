@@ -63,6 +63,11 @@ jobs:
           gh --version
           jq --version
 
+      - name: Install Claude Code CLI (needed by scribe agent on qa-approve)
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          claude --version
+
       - name: Route command
         env:
           GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
@@ -137,6 +142,11 @@ jobs:
               [[ -z "$SHA" ]] && finish_error "[/qa-approve] no merge SHA found for #$TICKET"
               if scripts/qa-approve.sh "$SHA"; then
                 scripts/set-status.sh "$TICKET" qa-approved
+                # Run the scribe agent to capture doc impact. Best-effort:
+                # any failure is logged on the ticket but does NOT block QA
+                # approval -- the frontier has already advanced.
+                CLAUDE_CODE_OAUTH_TOKEN="${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}" \
+                  scripts/scribe.sh "$TICKET" || true
                 finish_success "[/qa-approve] OK -- frontier advanced to \`$SHA\` by @$ACTOR. Queued for nightly prod release at 01:00 IST."
               else
                 finish_error "[/qa-approve] FAIL -- qa-approve errored. Check workflow logs (likely the SHA is behind current frontier; use PIPELINE_FORCE=1 to override)."

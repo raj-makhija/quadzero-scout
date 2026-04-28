@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# dummy-developer.sh — developer agent script.
+# dummy-developer.sh -- developer agent script.
 #
 # Despite the "dummy-" prefix (kept for stable manager.sh references),
 # this can dispatch to a real Claude Code agent when PIPELINE_DEVELOPER_AGENT
-# is set to "claude" and ANTHROPIC_API_KEY is available. Otherwise it falls
-# back to the dummy implementation that writes a marker file under
-# dummy-work/ — useful for testing the plumbing without burning tokens.
+# is set to "claude". Otherwise it falls back to a dummy that writes a
+# marker file under dummy-work/ -- useful for testing the plumbing
+# without burning tokens.
 #
 # Usage:
 #   scripts/dummy-developer.sh <ticket> <mode>
 # Modes:
-#   implement — dev-pending → validation-pending
-#   open_pr   — pr-pending → pr-review-pending  (always plumbing, no agent)
-#   rework    — rework → validation-pending
+#   implement -- dev-pending -> validation-pending
+#   open_pr   -- pr-pending  -> pr-review-pending  (always plumbing, no agent)
+#   rework    -- rework      -> validation-pending
 
 set -euo pipefail
 
@@ -32,7 +32,6 @@ pl_load_config
 
 TITLE="$(gh issue view "$TICKET" --json title -q .title)"
 
-# When false, use the dummy-marker-file behaviour. When true, invoke claude.
 USE_REAL_AGENT="false"
 if [[ "${PIPELINE_DEVELOPER_AGENT:-dummy}" == "claude" ]]; then
   USE_REAL_AGENT="true"
@@ -71,16 +70,16 @@ You are the developer agent in an automated CI/CD pipeline. Your job is
 to implement the change requested by issue #${ticket} on this repository.
 
 CONTEXT
-- Repo working directory: \$(pwd) — the repository root.
+- Repo working directory: \$(pwd) -- the repository root.
 - You are on branch: \`${branch}\` (already created from develop HEAD;
   Base SHA is ${base_sha}).
 - Attempt: ${attempt} (max 3 before manager escalates to needs-human).
-- Mode: ${mode_label}  (implement = first attempt; rework = retry after stale merge)
+- Mode: ${mode_label}  (implement = first attempt; rework = retry after stale merge or QA reject)
 
 MUST-DO STEPS
 1. Read the ticket: run \`gh issue view ${ticket} --comments\` to see
    the spec, labels, and any prior agent comments. Pay attention to
-   acceptance criteria and prior \`/reject\` reasons if present.
+   acceptance criteria and prior tester FAIL or qa-reject reasons.
 2. Read \`/docs/\` per CLAUDE.md ("Context Loading at Agent Start").
 3. CLAUDE.md is already loaded. Follow its four coding principles
    (Think Before Coding, Simplicity First, Surgical Changes, Goal-Driven
@@ -109,8 +108,38 @@ MUST-DO STEPS
    (\`feat: ... (#${ticket})\`, \`fix: ... (#${ticket})\`, etc.). NO
    "Co-Authored-By" lines (CLAUDE.md says agents must strip them).
 6. Push to origin/${branch}: \`git push\`.
-7. Update \`/docs/\` per CLAUDE.md "Documentation" if the code change
-   affects what's documented.
+7. Post a structured \`[developer:rationale]\` comment on issue
+   #${ticket} so the scribe agent (and future engineers) can see the
+   "why" behind your decisions. Use \`gh issue comment ${ticket} --body
+   "..."\` with EXACTLY this format (keep it short -- a few bullets per
+   section is enough):
+
+   [developer:rationale]
+
+   ## Approach
+   [1-3 sentences on what you did and why]
+
+   ## Alternatives considered
+   - [approach A]: rejected because ...
+   - [approach B]: rejected because ...
+
+   ## Assumptions
+   - [assumption you couldn't verify but proceeded with]
+   - [assumption about data shape, concurrency, etc.]
+
+   ## Doc updates needed
+   - \`<filepath>\`: [what should change]
+   - or "None -- internal change with no user-visible impact"
+
+   The "Doc updates needed" section is the most important: the scribe
+   agent reads it post-QA to decide whether to file a follow-up docs
+   ticket. Be concrete. If your change is purely internal (refactor,
+   bug fix that restores intended behavior, internal helper), say
+   "None" so no spurious docs ticket is filed.
+8. Update \`/docs/\` per CLAUDE.md "Documentation" only if your work IS
+   itself a doc update (e.g. you're working a docs ticket). Otherwise
+   leave docs alone -- the scribe agent will file a follow-up doc
+   ticket post-QA based on your rationale comment.
 
 DO NOT
 - Open a PR. The pipeline does that on the next iteration.
@@ -125,24 +154,20 @@ PROMPT
   echo "==> invoking real developer agent (claude) for #$ticket attempt $attempt" >&2
   echo "$prompt" | "$SCRIPT_DIR/_agent-claude.sh" - >/dev/null
 
-  # Post-condition: did the agent actually commit something on the branch?
   local commits_ahead
   commits_ahead="$(git rev-list --count "$base_sha..HEAD" 2>/dev/null || echo 0)"
   if [[ "$commits_ahead" -lt 1 ]]; then
-    # Check if the agent moved to cost-review-pending — that's a valid no-commit exit.
     local current_status
     current_status="$("$SCRIPT_DIR/get-field.sh" "$ticket" "Pipeline Status" 2>/dev/null || true)"
     if [[ "$current_status" == "cost-review-pending" ]]; then
-      echo "agent escalated to cost-review-pending without committing — that's fine" >&2
+      echo "agent escalated to cost-review-pending without committing -- that's fine" >&2
       return 0
     fi
     echo "error: developer agent produced no commits on $branch (and didn't escalate)" >&2
     return 1
   fi
 
-  # Make sure pushed (agent should have done it; double-check).
   git push >&2 || echo "(push already complete)" >&2
-
   echo "==> agent produced $commits_ahead commit(s); pushed to origin/$branch" >&2
 }
 
@@ -150,7 +175,6 @@ case "$MODE" in
   implement)
     ATTEMPT="$("$SCRIPT_DIR/get-field.sh" "$TICKET" "Attempt")"
     SLUG="attempt-$ATTEMPT"
-
     BRANCH="$("$SCRIPT_DIR/create-branch.sh" "$TICKET" "$SLUG")"
 
     if [[ "$USE_REAL_AGENT" == "true" ]]; then
@@ -159,13 +183,12 @@ case "$MODE" in
       _dummy_commit_and_push "$TICKET" "$ATTEMPT" "initial implementation"
     fi
 
-    # If the agent escalated to cost-review-pending, don't override.
     CUR_STATUS="$("$SCRIPT_DIR/get-field.sh" "$TICKET" "Pipeline Status" 2>/dev/null || true)"
     if [[ "$CUR_STATUS" != "cost-review-pending" ]]; then
       gh issue comment "$TICKET" --body "[developer] Implementation pushed to \`$BRANCH\` (attempt $ATTEMPT). Handing to tester for validation." >&2
       "$SCRIPT_DIR/set-field.sh" "$TICKET" "Agent" tester
       "$SCRIPT_DIR/set-field.sh" "$TICKET" "Pipeline Status" validation-pending
-      echo "developer → implemented; #$TICKET now validation-pending on $BRANCH" >&2
+      echo "developer -> implemented; #$TICKET now validation-pending on $BRANCH" >&2
     fi
     ;;
 
@@ -181,13 +204,12 @@ case "$MODE" in
     gh issue comment "$TICKET" --body "[developer] PR #$PR opened. Handing to pr-reviewer." >&2
     "$SCRIPT_DIR/set-field.sh" "$TICKET" "Agent" pr-reviewer
     "$SCRIPT_DIR/set-field.sh" "$TICKET" "Pipeline Status" pr-review-pending
-    echo "developer → opened PR #$PR; #$TICKET now pr-review-pending" >&2
+    echo "developer -> opened PR #$PR; #$TICKET now pr-review-pending" >&2
     ;;
 
   rework)
     ATTEMPT="$("$SCRIPT_DIR/get-field.sh" "$TICKET" "Attempt")"
     SLUG="attempt-$ATTEMPT"
-
     BRANCH="$("$SCRIPT_DIR/create-branch.sh" "$TICKET" "$SLUG")"
 
     if [[ "$USE_REAL_AGENT" == "true" ]]; then
@@ -201,7 +223,7 @@ case "$MODE" in
       gh issue comment "$TICKET" --body "[developer] Rework pushed to \`$BRANCH\` (attempt $ATTEMPT). Handing to tester for validation." >&2
       "$SCRIPT_DIR/set-field.sh" "$TICKET" "Agent" tester
       "$SCRIPT_DIR/set-field.sh" "$TICKET" "Pipeline Status" validation-pending
-      echo "developer → reworked; #$TICKET now validation-pending on $BRANCH" >&2
+      echo "developer -> reworked; #$TICKET now validation-pending on $BRANCH" >&2
     fi
     ;;
 

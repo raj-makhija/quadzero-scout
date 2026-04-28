@@ -534,6 +534,89 @@ the workflow will fail at the serverless step. The result comment
 will tell you. Add the secrets and re-add the label to retry; no
 state corruption.
 
+### 5.9 Documentation drift prevention (rationale + scribe)
+
+The pipeline ships features autonomously, which means design and
+implementation decisions get made *without* a human review pass. Two
+mechanisms keep `/docs/`, `README.md`, `CLAUDE.md`, and `CI-CD.md` from
+silently drifting away from the code that's actually running in prod:
+
+1. **Developer rationale comment** (every dev/rework cycle).
+   Before the developer agent hands off to the tester, it posts a
+   structured `[developer:rationale]` comment on the source ticket:
+
+   ```
+   [developer:rationale]
+
+   ## Approach
+   <1-3 sentences on what was done and why>
+
+   ## Alternatives considered
+   - <approach A>: rejected because ...
+   - <approach B>: rejected because ...
+
+   ## Assumptions
+   - <assumption that couldn't be verified but the agent proceeded with>
+   - <assumption about data shape, concurrency, etc.>
+
+   ## Doc updates needed
+   - `<filepath>`: <what should change>
+   - or "None -- internal change with no user-visible impact"
+   ```
+
+   The "Doc updates needed" section is the load-bearing part. The
+   developer agent is responsible for assessing its own change's doc
+   impact at the moment it has the most context. The comment is also
+   archival: future engineers and audits can see WHY a thing was done,
+   not just what.
+
+2. **Scribe agent** (runs at `pipeline:qa-approve`).
+   When you approve a ticket at QA, `pipeline-commands.yml` runs
+   `scripts/scribe.sh <ticket>` after the frontier tag advances. The
+   scribe:
+
+   - Reads the ticket's full thread (including the `[developer:rationale]`
+     comment).
+   - Reads the merge-commit diff (`git show <merge-sha>`).
+   - Reads the current state of likely-affected docs.
+   - Decides: are doc updates needed?
+
+   **If no** (refactor, internal bug fix, the ticket IS itself a docs
+   update): posts `[scribe] No doc updates needed for this change.`
+   and exits.
+
+   **If yes**: files a follow-up issue with labels
+   `auto-pipeline,type:docs` containing a structured doc-update spec
+   (which docs to change, what content to add/remove, acceptance
+   criteria). The follow-up walks through the normal pipeline like any
+   other ticket — the developer agent picks it up, edits markdown, opens
+   a PR. A comment goes back on the source ticket: `[scribe] Filed #N
+   for follow-up doc updates.`
+
+   The scribe is **best-effort**: any failure (claude timeout, parse
+   error, ticket-create failure) is logged on the source ticket but
+   does NOT block QA approval — the frontier has already advanced by
+   the time scribe runs.
+
+**Recursion safety**: when the scribe runs on a docs follow-up ticket
+itself, the diff is markdown-only and claude returns `NO_DOCS_NEEDED`
+— so no infinite chain of "docs about the docs about the docs" tickets.
+
+**One-time bootstrap**: file a single manual `auto-pipeline,type:docs`
+ticket to bring docs current with everything that shipped before the
+scribe was wired in. After that, scribe handles drift incrementally as
+each new ticket clears QA.
+
+**Why both?** Either alone leaks: rationale-only requires a human to
+read every comment; scribe-only loses the developer's mid-flight
+context (alternatives weighed, assumptions made) by the time QA
+finishes. Together: developer captures intent at peak context, scribe
+synthesizes after observing the actual shipped diff.
+
+**Cost**: ~1 extra agent call per ticket, only at the qa-approve
+moment (not per dev attempt). Roughly +$0.02-0.10/ticket depending on
+diff size.
+
 ---
 
 ## 6. Setup (bootstrapping)
