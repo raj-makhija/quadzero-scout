@@ -91,11 +91,16 @@ else
   echo "==> installing infra/ dependencies (serverless v3 + plugins)" >&2
   (cd infra/ && npm ci --silent)
   # Locally on Windows, infra/src is a directory junction to backend/src
-  # (gitignored). On the Linux runner we have to recreate the link as a
-  # symlink so serverless-esbuild can find handler sources at src/...
+  # (gitignored). On the Linux runner we have to recreate something there
+  # so serverless-esbuild can find handler sources at src/...
+  # Using cp -r rather than ln -s because serverless-esbuild's
+  # individually-packaged-functions mode emits 'No file matches include /
+  # exclude patterns' when source files are reached via symlink. Real
+  # files at the expected path keep the packager happy. Cost is ~MB of
+  # disk on the runner, discarded after the run.
   if [[ ! -e infra/src ]]; then
-    echo "==> creating infra/src symlink -> ../backend/src (Linux equivalent of the Windows junction)" >&2
-    ln -s ../backend/src infra/src
+    echo "==> copying backend/src -> infra/src (real files; avoids symlink-packaging edge case)" >&2
+    cp -r backend/src infra/src
   fi
   # serverless-esbuild resolves npm packages relative to the source file's
   # location. Since handlers live under backend/src/, esbuild walks up to
