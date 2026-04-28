@@ -343,7 +343,7 @@ export function PricingPanel({
           {/* Final Recommended Rate */}
           <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
             <div className="text-xs font-medium text-green-800 dark:text-green-300 mb-2">
-              {result.budgetOptimization.applied ? 'Budget-Optimized Rate' : 'Recommended Quoted Rate'}
+              {result.budgetOptimization.applied ? 'Budget-Optimized Rate' : 'Recommended Rate'}
             </div>
             <div className="grid grid-cols-3 gap-2 text-center">
               <div>

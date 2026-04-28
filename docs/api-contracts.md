@@ -1997,9 +1997,9 @@ Authorization: Bearer <jwe_token>
 - `requirementId`: Required, string, UUID format
 - `candidateId`: Required, string, UUID format
 - `notes`: Optional, string, max 1000 characters
-- `proposedRateHourly`: Optional, number, positive — recommended quoted rate per hour (INR)
-- `proposedRateMonthly`: Optional, number, positive — recommended quoted rate per month (INR)
-- `proposedRateAnnual`: Optional, number, positive — recommended quoted rate per annum (INR)
+- `proposedRateHourly`: Optional, number, positive — recommended rate per hour (INR)
+- `proposedRateMonthly`: Optional, number, positive — recommended rate per month (INR)
+- `proposedRateAnnual`: Optional, number, positive — recommended rate per annum (INR)
 - `internalRateHourly`: Optional, number, positive — minimum acceptable rate per hour (INR)
 - `internalRateMonthly`: Optional, number, positive — minimum acceptable rate per month (INR)
 - `internalRateAnnual`: Optional, number, positive — minimum acceptable rate per annum (INR)
@@ -2499,7 +2499,7 @@ Authorization: Bearer <jwe_token>
 
 **Notes:**
 - Each candidate card includes denormalized profile fields (name, headline) for display
-- `proposedRateHourly/Monthly/Annual`: Recommended quoted billing rate (INR), snapshot from shortlist time. Optional — may be absent for legacy shortlist entries.
+- `proposedRateHourly/Monthly/Annual`: Recommended billing rate (INR), snapshot from shortlist time. Optional — may be absent for legacy shortlist entries.
 - `internalRateHourly/Monthly/Annual`: Minimum acceptable billing rate (INR), snapshot from shortlist time. Optional — may be absent for legacy shortlist entries.
 - `exitedCount` includes `rejected_by_client`, `candidate_withdrawn`, and `on_hold` candidates
 - `notSuitableCount` is tracked separately from `exitedCount` — not-suitable candidates are not counted as exited
