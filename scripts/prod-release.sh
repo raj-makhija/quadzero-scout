@@ -90,6 +90,13 @@ else
   fi
   echo "==> installing infra/ dependencies (serverless v3 + plugins)" >&2
   (cd infra/ && npm ci --silent)
+  # Locally on Windows, infra/src is a directory junction to backend/src
+  # (gitignored). On the Linux runner we have to recreate the link as a
+  # symlink so serverless-esbuild can find handler sources at src/...
+  if [[ ! -e infra/src ]]; then
+    echo "==> creating infra/src symlink -> ../backend/src (Linux equivalent of the Windows junction)" >&2
+    ln -s ../backend/src infra/src
+  fi
   echo "==> deploying backend to prod (npx serverless deploy --stage prod)" >&2
   (cd infra/ && npx serverless deploy --stage prod)
 fi
