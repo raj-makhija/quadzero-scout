@@ -69,6 +69,16 @@ git push origin main >&2
 if [[ "${PIPELINE_SKIP_DEPLOY:-}" == "1" ]]; then
   echo "==> PIPELINE_SKIP_DEPLOY=1 — skipping serverless deploy" >&2
 else
+  echo "==> verifying AWS credentials (aws sts get-caller-identity)" >&2
+  if ! aws sts get-caller-identity --output text >/dev/null 2>&1; then
+    echo "error: AWS credentials not configured or invalid." >&2
+    echo "       Required: AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY env vars" >&2
+    echo "       (set as repo secrets in GitHub Actions, or in ~/.aws/credentials locally)." >&2
+    echo "       The IAM user must have at least sts:GetCallerIdentity permission" >&2
+    echo "       (which every IAM user has by default) plus the policy in" >&2
+    echo "       infra/github-actions-deployer-policy.json." >&2
+    exit 1
+  fi
   echo "==> installing infra/ dependencies (serverless v3 + plugins)" >&2
   (cd infra/ && npm ci --silent)
   echo "==> deploying backend to prod (npx serverless deploy --stage prod)" >&2
