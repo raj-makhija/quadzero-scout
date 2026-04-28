@@ -5,6 +5,7 @@ import { ChevronDown, ChevronUp, X, Loader2, Clock, User } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { ScreeningHistoryEntry, ScreeningProfileData } from '@/lib/api';
 import {
+  formatDate,
   formatDateTime,
   formatSeniority,
   formatAvailability,
@@ -22,6 +23,7 @@ const FIELD_LABELS: Record<string, string> = {
   total_experience: 'Total Experience',
   seniority: 'Seniority',
   availability: 'Notice Period',
+  last_working_day: 'Last Working Day',
   engagement_model: 'Engagement Preference',
   industries: 'Industries',
   roles: 'Roles',
@@ -36,6 +38,7 @@ const FIELD_LABELS: Record<string, string> = {
 };
 
 function formatFieldValue(key: string, value: unknown): string {
+  if (key === 'last_working_day' && value === null) return 'Still on the job – LWD TBD';
   if (value === null || value === undefined) return 'Not set';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
 
@@ -59,6 +62,7 @@ function formatFieldValue(key: string, value: unknown): string {
       .join(', ');
   }
 
+  if (key === 'last_working_day') return formatDate(String(value));
   if (key === 'expected_ctc_type') return value === 'negotiable' ? 'Negotiable (auto-calculated)' : 'Explicit';
   if (key === 'current_ctc' || key === 'expected_ctc') return `${value} LPA`;
   if (key === 'total_experience') return `${value} years`;
