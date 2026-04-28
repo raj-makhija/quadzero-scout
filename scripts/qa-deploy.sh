@@ -117,6 +117,24 @@ else
     echo "==> linking infra/src/node_modules -> backend/node_modules (esbuild package resolution)" >&2
     ln -s ../../backend/node_modules infra/src/node_modules
   fi
+  # Build the chromium Lambda layer if not already populated.
+  # infra/layers/ is gitignored (binaries built from npm), so the runner
+  # has an empty layers/chromium/ directory. serverless's per-layer
+  # packaging fails with "No file matches include / exclude patterns"
+  # if there's nothing under the layer's path:. Populate using the
+  # @sparticuz/chromium version already declared in backend/package.json.
+  if [[ ! -d infra/layers/chromium/nodejs/node_modules/@sparticuz/chromium ]]; then
+    CHROMIUM_VER="$(jq -r '.dependencies."@sparticuz/chromium" // .devDependencies."@sparticuz/chromium" // empty' backend/package.json)"
+    if [[ -z "$CHROMIUM_VER" ]]; then
+      echo "error: @sparticuz/chromium not declared in backend/package.json; cannot build layer" >&2
+      exit 1
+    fi
+    echo "==> building chromium Lambda layer (@sparticuz/chromium $CHROMIUM_VER, ~80MB download)" >&2
+    mkdir -p infra/layers/chromium/nodejs
+    (cd infra/layers/chromium/nodejs && \
+      npm init -y >/dev/null && \
+      npm install --silent --no-audit --no-fund "@sparticuz/chromium@$CHROMIUM_VER")
+  fi
   echo "==> deploying backend to qa (npx serverless deploy --stage qa)" >&2
   (cd infra/ && npx serverless deploy --stage qa)
 fi
