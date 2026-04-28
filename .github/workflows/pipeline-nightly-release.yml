@@ -1,0 +1,93 @@
+# Pipeline Nightly Release -- batch all qa-approved commits to prod once a day.
+#
+# Fires at 01:00 IST (19:30 UTC the previous day) every day. Compares the
+# current `frontier` git tag (advanced by qa-approve.sh on each /qa-approve)
+# against the current main HEAD:
+#
+#   - frontier == main  -> nothing was QA-approved since yesterday's batch; no-op
+#   - frontier > main   -> there's QA-approved code waiting; run prod-release.sh
+#                          on the frontier SHA, which fast-forwards main and
+#                          deploys. prod-release.sh itself handles per-ticket
+#                          status:released bookkeeping + GitHub Release notes
+#                          for every commit in the released range.
+#
+# Manual `pipeline:prod-release` label remains available as breakglass for
+# hotfixes; this nightly job is the normal path.
+
+name: Pipeline Nightly Release
+
+on:
+  schedule:
+    - cron: '30 19 * * *'   # 01:00 IST (Asia/Kolkata, UTC+5:30)
+  workflow_dispatch:        # manual override (e.g. release outside the window)
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pipeline-prod-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout develop (with PAT for git ops + label edits)
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+          token: ${{ secrets.PIPELINE_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name  "quadzero-pipeline[bot]"
+          git config user.email "pipeline-bot@users.noreply.github.com"
+          git config core.hooksPath /dev/null
+
+      - name: Verify gh + jq + aws
+        env:
+          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+        run: |
+          gh --version
+          jq --version
+          aws --version
+
+      - name: Run nightly batch release
+        env:
+          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION || 'ap-south-1' }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION || 'ap-south-1' }}
+          PIPELINE_SKIP_DEPLOY: ${{ vars.PIPELINE_SKIP_DEPLOY }}
+        run: |
+          set -euo pipefail
+
+          git fetch origin --tags --quiet
+
+          if ! git rev-parse frontier >/dev/null 2>&1; then
+            echo "no frontier tag yet; nothing to release. Run /qa-approve on at least one merged ticket first." >&2
+            exit 0
+          fi
+
+          FRONTIER_SHA="$(git rev-parse frontier)"
+
+          if git show-ref --verify --quiet refs/remotes/origin/main; then
+            MAIN_SHA="$(git rev-parse origin/main)"
+            if [[ "$FRONTIER_SHA" == "$MAIN_SHA" ]]; then
+              echo "frontier ($FRONTIER_SHA) == main HEAD; nothing to release tonight." >&2
+              exit 0
+            fi
+            if git merge-base --is-ancestor "$FRONTIER_SHA" "$MAIN_SHA"; then
+              echo "frontier ($FRONTIER_SHA) is behind main ($MAIN_SHA); nothing to release tonight." >&2
+              exit 0
+            fi
+          else
+            echo "main branch doesn't exist on origin yet; will create it via prod-release.sh" >&2
+          fi
+
+          echo "==> nightly batch: releasing frontier ($FRONTIER_SHA) to prod" >&2
+          scripts/prod-release.sh "$FRONTIER_SHA"

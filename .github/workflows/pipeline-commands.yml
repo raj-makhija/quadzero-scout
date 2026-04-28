@@ -125,6 +125,7 @@ jobs:
               [[ -z "$SHA" ]] && finish_error "[/qa-deploy] no merge SHA found for #$TICKET (is the PR merged?)"
               gh issue comment "$TICKET" --body "[/qa-deploy] @$ACTOR -- deploying \`$SHA\` to QA..." >&2
               if scripts/qa-deploy.sh "$SHA"; then
+                scripts/set-status.sh "$TICKET" in-qa
                 finish_success "[/qa-deploy] OK -- deployed \`$SHA\` to qa branch. Amplify auto-deploys the frontend; serverless deployed the backend (or skipped if PIPELINE_SKIP_DEPLOY=1)."
               else
                 finish_error "[/qa-deploy] FAIL -- deploy step errored. Check the workflow run logs."
@@ -135,7 +136,8 @@ jobs:
               SHA="$(merge_sha_for_ticket)"
               [[ -z "$SHA" ]] && finish_error "[/qa-approve] no merge SHA found for #$TICKET"
               if scripts/qa-approve.sh "$SHA"; then
-                finish_success "[/qa-approve] OK -- frontier advanced to \`$SHA\` by @$ACTOR. Eligible for prod-release."
+                scripts/set-status.sh "$TICKET" qa-approved
+                finish_success "[/qa-approve] OK -- frontier advanced to \`$SHA\` by @$ACTOR. Queued for nightly prod release at 01:00 IST."
               else
                 finish_error "[/qa-approve] FAIL -- qa-approve errored. Check workflow logs (likely the SHA is behind current frontier; use PIPELINE_FORCE=1 to override)."
               fi
@@ -169,6 +171,7 @@ jobs:
               # prompt looks for to bypass the cost gate on next dispatch.
               gh issue comment "$TICKET" --body "[cost-approved] approved by @$ACTOR via \`pipeline:approve-cost\` label." >&2
               scripts/set-field.sh "$TICKET" "Pipeline Status" dev-pending
+              scripts/set-status.sh "$TICKET" in-progress
               gh workflow run pipeline-manager.yml >&2 || true
               finish_success "[/approve-cost] OK -- cost approved by @$ACTOR. Ticket back to \`dev-pending\`; pipeline-manager kicked. Developer agent will see the [cost-approved] marker and skip the cost gate."
               ;;
@@ -178,6 +181,7 @@ jobs:
               [[ -z "$REASON" ]] && finish_error "[/reject-cost] no reason found in recent comments. Please write the reason in a comment first, then re-add this label."
               gh issue comment "$TICKET" --body "[/reject-cost] cost change rejected by @$ACTOR. Reason: $REASON. Parking ticket at \`needs-human\` -- requires redesign or close." >&2
               scripts/set-field.sh "$TICKET" "Pipeline Status" needs-human
+              scripts/set-status.sh "$TICKET" needs-human
               gh issue edit "$TICKET" --remove-label "$LABEL" >&2
               ;;
 
@@ -187,12 +191,14 @@ jobs:
               scripts/set-field.sh "$TICKET" "Pipeline Status" rework
               scripts/set-field.sh "$TICKET" "Base SHA" ""
               scripts/set-field.sh "$TICKET" "PR Number" ""
+              scripts/set-status.sh "$TICKET" in-progress
               gh workflow run pipeline-manager.yml >&2 || true
               finish_success "[/retry] OK -- ticket reset to \`rework\`, Attempt=1, Base SHA + PR Number cleared by @$ACTOR. Pipeline-manager kicked."
               ;;
 
             pipeline:park)
               scripts/set-field.sh "$TICKET" "Pipeline Status" needs-human
+              scripts/set-status.sh "$TICKET" needs-human
               finish_success "[/park] OK -- ticket parked at \`needs-human\` by @$ACTOR. Use \`pipeline:retry\` to release."
               ;;
 

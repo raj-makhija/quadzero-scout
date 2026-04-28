@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# qa-reject.sh — reject a QA'd SHA and route its ticket back to rework.
+# qa-reject.sh -- reject a QA'd SHA and route its ticket back to rework.
 #
 # Usage:
 #   scripts/qa-reject.sh <sha> <reason> [ticket]
@@ -43,7 +43,7 @@ if [[ -z "$TICKET" ]]; then
   MSG="$(git log -1 --format=%B "$SHA")"
   TICKET="$(echo "$MSG" | grep -oE '#[0-9]+' | head -1 | tr -d '#' || true)"
   if [[ -z "$TICKET" ]]; then
-    echo "error: cannot infer ticket from commit $SHA — pass ticket as third arg" >&2
+    echo "error: cannot infer ticket from commit $SHA -- pass ticket as third arg" >&2
     exit 1
   fi
   echo "==> inferred ticket #$TICKET from commit message" >&2
@@ -61,6 +61,7 @@ Ticket moved to \`rework\`. Base SHA and PR Number cleared so the pipeline re-br
 "$SCRIPT_DIR/set-field.sh" "$TICKET" "Pipeline Status" rework
 "$SCRIPT_DIR/set-field.sh" "$TICKET" "PR Number" ""
 "$SCRIPT_DIR/set-field.sh" "$TICKET" "Base SHA" ""
+"$SCRIPT_DIR/set-status.sh" "$TICKET" in-progress
 
 echo "qa-reject complete: #$TICKET now rework" >&2
 

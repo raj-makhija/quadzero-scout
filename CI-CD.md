@@ -416,6 +416,124 @@ to the same ticket serialize. Different tickets run in parallel.
 `[/approve-cost] OK`, etc. The comment thread is the durable record
 of who triggered what, when, and with what outcome.
 
+### 5.6 Status labels (where is each ticket in the lifecycle?)
+
+In addition to the trigger labels above, the pipeline auto-applies one
+of six `status:*` labels to every ticket so you can see at-a-glance
+where every ticket is. Filter the Issues page by `label:status:*` to
+get a queue view for any state.
+
+| Label | Meaning | Set by |
+|---|---|---|
+| `status:in-progress` | Autonomous pipeline is working on this ticket (any state from tests-pending through pr-review-pending or rework) | `manager.sh` priming, `merge-pr.sh` stale rework, `qa-reject.sh`, `pipeline:approve-cost`, `pipeline:retry` |
+| `status:ready-for-qa` | Merged to develop, waiting for `pipeline:qa-deploy` | `merge-pr.sh` clean merge |
+| `status:in-qa` | Deployed to QA, waiting on a human verdict (qa-approve or qa-reject) | `pipeline:qa-deploy` success |
+| `status:qa-approved` | QA passed, queued for the next nightly prod release at 01:00 IST | `pipeline:qa-approve` success |
+| `status:released` | Released to prod | `prod-release.sh` (per-ticket bookkeeping) |
+| `status:needs-human` | Blocked: 3-strike rework escalation, cost-rejected, or manually parked | `manager.sh` 3-strike, `pipeline:park`, `pipeline:reject-cost` |
+
+A ticket carries exactly one `status:*` label at a time; the helper
+`scripts/set-status.sh <ticket> <new-status>` removes the previous one
+when adding the new one.
+
+**One-time label setup** (six labels — run once when bootstrapping):
+
+```bash
+gh label create "status:in-progress"  --color "1D76DB" --description "Autonomous pipeline is working on this ticket"
+gh label create "status:ready-for-qa" --color "FBCA04" --description "Merged to develop; awaiting pipeline:qa-deploy"
+gh label create "status:in-qa"        --color "FBCA04" --description "Deployed to QA; awaiting human verdict"
+gh label create "status:qa-approved"  --color "0E8A16" --description "QA passed; queued for nightly prod release at 01:00 IST"
+gh label create "status:released"     --color "5319E7" --description "Released to prod"
+gh label create "status:needs-human"  --color "B60205" --description "Blocked; needs human attention"
+```
+
+### 5.7 Nightly batched prod release
+
+A scheduled workflow (`.github/workflows/pipeline-nightly-release.yml`)
+runs every day at **01:00 IST** (`30 19 * * *` UTC). It checks the
+`frontier` git tag against the current `main` HEAD:
+
+- `frontier == main` → nothing was QA-approved since yesterday's batch; no-op.
+- `frontier > main` → there's QA-approved code waiting; runs
+  `prod-release.sh frontier`. The fast-forward of `main` picks up
+  every commit in one shot. Per-ticket bookkeeping (status:released +
+  comment with release link) happens inside `prod-release.sh`.
+
+**Manual `pipeline:prod-release` is kept as breakglass** for hotfixes —
+adding the label to a ticket releases it immediately rather than waiting
+for the nightly window.
+
+**Hold a ticket out of the nightly batch**: don't `pipeline:qa-approve`
+it. The `frontier` tag only moves on explicit approval. A `status:in-qa`
+ticket can sit there indefinitely without being released.
+
+**Atomicity**: each batch is "all-or-nothing." The frontier model is
+monotonic, so if you approve A then B, releasing later means *both* go
+out (B's commit includes everything before it). You can't release A but
+not B if both are QA-approved.
+
+### 5.8 Release notes (auto-generated)
+
+Every successful prod release — nightly OR manual — creates a GitHub
+Release in the **Releases** tab with auto-generated notes:
+
+- **Tag**: `release-YYYY-MM-DD-HHMM` UTC (always unique, supports
+  multiple releases per day)
+- **Title**: `Production release YYYY-MM-DD HH:MM UTC`
+- **Notes**: pulled by `gh release create --generate-notes`, which lists
+  every PR title between the previous release and this one. Format:
+
+  ```
+  ## What's Changed
+  * feat: add Last Working Day field to candidate screening by @raj-makhija in #74
+  * fix: pricing config null handling in #76
+  * chore: bump zod by ... in #78
+  
+  **Full Changelog**: https://github.com/.../compare/release-...-1900...release-...-1930
+  ```
+
+Each affected ticket also gets a comment linking to the release:
+
+```
+[/prod-release] Released to prod 2026-04-29 19:30 UTC.
+Release: https://github.com/raj-makhija/quadzero-scout/releases/tag/release-2026-04-29-1930
+```
+
+**One-time bootstrap**: before the first nightly run, create a
+baseline tag so the first auto-generated notes don't span all of
+git history:
+
+```bash
+gh release create release-bootstrap main \
+  --title "Pre-pipeline baseline" \
+  --notes "Initial baseline. Release notes start tracking after this point."
+```
+
+Find all releases at `https://github.com/raj-makhija/quadzero-scout/releases`.
+
+**Required repo secrets for deploy commands** (`qa-deploy`,
+`prod-release`):
+
+| Secret | Purpose |
+|---|---|
+| `AWS_ACCESS_KEY_ID` | IAM user access key with permissions to run `serverless deploy` (Lambda, IAM PassRole, CloudFormation, S3, DynamoDB, API Gateway, CloudWatch Logs) |
+| `AWS_SECRET_ACCESS_KEY` | Paired secret key |
+| `AWS_REGION` | Optional; defaults to `ap-south-1` |
+
+Add via GitHub UI: Settings → Secrets and variables → Actions → New
+repository secret. Or via CLI: `gh secret set <NAME>`.
+
+**Optional repo variable**:
+
+| Variable | Effect |
+|---|---|
+| `PIPELINE_SKIP_DEPLOY` | If set to `1`, `qa-deploy` pushes the qa branch (Amplify auto-deploys frontend) but skips `npx serverless deploy`. Useful for frontend-only iteration or while AWS creds are being set up. Set in Settings → Secrets and variables → Actions → Variables tab. |
+
+If you trigger `pipeline:qa-deploy` without the AWS secrets in place,
+the workflow will fail at the serverless step. The result comment
+will tell you. Add the secrets and re-add the label to retry; no
+state corruption.
+
 ---
 
 ## 6. Setup (bootstrapping)

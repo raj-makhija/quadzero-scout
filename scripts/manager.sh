@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# manager.sh — advance one ticket by one state transition.
+# manager.sh -- advance one ticket by one state transition.
 #
 # The manager is intentionally dumb: a case statement over Pipeline Status
 # that dispatches to the appropriate (dummy or real) agent. Intended to
-# be called by a scheduler (Phase 5) on a fixed interval.
+# be called by a scheduler on a fixed interval.
 #
 # Usage:
 #   scripts/manager.sh [<ticket>]
@@ -39,8 +39,9 @@ case "${STATUS:-new}" in
     "$SCRIPT_DIR/set-field.sh" "$TICKET" "Agent" tester
     "$SCRIPT_DIR/set-field.sh" "$TICKET" "Attempt" 1
     "$SCRIPT_DIR/set-field.sh" "$TICKET" "Pipeline Status" tests-pending
+    "$SCRIPT_DIR/set-status.sh" "$TICKET" in-progress
     gh issue comment "$TICKET" --body "[manager] Primed. Routing to tester." >&2
-    echo "manager: #$TICKET primed → tests-pending" >&2
+    echo "manager: #$TICKET primed -> tests-pending" >&2
     ;;
 
   tests-pending)
@@ -65,13 +66,14 @@ case "${STATUS:-new}" in
 
   rework)
     # merge-pr.sh cleared Base SHA + PR Number; we increment Attempt and
-    # hand to developer's rework mode. 3-strike → needs-human escalation.
+    # hand to developer's rework mode. 3-strike -> needs-human escalation.
     ATTEMPT="$("$SCRIPT_DIR/get-field.sh" "$TICKET" "Attempt" || echo 0)"
     : "${ATTEMPT:=0}"
     ATTEMPT=$((ATTEMPT + 1))
     if [[ "$ATTEMPT" -gt "$MAX_ATTEMPTS" ]]; then
       gh issue comment "$TICKET" --body "[manager] Max rework attempts ($MAX_ATTEMPTS) exceeded. Escalating to needs-human." >&2
       "$SCRIPT_DIR/set-field.sh" "$TICKET" "Pipeline Status" needs-human
+      "$SCRIPT_DIR/set-status.sh" "$TICKET" needs-human
       echo "manager: #$TICKET escalated to needs-human (attempts=$ATTEMPT > $MAX_ATTEMPTS)" >&2
       exit 0
     fi

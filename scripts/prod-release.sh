@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
-# prod-release.sh — release a SHA (default: frontier) to main and deploy prod.
+# prod-release.sh -- release a SHA (default: frontier) to main and deploy prod.
 #
 # Usage:
 #   scripts/prod-release.sh [<sha>]
 #
 # Safety: refuses to release anything past the `frontier` tag (latest
 # QA-approved SHA). Defaults to frontier itself if no SHA given.
+#
+# After successful deploy: creates a GitHub Release with auto-generated
+# notes for the just-released commit range, comments on every affected
+# ticket (those referenced in the released commit messages) with the
+# release link, and sets status:released on each.
 #
 # Set PIPELINE_SKIP_DEPLOY=1 to skip the serverless deploy step.
 
@@ -41,7 +46,7 @@ fi
 SHA="$(git rev-parse "$TARGET")"
 
 if [[ "$SHA" != "$FRONTIER_SHA" ]] && ! git merge-base --is-ancestor "$SHA" "$FRONTIER_SHA"; then
-  echo "error: target $SHA is past frontier $FRONTIER_SHA — refusing" >&2
+  echo "error: target $SHA is past frontier $FRONTIER_SHA -- refusing" >&2
   echo "run qa-approve.sh $SHA first if it's been tested" >&2
   exit 1
 fi
@@ -56,6 +61,11 @@ else
 fi
 git pull origin main --ff-only --quiet
 
+# Capture main's tip BEFORE the merge so we can compute the affected-ticket
+# list afterward (for release notes + per-ticket comments + status:released).
+OLD_MAIN_SHA="$(git rev-parse HEAD)"
+echo "==> main tip before merge: $OLD_MAIN_SHA" >&2
+
 echo "==> merging $SHA into main (fast-forward only)" >&2
 if ! git merge --ff-only "$SHA" >&2; then
   echo "error: main can't fast-forward to $SHA" >&2
@@ -67,7 +77,7 @@ echo "==> pushing main (Amplify will auto-deploy frontend)" >&2
 git push origin main >&2
 
 if [[ "${PIPELINE_SKIP_DEPLOY:-}" == "1" ]]; then
-  echo "==> PIPELINE_SKIP_DEPLOY=1 — skipping serverless deploy" >&2
+  echo "==> PIPELINE_SKIP_DEPLOY=1 -- skipping serverless deploy" >&2
 else
   echo "==> verifying AWS credentials" >&2
   echo "    AWS_ACCESS_KEY_ID:     ${AWS_ACCESS_KEY_ID:+set (${#AWS_ACCESS_KEY_ID} chars)}${AWS_ACCESS_KEY_ID:-EMPTY}" >&2
@@ -90,37 +100,16 @@ else
   fi
   echo "==> installing infra/ dependencies (serverless v3 + plugins)" >&2
   (cd infra/ && npm ci --silent)
-  # Locally on Windows, infra/src is a directory junction to backend/src
-  # (gitignored). On the Linux runner we have to recreate something there
-  # so serverless-esbuild can find handler sources at src/...
-  # Using cp -r rather than ln -s because serverless-esbuild's
-  # individually-packaged-functions mode emits 'No file matches include /
-  # exclude patterns' when source files are reached via symlink. Real
-  # files at the expected path keep the packager happy. Cost is ~MB of
-  # disk on the runner, discarded after the run.
   if [[ ! -e infra/src ]]; then
     echo "==> copying backend/src -> infra/src (real files; avoids symlink-packaging edge case)" >&2
     cp -r backend/src infra/src
   fi
   echo "==> installing backend/ dependencies (handler runtime deps)" >&2
   (cd backend/ && npm ci --silent)
-  # esbuild resolves npm imports by walking node_modules up from the
-  # source file's directory. With infra/src/ as real files (not a
-  # symlink), the walk reaches infra/node_modules/ but never
-  # backend/node_modules/. Drop a node_modules symlink inside the
-  # copied tree so the walk finds backend's deps. Locally on Windows
-  # this isn't needed because the junction lets esbuild walk from the
-  # resolved backend/src/ path naturally.
   if [[ ! -e infra/src/node_modules ]]; then
     echo "==> linking infra/src/node_modules -> backend/node_modules (esbuild package resolution)" >&2
     ln -s ../../backend/node_modules infra/src/node_modules
   fi
-  # Build the chromium Lambda layer if not already populated.
-  # infra/layers/ is gitignored (binaries built from npm), so the runner
-  # has an empty layers/chromium/ directory. serverless's per-layer
-  # packaging fails with "No file matches include / exclude patterns"
-  # if there's nothing under the layer's path:. Populate using the
-  # @sparticuz/chromium version already declared in backend/package.json.
   if [[ ! -d infra/layers/chromium/nodejs/node_modules/@sparticuz/chromium ]]; then
     CHROMIUM_VER="$(jq -r '.dependencies."@sparticuz/chromium" // .devDependencies."@sparticuz/chromium" // empty' backend/package.json)"
     if [[ -z "$CHROMIUM_VER" ]]; then
@@ -137,11 +126,51 @@ else
   (cd infra/ && npx serverless deploy --stage prod)
 fi
 
+# --- Release notes + per-ticket bookkeeping ---------------------------------
+NEW_MAIN_SHA="$(git rev-parse main)"
+RELEASE_TAG="release-$(date -u +%Y-%m-%d-%H%M)"
+RELEASE_TITLE="Production release $(date -u +'%Y-%m-%d %H:%M') UTC"
+
+if [[ "$OLD_MAIN_SHA" != "$NEW_MAIN_SHA" ]]; then
+  echo "==> creating GitHub Release $RELEASE_TAG (auto-generated notes)" >&2
+  PREV_RELEASE="$(gh release list --limit 1 --json tagName -q '.[0].tagName // empty' 2>/dev/null || echo '')"
+  if [[ -z "$PREV_RELEASE" ]]; then
+    PREV_RELEASE="release-bootstrap"
+  fi
+  if gh release create "$RELEASE_TAG" \
+       --target main \
+       --title "$RELEASE_TITLE" \
+       --generate-notes \
+       --notes-start-tag "$PREV_RELEASE" \
+       >/dev/null 2>&1; then
+    RELEASE_URL="$(gh release view "$RELEASE_TAG" --json url -q .url 2>/dev/null || echo '')"
+    echo "    release: $RELEASE_URL" >&2
+  else
+    gh release create "$RELEASE_TAG" \
+      --target main \
+      --title "$RELEASE_TITLE" \
+      --notes "Released $NEW_MAIN_SHA. (Auto-generated notes unavailable; create release-bootstrap tag to fix.)" \
+      >/dev/null 2>&1 || echo "(release create failed; continuing)" >&2
+    RELEASE_URL="$(gh release view "$RELEASE_TAG" --json url -q .url 2>/dev/null || echo '')"
+  fi
+
+  TICKETS="$(git log "$OLD_MAIN_SHA..$NEW_MAIN_SHA" --pretty=%s | grep -oE '#[0-9]+' | sort -u | tr -d '#' || true)"
+  if [[ -n "$TICKETS" ]]; then
+    echo "==> updating affected tickets (status:released + comment): $(echo $TICKETS | tr '\n' ' ')" >&2
+    for N in $TICKETS; do
+      gh issue comment "$N" --body "[/prod-release] Released to prod $(date -u +'%Y-%m-%d %H:%M') UTC.
+
+Release: $RELEASE_URL" >/dev/null 2>&1 || true
+      "$SCRIPT_DIR/set-status.sh" "$N" released || true
+    done
+  else
+    echo "==> no ticket references found in released commits; skipping per-ticket update" >&2
+  fi
+fi
+
 git checkout develop >&2
 echo "prod-release complete: $SHA on main" >&2
 
-# Kick the Actions pipeline-manager. Defensive — usually nothing for the
-# pipeline to do post-release, but keeps the model consistent.
 if gh workflow run pipeline-manager.yml >/dev/null 2>&1; then
   echo "kicked pipeline-manager workflow" >&2
 else

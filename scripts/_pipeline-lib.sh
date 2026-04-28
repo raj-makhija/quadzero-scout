@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# _pipeline-lib.sh — shared helpers sourced by the other pipeline scripts.
+# _pipeline-lib.sh -- shared helpers sourced by the other pipeline scripts.
 # Not intended to be executed directly.
 
 # Field name used for the pipeline state machine. We use "Pipeline Status"
@@ -17,15 +17,15 @@ _pl_repo_root() {
 }
 
 # Load .pipeline-config.json into env vars:
-#   PL_CONFIG       — path to the config file
-#   PL_PROJECT_ID   — GraphQL node ID of the project
-#   PL_OWNER        — project owner login
+#   PL_CONFIG       -- path to the config file
+#   PL_PROJECT_ID   -- GraphQL node ID of the project
+#   PL_OWNER        -- project owner login
 pl_load_config() {
   local root
   root="$(_pl_repo_root)" || return 1
   local cfg="$root/.pipeline-config.json"
   if [[ ! -f "$cfg" ]]; then
-    echo "error: $cfg not found — run scripts/discover-ids.sh first" >&2
+    echo "error: $cfg not found -- run scripts/discover-ids.sh first" >&2
     return 1
   fi
   PL_CONFIG="$cfg"
@@ -82,13 +82,13 @@ pl_item_id_for_issue() {
     | .id' | head -n1)"
 
   if [[ -z "$item_id" ]]; then
-    echo "error: issue #$issue is not on the pipeline project — add it first" >&2
+    echo "error: issue #$issue is not on the pipeline project -- add it first" >&2
     return 1
   fi
   printf '%s' "$item_id"
 }
 
-# Extract the `type` from a ticket's `type:*` label. Errors if 0 or 2+.
+# Extract the type from a ticket's type:* label. Errors if 0 or 2+.
 # Prints the type (e.g. "feature", "bugfix") to stdout.
 pl_type_from_labels() {
   local issue="$1"
@@ -110,7 +110,6 @@ pl_type_from_labels() {
     return 1
   fi
 
-  # Validate against allowed list.
   if ! echo " $PL_VALID_TYPES " | grep -q " $types "; then
     echo "error: unknown type '$types'; must be one of: $PL_VALID_TYPES" >&2
     return 1
@@ -139,4 +138,22 @@ pl_slug_from_title() {
     | tr '[:upper:]' '[:lower:]' \
     | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' \
     | head -c 50
+}
+
+# Transition a ticket's status:* label to a new value. Removes any existing
+# status:* label, then adds status:<new-status>. Idempotent.
+#
+# Usage: pl_set_status <issue> <new-status>
+#   Where <new-status> is one of:
+#     in-progress, ready-for-qa, in-qa, qa-approved, released, needs-human
+pl_set_status() {
+  local issue="$1" new_status="status:$2"
+  local labels
+  labels="$(gh issue view "$issue" --json labels -q '.labels[].name' 2>/dev/null || true)"
+  while IFS= read -r label; do
+    if [[ -n "$label" && "$label" == status:* && "$label" != "$new_status" ]]; then
+      gh issue edit "$issue" --remove-label "$label" 2>/dev/null >&2 || true
+    fi
+  done <<< "$labels"
+  gh issue edit "$issue" --add-label "$new_status" 2>/dev/null >&2 || true
 }
