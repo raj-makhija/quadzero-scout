@@ -102,12 +102,19 @@ else
     echo "==> copying backend/src -> infra/src (real files; avoids symlink-packaging edge case)" >&2
     cp -r backend/src infra/src
   fi
-  # serverless-esbuild resolves npm packages relative to the source file's
-  # location. Since handlers live under backend/src/, esbuild walks up to
-  # backend/node_modules/ -- not infra/node_modules/. Install backend deps
-  # so zod/mammoth/openai/etc. resolve at bundle time.
   echo "==> installing backend/ dependencies (handler runtime deps)" >&2
   (cd backend/ && npm ci --silent)
+  # esbuild resolves npm imports by walking node_modules up from the
+  # source file's directory. With infra/src/ as real files (not a
+  # symlink), the walk reaches infra/node_modules/ but never
+  # backend/node_modules/. Drop a node_modules symlink inside the
+  # copied tree so the walk finds backend's deps. Locally on Windows
+  # this isn't needed because the junction lets esbuild walk from the
+  # resolved backend/src/ path naturally.
+  if [[ ! -e infra/src/node_modules ]]; then
+    echo "==> linking infra/src/node_modules -> backend/node_modules (esbuild package resolution)" >&2
+    ln -s ../../backend/node_modules infra/src/node_modules
+  fi
   echo "==> deploying backend to prod (npx serverless deploy --stage prod)" >&2
   (cd infra/ && npx serverless deploy --stage prod)
 fi
