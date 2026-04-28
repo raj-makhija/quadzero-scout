@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeLocation } from '../locationNormalizer.js';
+import { normalizeLocation, expandLocationAliases } from '../locationNormalizer.js';
 
 describe('normalizeLocation', () => {
   it('extracts city from "City, Country" format', () => {
@@ -44,5 +44,43 @@ describe('normalizeLocation', () => {
   it('handles country-only (no comma) by returning as-is', () => {
     expect(normalizeLocation('India')).toBe('India');
     expect(normalizeLocation('United States')).toBe('United States');
+  });
+});
+
+describe('expandLocationAliases', () => {
+  it('returns both forms for Bangalore/Bengaluru', () => {
+    expect(expandLocationAliases('bangalore')).toContain('bengaluru');
+    expect(expandLocationAliases('bengaluru')).toContain('bangalore');
+  });
+
+  it('is bidirectional — canonical finds alias and alias finds canonical', () => {
+    const fromCanonical = expandLocationAliases('bangalore');
+    const fromAlias = expandLocationAliases('bengaluru');
+    expect(fromCanonical).toEqual(expect.arrayContaining(['bangalore', 'bengaluru']));
+    expect(fromAlias).toEqual(expect.arrayContaining(['bangalore', 'bengaluru']));
+  });
+
+  it('covers all documented Ahmedabad variants', () => {
+    const group = expandLocationAliases('ahmedabad');
+    expect(group).toContain('ahmadabad');
+    expect(group).toContain('ahemadabad');
+    const fromAlt = expandLocationAliases('ahmadabad');
+    expect(fromAlt).toContain('ahmedabad');
+  });
+
+  it('is case-insensitive', () => {
+    expect(expandLocationAliases('Bengaluru')).toContain('bangalore');
+    expect(expandLocationAliases('BANGALORE')).toContain('bengaluru');
+  });
+
+  it('returns a single-element array for unknown cities', () => {
+    expect(expandLocationAliases('Mumbai')).toEqual(['mumbai']);
+    expect(expandLocationAliases('Baroda')).toEqual(['baroda']);
+  });
+
+  it('does not conflate unrelated cities', () => {
+    const bangaloreGroup = expandLocationAliases('bangalore');
+    expect(bangaloreGroup).not.toContain('baroda');
+    expect(bangaloreGroup).not.toContain('mumbai');
   });
 });

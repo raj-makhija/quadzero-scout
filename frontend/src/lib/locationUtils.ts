@@ -1,21 +1,7 @@
 /**
- * Extracts the city portion from a "City, Country" or "City, State, Country" string.
- * If there is no comma the value is returned as-is (already city-only or country-only).
- * An empty or whitespace-only value is treated as absent and returns undefined.
- */
-export function normalizeLocation(location: string | null | undefined): string | null | undefined {
-  if (location == null) return location;
-  const trimmed = location.trim();
-  if (!trimmed) return undefined;
-  const commaIdx = trimmed.indexOf(',');
-  if (commaIdx === -1) return trimmed;
-  const city = trimmed.slice(0, commaIdx).trim();
-  return city || trimmed;
-}
-
-/**
  * Groups of city names that are considered equivalent for matching purposes.
- * All values are lowercase. Adding a new alias pair only requires adding an entry here.
+ * All values are lowercase. Must stay in sync with backend/src/lib/locationNormalizer.ts.
+ * Adding a new alias pair only requires adding an entry here (and in the backend counterpart).
  */
 export const LOCATION_EQUIVALENCE_GROUPS: readonly (readonly string[])[] = [
   ['bangalore', 'bengaluru'],
