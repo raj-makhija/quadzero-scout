@@ -1,6 +1,6 @@
 name: Feature Request
 description: Propose a new feature
-labels: ["feature"]
+labels: ["type:feature", "auto-pipeline"]
 body:
   - type: textarea
     id: description

@@ -1,6 +1,6 @@
 name: Hotfix
 description: Urgent production fix
-labels: ["hotfix", "priority:critical"]
+labels: ["type:bugfix", "priority:critical", "auto-pipeline"]
 body:
   - type: textarea
     id: description
