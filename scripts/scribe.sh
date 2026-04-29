@@ -15,6 +15,11 @@
 # scribe agent recognizes its diff as docs-only), claude returns
 # NO_DOCS_NEEDED and no follow-up is created.
 #
+# Model tiering: PIPELINE_SCRIBE_MODEL (default: claude-haiku-4-5-20251001).
+# The scribe is a classify-then-template task (YES/NO docs decision, then
+# fill a templated follow-up body). Haiku handles it at a fraction of the
+# cost of the heavier roles.
+#
 # Usage: scripts/scribe.sh <ticket>
 
 set -euo pipefail
@@ -121,7 +126,10 @@ Generate now. Output either NO_DOCS_NEEDED on its own line, or the
 PROMPT
 )"
 
-echo "==> invoking scribe agent (claude) for #$TICKET" >&2
+PIPELINE_AGENT_MODEL="${PIPELINE_SCRIBE_MODEL:-claude-haiku-4-5-20251001}"
+export PIPELINE_AGENT_MODEL
+
+echo "==> invoking scribe agent (claude, model=$PIPELINE_AGENT_MODEL) for #$TICKET" >&2
 
 RESPONSE_FILE="$(mktemp -t scribe.XXXXXX)"
 trap 'rm -f "$RESPONSE_FILE"' EXIT

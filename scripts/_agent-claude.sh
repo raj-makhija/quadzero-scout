@@ -16,7 +16,12 @@
 #
 # Auth: requires either ANTHROPIC_API_KEY (API billing) or
 # CLAUDE_CODE_OAUTH_TOKEN (Pro/Max subscription).
-# Optional: PIPELINE_AGENT_TIMEOUT_SEC (default 600 = 10 min per call).
+# Optional:
+#   PIPELINE_AGENT_TIMEOUT_SEC -- default 600 = 10 min per call.
+#   PIPELINE_AGENT_MODEL       -- if set, passed to claude as `--model <value>`.
+#                                 Per-agent scripts (developer/tester/reviewer/
+#                                 scribe) set this for tiered model selection.
+#                                 Unset = let claude pick its default.
 
 set -euo pipefail
 
@@ -59,12 +64,20 @@ TIMEOUT_SEC="${PIPELINE_AGENT_TIMEOUT_SEC:-600}"
 RESPONSE_FILE="$(mktemp -t claude-agent.XXXXXX)"
 trap 'rm -f "$RESPONSE_FILE"' EXIT
 
-echo "==> invoking claude (timeout ${TIMEOUT_SEC}s)" >&2
+# Optional model override for tiered model selection. Unset = claude's default.
+MODEL_ARGS=""
+if [[ -n "${PIPELINE_AGENT_MODEL:-}" ]]; then
+  MODEL_ARGS="--model ${PIPELINE_AGENT_MODEL}"
+fi
+
+echo "==> invoking claude (timeout ${TIMEOUT_SEC}s${PIPELINE_AGENT_MODEL:+, model=$PIPELINE_AGENT_MODEL})" >&2
 
 set +e
+# shellcheck disable=SC2086  # intentional word-splitting on MODEL_ARGS
 timeout "$TIMEOUT_SEC" claude \
   --print \
   --dangerously-skip-permissions \
+  $MODEL_ARGS \
   "$PROMPT" \
   > "$RESPONSE_FILE" 2>&1
 RC=$?

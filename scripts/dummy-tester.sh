@@ -19,6 +19,11 @@
 #               manager.sh increments Attempt and routes to developer
 #               rework mode (3-strike rule applies).
 #
+# Model tiering: PIPELINE_TESTER_MODEL (default: claude-sonnet-4-6). Both
+# write and validate are reasoning over acceptance criteria; Sonnet hits
+# the right price/quality knee. Override only if you want to pin or
+# experiment.
+#
 # Usage:
 #   scripts/dummy-tester.sh <ticket> <mode>
 
@@ -42,6 +47,10 @@ USE_REAL_AGENT="false"
 if [[ "${PIPELINE_TESTER_AGENT:-dummy}" == "claude" ]]; then
   USE_REAL_AGENT="true"
 fi
+
+# Model for tester invocations (write + validate). Exported so the
+# _agent-claude.sh wrapper picks it up via PIPELINE_AGENT_MODEL.
+export PIPELINE_AGENT_MODEL="${PIPELINE_TESTER_MODEL:-claude-sonnet-4-6}"
 
 case "$MODE" in
   # ----------------------------------------------------------------- write

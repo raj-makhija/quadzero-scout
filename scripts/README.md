@@ -58,6 +58,13 @@ and runs discover-ids to write `.pipeline-config.json` at the repo root.
 | `dummy-developer.sh` | `<ticket> implement\|open_pr\|rework` — simulated developer, does real git work. |
 | `dummy-pr-reviewer.sh` | `<ticket>` — simulated reviewer; delegates to `merge-pr.sh`. |
 
+When dispatched to real Claude (`PIPELINE_*_AGENT=claude`), each agent
+runs on a different model picked for its workload — Sonnet for the
+tester and developer, Opus for developer rework attempts, Haiku for the
+PR reviewer and scribe. See the `PIPELINE_*_MODEL` rows in
+[Environment overrides](#environment-overrides) and section 2.1.1 of
+`CI-CD.md` for the full tiering.
+
 ### Phase 4 — QA + prod (human-invoked)
 
 | Script | Purpose |
@@ -206,6 +213,12 @@ The project number is in `.pipeline-config.json` under `.project.number`.
 | `PIPELINE_SKIP_DEPLOY` | unset | If `1`, qa-deploy.sh / prod-release.sh skip the `serverless deploy` step. |
 | `PIPELINE_FORCE` | unset | If `1`, qa-approve.sh allows moving the frontier tag backward. |
 | `PL_STATE_FIELD` | `Pipeline Status` | Field name used for the pipeline state machine. |
+| `PIPELINE_AGENT_MODEL` | unset | Read by `_agent-claude.sh`; if set, passed to claude as `--model <value>`. The per-agent scripts set this themselves; setting it directly only matters for ad-hoc invocations of the wrapper. |
+| `PIPELINE_TESTER_MODEL` | `claude-sonnet-4-6` | Model used by `dummy-tester.sh` (write + validate). |
+| `PIPELINE_DEVELOPER_MODEL` | `claude-sonnet-4-6` | Model used by `dummy-developer.sh` on attempt 1 (`implement`). |
+| `PIPELINE_DEVELOPER_REWORK_MODEL` | `claude-opus-4-6` | Model used by `dummy-developer.sh` on attempt >= 2 (`rework`). Conditional escalation buys a sharper model only when attempt 1 already failed. |
+| `PIPELINE_PR_REVIEWER_MODEL` | `claude-haiku-4-5-20251001` | Model used by `dummy-pr-reviewer.sh`. |
+| `PIPELINE_SCRIBE_MODEL` | `claude-haiku-4-5-20251001` | Model used by `scribe.sh`. |
 
 ## Re-running `discover-ids.sh`
 
@@ -303,6 +316,12 @@ previous run is still draining, the second run queues and starts after.
 | `PIPELINE_SKIP_DEPLOY` | unset | If `1`, qa-deploy.sh / prod-release.sh skip the `serverless deploy` step. |
 | `PIPELINE_FORCE` | unset | If `1`, qa-approve.sh allows moving the frontier tag backward. |
 | `PL_STATE_FIELD` | `Pipeline Status` | Field name used for the pipeline state machine. |
+| `PIPELINE_AGENT_MODEL` | unset | Read by `_agent-claude.sh`; if set, passed to claude as `--model <value>`. The per-agent scripts set this themselves; setting it directly only matters for ad-hoc invocations of the wrapper. |
+| `PIPELINE_TESTER_MODEL` | `claude-sonnet-4-6` | Model used by `dummy-tester.sh` (write + validate). |
+| `PIPELINE_DEVELOPER_MODEL` | `claude-sonnet-4-6` | Model used by `dummy-developer.sh` on attempt 1 (`implement`). |
+| `PIPELINE_DEVELOPER_REWORK_MODEL` | `claude-opus-4-6` | Model used by `dummy-developer.sh` on attempt >= 2 (`rework`). Conditional escalation buys a sharper model only when attempt 1 already failed. |
+| `PIPELINE_PR_REVIEWER_MODEL` | `claude-haiku-4-5-20251001` | Model used by `dummy-pr-reviewer.sh`. |
+| `PIPELINE_SCRIBE_MODEL` | `claude-haiku-4-5-20251001` | Model used by `scribe.sh`. |
 
 ## Re-running `discover-ids.sh`
 

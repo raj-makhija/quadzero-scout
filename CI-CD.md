@@ -69,6 +69,32 @@ The headless wrapper is `scripts/_agent-claude.sh`. It runs
 `claude --print --dangerously-skip-permissions` with a 600s timeout
 and accepts either `ANTHROPIC_API_KEY` (API billing) or
 `CLAUDE_CODE_OAUTH_TOKEN` (Pro/Max subscription, from `claude setup-token`).
+If `PIPELINE_AGENT_MODEL` is set in the environment, the wrapper passes
+it to claude as `--model <value>`; per-agent scripts set this for the
+tiered model selection described in 2.1.1.
+
+### 2.1.1 Model tiering
+
+The four agents have very different workloads, so the pipeline picks a
+different model per role rather than running everything on one default.
+Each agent script computes its model and exports `PIPELINE_AGENT_MODEL`
+before invoking `_agent-claude.sh`; the wrapper passes it to `claude
+--model`.
+
+| Agent | Default model | Override env var | Why |
+|---|---|---|---|
+| Tester (write + validate) | `claude-sonnet-4-6` | `PIPELINE_TESTER_MODEL` | Reasoning over acceptance criteria; Sonnet hits the price/quality knee. |
+| Developer (`implement`, attempt 1) | `claude-sonnet-4-6` | `PIPELINE_DEVELOPER_MODEL` | The dominant cost driver; Sonnet handles most multi-file features. |
+| Developer (`rework`, attempt >= 2) | `claude-opus-4-6` | `PIPELINE_DEVELOPER_REWORK_MODEL` | Conditional escalation on retry: buys a sharper model only when attempt 1 already failed, keeping cost tied to difficulty. |
+| PR-Reviewer | `claude-haiku-4-5-20251001` | `PIPELINE_PR_REVIEWER_MODEL` | Tester has already validated correctness; reviewer checks scope, conventions, security, cost flags -- a classification-shaped task Haiku handles cheaply. |
+| Scribe | `claude-haiku-4-5-20251001` | `PIPELINE_SCRIBE_MODEL` | YES/NO docs decision plus a templated follow-up body. Cheap, fast. |
+
+If none of these env vars are set, the defaults above apply. To pin
+every agent to one model (e.g., to A/B test a new release across the
+whole pipeline, or as a kill-switch), set the four per-agent overrides
+to the same value in the workflow env -- the per-agent scripts always
+set `PIPELINE_AGENT_MODEL` themselves before calling the wrapper, so a
+bare `PIPELINE_AGENT_MODEL` at the workflow level is ignored.
 
 ### 2.2 GitHub Actions workflow
 
@@ -872,8 +898,13 @@ Sourced from real smoke tests Apr 27-28, 2026.
 | Total drain (real feature, attempt 1 -> merge) | 10-15 min |
 | Total drain (FAIL on attempt 1 -> PASS on attempt 2 -> merge) | 7-9 min |
 
-LLM tokens: bounded by Claude.ai Pro/Max plan limits (no per-token
-billing). Real-feature drains burn substantially more tokens; budget
+LLM tokens: when authenticated via `CLAUDE_CODE_OAUTH_TOKEN`, bounded
+by Claude.ai Pro/Max plan limits (no per-token billing). Under
+`ANTHROPIC_API_KEY`, costs are per-token and the model tiering in
+section 2.1.1 matters: Haiku for reviewer + scribe and conditional
+Opus only on developer rework keep the cost floor low while still
+having a sharper model available when attempt 1 fails. Real-feature
+drains burn substantially more tokens than docs tickets; budget
 accordingly if running many tickets in parallel.
 
 ---

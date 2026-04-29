@@ -7,6 +7,13 @@
 # marker file under dummy-work/ -- useful for testing the plumbing
 # without burning tokens.
 #
+# Model tiering: the developer is the heaviest workload, so we pick the
+# model based on Attempt:
+#   - Attempt 1 (implement): PIPELINE_DEVELOPER_MODEL        (default: claude-sonnet-4-6)
+#   - Attempt >=2 (rework):  PIPELINE_DEVELOPER_REWORK_MODEL (default: claude-opus-4-6)
+# The escalation buys a sharper model only when attempt 1 already failed,
+# keeping cost conditional on difficulty.
+#
 # Usage:
 #   scripts/dummy-developer.sh <ticket> <mode>
 # Modes:
@@ -151,8 +158,17 @@ Report a one-sentence summary of what you did at the end of your output.
 PROMPT
 )"
 
-  echo "==> invoking real developer agent (claude) for #$ticket attempt $attempt" >&2
-  echo "$prompt" | "$SCRIPT_DIR/_agent-claude.sh" - >/dev/null
+  # Pick model based on attempt: Sonnet on first attempt, Opus on rework.
+  # Each is overridable via env var so users can pin or experiment.
+  local model
+  if [[ "$attempt" -ge 2 ]]; then
+    model="${PIPELINE_DEVELOPER_REWORK_MODEL:-claude-opus-4-6}"
+  else
+    model="${PIPELINE_DEVELOPER_MODEL:-claude-sonnet-4-6}"
+  fi
+
+  echo "==> invoking real developer agent (claude, model=$model) for #$ticket attempt $attempt" >&2
+  echo "$prompt" | PIPELINE_AGENT_MODEL="$model" "$SCRIPT_DIR/_agent-claude.sh" - >/dev/null
 
   local commits_ahead
   commits_ahead="$(git rev-list --count "$base_sha..HEAD" 2>/dev/null || echo 0)"

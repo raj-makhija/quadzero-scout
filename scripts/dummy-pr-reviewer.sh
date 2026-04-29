@@ -17,6 +17,12 @@
 #                     increment Attempt and dispatch the developer agent
 #                     in rework mode (3-strike rule applies).
 #
+# Model tiering: PIPELINE_PR_REVIEWER_MODEL (default: claude-haiku-4-5-20251001).
+# The tester has already validated correctness; the reviewer checks scope,
+# conventions, security, and cost flags -- a classification-shaped task
+# Haiku handles well at a fraction of the cost. Override to Sonnet on
+# unusually large/complex diffs if needed.
+#
 # Usage:
 #   scripts/dummy-pr-reviewer.sh <ticket>
 
@@ -109,7 +115,10 @@ can address it on the next rework attempt.
 PROMPT
 )"
 
-echo "==> invoking real pr-reviewer agent (claude) for #$TICKET PR #$PR" >&2
+PIPELINE_AGENT_MODEL="${PIPELINE_PR_REVIEWER_MODEL:-claude-haiku-4-5-20251001}"
+export PIPELINE_AGENT_MODEL
+
+echo "==> invoking real pr-reviewer agent (claude, model=$PIPELINE_AGENT_MODEL) for #$TICKET PR #$PR" >&2
 
 RESPONSE_FILE="$(mktemp -t pr-reviewer.XXXXXX)"
 trap 'rm -f "$RESPONSE_FILE"' EXIT
