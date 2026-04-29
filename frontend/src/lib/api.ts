@@ -972,6 +972,7 @@ export interface ExtractedProfile {
   customFields?: Record<string, string | number>;
   linkedinUrl?: string | null;
   githubUrl?: string | null;
+  hackerrankUrl?: string | null;
   coverLetter?: string | null;
 }
 
@@ -1071,6 +1072,8 @@ export interface CandidateSearchResult {
   lastScreenedBy?: string;
   linkedinUrl?: string;
   githubUrl?: string;
+  hackerrankUrl?: string;
+  hackerrankScore?: number;
   notInterested?: boolean;
   notInterestedAt?: string;
   isShortlisted?: boolean;
@@ -1608,6 +1611,8 @@ export interface ScreeningUpdatedValues {
   customFields?: Record<string, string | number>;
   linkedinUrl?: string;
   githubUrl?: string;
+  hackerrankUrl?: string | null;
+  hackerrankScore?: number | null;
   notInterested?: boolean;
   subVendorId?: string | null;
 }
@@ -1868,6 +1873,8 @@ export interface PipelineCandidateView {
   customFields?: Record<string, string | number>;
   linkedinUrl?: string;
   githubUrl?: string;
+  hackerrankUrl?: string;
+  hackerrankScore?: number;
   notInterested?: boolean;
   proposedRateHourly?: number;
   proposedRateMonthly?: number;

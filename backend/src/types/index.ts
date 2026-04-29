@@ -88,6 +88,8 @@ export const CandidateProfileSchema = z.object({
   customFields: z.record(z.string(), z.union([z.string(), z.number()])).optional().default({}),
   linkedinUrl: z.string().url().optional(),
   githubUrl: z.string().url().optional(),
+  hackerrankUrl: z.string().url().optional(),
+  hackerrankScore: z.number().min(0).max(100).optional(),
 });
 export type CandidateProfile = z.infer<typeof CandidateProfileSchema>;
 
@@ -124,6 +126,8 @@ export interface CandidateItem {
   custom_fields?: Record<string, string | number>;
   linkedin_url?: string;
   github_url?: string;
+  hackerrank_url?: string;
+  hackerrank_score?: number;
   cover_letter?: string;
   headline?: string;
   not_interested?: boolean;
@@ -191,6 +195,11 @@ export const LLMResumeOutputSchema = z.object({
     try { new URL(url); return url; } catch { return null; }
   }),
   githubUrl: z.string().nullable().optional().transform(v => {
+    if (!v) return null;
+    const url = v.startsWith('http') ? v : `https://${v}`;
+    try { new URL(url); return url; } catch { return null; }
+  }),
+  hackerrankUrl: z.string().nullable().optional().transform(v => {
     if (!v) return null;
     const url = v.startsWith('http') ? v : `https://${v}`;
     try { new URL(url); return url; } catch { return null; }
@@ -315,6 +324,8 @@ export interface CandidateSearchResult {
   lastScreenedBy?: string;
   linkedinUrl?: string;
   githubUrl?: string;
+  hackerrankUrl?: string;
+  hackerrankScore?: number;
   notInterested?: boolean;
   notInterestedAt?: string;
   isShortlisted?: boolean;
@@ -956,6 +967,8 @@ export interface PipelineCandidateView {
   customFields?: Record<string, string | number>;
   linkedinUrl?: string;
   githubUrl?: string;
+  hackerrankUrl?: string;
+  hackerrankScore?: number;
   notInterested?: boolean;
   // Proposed billing rates (snapshot from shortlist time)
   proposedRateHourly?: number;
@@ -1038,6 +1051,8 @@ export interface ShortlistedCandidate {
   customFields?: Record<string, string | number>;
   linkedinUrl?: string;
   githubUrl?: string;
+  hackerrankUrl?: string;
+  hackerrankScore?: number;
   notInterested?: boolean;
   notInterestedAt?: string;
 }
@@ -1170,6 +1185,8 @@ export interface ScreeningProfileData {
   custom_fields?: Record<string, string | number>;
   linkedin_url?: string;
   github_url?: string;
+  hackerrank_url?: string;
+  hackerrank_score?: number;
   not_interested?: boolean;
 }
 
@@ -1209,6 +1226,8 @@ export interface ScreenCandidateRequest {
     customFields?: Record<string, string | number>;
     linkedinUrl?: string;
     githubUrl?: string;
+    hackerrankUrl?: string | null;
+    hackerrankScore?: number | null;
     notInterested?: boolean;
   };
   notes?: string;

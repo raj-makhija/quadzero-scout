@@ -34,6 +34,8 @@ const FIELD_MAP: Record<string, string> = {
   headline: 'headline',
   linkedinUrl: 'linkedin_url',
   githubUrl: 'github_url',
+  hackerrankUrl: 'hackerrank_url',
+  hackerrankScore: 'hackerrank_score',
   notInterested: 'not_interested',
 };
 

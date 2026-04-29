@@ -150,6 +150,7 @@ export default function ReviewPage() {
         location: profile.location || undefined,
         linkedinUrl: profile.linkedinUrl || undefined,
         githubUrl: profile.githubUrl || undefined,
+        hackerrankUrl: profile.hackerrankUrl || undefined,
         currentCtc: profile.currentCtc || undefined,
         expectedCtc: profile.expectedCtc || undefined,
         coverLetter: supplementaryText || undefined,
@@ -279,6 +280,16 @@ export default function ReviewPage() {
                   onChange={(e) => updateProfile({ githubUrl: e.target.value || null })}
                   className="input mt-1"
                   placeholder="https://github.com/username"
+                />
+              </div>
+              <div>
+                <label className="label">HackerRank URL</label>
+                <input
+                  type="url"
+                  value={profile.hackerrankUrl || ''}
+                  onChange={(e) => updateProfile({ hackerrankUrl: e.target.value || null })}
+                  className="input mt-1"
+                  placeholder="https://hackerrank.com/profile/username"
                 />
               </div>
             </div>

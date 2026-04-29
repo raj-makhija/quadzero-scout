@@ -47,6 +47,8 @@ export async function handler(
       customFields: candidate.custom_fields || {},
       linkedinUrl: candidate.linkedin_url,
       githubUrl: candidate.github_url,
+      hackerrankUrl: candidate.hackerrank_url,
+      hackerrankScore: candidate.hackerrank_score,
       coverLetter: candidate.cover_letter,
       headline: candidate.headline,
       createdAt: candidate.created_at,
