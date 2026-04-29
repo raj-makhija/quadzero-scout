@@ -8,6 +8,65 @@ import { withOptionalAuth, type OptionalAuthEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
 import type { CandidateSearchResult, SearchResponse, SearchCriteria } from '../../types/index.js';
 
+const SEARCH_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
+interface SearchCacheEntry {
+  scoredCandidates: CandidateSearchResult[];
+  encodedLastKey: string | undefined;
+  hasMore: boolean;
+  fetchedAt: number;
+}
+
+const searchCache = new Map<string, SearchCacheEntry>();
+
+type CriteriaInput = {
+  coreSkill?: string;
+  mustHaveSkills?: string[];
+  goodToHaveSkills?: string[];
+  minExperience?: number;
+  maxExperience?: number;
+  seniority?: string[];
+  availability?: string[];
+  location?: string;
+  remote?: boolean;
+  industries?: string[];
+  roles?: string[];
+  maxBudgetLpa?: number;
+  engagementModel?: string;
+  skillSynonyms?: Record<string, string[]>;
+};
+
+function buildCacheKey(
+  requirementId: string | undefined,
+  criteria: CriteriaInput,
+  sortBy: string,
+  pageKey: string | undefined
+): string {
+  const normalizedCriteria = {
+    coreSkill: criteria.coreSkill ?? null,
+    mustHaveSkills: [...(criteria.mustHaveSkills ?? [])].sort(),
+    goodToHaveSkills: [...(criteria.goodToHaveSkills ?? [])].sort(),
+    minExperience: criteria.minExperience ?? null,
+    maxExperience: criteria.maxExperience ?? null,
+    seniority: [...(criteria.seniority ?? [])].sort(),
+    availability: [...(criteria.availability ?? [])].sort(),
+    location: criteria.location ?? null,
+    remote: criteria.remote ?? null,
+    industries: [...(criteria.industries ?? [])].sort(),
+    roles: [...(criteria.roles ?? [])].sort(),
+    maxBudgetLpa: criteria.maxBudgetLpa ?? null,
+    engagementModel: criteria.engagementModel ?? null,
+    skillSynonyms: criteria.skillSynonyms
+      ? Object.fromEntries(
+          Object.entries(criteria.skillSynonyms)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([k, v]) => [k, [...v].sort()])
+        )
+      : null,
+  };
+  return JSON.stringify({ requirementId: requirementId ?? null, criteria: normalizedCriteria, sortBy, pageKey: pageKey ?? null });
+}
+
 /** Normalize a synonym map: lowercase keys and values. Returns undefined if input is null/undefined. */
 function normalizeSynonymMap(
   synonyms: Record<string, string[]> | null | undefined
@@ -58,6 +117,77 @@ async function handleRequest(
       } catch {
         return error(ErrorCodes.VALIDATION_ERROR, 'Invalid pagination key', 400);
       }
+    }
+
+    // Check cache before hitting DynamoDB
+    const cacheKey = buildCacheKey(requirementId, criteria, sortBy, pagination?.lastEvaluatedKey);
+    const cached = searchCache.get(cacheKey);
+    if (cached && Date.now() - cached.fetchedAt < SEARCH_CACHE_TTL) {
+      const isAuthenticated = !!event.auth;
+      const responseCandidates = isAuthenticated
+        ? cached.scoredCandidates
+        : cached.scoredCandidates.map((candidate, index) => ({
+            candidateId: candidate.candidateId,
+            fullName: `Candidate #${index + 1}`,
+            location: undefined,
+            primarySkills: [],
+            totalExperience: candidate.totalExperience,
+            seniority: candidate.seniority,
+            availability: candidate.availability,
+            engagementModel: candidate.engagementModel,
+            currentCtc: undefined,
+            expectedCtc: undefined,
+            matchScore: candidate.matchScore,
+            matchDetails: {
+              mustHaveMatched: [],
+              mustHaveFuzzy: [],
+              mustHaveSecondary: [],
+              mustHaveRelated: [],
+              mustHaveMissing: [],
+              goodToHaveMatched: [],
+              goodToHaveFuzzy: [],
+              goodToHaveRelated: [],
+              experienceMatch: candidate.matchDetails.experienceMatch,
+              seniorityMatch: candidate.matchDetails.seniorityMatch,
+              ctcMatch: candidate.matchDetails.ctcMatch,
+              locationMatch: candidate.matchDetails.locationMatch,
+              availabilityMatch: candidate.matchDetails.availabilityMatch,
+              roleMatch: candidate.matchDetails.roleMatch,
+            },
+            lastUpdated: candidate.lastUpdated,
+            lastScreenedAt: undefined,
+            notInterested: undefined,
+            notInterestedAt: undefined,
+          }));
+
+      const cachedResponse: SearchResponse = {
+        candidates: responseCandidates,
+        pagination: {
+          count: cached.scoredCandidates.length,
+          hasMore: cached.hasMore,
+          lastEvaluatedKey: cached.encodedLastKey,
+        },
+        totalMatches: cached.scoredCandidates.length,
+      };
+
+      if (event.auth) {
+        logAuditEvent(event.auth, event, {
+          action: 'CANDIDATE_SEARCH',
+          entityType: 'search',
+          entityId: 'search',
+          metadata: {
+            resultCount: cached.scoredCandidates.length,
+            mustHaveSkills: criteria.mustHaveSkills || [],
+            goodToHaveSkills: criteria.goodToHaveSkills || [],
+            minExperience: criteria.minExperience,
+            maxExperience: criteria.maxExperience,
+            seniority: criteria.seniority,
+            location: criteria.location,
+          },
+        });
+      }
+
+      return success(cachedResponse);
     }
 
     // Normalize search skills
@@ -206,6 +336,14 @@ async function handleRequest(
     if (searchResult.lastKey) {
       encodedLastKey = Buffer.from(JSON.stringify(searchResult.lastKey)).toString('base64');
     }
+
+    // Store results in cache
+    searchCache.set(cacheKey, {
+      scoredCandidates,
+      encodedLastKey,
+      hasMore: !!searchResult.lastKey,
+      fetchedAt: Date.now(),
+    });
 
     // Check if user is authenticated - if not, redact sensitive data
     const isAuthenticated = !!event.auth;
