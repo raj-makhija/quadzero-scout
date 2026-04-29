@@ -949,6 +949,31 @@ Tracked but not blocking. Pick up when convenient.
   ticket ends up resolved by tester arbitration, so we've never
   organically forced 3 strikes. The escalation code is small and
   shares primitives with tested code; low risk.
+- **Switch bot identity from PAT to GitHub App**: today every
+  pipeline action (comments, label edits, status changes, PR opens
+  + merges, releases) is attributed to `raj-makhija` because the
+  workflows authenticate with `secrets.PIPELINE_TOKEN` (a personal
+  classic PAT). Switching to a dedicated GitHub App would attribute
+  all bot actions to `<app-name>[bot]` while keeping the
+  workflow-triggers-workflow chain intact (unlike `GITHUB_TOKEN`,
+  which would break `gh issue create --label auto-pipeline` and
+  `gh workflow run` triggers).
+  - Manual setup (one-time): create GitHub App with repo
+    permissions Contents/Issues/PRs/Workflows/Actions (R/W) +
+    Metadata (R); install on `quadzero-scout`; add the App as Admin
+    on the Project "Quadzero Scout Pipeline" (Projects v2 doesn't
+    inherit App grants from the repo); store App ID + private key
+    as repo secrets `PIPELINE_APP_ID` + `PIPELINE_APP_PRIVATE_KEY`.
+  - Code change: each workflow's job adds an `actions/create-github-app-token@v1`
+    step at the top, then replaces every `secrets.PIPELINE_TOKEN`
+    with `steps.app-token.outputs.token` (~10 lines per file across
+    `pipeline-manager.yml` and `pipeline-commands.yml`).
+  - Side effects: App has its own rate limit (PAT no longer eats
+    your budget); the "Allow GitHub Actions to create and approve
+    pull requests" repo setting becomes irrelevant (App tokens have
+    their own perms); when YOU label a ticket, the labeling event
+    is still attributed to you, but everything the workflow does
+    inside is attributed to the App — clean separation.
 
 ---
 
