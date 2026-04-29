@@ -258,7 +258,7 @@ export default function ReviewPage() {
                   value={profile.location || ''}
                   onChange={(e) => updateProfile({ location: e.target.value })}
                   className="input mt-1"
-                  placeholder="City, Country"
+                  placeholder="City"
                 />
               </div>
               <div>

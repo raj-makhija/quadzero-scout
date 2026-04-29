@@ -4,6 +4,7 @@ import { validate, formatZodErrors, AnalyzeRequestSchema } from '../../lib/valid
 import { extractTextFromResume } from '../../lib/textract.js';
 import { parseResume } from '../../lib/llm/index.js';
 import type { AnalyzeResponse } from '../../types/index.js';
+import { normalizeLocation } from '../../lib/locationNormalizer.js';
 
 export async function handler(
   event: APIGatewayProxyEventV2
@@ -73,8 +74,11 @@ export async function handler(
       );
     }
 
+    const extractedProfile = parseResult.output as AnalyzeResponse['extractedProfile'];
+    extractedProfile.location = normalizeLocation(extractedProfile.location) ?? null;
+
     const response: AnalyzeResponse = {
-      extractedProfile: parseResult.output as AnalyzeResponse['extractedProfile'],
+      extractedProfile,
       confidence: Math.min(extractedText.confidence, parseResult.confidence),
       rawTextLength: extractedText.text.length,
       skillsSchemaVersion: parseResult.promptVersion != null ? `v${parseResult.promptVersion}` : null,
