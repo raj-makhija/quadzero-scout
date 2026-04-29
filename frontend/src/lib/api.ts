@@ -421,7 +421,7 @@ class ApiClient {
     if (limit) params.set('limit', String(limit));
     if (lastEvaluatedKey) params.set('lastEvaluatedKey', lastEvaluatedKey);
     const qs = params.toString();
-    return this.request<{ profiles: RecentProfileSummary[]; pagination: { count: number; hasMore: boolean; lastEvaluatedKey?: string } }>(
+    return this.request<{ profiles: RecentProfileSummary[]; pagination: { count: number; hasMore: boolean; lastEvaluatedKey?: string; totalCount?: number } }>(
       `/recruiter/recent-profiles${qs ? `?${qs}` : ''}`
     );
   }

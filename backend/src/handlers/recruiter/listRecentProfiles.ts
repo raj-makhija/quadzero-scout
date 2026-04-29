@@ -1,6 +1,6 @@
 import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
-import { getRecentProfiles } from '../../lib/dynamodb.js';
+import { getRecentProfiles, getTotalProfileCount } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 
 async function handleRequest(
@@ -22,7 +22,11 @@ async function handleRequest(
       }
     }
 
-    const result = await getRecentProfiles(limit, lastEvaluatedKey);
+    const isFirstPage = !params.lastEvaluatedKey;
+    const [result, totalCount] = await Promise.all([
+      getRecentProfiles(limit, lastEvaluatedKey),
+      isFirstPage ? getTotalProfileCount() : Promise.resolve(undefined),
+    ]);
 
     const profiles = result.items.map((item) => ({
       candidateId: item.candidate_id,
@@ -53,6 +57,7 @@ async function handleRequest(
         count: profiles.length,
         hasMore: !!result.lastKey,
         lastEvaluatedKey: encodedLastKey,
+        ...(totalCount !== undefined && { totalCount }),
       },
     });
   } catch (err) {
