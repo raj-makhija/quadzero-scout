@@ -145,7 +145,8 @@ pl_slug_from_title() {
 #
 # Usage: pl_set_status <issue> <new-status>
 #   Where <new-status> is one of:
-#     in-progress, ready-for-qa, in-qa, qa-approved, released, needs-human
+#     in-progress, ready-for-qa, in-qa, qa-approved,
+#     prod-release-blocked, released, needs-human
 pl_set_status() {
   local issue="$1" new_status="status:$2"
   local labels

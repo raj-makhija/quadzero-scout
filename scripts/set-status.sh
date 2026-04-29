@@ -5,7 +5,8 @@
 #   scripts/set-status.sh <ticket> <new-status>
 #
 # Where <new-status> is one of:
-#   in-progress, ready-for-qa, in-qa, qa-approved, released, needs-human
+#   in-progress, ready-for-qa, in-qa, qa-approved,
+#   prod-release-blocked, released, needs-human
 #
 # Removes any other status:* label currently on the issue, then adds
 # status:<new-status>. Idempotent.

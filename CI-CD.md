@@ -41,11 +41,14 @@ they're excluded from the actionable queue until a human resolves them.
 Beyond `develop`, promotion is **human-driven** by design:
 
 - `scripts/qa-deploy.sh <sha>` -> deploy a develop-reachable SHA to QA (frontend via Amplify auto-deploy from qa-branch push, backend via npx serverless deploy --stage qa)
-- `scripts/qa-approve.sh <sha>` -> human verdict after QA testing;
-  advances the `frontier` git tag
+- `scripts/qa-approve.sh <ticket>` -> human verdict after QA testing;
+  marks the ticket `status:qa-approved`, queueing it for the next nightly
+  cherry-pick onto `main`
 - `scripts/qa-reject.sh <sha> <reason> [ticket]` -> bounces back; reopens issue, routes to rework. Ticket inferred from commit message if omitted
-- `scripts/prod-release.sh <SHA>` -> ships to prod (must be at or
-  before the `frontier` tag)
+- `scripts/prod-release.sh` -> nightly batch: cherry-picks every
+  `status:qa-approved` ticket from develop onto main in develop merge
+  order. Per-ticket: clean cherry-pick → ships; conflict → marks
+  `status:prod-release-blocked` and retries next nightly
 
 ---
 
@@ -342,19 +345,22 @@ done
 scripts/qa-deploy.sh <SHA>
 
 # Human tests in QA. If acceptable:
-scripts/qa-approve.sh <SHA>
-# This advances the `frontier` git tag to the QA-approved SHA.
+scripts/qa-approve.sh <TICKET>
+# This sets status:qa-approved on the ticket. The actual ship to
+# main happens in the next nightly cherry-pick batch (01:00 IST).
 
 # If QA finds issues:
 scripts/qa-reject.sh <SHA> "describe what's wrong"
 # This routes the ticket back to rework so the dev agent can fix.
 
-# Ship a frontier-or-earlier SHA to prod
-scripts/prod-release.sh <SHA>
+# Run the nightly batch immediately (no args; finds approved tickets itself)
+scripts/prod-release.sh
 ```
 
-The `frontier` tag is the safety mechanism: prod can only release
-SHAs at or before frontier. This prevents shipping un-QA'd code.
+Each ticket's prod release is its own decision: the nightly batch
+cherry-picks every `status:qa-approved` ticket from develop onto main
+independently. Tickets that conflict get marked `status:prod-release-blocked`
+and retry next nightly. See §5.7 for details.
 
 ### 5.4 Diagnostics & recovery
 
@@ -394,9 +400,9 @@ can be re-fired later.
 | Label | What happens | Param needed |
 |---|---|---|
 | `pipeline:qa-deploy` | Deploy ticket's merge SHA to QA (Amplify auto-deploys frontend; serverless deploys backend) | none — SHA inferred |
-| `pipeline:qa-approve` | Advance `frontier` git tag to merge SHA | none |
+| `pipeline:qa-approve` | Mark ticket `status:qa-approved`; queue for next nightly cherry-pick onto main | none |
 | `pipeline:qa-reject` | Re-open ticket, route to rework with reason | reason — read from latest non-bracket comment |
-| `pipeline:prod-release` | Ship merge SHA to `main` (must be at or before frontier) | none |
+| `pipeline:prod-release` | Breakglass: cherry-pick the ticket onto main immediately (bypasses nightly batch) | none |
 | `pipeline:approve-cost` | Unblock cost-review-pending ticket; post `[cost-approved]` marker; route back to dev-pending | none |
 | `pipeline:reject-cost` | Reject cost change; park at needs-human | reason — from latest comment |
 | `pipeline:retry` | Reset to rework, Attempt=1, clear Base SHA + PR Number | none |
@@ -424,7 +430,7 @@ labels persist forever once created):
 
 ```bash
 gh label create "pipeline:qa-deploy"     --color "0E8A16" --description "Trigger: deploy ticket's merge SHA to QA"
-gh label create "pipeline:qa-approve"    --color "0E8A16" --description "Trigger: advance frontier to merge SHA"
+gh label create "pipeline:qa-approve"    --color "0E8A16" --description "Trigger: mark ticket qa-approved; queue for next nightly cherry-pick"
 gh label create "pipeline:qa-reject"     --color "B60205" --description "Trigger: reject; route to rework. Add a comment with reason first"
 gh label create "pipeline:prod-release"  --color "5319E7" --description "Trigger: release merge SHA to main"
 gh label create "pipeline:approve-cost"  --color "0E8A16" --description "Trigger: unblock cost-review-pending ticket"
@@ -445,7 +451,7 @@ of who triggered what, when, and with what outcome.
 ### 5.6 Status labels (where is each ticket in the lifecycle?)
 
 In addition to the trigger labels above, the pipeline auto-applies one
-of six `status:*` labels to every ticket so you can see at-a-glance
+of seven `status:*` labels to every ticket so you can see at-a-glance
 where every ticket is. Filter the Issues page by `label:status:*` to
 get a queue view for any state.
 
@@ -454,86 +460,118 @@ get a queue view for any state.
 | `status:in-progress` | Autonomous pipeline is working on this ticket (any state from tests-pending through pr-review-pending or rework) | `manager.sh` priming, `merge-pr.sh` stale rework, `qa-reject.sh`, `pipeline:approve-cost`, `pipeline:retry` |
 | `status:ready-for-qa` | Merged to develop, waiting for `pipeline:qa-deploy` | `merge-pr.sh` clean merge |
 | `status:in-qa` | Deployed to QA, waiting on a human verdict (qa-approve or qa-reject) | `pipeline:qa-deploy` success |
-| `status:qa-approved` | QA passed, queued for the next nightly prod release at 01:00 IST | `pipeline:qa-approve` success |
-| `status:released` | Released to prod | `prod-release.sh` (per-ticket bookkeeping) |
+| `status:qa-approved` | QA passed, queued for the next nightly cherry-pick onto main at 01:00 IST | `pipeline:qa-approve` success |
+| `status:prod-release-blocked` | QA approved, but the most recent nightly cherry-pick onto main failed due to conflicts. Retries automatically each nightly until either it cherry-picks clean or the dependency is resolved | `prod-release.sh` on cherry-pick conflict |
+| `status:released` | Successfully cherry-picked onto main and shipped to prod | `prod-release.sh` after successful cherry-pick |
 | `status:needs-human` | Blocked: 3-strike rework escalation, cost-rejected, or manually parked | `manager.sh` 3-strike, `pipeline:park`, `pipeline:reject-cost` |
 
 A ticket carries exactly one `status:*` label at a time; the helper
 `scripts/set-status.sh <ticket> <new-status>` removes the previous one
-when adding the new one.
+when adding the new one. The mutex behavior is what lets
+`status:prod-release-blocked` cleanly transition back to
+`status:released` on a subsequent successful cherry-pick.
 
-**One-time label setup** (six labels — run once when bootstrapping):
+**One-time label setup** (seven labels — run once when bootstrapping):
 
 ```bash
-gh label create "status:in-progress"  --color "1D76DB" --description "Autonomous pipeline is working on this ticket"
-gh label create "status:ready-for-qa" --color "FBCA04" --description "Merged to develop; awaiting pipeline:qa-deploy"
-gh label create "status:in-qa"        --color "FBCA04" --description "Deployed to QA; awaiting human verdict"
-gh label create "status:qa-approved"  --color "0E8A16" --description "QA passed; queued for nightly prod release at 01:00 IST"
-gh label create "status:released"     --color "5319E7" --description "Released to prod"
-gh label create "status:needs-human"  --color "B60205" --description "Blocked; needs human attention"
+gh label create "status:in-progress"           --color "1D76DB" --description "Autonomous pipeline is working on this ticket"
+gh label create "status:ready-for-qa"          --color "FBCA04" --description "Merged to develop; awaiting pipeline:qa-deploy"
+gh label create "status:in-qa"                 --color "FBCA04" --description "Deployed to QA; awaiting human verdict"
+gh label create "status:qa-approved"           --color "0E8A16" --description "QA passed; queued for nightly cherry-pick at 01:00 IST"
+gh label create "status:prod-release-blocked"  --color "B60205" --description "QA approved but cherry-pick onto main is blocked by conflicts; retries nightly"
+gh label create "status:released"              --color "5319E7" --description "Released to prod"
+gh label create "status:needs-human"           --color "B60205" --description "Blocked; needs human attention"
 ```
 
-### 5.7 Nightly batched prod release
+### 5.7 Nightly batched prod release (cherry-pick model)
 
 A scheduled workflow (`.github/workflows/pipeline-nightly-release.yml`)
-runs every day at **01:00 IST** (`30 19 * * *` UTC). It checks the
-`frontier` git tag against the current `main` HEAD:
+runs every day at **01:00 IST** (`30 19 * * *` UTC). It calls
+`scripts/prod-release.sh` with no arguments. The script:
 
-- `frontier == main` → nothing was QA-approved since yesterday's batch; no-op.
-- `frontier > main` → there's QA-approved code waiting; runs
-  `prod-release.sh frontier`. The fast-forward of `main` picks up
-  every commit in one shot. Per-ticket bookkeeping (status:released +
-  comment with release link) happens inside `prod-release.sh`.
+1. Lists all tickets labeled `status:qa-approved` or
+   `status:prod-release-blocked` (and not yet `status:released`).
+2. Resolves each ticket to the merge SHA of its PR on develop.
+3. Sorts that set in **develop merge order, oldest first**, so
+   independent commits get applied in the same sequence they entered
+   the integration branch (minimizes conflicts).
+4. Checks out a fresh `release/YYYY-MM-DD-HHMM` branch off current main.
+5. For each ticket, runs `git cherry-pick <merge-sha>`:
+   - **Clean** → applied to release branch; ticket recorded as released.
+   - **Empty** (commit's diff is already in main, e.g. previously
+     cherry-picked) → skipped via `git cherry-pick --skip`; ticket
+     recorded as released.
+   - **Conflict** → `git cherry-pick --abort`; conflict files
+     captured; ticket recorded as blocked. The script keeps going
+     and tries the next ticket (other tickets may apply clean).
+6. If at least one ticket cherry-picked successfully:
+   fast-forward main → release branch → push → deploy backend → create
+   GitHub Release → comment release URL on every released ticket and
+   set their status to `status:released`.
+7. For every blocked ticket: post an explanatory comment naming the
+   conflict files and set status to `status:prod-release-blocked`.
+8. If nothing cherry-picked, exit cleanly with no main-side change.
+
+**Why cherry-pick instead of fast-forward?** With a linear "advance
+frontier" model, approving a later ticket implicitly approved every
+unapproved ticket sitting underneath it on develop. Cherry-pick decouples
+tickets so each ships only when explicitly approved.
 
 **Manual `pipeline:prod-release` is kept as breakglass** for hotfixes —
 adding the label to a ticket releases it immediately rather than waiting
 for the nightly window.
 
-**Hold a ticket out of the nightly batch**: don't `pipeline:qa-approve`
-it. The `frontier` tag only moves on explicit approval. A `status:in-qa`
-ticket can sit there indefinitely without being released.
+**Hold a ticket out of nightly batches**: don't `pipeline:qa-approve` it.
+A `status:in-qa` ticket sits there indefinitely without being touched by
+the nightly job.
 
-**Atomicity**: each batch is "all-or-nothing." The frontier model is
-monotonic, so if you approve A then B, releasing later means *both* go
-out (B's commit includes everything before it). You can't release A but
-not B if both are QA-approved.
+**The trade-off** of the cherry-pick model: if ticket A's code genuinely
+depends on ticket B's code (B introduces a function, A calls it), and
+you approve A but not B, A's cherry-pick onto main will conflict.
+The pipeline detects this and marks A as `prod-release-blocked` rather
+than silently shipping B. To unblock: approve B too, revert B from
+develop, or refactor A. See §8.8.
 
-### 5.8 Release notes (auto-generated)
+### 5.8 Release notes (built per-ticket)
 
-Every successful prod release — nightly OR manual — creates a GitHub
-Release in the **Releases** tab with auto-generated notes:
+Every prod release that ships at least one ticket creates a GitHub
+Release in the **Releases** tab. Notes are built **manually from the
+ticket list** rather than via `gh release create --generate-notes`,
+because the cherry-pick model breaks the "PRs in commit range" mapping
+that auto-generated notes rely on.
 
 - **Tag**: `release-YYYY-MM-DD-HHMM` UTC (always unique, supports
   multiple releases per day)
 - **Title**: `Production release YYYY-MM-DD HH:MM UTC`
-- **Notes**: pulled by `gh release create --generate-notes`, which lists
-  every PR title between the previous release and this one. Format:
+- **Notes**: built by iterating the released-ticket list. Blocked
+  tickets are also listed (so you see what's stuck this cycle):
 
   ```
   ## What's Changed
-  * feat: add Last Working Day field to candidate screening by @raj-makhija in #74
-  * fix: pricing config null handling in #76
-  * chore: bump zod by ... in #78
-  
-  **Full Changelog**: https://github.com/.../compare/release-...-1900...release-...-1930
+
+  * Add Last Working Day field to candidate screening (#73, PR #74)
+  * Internal Rate -- Look and feel alignment (#78, PR #79)
+
+  ## Blocked tickets (retrying next nightly)
+
+  * Pricing config refactor (#82) -- conflicts: backend/src/lib/pricing.ts
+
+  **Compare**: `<old-main-sha>`...`<new-main-sha>`
   ```
 
-Each affected ticket also gets a comment linking to the release:
+Each released ticket also gets a per-ticket comment linking to the release:
 
 ```
 [/prod-release] Released to prod 2026-04-29 19:30 UTC.
 Release: https://github.com/raj-makhija/quadzero-scout/releases/tag/release-2026-04-29-1930
 ```
 
-**One-time bootstrap**: before the first nightly run, create a
-baseline tag so the first auto-generated notes don't span all of
-git history:
+Each blocked ticket gets a per-ticket comment naming the conflict
+files plus suggested unblock steps (a fresh comment is posted each
+nightly that re-blocks, so the thread shows the history of attempts).
 
-```bash
-gh release create release-bootstrap main \
-  --title "Pre-pipeline baseline" \
-  --notes "Initial baseline. Release notes start tracking after this point."
-```
+The previous `release-bootstrap` tag (used by `--generate-notes`) is
+no longer required. Existing tag is harmless if you keep it.
 
 Find all releases at `https://github.com/raj-makhija/quadzero-scout/releases`.
 
@@ -598,8 +636,8 @@ silently drifting away from the code that's actually running in prod:
 
 2. **Scribe agent** (runs at `pipeline:qa-approve`).
    When you approve a ticket at QA, `pipeline-commands.yml` runs
-   `scripts/scribe.sh <ticket>` after the frontier tag advances. The
-   scribe:
+   `scripts/scribe.sh <ticket>` after the ticket is marked
+   `status:qa-approved`. The scribe:
 
    - Reads the ticket's full thread (including the `[developer:rationale]`
      comment).
@@ -693,6 +731,25 @@ gh api -X PATCH repos/<owner>/<repo> -f default_branch=develop
 The templates under `.github/ISSUE_TEMPLATE/` should set
 `labels: ["type:<type>", "auto-pipeline"]` so users get the right
 labels by default.
+
+### 6.7 Frontier tag retirement (one-time migration)
+
+The legacy fast-forward release model used a `frontier` git tag as
+a QA-approved watermark. The cherry-pick model (§5.7) uses per-ticket
+labels instead, so the tag is no longer load-bearing. After the
+migration commit lands, retire the tag once:
+
+```bash
+git fetch origin --tags
+git tag -d frontier 2>/dev/null
+git push origin :refs/tags/frontier
+```
+
+Tickets currently in `status:qa-approved` or
+`status:prod-release-blocked` get processed by the next nightly under
+the new model — no manual replay needed. The legacy `release-bootstrap`
+tag (used by the deprecated `--generate-notes` path) is harmless if
+left in place.
 
 ---
 
@@ -880,6 +937,46 @@ The bash sandbox's view of the Windows-mounted `.git` can corrupt:
 the bash sandbox.** Do all git work from Git Bash on Windows where
 the .git state is healthy.
 
+### 8.8 Cherry-pick conflict at nightly batch
+
+Symptom: a ticket has `status:prod-release-blocked` and a comment from
+`[/prod-release] BLOCKED at nightly batch ...` listing conflict files.
+
+What happened: at the most recent nightly run, `prod-release.sh` tried
+to cherry-pick this ticket's merge commit onto main, and `git
+cherry-pick` reported a conflict in one or more files. The script
+aborted that pick (no main-side change), recorded the ticket as blocked,
+and moved on to the next candidate. The ticket will be retried
+automatically each nightly until it succeeds or you intervene.
+
+Diagnose: open the ticket. The comment lists conflict files. The
+likely cause is one of:
+
+- An earlier ticket sitting underneath this one on develop hasn't been
+  approved yet and isn't in main. This ticket's diff was written on
+  top of that earlier change, so applying it cleanly to main requires
+  the earlier change too.
+- A change was merged directly to main (e.g. a hotfix) that touches
+  the same files this ticket modifies.
+- This ticket genuinely conflicts with another approved ticket
+  in the same batch (rare; both typically apply, but conflicting line
+  edits in the same hunks won't).
+
+Unblock options:
+
+| Option | When | How |
+|---|---|---|
+| Approve the dependency | The blocking ticket is in `status:in-qa` and you'd ship it anyway | Test it, label `pipeline:qa-approve`. Both ship together at next nightly. |
+| Revert the dependency from develop | The blocking ticket needs more work and shouldn't ship yet | `git revert <merge-sha-of-dependency>`, push to develop, set the dependency back to `status:in-progress`. The blocked ticket will then cherry-pick clean. |
+| Refactor this ticket | The dependency is structural and can be removed | Add `pipeline:retry` label to send the ticket back through dev. The agent gets the conflict context in its prompt and can refactor. |
+| Manual cherry-pick + push to main | Edge case; you understand the conflict and resolve it locally | `git checkout main; git cherry-pick <sha>; <resolve>; git cherry-pick --continue; git push`. Then manually set `status:released` on the ticket. |
+
+Edge case: a ticket that was successfully cherry-picked then later
+qa-rejected. The cherry-pick is on main; reverting requires a manual
+`git revert` on main and a follow-up redeploy. There's no automatic
+flow for this — qa-reject is intended for tickets still in QA, not
+already-shipped ones.
+
 ---
 
 ## 9. Empirical performance & cost
@@ -1000,9 +1097,9 @@ scripts/
   dummy-developer.sh          # developer agent
   dummy-pr-reviewer.sh        # pr-reviewer agent
   qa-deploy.sh                # human: deploy develop tip to QA
-  qa-approve.sh               # human: advance frontier
+  qa-approve.sh               # human: mark ticket qa-approved (queues for nightly)
   qa-reject.sh                # human: bounce back to rework
-  prod-release.sh             # human: release SHA <= frontier to prod
+  prod-release.sh             # nightly: cherry-pick all qa-approved tickets to main
   setup-pipeline.sh           # bootstrap orchestrator
 .pipeline-config.json         # opaque GraphQL IDs
 CLAUDE.md                     # project-wide standards (auto-loaded by claude)

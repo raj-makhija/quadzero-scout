@@ -138,18 +138,18 @@ jobs:
               ;;
 
             pipeline:qa-approve)
-              SHA="$(merge_sha_for_ticket)"
-              [[ -z "$SHA" ]] && finish_error "[/qa-approve] no merge SHA found for #$TICKET"
-              if scripts/qa-approve.sh "$SHA"; then
-                scripts/set-status.sh "$TICKET" qa-approved
+              # qa-approve.sh now takes a ticket number, not a SHA. It's
+              # a thin marker -- sets status:qa-approved. The actual
+              # cherry-pick onto main happens at the nightly batch.
+              if scripts/qa-approve.sh "$TICKET"; then
                 # Run the scribe agent to capture doc impact. Best-effort:
-                # any failure is logged on the ticket but does NOT block QA
-                # approval -- the frontier has already advanced.
+                # any failure is logged on the ticket but does NOT block
+                # the approval (which has already happened).
                 CLAUDE_CODE_OAUTH_TOKEN="${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}" \
                   scripts/scribe.sh "$TICKET" || true
-                finish_success "[/qa-approve] OK -- frontier advanced to \`$SHA\` by @$ACTOR. Queued for nightly prod release at 01:00 IST."
+                finish_success "[/qa-approve] OK -- @$ACTOR approved #$TICKET. Queued for nightly cherry-pick onto main at 01:00 IST. If the cherry-pick conflicts (e.g. depends on an earlier unapproved ticket), the ticket will be marked \`status:prod-release-blocked\` with details."
               else
-                finish_error "[/qa-approve] FAIL -- qa-approve errored. Check workflow logs (likely the SHA is behind current frontier; use PIPELINE_FORCE=1 to override)."
+                finish_error "[/qa-approve] FAIL -- qa-approve errored. Check workflow logs (likely the ticket has no merged PR yet)."
               fi
               ;;
 
