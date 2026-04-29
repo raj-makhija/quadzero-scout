@@ -275,6 +275,7 @@ export default function LocateProfilePage() {
   const [loadingRecent, setLoadingRecent] = useState(true);
   const [recentPagination, setRecentPagination] = useState<{ hasMore: boolean; lastKey?: string }>({ hasMore: false });
   const [loadingMoreRecent, setLoadingMoreRecent] = useState(false);
+  const [recentTotal, setRecentTotal] = useState<number | null>(null);
 
   // Filter state
   const [filtersExpanded, setFiltersExpanded] = useState(persisted?.filtersExpanded ?? false);
@@ -332,6 +333,9 @@ export default function LocateProfilePage() {
             hasMore: res.pagination?.hasMore ?? false,
             lastKey: res.pagination?.lastEvaluatedKey,
           });
+          if (res.pagination?.totalCount !== undefined) {
+            setRecentTotal(res.pagination.totalCount);
+          }
         }
       } catch (err) {
         if (!cancelled) {
@@ -904,7 +908,7 @@ export default function LocateProfilePage() {
               <div className="flex items-center justify-between mb-3">
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   {mode === 'recent'
-                    ? `Recently updated profiles (${displayProfiles.length})`
+                    ? `${recentTotal !== null ? recentTotal : displayProfiles.length} profile${(recentTotal ?? displayProfiles.length) !== 1 ? 's' : ''} in database`
                     : `${displayProfiles.length} candidate${displayProfiles.length !== 1 ? 's' : ''} match your filters`}
                 </p>
                 <div className="flex items-center gap-2">
