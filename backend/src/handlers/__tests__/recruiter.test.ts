@@ -506,6 +506,66 @@ describe('POST /recruiter/search', () => {
     expect(ids).toContain('cand_contract');
     expect(ids).not.toContain('cand_fulltime');
   });
+
+  // TC-SEARCH-CTC: over-budget candidates appear lower in sort order than in-budget candidates
+  it('over-budget candidate ranks below otherwise-identical in-budget candidate', async () => {
+    const { searchCandidates } = await import('../../lib/dynamodb.js');
+    // mockReset clears any unconsumed one-time mocks left by prior tests (pre-existing cache issue)
+    vi.mocked(searchCandidates).mockReset();
+    const sharedBase = {
+      user_id: 'user_x',
+      primary_skills: ['react', 'nodejs'],
+      primary_skill_years: { react: 4, nodejs: 3 },
+      secondary_skills: [],
+      total_experience: 6,
+      seniority: 'senior',
+      availability: 'immediate',
+      engagement_model: 'either',
+      industries: [],
+      roles: [],
+      experience_bucket: '6-10',
+      resume_s3_key: 'resumes/x.pdf',
+      created_at: '2024-01-10T00:00:00Z',
+      last_updated: '2024-01-15T00:00:00Z',
+    };
+    vi.mocked(searchCandidates).mockResolvedValueOnce({
+      items: [
+        {
+          ...sharedBase,
+          candidate_id: 'cand_over_budget',
+          full_name: 'Over Budget',
+          email: 'over@example.com',
+          expected_ctc: 60, // 2× the 30 LPA budget
+        },
+        {
+          ...sharedBase,
+          candidate_id: 'cand_in_budget',
+          full_name: 'In Budget',
+          email: 'in@example.com',
+          expected_ctc: 20, // within budget
+        },
+      ],
+      lastKey: undefined,
+    });
+
+    const event = makeEvent({
+      body: JSON.stringify({
+        criteria: { mustHaveSkills: ['react', 'nodejs'], maxBudgetLpa: 30 },
+        sortBy: 'matchScore',
+      }),
+    });
+    const result = await searchHandler(event);
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    const ranked = body.data.candidates.map((c: { candidateId: string }) => c.candidateId);
+    // In-budget candidate should appear first (higher score)
+    expect(ranked.indexOf('cand_in_budget')).toBeLessThan(ranked.indexOf('cand_over_budget'));
+    // Verify over-budget candidate has a strictly lower matchScore
+    const inBudgetScore = body.data.candidates.find((c: { candidateId: string }) => c.candidateId === 'cand_in_budget').matchScore;
+    const overBudgetScore = body.data.candidates.find((c: { candidateId: string }) => c.candidateId === 'cand_over_budget').matchScore;
+    expect(overBudgetScore).toBeLessThan(inBudgetScore);
+  });
 });
 
 // ---------------------------------------------------------------------------
