@@ -128,6 +128,7 @@ quadzero-scout/
 - **Database:** DynamoDB
 - **Storage:** S3
 - **AI:** Claude (Anthropic) / GPT-4 (OpenAI)
+- **Pipeline model tiering:** CI agents run on tiered Claude models — tester and developer-attempt-1 use Sonnet, developer-rework (attempt ≥ 2) uses Opus, pr-reviewer and scribe use Haiku. See [CI-CD.md §2.1.1](CI-CD.md#211-model-tiering) for the canonical table and rationale.
 - **Infrastructure:** Serverless Framework
 
 ## API Endpoints
