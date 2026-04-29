@@ -1882,6 +1882,37 @@ export async function getRecentProfiles(
   };
 }
 
+export async function getTotalProfileCount(): Promise<number> {
+  let total = 0;
+  let lastKey: Record<string, unknown> | undefined;
+
+  do {
+    const params: {
+      TableName: string;
+      IndexName: string;
+      KeyConditionExpression: string;
+      ExpressionAttributeNames: Record<string, string>;
+      ExpressionAttributeValues: Record<string, unknown>;
+      Select: 'COUNT';
+      ExclusiveStartKey?: Record<string, unknown>;
+    } = {
+      TableName: config.dynamodb.talentProfilesTable,
+      IndexName: 'RecentProfilesIndex',
+      KeyConditionExpression: '#type = :type',
+      ExpressionAttributeNames: { '#type': '_type' },
+      ExpressionAttributeValues: { ':type': 'PROFILE' },
+      Select: 'COUNT',
+      ExclusiveStartKey: lastKey,
+    };
+
+    const result = await docClient.send(new QueryCommand(params));
+    total += result.Count ?? 0;
+    lastKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (lastKey);
+
+  return total;
+}
+
 // ─── Audit Log Operations ───────────────────────────────────────────────────
 
 function toAuditLogEntry(item: AuditLogItem): AuditLogEntry {

@@ -139,7 +139,7 @@ describe('LocateProfilePage', () => {
       data: { user: { role: 'recruiter', isInternal: true } },
       status: 'authenticated' as const,
     });
-    mockListRecentProfiles.mockResolvedValue({ profiles: mockRecentProfiles, pagination: { count: 2, hasMore: false } });
+    mockListRecentProfiles.mockResolvedValue({ profiles: mockRecentProfiles, pagination: { count: 2, hasMore: false, totalCount: 50 } });
     mockSearchCandidates.mockResolvedValue(mockSearchResponse);
     mockSearchCandidatesByName.mockResolvedValue({ candidates: mockRecentProfiles });
     mockGetBenchList.mockResolvedValue({
@@ -182,6 +182,14 @@ describe('LocateProfilePage', () => {
     });
 
     expect(mockListRecentProfiles).toHaveBeenCalledWith(50);
+  });
+
+  it('shows total DB count in counter not the loaded page count', async () => {
+    render(<LocateProfilePage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('50 profiles in database')).toBeInTheDocument();
+    });
   });
 
   it('shows loading skeleton while fetching recent profiles', () => {
