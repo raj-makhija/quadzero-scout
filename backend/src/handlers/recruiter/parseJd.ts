@@ -4,6 +4,7 @@ import { validate, formatZodErrors, ParseJdRequestSchema } from '../../lib/valid
 import { parseJobDescription } from '../../lib/llm/index.js';
 import { withOptionalAuth, type OptionalAuthEvent } from '../../lib/auth.js';
 import type { ParseJdResponse } from '../../types/index.js';
+import { normalizeLocation } from '../../lib/locationNormalizer.js';
 
 async function handleRequest(
   event: OptionalAuthEvent
@@ -49,8 +50,11 @@ async function handleRequest(
       );
     }
 
+    const parsedCriteria = parseResult.output as ParseJdResponse['parsedCriteria'];
+    parsedCriteria.location = normalizeLocation(parsedCriteria.location) ?? null;
+
     const response: ParseJdResponse = {
-      parsedCriteria: parseResult.output as ParseJdResponse['parsedCriteria'],
+      parsedCriteria,
       confidence: parseResult.confidence,
       suggestions: parseResult.suggestions,
     };

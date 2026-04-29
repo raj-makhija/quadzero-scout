@@ -5,7 +5,7 @@ You MUST respond with valid JSON matching this exact schema:
 "fullName": "string - candidate's full name",
 "email": "string or null - email address",
 "phone": "string or null - phone number",
-"location": "string or null - city and country",
+"location": "string or null - city name only, no country",
 "primarySkills": ["array of main technical skills, lowercase"],
 "primarySkillYears": {"skill": years_as_number},
 "secondarySkills": ["array of secondary or soft skills, lowercase"],

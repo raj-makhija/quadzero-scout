@@ -16,7 +16,7 @@ You MUST respond with valid JSON matching this exact schema. Do NOT include any 
   "maxExperience": integer or null - maximum years if specified,
   "seniority": ["array of acceptable levels: intern, junior, mid, senior, lead, principal, executive"],
   "availability": ["array of acceptable notice periods: immediate, 1_week, 2_weeks, 1_month, 2_months, 3_months, negotiable"],
-  "location": "string or null - location requirement",
+  "location": "string or null - city name only, no country",
   "remote": boolean - whether remote work is explicitly allowed,
   "industries": ["array of preferred/required industries"],
   "roles": ["array of relevant job titles for this position"],
@@ -74,7 +74,7 @@ Based on title and experience requirements:
 ### Location & Remote
 - If "remote" mentioned → remote: true
 - If "hybrid" mentioned → remote: true (partial remote)
-- If specific city/country mentioned → location: "City, Country"
+- If specific city/country mentioned → location: "City" (city name only, no country)
 - If "onsite only" → remote: false
 - If no mention → remote: false, location: null
 
@@ -126,7 +126,7 @@ Job Description:
   "maxExperience": null,
   "seniority": ["senior", "lead"],
   "availability": ["immediate", "1_week", "2_weeks"],
-  "location": "Bangalore, India",
+  "location": "Bangalore",
   "remote": true,
   "industries": ["fintech", "saas"],
   "roles": ["Full Stack Developer", "Senior Software Engineer", "Backend Developer"],
