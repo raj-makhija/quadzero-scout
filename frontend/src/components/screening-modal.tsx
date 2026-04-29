@@ -728,17 +728,30 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                     touched={submitAttempted}
                     error={submitAttempted && !notInterested && !lastWorkingDay && !stillOnJob ? 'Required' : undefined}
                   >
-                    <FormInput
-                      id="lastWorkingDay"
-                      type="date"
-                      value={lastWorkingDay}
-                      onChange={(e) => {
-                        setLastWorkingDay(e.target.value);
-                        if (e.target.value) setStillOnJob(false);
-                      }}
-                      disabled={stillOnJob}
-                      hasError={submitAttempted && !notInterested && !lastWorkingDay && !stillOnJob}
-                    />
+                    <div className="flex items-center gap-2">
+                      <FormInput
+                        id="lastWorkingDay"
+                        type="date"
+                        value={lastWorkingDay}
+                        onChange={(e) => {
+                          setLastWorkingDay(e.target.value);
+                          if (e.target.value) setStillOnJob(false);
+                        }}
+                        disabled={stillOnJob}
+                        hasError={submitAttempted && !notInterested && !lastWorkingDay && !stillOnJob}
+                        className="flex-1"
+                      />
+                      {lastWorkingDay && (
+                        <button
+                          type="button"
+                          onClick={() => setLastWorkingDay('')}
+                          className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-700 flex-shrink-0"
+                          title="Clear date"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
                   </FormField>
                   <div className="pb-1">
                     <label className="flex items-start gap-2 cursor-pointer select-none">
