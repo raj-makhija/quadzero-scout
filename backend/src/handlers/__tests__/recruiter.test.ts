@@ -595,8 +595,7 @@ describe('POST /recruiter/search', () => {
   });
 
   // TC-SEARCH-CTC: over-budget candidates appear lower in sort order than in-budget candidates
-  // Skipped: proportional CTC penalty feature (#98) not yet on this branch
-  it.skip('over-budget candidate ranks below otherwise-identical in-budget candidate', async () => {
+  it('over-budget candidate ranks below otherwise-identical in-budget candidate', async () => {
     const { searchCandidates } = await import('../../lib/dynamodb.js');
     // mockReset clears any unconsumed one-time mocks left by prior tests (pre-existing cache issue)
     vi.mocked(searchCandidates).mockReset();
