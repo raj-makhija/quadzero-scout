@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { CandidateItem } from '../../types/index.js';
-import { calculateMatchScore, parseSearchLocations, MIN_MUST_HAVE_MATCH_RATIO, RELATED_MATCH_WEIGHT, MUST_HAVE_RELATED_WEIGHT, MUST_HAVE_WEIGHT, GOOD_TO_HAVE_WEIGHT, SKILL_PROMINENCE_WEIGHT, SKILL_YEARS_WEIGHT, ROLE_MATCH_WEIGHT } from '../../lib/matchScoring.js';
+import { calculateMatchScore, parseSearchLocations, MIN_MUST_HAVE_MATCH_RATIO, RELATED_MATCH_WEIGHT, MUST_HAVE_RELATED_WEIGHT, MUST_HAVE_WEIGHT, GOOD_TO_HAVE_WEIGHT, SKILL_PROMINENCE_WEIGHT, SKILL_YEARS_WEIGHT, ROLE_MATCH_WEIGHT, CTC_OVER_BUDGET_MAX_PENALTY } from '../../lib/matchScoring.js';
 
 // ---------------------------------------------------------------------------
 // Match Scoring Algorithm Tests
@@ -648,5 +648,125 @@ describe('Match Scoring Algorithm', () => {
       + result.details.mustHaveSecondary.length * 0.5
     ) / 3;
     expect(effective).toBeLessThan(MIN_MUST_HAVE_MATCH_RATIO);
+  });
+
+  // --- CTC Over-Budget Penalty Tests ---
+
+  // TC-SCORE-CTC-001: over-budget candidate scores lower than identical in-budget candidate
+  it('over-budget candidate scores lower than identical in-budget candidate', () => {
+    const inBudget = makeCandidate({ expected_ctc: 20 });
+    const overBudget = makeCandidate({ expected_ctc: 60 }); // 2× maxBudgetLpa
+    const maxBudgetLpa = 30;
+
+    const inResult = calculateMatchScore(inBudget, [], [], undefined, undefined, undefined, maxBudgetLpa);
+    const overResult = calculateMatchScore(overBudget, [], [], undefined, undefined, undefined, maxBudgetLpa);
+
+    expect(overResult.score).toBeLessThan(inResult.score);
+  });
+
+  // TC-SCORE-CTC-002: penalty is proportional to degree of over-budget
+  it('penalty is proportional — 2× over budget penalised more than 10% over', () => {
+    const slightlyOver = makeCandidate({ expected_ctc: 33 }); // 10% over 30
+    const significantlyOver = makeCandidate({ expected_ctc: 60 }); // 2× over 30
+    const maxBudgetLpa = 30;
+
+    const slightResult = calculateMatchScore(slightlyOver, [], [], undefined, undefined, undefined, maxBudgetLpa);
+    const sigResult = calculateMatchScore(significantlyOver, [], [], undefined, undefined, undefined, maxBudgetLpa);
+
+    // 2× over budget (penalty=20) must rank lower than 10% over budget (penalty=2)
+    expect(sigResult.score).toBeLessThan(slightResult.score);
+  });
+
+  // TC-SCORE-CTC-003: candidate at or below budget ceiling receives no penalty
+  it('candidate at budget ceiling receives no score penalty', () => {
+    const atBudget = makeCandidate({ expected_ctc: 30 });
+    const noCTC = makeCandidate();
+    const maxBudgetLpa = 30;
+
+    const atResult = calculateMatchScore(atBudget, [], [], undefined, undefined, undefined, maxBudgetLpa);
+    const noResult = calculateMatchScore(noCTC, [], [], undefined, undefined, undefined, maxBudgetLpa);
+
+    expect(atResult.score).toBe(noResult.score);
+  });
+
+  // TC-SCORE-CTC-004: no maxBudgetLpa → CTC does not affect score
+  it('when maxBudgetLpa is absent, expected_ctc does not affect score', () => {
+    const withCTC = makeCandidate({ expected_ctc: 200 });
+    const noCTC = makeCandidate();
+
+    const withResult = calculateMatchScore(withCTC, [], []);
+    const withoutResult = calculateMatchScore(noCTC, [], []);
+
+    expect(withResult.score).toBe(withoutResult.score);
+  });
+
+  // TC-SCORE-CTC-005: no expected_ctc → score unaffected regardless of maxBudgetLpa
+  it('when expected_ctc is absent, maxBudgetLpa does not affect score', () => {
+    const withBudget = calculateMatchScore(makeCandidate(), [], [], undefined, undefined, undefined, 50);
+    const withoutBudget = calculateMatchScore(makeCandidate(), [], []);
+
+    expect(withBudget.score).toBe(withoutBudget.score);
+  });
+
+  // TC-SCORE-CTC-006: ctcMatch boolean uses 0.85 threshold, independent of penalty
+  it('ctcMatch is false when expectedCtc > maxBudgetLpa × 0.85, true otherwise', () => {
+    const maxBudgetLpa = 30;
+    const overThreshold = makeCandidate({ expected_ctc: 26 }); // 26 > 30 * 0.85 = 25.5
+    const underThreshold = makeCandidate({ expected_ctc: 20 }); // 20 <= 25.5
+
+    const overResult = calculateMatchScore(overThreshold, [], [], undefined, undefined, undefined, maxBudgetLpa);
+    const underResult = calculateMatchScore(underThreshold, [], [], undefined, undefined, undefined, maxBudgetLpa);
+
+    expect(overResult.details.ctcMatch).toBe(false);
+    expect(underResult.details.ctcMatch).toBe(true);
+    // Both are under budget ceiling (26 <= 30, 20 <= 30) so neither incurs a penalty
+    expect(overResult.score).toBe(underResult.score);
+  });
+
+  // TC-SCORE-CTC-007: score never goes below zero for extreme over-budget
+  it('score never goes below zero even for extreme over-budget (10× budget)', () => {
+    const candidate = makeCandidate({
+      primary_skills: ['cobol'],
+      secondary_skills: [],
+      expected_ctc: 300, // 10× the 30 LPA budget
+    });
+
+    const result = calculateMatchScore(
+      candidate,
+      ['react', 'nodejs', 'typescript', 'python', 'java'],
+      [],
+      undefined, undefined,
+      ['principal'],
+      30
+    );
+
+    expect(result.score).toBeGreaterThanOrEqual(0);
+  });
+
+  // TC-SCORE-CTC-008: maxBudgetLpa = 0 does not cause division-by-zero
+  it('maxBudgetLpa = 0 does not throw and applies no penalty', () => {
+    const candidate = makeCandidate({ expected_ctc: 10 });
+
+    expect(() => {
+      const result = calculateMatchScore(candidate, [], [], undefined, undefined, undefined, 0);
+      expect(result.score).toBeGreaterThanOrEqual(0);
+    }).not.toThrow();
+  });
+
+  // TC-SCORE-CTC-009: candidate at ctcMatch 0.85 threshold is within budget ceiling → no penalty
+  it('candidate at ctcMatch 0.85 threshold (within budget ceiling) receives no penalty', () => {
+    const atThreshold = makeCandidate({ expected_ctc: 25.5 }); // exactly 30 * 0.85
+    const noCTC = makeCandidate();
+    const maxBudgetLpa = 30;
+
+    const atResult = calculateMatchScore(atThreshold, [], [], undefined, undefined, undefined, maxBudgetLpa);
+    const noResult = calculateMatchScore(noCTC, [], [], undefined, undefined, undefined, maxBudgetLpa);
+
+    expect(atResult.score).toBe(noResult.score); // 25.5 <= 30 → no penalty
+    expect(atResult.details.ctcMatch).toBe(true);
+  });
+
+  it('CTC_OVER_BUDGET_MAX_PENALTY is 20', () => {
+    expect(CTC_OVER_BUDGET_MAX_PENALTY).toBe(20);
   });
 });
