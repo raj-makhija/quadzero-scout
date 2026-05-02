@@ -1162,7 +1162,7 @@ export default function RecruiterSearchPage() {
                           {isAuthenticated ? candidate.fullName : `Candidate #${index + 1}`}
                         </h3>
                         <span className={`badge ${getMatchScoreBgColor(candidate.matchScore)} ${getMatchScoreColor(candidate.matchScore)}`}>
-                          {candidate.matchScore}% Match
+                          {Math.min(100, candidate.matchScore)}% Match
                         </span>
                         {isAuthenticated && (() => {
                           const status = getScreeningStatus(candidate.lastScreenedAt, candidate.notInterested);
