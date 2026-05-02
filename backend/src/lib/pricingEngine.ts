@@ -9,7 +9,6 @@ import type {
 
 const HOURS_PER_MONTH = 160;
 const LAKHS = 100_000;
-const GST_RATE = 0.18;
 
 export function getExperienceBand(years: number): PricingExperienceBand {
   if (years <= 4) return 'junior';
@@ -131,10 +130,11 @@ export function calculatePricing(
   // When the client rate is inclusive of GST, deduct GST from the budget
   // before running budget optimization so margins are computed on the
   // GST-exclusive amount.
+  const gstRate = config.gstRatePct ?? 0.18;
   const effectiveInput = { ...input };
   if (input.isRateGstInclusive && input.clientBudgetMinHourly != null && input.clientBudgetMaxHourly != null) {
-    effectiveInput.clientBudgetMinHourly = input.clientBudgetMinHourly / (1 + GST_RATE);
-    effectiveInput.clientBudgetMaxHourly = input.clientBudgetMaxHourly / (1 + GST_RATE);
+    effectiveInput.clientBudgetMinHourly = input.clientBudgetMinHourly / (1 + gstRate);
+    effectiveInput.clientBudgetMaxHourly = input.clientBudgetMaxHourly / (1 + gstRate);
   }
 
   const budgetOptimization = applyBudgetOptimization(
@@ -206,6 +206,7 @@ export function calculatePricing(
     finalContribution,
     finalEffectiveMarkupPct,
     isRateGstInclusive: input.isRateGstInclusive ?? false,
+    gstRatePct: gstRate,
   };
 }
 

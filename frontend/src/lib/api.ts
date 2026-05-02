@@ -1381,6 +1381,7 @@ export interface PricingConfig {
   contractDurationDiscount?: {
     thresholds: ContractDurationThreshold[];
   };
+  gstRatePct?: number;
 }
 
 export interface PricingInput {
@@ -1440,6 +1441,7 @@ export interface PricingOutput {
   finalContribution: number;
   finalEffectiveMarkupPct: number;
   isRateGstInclusive?: boolean;
+  gstRatePct?: number;
 }
 
 // Requirement Matching types
