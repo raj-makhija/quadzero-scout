@@ -11,6 +11,7 @@ import {
   CheckSquare,
   Square,
   History,
+  X,
 } from 'lucide-react';
 import type { PipelineCandidateView } from '@/lib/api';
 import { api } from '@/lib/api';
@@ -59,6 +60,7 @@ export function PipelineCandidateCard({
   const [feedbackMode, setFeedbackMode] = useState<'client' | 'interview'>('client');
   const [interviewOpen, setInterviewOpen] = useState(false);
   const [advancingToOffer, setAdvancingToOffer] = useState(false);
+  const [removing, setRemoving] = useState(false);
 
   const stage = candidate.pipelineStage;
   const dotColor = STAGE_DOT_COLORS[stage] || 'bg-gray-400';
@@ -68,6 +70,19 @@ export function PipelineCandidateCard({
   const daysSinceStageEntry = candidate.stageEnteredAt
     ? Math.floor((Date.now() - new Date(candidate.stageEnteredAt).getTime()) / (1000 * 60 * 60 * 24))
     : null;
+
+  const handleRemove = async () => {
+    try {
+      setRemoving(true);
+      await api.markNotSuitable(requirementId, candidate.candidateId);
+      toast({ variant: 'success', title: 'Candidate moved to Not Suitable' });
+      if (onStageChange) onStageChange(candidate.candidateId, 'not_suitable');
+      else onRefresh();
+    } catch {
+      toast({ variant: 'error', title: 'Failed to remove candidate' });
+      setRemoving(false);
+    }
+  };
 
   const handleAdvanceToOffer = async () => {
     try {
@@ -89,11 +104,22 @@ export function PipelineCandidateCard({
 
     switch (stage) {
       case 'shortlisted':
-        return onSubmitToClient ? (
-          <button onClick={onSubmitToClient} className={`${pillBase} bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50`}>
-            <Send className="h-3 w-3" /> Submit
-          </button>
-        ) : null;
+        return (
+          <>
+            {onSubmitToClient && (
+              <button onClick={onSubmitToClient} className={`${pillBase} bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50`}>
+                <Send className="h-3 w-3" /> Submit
+              </button>
+            )}
+            <button
+              onClick={handleRemove}
+              disabled={removing}
+              className={`${pillBase} bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 disabled:opacity-50`}
+            >
+              <X className="h-3 w-3" /> {removing ? 'Removing…' : 'Remove'}
+            </button>
+          </>
+        );
       case 'submitted_to_client':
         return (
           <button onClick={() => { setFeedbackMode('client'); setFeedbackOpen(true); }} className={`${pillBase} bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50`}>
