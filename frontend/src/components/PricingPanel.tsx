@@ -65,6 +65,7 @@ export function PricingPanel({
   const [savedCtc, setSavedCtc] = useState<number | null>(null);
 
   const effectiveExpectedCtc = savedCtc ?? candidateExpectedCtcLpa;
+  const isFullTimeRegular = engagementModel === 'full_time_regular';
 
   const handleCalculate = useCallback(async (expectedCtcOverride?: number) => {
     const ctcToUse = expectedCtcOverride ?? effectiveExpectedCtc;
@@ -108,19 +109,21 @@ export function PricingPanel({
   const [autoCalcPending, setAutoCalcPending] = useState(false);
   useEffect(() => {
     if (autoCalcPending && savedCtc != null) {
-      handleCalculate(savedCtc);
+      if (!isFullTimeRegular) {
+        handleCalculate(savedCtc);
+      }
       setAutoCalcPending(false);
     }
-  }, [autoCalcPending, savedCtc, handleCalculate]);
+  }, [autoCalcPending, savedCtc, handleCalculate, isFullTimeRegular]);
 
   // Auto-calculate on mount when requirement context is provided and CTC is available
   const autoCalcOnMountDone = useRef(false);
   useEffect(() => {
-    if (requirementContext && effectiveExpectedCtc != null && !autoCalcOnMountDone.current && !result) {
+    if (!isFullTimeRegular && requirementContext && effectiveExpectedCtc != null && !autoCalcOnMountDone.current && !result) {
       autoCalcOnMountDone.current = true;
       handleCalculate();
     }
-  }, [requirementContext, effectiveExpectedCtc, handleCalculate, result]);
+  }, [isFullTimeRegular, requirementContext, effectiveExpectedCtc, handleCalculate, result]);
 
   const handleSaveCtc = async () => {
     if (!candidateId) return;
@@ -154,6 +157,77 @@ export function PricingPanel({
       setSavingCtc(false);
     }
   };
+
+  // Full Time Regular: show expected CTC only — no rate calculator
+  if (isFullTimeRegular) {
+    if (effectiveExpectedCtc == null) {
+      if (isInternalRecruiter && candidateId) {
+        return (
+          <div>
+            <h3 className="font-medium text-gray-900 dark:text-gray-100 mb-2">Expected CTC</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+              CTC not on record. Enter to save for this candidate.
+            </p>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Current CTC (LPA)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={500}
+                  step="0.1"
+                  placeholder="Optional"
+                  value={ctcCurrentInput}
+                  onChange={(e) => setCtcCurrentInput(e.target.value)}
+                  className="w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Expected CTC (LPA) *</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={500}
+                  step="0.1"
+                  placeholder="Required"
+                  value={ctcExpectedInput}
+                  onChange={(e) => setCtcExpectedInput(e.target.value)}
+                  className="w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                />
+              </div>
+            </div>
+            {ctcError && (
+              <p className="mb-2 text-sm text-red-600 dark:text-red-400">{ctcError}</p>
+            )}
+            <button
+              onClick={handleSaveCtc}
+              disabled={savingCtc}
+              className="btn-primary w-full text-sm py-2"
+            >
+              {savingCtc ? 'Saving...' : 'Save CTC'}
+            </button>
+          </div>
+        );
+      }
+      return (
+        <div>
+          <h3 className="font-medium text-gray-900 dark:text-gray-100 mb-2">Expected CTC</h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Not specified</p>
+        </div>
+      );
+    }
+    return (
+      <div>
+        <h3 className="font-medium text-gray-900 dark:text-gray-100 mb-4">Expected CTC</h3>
+        <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-center">
+          <div className="text-2xl font-bold text-green-700 dark:text-green-300">
+            {effectiveExpectedCtc} LPA
+          </div>
+          <div className="text-xs text-green-600 dark:text-green-400 mt-1">From latest screening</div>
+        </div>
+      </div>
+    );
+  }
 
   // Show CTC input form for internal recruiters when CTC is missing
   if (effectiveExpectedCtc == null) {
