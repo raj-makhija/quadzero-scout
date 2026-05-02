@@ -81,6 +81,11 @@ jobs:
           npm install -g @anthropic-ai/claude-code
           claude --version
 
+      - name: Validate ticket types (flag tickets missing type:* before drain)
+        env:
+          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+        run: scripts/validate-ticket-types.sh
+
       - name: Drain the queue
         env:
           GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
@@ -89,8 +94,12 @@ jobs:
           PIPELINE_PR_REVIEWER_AGENT: claude
           PIPELINE_TESTER_AGENT: claude
           PIPELINE_MAX_ATTEMPTS: '3'
+          PIPELINE_MAX_STRIKES: '3'
+          GH_RUN_ID: ${{ github.run_id }}
         run: |
-          set -euo pipefail
+          # Note: pipefail off so a per-ticket manager.sh failure doesn't
+          # bail the whole drain (the strike system below handles it).
+          set -uo pipefail
 
           if [[ -n "${{ inputs.ticket }}" ]]; then
             echo "manager: single-step on requested ticket #${{ inputs.ticket }}"
@@ -98,13 +107,35 @@ jobs:
             exit 0
           fi
 
+          # Tickets struck during this drain are excluded from subsequent
+          # iterations -- otherwise next-ticket.sh keeps returning the
+          # same failed ticket and we'd burn 25 strikes on it in one drain.
+          # Cron retry semantics: one strike per cron tick, max.
+          STRUCK_THIS_DRAIN=""
+
           for i in $(seq 1 25); do
-            NEXT="$(scripts/next-ticket.sh | head -1 | awk '{print $1}' || true)"
+            if [[ -n "$STRUCK_THIS_DRAIN" ]]; then
+              NEXT="$(scripts/next-ticket.sh | grep -vE "^($STRUCK_THIS_DRAIN)\b" | head -1 | awk '{print $1}' || true)"
+            else
+              NEXT="$(scripts/next-ticket.sh | head -1 | awk '{print $1}' || true)"
+            fi
+
             if [[ -z "$NEXT" ]]; then
               echo "manager: queue drained after $((i-1)) iterations"
               break
             fi
+
             echo "manager: iter $i, advancing #$NEXT"
-            scripts/manager.sh
+            if scripts/manager.sh; then
+              # Successful advancement. Clear any prior strikes (no-op
+              # if there were none) so transient failures don't keep
+              # accumulating across long-lived tickets.
+              scripts/clear-strikes.sh "$NEXT" || true
+            else
+              RC=$?
+              echo "manager: #$NEXT advancement failed (exit $RC); striking"
+              scripts/strike-ticket.sh "$NEXT" "manager.sh exit $RC at $(date -u +%Y-%m-%dT%H:%M:%SZ); see workflow run ${GH_RUN_ID}" || true
+              STRUCK_THIS_DRAIN="${STRUCK_THIS_DRAIN:+$STRUCK_THIS_DRAIN|}${NEXT}"
+            fi
             sleep 3
           done

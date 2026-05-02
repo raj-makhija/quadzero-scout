@@ -438,6 +438,10 @@ gh label create "pipeline:reject-cost"   --color "B60205" --description "Trigger
 gh label create "pipeline:retry"         --color "FBCA04" --description "Trigger: reset ticket to rework, Attempt=1"
 gh label create "pipeline:park"          --color "C5DEF5" --description "Trigger: halt processing; set Pipeline Status=needs-human"
 gh label create "pipeline:show-status"   --color "C5DEF5" --description "Trigger: bot replies with current ticket state"
+gh label create "pipeline:awaiting-type" --color "EDEDED" --description "Validator-set: ticket needs a type:* label before pipeline can act on it (auto-cleared once added)"
+gh label create "pipeline:struck-1"      --color "FBCA04" --description "Manager-set: 1 consecutive failure. Resets on next successful advancement"
+gh label create "pipeline:struck-2"      --color "F59E0B" --description "Manager-set: 2 consecutive failures. One more strike = parked at needs-human"
+gh label create "pipeline:struck-out"    --color "B60205" --description "Manager-set: hit PIPELINE_MAX_STRIKES; ticket parked at needs-human. Use pipeline:retry to reset"
 ```
 
 **Concurrency**: the commands workflow has a per-ticket concurrency
@@ -976,6 +980,72 @@ qa-rejected. The cherry-pick is on main; reverting requires a manual
 `git revert` on main and a follow-up redeploy. There's no automatic
 flow for this — qa-reject is intended for tickets still in QA, not
 already-shipped ones.
+
+### 8.9 Ticket missing a `type:*` label
+
+Symptom: a ticket has `pipeline:awaiting-type` and a `[manager]`
+comment asking for a type label. No further pipeline action happens
+until the label is added.
+
+What happened: at the top of every drain, `scripts/validate-ticket-types.sh`
+walks every open `auto-pipeline` ticket. Tickets without any `type:*`
+label get the `pipeline:awaiting-type` flag (so they're visible on
+the project board) and a comment listing the valid types. They're
+also excluded from `next-ticket.sh`'s actionable queue, so the
+pipeline doesn't keep crashing on them every cron tick.
+
+Fix: add one of `type:feature`, `type:bug`, `type:docs`,
+`type:chore`, `type:hotfix` to the ticket. The next manager run
+sees the type label, removes `pipeline:awaiting-type`, and the
+ticket re-enters the actionable queue. No further intervention.
+
+Why the validator: before this fix, a label-less ticket caused
+`manager.sh` to exit non-zero because branch / PR derivation needed
+a type. Cron retried every 5 min, hit the same ticket, failed the
+same way, starving every other ticket in the queue. Validator
+pre-flights the failure with a friendly comment instead of a wedge.
+
+### 8.10 Strike system: per-ticket failure isolation
+
+The drain loop wraps each `manager.sh` call in an exit-code check.
+On non-zero exit, `scripts/strike-ticket.sh` records a strike on the
+ticket via labels: `pipeline:struck-1` → `pipeline:struck-2` →
+`pipeline:struck-out`. After `PIPELINE_MAX_STRIKES` (default 3) the
+ticket is parked at `needs-human` with `pipeline:struck-out` and a
+summary comment.
+
+**Why**: before the strike system, any single failed ticket would
+wedge the whole queue -- `next-ticket.sh` returns the same ticket
+each cron tick, `manager.sh` keeps failing, no other tickets advance.
+Real cases hit: agent timeout (#103), missing branch state (#98),
+missing type label (#99). The strike system isolates per-ticket
+failures so the rest of the pipeline keeps moving.
+
+**Within-drain behavior**: when a ticket strikes during a drain, it's
+excluded from the rest of that drain's iterations. `next-ticket.sh`
+on the next iter skips the struck ticket and returns the next
+candidate. So a single drain produces at most ONE strike per ticket
+-- the strike count tracks consecutive cron ticks, not consecutive
+manager retries within a tick.
+
+**Auto-recovery**: `scripts/clear-strikes.sh` runs after every
+successful `manager.sh` advancement. Removes any `pipeline:struck-*`
+labels on the ticket so transient failures don't accumulate across a
+ticket's lifetime. Cheap and idempotent (single label-existence
+check first; only does the removes if needed).
+
+**Manual recovery**: add `pipeline:retry` to a `pipeline:struck-out`
+ticket. The route resets Attempt/Pipeline Status/Base SHA/PR Number
+AND calls `clear-strikes.sh`, so the ticket re-enters the actionable
+queue with a fresh count.
+
+**Configurable threshold**: set `PIPELINE_MAX_STRIKES` in
+`pipeline-manager.yml`'s drain step env. Default 3.
+
+**Audit trail**: every strike posts a `[manager:strike] strike N/M`
+comment with timestamp, reason, and a link to the workflow run that
+produced the strike. The thread shows the full failure history even
+after labels are cleared by recovery.
 
 ---
 

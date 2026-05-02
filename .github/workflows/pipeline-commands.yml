@@ -202,8 +202,11 @@ jobs:
               scripts/set-field.sh "$TICKET" "Base SHA" ""
               scripts/set-field.sh "$TICKET" "PR Number" ""
               scripts/set-status.sh "$TICKET" in-progress
+              # Clear any strike labels so the ticket re-enters the
+              # actionable queue with a fresh failure count.
+              scripts/clear-strikes.sh "$TICKET" || true
               gh workflow run pipeline-manager.yml >&2 || true
-              finish_success "[/retry] OK -- ticket reset to \`rework\`, Attempt=1, Base SHA + PR Number cleared by @$ACTOR. Pipeline-manager kicked."
+              finish_success "[/retry] OK -- ticket reset to \`rework\`, Attempt=1, Base SHA + PR Number cleared, strikes cleared by @$ACTOR. Pipeline-manager kicked."
               ;;
 
             pipeline:park)
