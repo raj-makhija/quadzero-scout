@@ -508,7 +508,7 @@ function MatchDebugPanel({ result }: { result: MatchDebugResponse }) {
             </span>
           )}
         </div>
-        <span className={`text-lg font-bold ${scoreColor}`}>{score}/100</span>
+        <span className={`text-lg font-bold ${scoreColor}`}>{Math.min(100, score)}/100</span>
       </div>
 
       {/* Filter results */}

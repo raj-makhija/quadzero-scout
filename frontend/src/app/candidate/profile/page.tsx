@@ -423,7 +423,7 @@ export default function ProfilePage() {
                             {match.jobTitle || 'Untitled Requirement'}
                           </h3>
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-bold ${getMatchScoreBgColor(match.matchScore)} ${getMatchScoreColor(match.matchScore)}`}>
-                            {match.matchScore}%
+                            {Math.min(100, match.matchScore)}%
                           </span>
                           {/* Budget Fit Badge */}
                           {match.budgetMaxLpa != null && profile.expectedCtc != null ? (

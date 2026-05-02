@@ -779,7 +779,7 @@ function SuitableRequirementRow({
               <span className="text-sm text-gray-500 dark:text-gray-400">{req.clientName}</span>
             )}
             <span className={`badge text-xs font-semibold px-2 py-0.5 rounded-full ${getMatchScoreColor(req.matchScore)}`}>
-              {req.matchScore}%
+              {Math.min(100, req.matchScore)}%
             </span>
           </div>
           <div className="flex flex-wrap gap-x-3 text-xs text-gray-500 dark:text-gray-400 mb-2">

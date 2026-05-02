@@ -171,7 +171,7 @@ export function ShortlistModal({
             <div className="flex items-center justify-between">
               <span className="font-medium">Match Score</span>
               <span className={`text-2xl font-bold ${getMatchScoreColor(candidate.matchScore)}`}>
-                {candidate.matchScore}%
+                {Math.min(100, candidate.matchScore)}%
               </span>
             </div>
           </div>

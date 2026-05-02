@@ -369,7 +369,7 @@ export function calculateMatchScore(
   const ctcPenalty = calculateCtcPenalty(candidate.expected_ctc, maxBudgetLpa);
 
   return {
-    score: Math.max(0, Math.round(score - ctcPenalty)),
+    score: Math.min(100, Math.max(0, Math.round(score - ctcPenalty))),
     details: {
       mustHaveMatched: mustHaveMatch.exactMatched,
       mustHaveFuzzy: mustHaveMatch.fuzzyMatched,
