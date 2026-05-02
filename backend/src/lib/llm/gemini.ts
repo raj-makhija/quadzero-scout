@@ -2,6 +2,12 @@ import { GoogleGenerativeAI, Content, FinishReason } from '@google/generative-ai
 import { BaseLLMProvider, LLMMessage, LLMResponse, LLMOptions } from './base.js';
 import { config } from '../config.js';
 
+// Gemini 2.5+ models support a thinking mode that incurs extra token charges.
+// We unconditionally set thinkingBudget:0 so that even if the model is
+// configured (via SSM) to a 2.5-series model, thinking is never billed.
+// The field is silently ignored by older models (2.0 and earlier).
+const GENERATION_CONFIG_EXTRA = { thinkingConfig: { thinkingBudget: 0 } };
+
 export class GeminiProvider extends BaseLLMProvider {
   readonly name = 'gemini';
   private client: GoogleGenerativeAI;
@@ -29,6 +35,7 @@ export class GeminiProvider extends BaseLLMProvider {
         maxOutputTokens: options?.maxTokens || 4096,
         temperature: options?.temperature || 0,
         responseMimeType: options?.responseFormat === 'text' ? 'text/plain' : 'application/json',
+        ...GENERATION_CONFIG_EXTRA,
       },
     });
 
