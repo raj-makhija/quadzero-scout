@@ -207,9 +207,9 @@ export async function parseResume(resumeText: string, supplementaryText?: string
     { role: 'user', content: userContent },
   ];
 
-  // Try with a tighter token budget first to control Gemini cost; on parse or
-  // schema failure (most commonly truncation when skillSynonyms inflate the
-  // response), retry once with the larger budget that originally fit everything.
+  // Try with a tighter token budget first; on parse or schema failure
+  // (most commonly truncation when skillSynonyms inflate the response),
+  // retry once with a larger budget.
   const attempt = async (maxTokens: number) => {
     const response = await withProviderFallback(provider, (p) =>
       p.completeWithRetry(messages, {
@@ -223,8 +223,8 @@ export async function parseResume(resumeText: string, supplementaryText?: string
     return { parsed, validated };
   };
 
-  // With Gemini 2.5 thinking disabled, 8192 tokens is ample for the JSON
-  // output including skillSynonyms.  Retry at 16384 for edge cases.
+  // 8192 tokens is ample for the JSON output including skillSynonyms.
+  // Retry at 16384 for edge cases (very large resumes).
   let parsed: unknown;
   let validated: ReturnType<typeof LLMResumeOutputSchema.safeParse>;
   try {
@@ -294,8 +294,8 @@ export async function parseJobDescription(jdText: string, jobTitle?: string): Pr
     { role: 'user', content: userPrompt },
   ];
 
-  // Try with a tighter token budget first to control cost; on parse or schema
-  // failure (most commonly truncation when skillSynonyms inflate the response),
+  // Try with a tighter token budget first; on parse or schema failure
+  // (most commonly truncation when skillSynonyms inflate the response),
   // retry once with a larger budget.
   const attempt = async (maxTokens: number) => {
     const response = await withProviderFallback(provider, (p) =>
