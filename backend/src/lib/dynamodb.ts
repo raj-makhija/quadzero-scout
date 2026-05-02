@@ -960,6 +960,7 @@ const DEFAULT_PRICING_CONFIG: PricingConfig = {
       { minMonths: 24, maxMonths: 60, discountPct: 0.15 },
     ],
   },
+  gstRatePct: 0.18,
 };
 
 let pricingConfigCache: { config: PricingConfig; fetchedAt: number } | null = null;
