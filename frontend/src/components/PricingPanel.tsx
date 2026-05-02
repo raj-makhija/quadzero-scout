@@ -229,7 +229,7 @@ export function PricingPanel({
       {requirementContext?.isRateGstInclusive && (
         <div className="mb-3 p-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
           <p className="text-xs text-amber-700 dark:text-amber-400">
-            GST-inclusive rate: Budget will be reduced by 18% for margin calculations.
+            GST-inclusive rate: Budget will be reduced by {result ? Math.round((result.gstRatePct ?? 0.18) * 100) : 18}% for margin calculations.
           </p>
         </div>
       )}
@@ -349,14 +349,17 @@ export function PricingPanel({
               <div>
                 <div className="text-lg font-bold text-green-700 dark:text-green-300">{formatInr(result.finalQuotedHourly)}</div>
                 <div className="text-xs text-green-600 dark:text-green-400">per hour</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{formatInr(Math.round(result.finalQuotedHourly * (1 + (result.gstRatePct ?? 0.18))))} all incl.</div>
               </div>
               <div>
                 <div className="text-lg font-bold text-green-700 dark:text-green-300">{formatInr(result.finalQuotedMonthly)}</div>
                 <div className="text-xs text-green-600 dark:text-green-400">per month</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{formatInr(Math.round(result.finalQuotedMonthly * (1 + (result.gstRatePct ?? 0.18))))} all incl.</div>
               </div>
               <div>
                 <div className="text-lg font-bold text-green-700 dark:text-green-300">{formatInr(result.finalQuotedAnnual)}</div>
                 <div className="text-xs text-green-600 dark:text-green-400">per annum</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{formatInr(Math.round(result.finalQuotedAnnual * (1 + (result.gstRatePct ?? 0.18))))} all incl.</div>
               </div>
             </div>
           </div>
@@ -381,14 +384,17 @@ export function PricingPanel({
                 <div>
                   <div className="text-lg font-bold text-gray-700 dark:text-gray-300">{formatInr(result.minimumBillingHourly)}</div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">per hour</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{formatInr(Math.round(result.minimumBillingHourly * (1 + (result.gstRatePct ?? 0.18))))} all incl.</div>
                 </div>
                 <div>
                   <div className="text-lg font-bold text-gray-700 dark:text-gray-300">{formatInr(result.minimumBillingMonthly)}</div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">per month</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{formatInr(Math.round(result.minimumBillingMonthly * (1 + (result.gstRatePct ?? 0.18))))} all incl.</div>
                 </div>
                 <div>
                   <div className="text-lg font-bold text-gray-700 dark:text-gray-300">{formatInr(result.minimumBillingAnnual ?? 0)}</div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">per annum</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{formatInr(Math.round((result.minimumBillingAnnual ?? 0) * (1 + (result.gstRatePct ?? 0.18))))} all incl.</div>
                 </div>
               </div>
             )}

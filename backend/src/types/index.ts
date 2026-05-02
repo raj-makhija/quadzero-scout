@@ -626,6 +626,7 @@ export const PricingConfigSchema = z.object({
       { minMonths: 24, maxMonths: 60, discountPct: 0.15 },
     ],
   }),
+  gstRatePct: z.number().min(0).max(1).optional().default(0.18),
 });
 export type PricingConfig = z.infer<typeof PricingConfigSchema>;
 
@@ -702,6 +703,7 @@ export interface PricingOutput {
   finalContribution: number;
   finalEffectiveMarkupPct: number;
   isRateGstInclusive: boolean;
+  gstRatePct: number;
 }
 
 export interface CalculatePricingRequest extends PricingInput {}
