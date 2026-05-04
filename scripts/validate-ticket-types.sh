@@ -66,9 +66,10 @@ while IFS= read -r ticket_json; do
 
 Please add one of:
 - \`type:feature\`
-- \`type:bug\`
-- \`type:docs\`
+- \`type:bug\` (or \`type:bugfix\`)
 - \`type:chore\`
+- \`type:docs\`
+- \`type:refactor\`
 - \`type:hotfix\`
 
 The pipeline will resume automatically once the label is added (no further action needed)." >/dev/null 2>&1; then

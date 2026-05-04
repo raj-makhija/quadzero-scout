@@ -7,7 +7,7 @@
 PL_STATE_FIELD="${PL_STATE_FIELD:-Pipeline Status}"
 
 # Allowed ticket types (must match the type:* labels on the repo).
-PL_VALID_TYPES="feature bugfix chore docs refactor"
+PL_VALID_TYPES="feature bug bugfix chore docs refactor hotfix"
 
 _pl_repo_root() {
   git rev-parse --show-toplevel 2>/dev/null || {

@@ -36,9 +36,21 @@ concurrency:
 
 jobs:
   route:
-    # Only fire for pipeline:* labels; all other label adds are no-ops here
-    # (the pipeline-manager workflow handles auto-pipeline labels separately).
-    if: startsWith(github.event.label.name, 'pipeline:')
+    # Explicit allowlist of human-trigger pipeline:* labels. Other
+    # pipeline:* labels (e.g. pipeline:awaiting-type, pipeline:struck-*)
+    # are state markers set by the pipeline itself and must NOT trigger
+    # this workflow -- otherwise they'd hit the unknown-command default,
+    # get auto-removed, and generate spurious failure runs.
+    if: |
+      github.event.label.name == 'pipeline:qa-deploy' ||
+      github.event.label.name == 'pipeline:qa-approve' ||
+      github.event.label.name == 'pipeline:qa-reject' ||
+      github.event.label.name == 'pipeline:prod-release' ||
+      github.event.label.name == 'pipeline:approve-cost' ||
+      github.event.label.name == 'pipeline:reject-cost' ||
+      github.event.label.name == 'pipeline:retry' ||
+      github.event.label.name == 'pipeline:park' ||
+      github.event.label.name == 'pipeline:show-status'
     runs-on: ubuntu-latest
     timeout-minutes: 30
 

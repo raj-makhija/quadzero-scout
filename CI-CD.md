@@ -994,10 +994,11 @@ the project board) and a comment listing the valid types. They're
 also excluded from `next-ticket.sh`'s actionable queue, so the
 pipeline doesn't keep crashing on them every cron tick.
 
-Fix: add one of `type:feature`, `type:bug`, `type:docs`,
-`type:chore`, `type:hotfix` to the ticket. The next manager run
-sees the type label, removes `pipeline:awaiting-type`, and the
-ticket re-enters the actionable queue. No further intervention.
+Fix: add one of `type:feature`, `type:bug`, `type:bugfix`,
+`type:chore`, `type:docs`, `type:refactor`, `type:hotfix` to the
+ticket. The next manager run sees the type label, removes
+`pipeline:awaiting-type`, and the ticket re-enters the actionable
+queue. No further intervention.
 
 Why the validator: before this fix, a label-less ticket caused
 `manager.sh` to exit non-zero because branch / PR derivation needed
