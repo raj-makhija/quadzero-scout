@@ -87,6 +87,8 @@ vi.mock('../../lib/dynamodb.js', () => ({
     ],
     lastKey: undefined,
   }),
+  getTotalProfileCount: vi.fn().mockResolvedValue(0),
+  putAuditLog: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../../lib/llm/index.js', () => ({
@@ -494,7 +496,10 @@ describe('POST /recruiter/search', () => {
 
     const event = makeEvent({
       body: JSON.stringify({
-        criteria: { engagementModel: 'contract' },
+        // mustHaveSkills differentiates this cache key from TC-SEARCH-018 which also
+        // uses engagementModel:'contract'; both mock candidates have 'react' so the
+        // must-have filter doesn't affect which candidates pass -- engagement model does
+        criteria: { engagementModel: 'contract', mustHaveSkills: ['react'] },
       }),
     });
     const result = await searchHandler(event);
