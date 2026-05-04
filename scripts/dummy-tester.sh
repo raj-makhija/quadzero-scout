@@ -11,11 +11,20 @@
 #               behavior-focused test plan as an issue comment under the
 #               [tester:test-plan] header; dummy posts a canned line.
 #               No code is committed in either path (no branch yet).
-#   validate -- validation-pending -> pr-pending OR rework. Real claude
-#               checks out the developer's branch, reads the diff vs the
-#               test plan, and emits VERDICT: PASS or VERDICT: FAIL.
-#               PASS -> pr-pending. FAIL -> deletes the failed attempt
-#               branch, clears Base SHA, sets Pipeline Status=rework so
+#   validate -- validation-pending -> pr-pending OR rework. Two gates,
+#               both must pass:
+#               1. Hard gate: `npm ci && npm test` in backend/ and
+#                  frontend/ on the dev branch. Catches regressions in
+#                  tests outside the agent's diff (e.g. mock drift,
+#                  unrelated handlers the change broke). FAIL here =
+#                  immediate rework, no LLM call. Disable via
+#                  PIPELINE_TESTER_RUN_NPM_TEST=false (debug only).
+#               2. Static review: claude reads the diff against the
+#                  test plan and emits VERDICT: PASS or VERDICT: FAIL.
+#                  Catches behavior gaps that pass the test suite but
+#                  miss acceptance criteria.
+#               Either gate's FAIL -> deletes the failed attempt branch,
+#               clears Base SHA, sets Pipeline Status=rework so
 #               manager.sh increments Attempt and routes to developer
 #               rework mode (3-strike rule applies).
 #
@@ -122,9 +131,86 @@ PROMPT
     BRANCH="$TYPE/ticket-$TICKET-attempt-$ATTEMPT"
 
     # Each Actions run starts checked out on develop. Make sure the dev
-    # branch is fetched and checked out so claude sees the actual diff.
+    # branch is fetched and checked out so claude (and the project test
+    # suite) see the actual diff.
     git fetch origin "$BRANCH" --quiet || true
     git checkout "$BRANCH" >&2
+
+    # Helper: route a FAIL outcome (npm test failure OR claude FAIL)
+    # through the same rework path. Argument: the comment body.
+    do_fail() {
+      local body="$1"
+      gh issue comment "$TICKET" --body "$body" >&2
+      # Drop the failed attempt branch so the next rework starts clean
+      local cur
+      cur="$(git branch --show-current)"
+      if [[ "$cur" == "$BRANCH" ]]; then
+        git checkout develop >&2
+      fi
+      git push origin --delete "$BRANCH" >&2 || true
+      git branch -D "$BRANCH" 2>/dev/null >&2 || true
+      # Clear Base SHA so manager.sh's rework path treats next attempt as fresh
+      "$SCRIPT_DIR/set-field.sh" "$TICKET" "Base SHA" ""
+      "$SCRIPT_DIR/set-field.sh" "$TICKET" "Pipeline Status" rework
+      echo "tester -> FAIL; #$TICKET routed to rework, $BRANCH dropped" >&2
+    }
+
+    # ---- Hard gate: run the real project test suite before claude ----
+    # The static-review step is valuable but blind to regressions in
+    # tests outside the agent's diff. Running `npm test` in backend +
+    # frontend catches:
+    #   - the agent's diff broke an existing test
+    #   - the agent didn't update mocks/fixtures alongside code changes
+    #   - a TypeScript / build error that pure type-narrowing missed
+    # If either suite fails, FAIL the verdict immediately and route to
+    # rework -- no point burning an LLM call on a static review when
+    # the tests already say it's broken.
+    if [[ "${PIPELINE_TESTER_RUN_NPM_TEST:-true}" == "true" ]]; then
+      run_project_tests() {
+        local dir="$1"
+        if [[ ! -f "$dir/package.json" ]]; then
+          return 0
+        fi
+        if ! grep -qE '"test"[[:space:]]*:' "$dir/package.json"; then
+          return 0
+        fi
+        echo "==> running npm test in $dir/" >&2
+        local out
+        out="$(mktemp -t npm-test-${dir//\//_}.XXXXXX)"
+        if (cd "$dir" && npm ci --silent --no-audit --no-fund && npm test --silent 2>&1); then
+          echo "    OK -- $dir/ tests pass" >&2
+          rm -f "$out"
+          return 0
+        fi >"$out" 2>&1
+        # Tests failed. Re-emit captured output to stderr for log + return path
+        echo "    FAIL -- $dir/ tests failed" >&2
+        cat "$out" >&2
+        # Stash a tail snippet for the issue comment via global var
+        NPM_TEST_FAIL_DIR="$dir"
+        NPM_TEST_FAIL_TAIL="$(tail -n 60 "$out")"
+        rm -f "$out"
+        return 1
+      }
+
+      NPM_TEST_FAIL_DIR=""
+      NPM_TEST_FAIL_TAIL=""
+      for tdir in backend frontend; do
+        if ! run_project_tests "$tdir"; then
+          do_fail "[tester] FAIL on \`$BRANCH\` -- \`npm test\` in \`$tdir/\` did not pass.
+
+Last 60 lines of test output:
+
+\`\`\`
+$NPM_TEST_FAIL_TAIL
+\`\`\`
+
+Routing to rework. The developer agent will see this output on the next attempt and should run \`npm test\` locally before committing."
+          exit 0
+        fi
+      done
+    else
+      echo "==> PIPELINE_TESTER_RUN_NPM_TEST=false; skipping real-test gate" >&2
+    fi
 
     PROMPT="$(cat <<PROMPT
 You are the tester agent in an automated CI/CD pipeline. Issue
@@ -204,22 +290,11 @@ Handing back to developer to open the PR." >&2
         echo "tester -> PASS; #$TICKET now pr-pending" >&2
         ;;
       FAIL)
-        gh issue comment "$TICKET" --body "[tester] FAIL on \`$BRANCH\`.
+        do_fail "[tester] FAIL on \`$BRANCH\` (static review).
 
 $REVIEW_BODY
 
-Routing to rework. Developer will branch fresh from develop and address the unmet criteria on the next attempt." >&2
-        # Drop the failed attempt branch so the next rework starts clean.
-        CUR="$(git branch --show-current)"
-        if [[ "$CUR" == "$BRANCH" ]]; then
-          git checkout develop >&2
-        fi
-        git push origin --delete "$BRANCH" >&2 || true
-        git branch -D "$BRANCH" 2>/dev/null >&2 || true
-        # Clear Base SHA so manager.sh's rework path treats next attempt as fresh.
-        "$SCRIPT_DIR/set-field.sh" "$TICKET" "Base SHA" ""
-        "$SCRIPT_DIR/set-field.sh" "$TICKET" "Pipeline Status" rework
-        echo "tester -> FAIL; #$TICKET routed to rework, $BRANCH dropped" >&2
+Routing to rework. Developer will branch fresh from develop and address the unmet criteria on the next attempt."
         ;;
     esac
     ;;

@@ -64,7 +64,7 @@ even though most are now real Claude.
 | Agent | Script | Env var | Role |
 |---|---|---|---|
 | Manager | `scripts/manager.sh` | (always shell, no LLM) | Dumb router over Pipeline Status; dispatches to the right agent for the current state |
-| Tester | `scripts/dummy-tester.sh` | `PIPELINE_TESTER_AGENT=claude` | `write` mode: posts test plan. `validate` mode: emits VERDICT: PASS/FAIL on the dev's diff |
+| Tester | `scripts/dummy-tester.sh` | `PIPELINE_TESTER_AGENT=claude` | `write` mode: posts test plan. `validate` mode: two gates -- (1) hard gate runs `npm ci && npm test` in backend/ and frontend/ on the dev branch; (2) static review by claude against the test plan. Either gate's FAIL routes to rework |
 | Developer | `scripts/dummy-developer.sh` | `PIPELINE_DEVELOPER_AGENT=claude` | `implement`/`rework` modes: writes code on a branch. `open_pr` mode: opens the PR (no LLM) |
 | PR-Reviewer | `scripts/dummy-pr-reviewer.sh` | `PIPELINE_PR_REVIEWER_AGENT=claude` | Read-only review of the PR; emits VERDICT: APPROVE or REQUEST_CHANGES |
 
@@ -1047,6 +1047,43 @@ queue with a fresh count.
 comment with timestamp, reason, and a link to the workflow run that
 produced the strike. The thread shows the full failure history even
 after labels are cleared by recovery.
+
+### 8.11 Tester real-test gate (validate mode)
+
+The tester's `validate` mode runs the project test suite as a hard
+gate BEFORE invoking claude for static review. The order is:
+
+1. Check out the dev branch (`<type>/ticket-<N>-attempt-<K>`)
+2. For each of `backend/` and `frontend/`: if it has a `package.json`
+   with a `test` script, run `npm ci && npm test`. Fail-fast: first
+   directory that fails ends the gate.
+3. If both pass (or no project tests exist): invoke claude for the
+   static review against the test plan
+4. Either gate's FAIL routes the same way: comment with output
+   excerpt + drop branch + clear Base SHA + Pipeline Status=rework
+
+**Why both gates**:
+- npm test catches what static review can't see — regressions in
+  tests outside the agent's diff (mock drift, type errors in
+  unrelated handlers, removed exports). Caught the dynamodb mock
+  drift that previously shipped multiple times.
+- Static review catches what npm test can't see — acceptance gaps,
+  edge cases without coverage, behavior that compiles + passes tests
+  but doesn't satisfy the spec.
+
+**Cost added**: ~60-120s per validate (npm ci on cold runner +
+test execution). Negligible against the agent-call cost saved when
+tests fail clean before the LLM gets invoked.
+
+**Disable for debugging**: set `PIPELINE_TESTER_RUN_NPM_TEST=false`
+in `pipeline-manager.yml`'s drain step env. Use sparingly — this
+re-opens the gap that broken merged code falls through.
+
+**Developer prompt note**: the developer agent's prompt now
+instructs it to run `npm test` locally before pushing. So in steady
+state, the tester gate should be a cheap re-confirmation rather
+than a failure path. If the gate is failing routinely, check
+whether the dev agent is actually following step 5a in its prompt.
 
 ---
 

@@ -114,6 +114,16 @@ MUST-DO STEPS
    a conventional commit message that references the ticket
    (\`feat: ... (#${ticket})\`, \`fix: ... (#${ticket})\`, etc.). NO
    "Co-Authored-By" lines (CLAUDE.md says agents must strip them).
+5a. **Run the project test suite before pushing.** The tester's
+   validate step now runs \`npm test\` in \`backend/\` and \`frontend/\`
+   as a hard gate. If your diff broke any test (including tests in
+   files you did not modify -- mocks/fixtures often need updating
+   when you change a function's signature or add a new export), fix
+   those tests as part of this commit. Run:
+     \`(cd backend && npm test)\` if your diff touches backend code
+     \`(cd frontend && npm test)\` if your diff touches frontend code
+   Both are fast (under 60s typically). A FAIL at validate sends you
+   back to rework and counts against the 3-attempt budget.
 6. Push to origin/${branch}: \`git push\`.
 7. Post a structured \`[developer:rationale]\` comment on issue
    #${ticket} so the scribe agent (and future engineers) can see the
