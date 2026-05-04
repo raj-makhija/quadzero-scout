@@ -39,9 +39,10 @@ type CriteriaInput = {
 function buildCacheKey(
   requirementId: string | undefined,
   criteria: CriteriaInput,
-  sortBy: string,
+  sortBy: string | undefined,
   pageKey: string | undefined
 ): string {
+  const effectiveSortBy = sortBy ?? 'matchScore';
   const normalizedCriteria = {
     coreSkill: criteria.coreSkill ?? null,
     mustHaveSkills: [...(criteria.mustHaveSkills ?? [])].sort(),
@@ -64,7 +65,7 @@ function buildCacheKey(
         )
       : null,
   };
-  return JSON.stringify({ requirementId: requirementId ?? null, criteria: normalizedCriteria, sortBy, pageKey: pageKey ?? null });
+  return JSON.stringify({ requirementId: requirementId ?? null, criteria: normalizedCriteria, sortBy: effectiveSortBy, pageKey: pageKey ?? null });
 }
 
 /** Normalize a synonym map: lowercase keys and values. Returns undefined if input is null/undefined. */
