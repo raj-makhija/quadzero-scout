@@ -30,14 +30,14 @@
 ## Branch Strategy
 
 ```
-feature/xxx ──PR──→ develop ──auto──→ qa ──auto──→ main
-bugfix/xxx  ──PR──→ develop ──auto──→ qa ──auto──→ main
+feature/xxx ──PR──→ develop ──ticket-driven──→ qa ──cherry-pick──→ main
+bugfix/xxx  ──PR──→ develop ──ticket-driven──→ qa ──cherry-pick──→ main
 hotfix/xxx  ──PR──→ main (back-merge to develop)
 ```
 
 - `develop`: Active development. All feature/bugfix PRs target this branch.
-- `qa`: Staging. Auto-merged from develop daily at 01:00 AM IST (19:30 UTC).
-- `main`: Production. Auto-merged from qa daily (same schedule).
+- `qa`: Staging. Promoted **per-ticket** via the `pipeline:qa-deploy` label or `scripts/qa-deploy.sh <SHA>`. Not auto-merged on a schedule.
+- `main`: Production. Per-ticket cherry-pick of `status:qa-approved` tickets at the nightly window (01:00 IST / 19:30 UTC). See `CI-CD.md` §5.7.
 
 ## Branch Naming
 
@@ -50,6 +50,15 @@ hotfix/xxx  ──PR──→ main (back-merge to develop)
 | `refactor/`  | Code restructuring                       |
 
 Use lowercase kebab-case: `feature/email-digest`, `bugfix/match-score-null`.
+
+For tickets in this repo, two specific naming patterns apply on top of the prefix table above:
+
+| Pattern                              | Used by                                                  |
+|--------------------------------------|----------------------------------------------------------|
+| `<type>/ticket-<N>-attempt-<K>`      | Autonomous pipeline (see `CI-CD.md` §2.1)                |
+| `<type>/ticket-<N>-cowork`           | Manual / Cowork route (see `docs/two-route-playbook.md`) |
+
+The `-cowork` suffix prevents collision with autonomous attempt branches. For non-ticket scaffolding work, the description-style naming above (`feature/email-digest`) still applies.
 
 ## Pre-commit Checks
 
@@ -70,14 +79,13 @@ All checks must pass before merging.
 
 ## Deployment
 
-| Branch   | Stage | Frontend        | Backend               |
-|----------|-------|-----------------|-----------------------|
-| develop  | dev   | Amplify (auto)  | Manual or CI          |
-| qa       | qa    | Amplify (auto)  | Scheduled (daily)     |
-| main     | prod  | Amplify (auto)  | Scheduled (daily)     |
+| Branch   | Stage | Frontend        | Backend                                          |
+|----------|-------|-----------------|--------------------------------------------------|
+| develop  | dev   | Amplify (auto)  | Manual (`npx serverless deploy --stage dev`)     |
+| qa       | qa    | Amplify (auto)  | Label-triggered (`pipeline:qa-deploy`)           |
+| main     | prod  | Amplify (auto)  | Nightly cherry-pick (`status:qa-approved` only)  |
 
-Frontend deploys automatically via AWS Amplify on any branch push.
-Backend deploys to qa and prod via the scheduled GitHub Actions workflow.
+Frontend deploys automatically via AWS Amplify on any branch push. Backend deploys to qa via the `pipeline:qa-deploy` label (per ticket) or `scripts/qa-deploy.sh <SHA>`. Backend deploys to prod via the nightly cherry-pick batch in `pipeline-nightly-release.yml`. See `CI-CD.md` §5 for the full promotion model.
 
 ## Commit Messages
 
