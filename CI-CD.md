@@ -8,6 +8,11 @@ This document is the canonical reference for operating, extending, and
 debugging the pipeline. It assumes you've read `CLAUDE.md` and have
 familiarity with the repo layout.
 
+For the contract between this autonomous pipeline and the
+human/Cowork-driven route — when to use which, how to hand a ticket
+between them, and how both routes converge on the same QA → prod flow —
+see `docs/two-route-playbook.md`.
+
 ---
 
 ## 1. Overview
@@ -1212,6 +1217,7 @@ scripts/
 .pipeline-config.json         # opaque GraphQL IDs
 CLAUDE.md                     # project-wide standards (auto-loaded by claude)
 CI-CD.md                      # this document
+docs/two-route-playbook.md    # auto vs Cowork: when, how, handoffs
 ```
 
 ---
