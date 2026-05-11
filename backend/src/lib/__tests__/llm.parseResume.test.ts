@@ -109,4 +109,32 @@ describe('parseResume() — token-budget retry behavior', () => {
     expect(handler.mock.calls[0][1]?.maxTokens).toBe(8192);
     expect(handler.mock.calls[1][1]?.maxTokens).toBe(16384);
   });
+
+  it('resume parser system prompt contains stack-abbreviation expansion rules for all four acronyms', async () => {
+    let capturedSystemContent = '';
+    stubProvider.handler = async (messages) => {
+      capturedSystemContent = messages.find((m) => m.role === 'system')?.content ?? '';
+      return { content: VALID_RESUME_JSON };
+    };
+
+    await parseResume('John Doe MERN stack developer');
+
+    // Each of the four abbreviations must be named
+    expect(capturedSystemContent).toContain('MERN');
+    expect(capturedSystemContent).toContain('MEAN');
+    expect(capturedSystemContent).toContain('PERN');
+    expect(capturedSystemContent).toContain('LAMP');
+
+    // Each component technology must be named
+    expect(capturedSystemContent).toMatch(/mongodb/i);
+    expect(capturedSystemContent).toMatch(/express/i);
+    expect(capturedSystemContent).toMatch(/react/i);
+    expect(capturedSystemContent).toMatch(/node/i);
+    expect(capturedSystemContent).toMatch(/angular/i);
+    expect(capturedSystemContent).toMatch(/postgresql/i);
+    expect(capturedSystemContent).toMatch(/linux/i);
+    expect(capturedSystemContent).toMatch(/apache/i);
+    expect(capturedSystemContent).toMatch(/mysql/i);
+    expect(capturedSystemContent).toMatch(/php/i);
+  });
 });
