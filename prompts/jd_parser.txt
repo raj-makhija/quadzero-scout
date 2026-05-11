@@ -93,6 +93,15 @@ Based on title and experience requirements:
 - "Payroll by [company]", "on our payroll" → payroll: "quadzero" or "client" based on context
 - If not mentioned → payroll: null
 
+### Stack Abbreviation Expansion
+When the JD mentions a stack abbreviation, expand it into its component technologies instead of emitting the abbreviation itself. Apply:
+- "MERN" → mongodb, expressjs, react, nodejs
+- "MEAN" → mongodb, expressjs, angular, nodejs
+- "PERN" → postgresql, expressjs, react, nodejs
+- "LAMP" → linux, apache, mysql, php
+
+Do not output "mern", "mean", "pern", or "lamp" as skills themselves; output only the component skills (in mustHaveSkills or goodToHaveSkills as appropriate, subject to the 5-item must-have cap).
+
 ### Core Skill
 - Identify the single most important technology, framework, or domain that is central to this role
 - Pick the single most defining skill from the must-have skills

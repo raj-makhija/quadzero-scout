@@ -45,7 +45,8 @@ Rules:
 3. Determine seniority based on total experience and roles held
 4. If information is not available, use null or empty arrays
 5. ONLY output valid JSON, no additional text
-6. For CTC values, always convert to LPA (Lakhs Per Annum). If given as monthly, multiply by 12. If given in absolute rupees, divide by 100000. Round to 2 decimal places`;
+6. For CTC values, always convert to LPA (Lakhs Per Annum). If given as monthly, multiply by 12. If given in absolute rupees, divide by 100000. Round to 2 decimal places
+7. Stack abbreviation expansion: when the resume mentions a stack abbreviation, expand it into its component technologies instead of emitting the abbreviation itself. Apply: "MERN" -> mongodb, expressjs, react, nodejs. "MEAN" -> mongodb, expressjs, angular, nodejs. "PERN" -> postgresql, expressjs, react, nodejs. "LAMP" -> linux, apache, mysql, php. Do not output "mern", "mean", "pern", or "lamp" as skills themselves; output only the component skills`;
 
 const JD_PARSER_PROMPT = `You are an expert job description parser. Your task is to extract search criteria from job descriptions.
 
@@ -73,7 +74,8 @@ Rules:
 4. If no specific requirement, use null or empty array
 5. ONLY output valid JSON, no additional text
 6. For rate/budget/cost: extract the numeric value and its unit separately. Look for phrases like "budget", "rate", "CTC", "compensation", "salary range". Common patterns: "$X/hr", "Rs.X/hour", "X LPM", "X LPA", "X lakhs per month"
-7. For coreSkill: identify the primary technology, framework, or domain that is central to this role. Pick the single most defining skill from mustHaveSkills. Use title case (e.g. "React", "Java", "DevOps", "Data Engineering")`;
+7. For coreSkill: identify the primary technology, framework, or domain that is central to this role. Pick the single most defining skill from mustHaveSkills. Use title case (e.g. "React", "Java", "DevOps", "Data Engineering")
+8. Stack abbreviation expansion: when the JD mentions a stack abbreviation, expand it into its component technologies instead of emitting the abbreviation itself. Apply: "MERN" -> mongodb, expressjs, react, nodejs. "MEAN" -> mongodb, expressjs, angular, nodejs. "PERN" -> postgresql, expressjs, react, nodejs. "LAMP" -> linux, apache, mysql, php. Do not output "mern", "mean", "pern", or "lamp" as skills themselves; output only the component skills`;
 
 const RESUME_FORMATTER_PROMPT = `Format the provided resume into a clean, professional Markdown document.
 

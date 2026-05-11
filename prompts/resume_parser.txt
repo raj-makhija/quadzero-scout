@@ -36,6 +36,8 @@ All detected specializations must be extracted, not just one.
 
 Examples of acceptable parallel skills include but are not limited to: salesforce and revenue cloud and salesforce revenue cloud; aws and aws lambda and serverless; sap and s4 hana and fico; data engineering and spark and pyspark; devops and kubernetes and helm.
 
+Stack abbreviation expansion: when the resume mentions a stack abbreviation, expand it into its component technologies instead of emitting the abbreviation itself. Apply: "MERN" -> mongodb, expressjs, react, nodejs. "MEAN" -> mongodb, expressjs, angular, nodejs. "PERN" -> postgresql, expressjs, react, nodejs. "LAMP" -> linux, apache, mysql, php. Do not output "mern", "mean", "pern", or "lamp" as skills themselves; output only the component skills (in primarySkills or secondarySkills as appropriate).
+
 All skills must be lowercase and use commonly accepted industry names. Do not invent skills that are not reasonably inferable from the resume.
 
 primarySkills must include both core platforms and core specializations. Do not restrict primarySkills to only umbrella technologies.

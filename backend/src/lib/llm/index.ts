@@ -108,7 +108,8 @@ Rules:
 6. For CTC values, always convert to LPA (Lakhs Per Annum). If given as monthly, multiply by 12. If given in absolute rupees, divide by 100000. Round to 2 decimal places
 7. If supplementary information (email body / cover letter) is provided after the resume, use it to fill in missing fields — especially currentCtc, expectedCtc, and availability (notice period). Resume data takes precedence; supplementary data fills gaps
 8. For linkedinUrl and githubUrl, extract any LinkedIn or GitHub profile URLs found in the resume text or supplementary information. Look for patterns like linkedin.com/in/..., github.com/..., or explicit labels like "LinkedIn:" or "GitHub:". Return null if not found
-9. For skillSynonyms: generate 2-3 alternative phrasings for each extracted skill (both primarySkills and secondarySkills). Include common abbreviations, longer/shorter forms, and semantically equivalent terms. This helps with matching against job descriptions that may use different terminology`;
+9. For skillSynonyms: generate 2-3 alternative phrasings for each extracted skill (both primarySkills and secondarySkills). Include common abbreviations, longer/shorter forms, and semantically equivalent terms. This helps with matching against job descriptions that may use different terminology
+10. Stack abbreviation expansion: when the resume mentions a stack abbreviation, expand it into its component technologies instead of emitting the abbreviation itself. Apply: "MERN" -> mongodb, expressjs, react, nodejs. "MEAN" -> mongodb, expressjs, angular, nodejs. "PERN" -> postgresql, expressjs, react, nodejs. "LAMP" -> linux, apache, mysql, php. Do not output "mern", "mean", "pern", or "lamp" as skills themselves; output only the component skills (in primarySkills or secondarySkills as appropriate)`;
 
 const FALLBACK_RESUME_FORMATTER_PROMPT = `Format the provided resume into a clean, professional Markdown document.
 Use # for the candidate's FIRST NAME ONLY, ## for major sections (Professional Summary, Technical Skills, Work Experience, Education), ### for role titles.
@@ -156,7 +157,8 @@ Rules:
 9. For coreSkill: identify the primary technology, framework, or domain that is central to this role. Pick the single most defining skill from mustHaveSkills. Use title case (e.g. "React", "Java", "DevOps", "Data Engineering")
 10. For contract duration: look for "X month contract", "X year engagement", contract period mentions. Convert to months (e.g. "1 year" = 12, "6 months" = 6)
 11. For payment terms: look for "Net X days", "payment terms X days", "payment cycle". Normalize to the closest of 30, 45, 60, or 90
-12. For skillSynonyms: generate 2-4 alternative phrasings for each extracted skill (both mustHaveSkills and goodToHaveSkills). Include common abbreviations, longer/shorter forms, and semantically equivalent terms. This is critical for matching — different documents may use different phrasings for the same concept`;
+12. For skillSynonyms: generate 2-4 alternative phrasings for each extracted skill (both mustHaveSkills and goodToHaveSkills). Include common abbreviations, longer/shorter forms, and semantically equivalent terms. This is critical for matching — different documents may use different phrasings for the same concept
+13. Stack abbreviation expansion: when the JD mentions a stack abbreviation, expand it into its component technologies instead of emitting the abbreviation itself. Apply: "MERN" -> mongodb, expressjs, react, nodejs. "MEAN" -> mongodb, expressjs, angular, nodejs. "PERN" -> postgresql, expressjs, react, nodejs. "LAMP" -> linux, apache, mysql, php. Do not output "mern", "mean", "pern", or "lamp" as skills themselves; output only the component skills (in mustHaveSkills or goodToHaveSkills as appropriate, subject to the 5-item must-have cap)`;
 
 // Prompt cache with TTL
 const promptCache = new Map<string, { content: string; version: number | null; fetchedAt: number }>();
