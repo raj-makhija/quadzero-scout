@@ -8,6 +8,44 @@ export function normalizeSkill(skill: string): string {
   return mappings[lowercased] || lowercased;
 }
 
+const STACK_ABBREVIATIONS: Record<string, string[]> = {
+  mern: ['mongodb', 'expressjs', 'react', 'nodejs'],
+  'mern stack': ['mongodb', 'expressjs', 'react', 'nodejs'],
+  mean: ['mongodb', 'expressjs', 'angular', 'nodejs'],
+  'mean stack': ['mongodb', 'expressjs', 'angular', 'nodejs'],
+  pern: ['postgresql', 'expressjs', 'react', 'nodejs'],
+  'pern stack': ['postgresql', 'expressjs', 'react', 'nodejs'],
+  lamp: ['linux', 'apache', 'mysql', 'php'],
+  'lamp stack': ['linux', 'apache', 'mysql', 'php'],
+};
+
+/**
+ * If `skill` is a known full-stack abbreviation (MERN/MEAN/PERN/LAMP, with or
+ * without a trailing "stack"), returns its component skills. Otherwise null.
+ * Mirrors the expansion table in the JD/resume parser prompts so that legacy
+ * requirements with `coreSkill: "mern stack"` still match correctly.
+ */
+export function expandStackAbbreviation(skill: string): string[] | null {
+  const key = skill.toLowerCase().trim();
+  return STACK_ABBREVIATIONS[key] ?? null;
+}
+
+/**
+ * Check whether a JD's coreSkill is satisfied by a candidate's primary skills.
+ * Falls back to stack-abbreviation expansion: a coreSkill of "mern stack" is
+ * satisfied iff every MERN component (mongodb, expressjs, react, nodejs) is in
+ * the candidate's primary skills.
+ */
+export function coreSkillSatisfiedBy(
+  normalizedCoreSkill: string,
+  candidatePrimarySet: Set<string>
+): boolean {
+  if (candidatePrimarySet.has(normalizedCoreSkill)) return true;
+  const components = expandStackAbbreviation(normalizedCoreSkill);
+  if (!components) return false;
+  return components.every((c) => candidatePrimarySet.has(c));
+}
+
 export function normalizeSkills(skills: string[]): string[] {
   const normalized = skills.map(normalizeSkill);
   // Remove duplicates while preserving order

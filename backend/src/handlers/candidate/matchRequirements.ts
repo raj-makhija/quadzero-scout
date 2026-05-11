@@ -2,7 +2,7 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, MatchRequirementsRequestSchema } from '../../lib/validation.js';
 import { getCandidateById, getAllActiveRequirements, getShortlistsForCandidate } from '../../lib/dynamodb.js';
-import { normalizeSkill, normalizeSkills } from '../../lib/skillNormalizer.js';
+import { normalizeSkill, normalizeSkills, coreSkillSatisfiedBy } from '../../lib/skillNormalizer.js';
 import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, FUZZY_MATCH_WEIGHT, MUST_HAVE_SECONDARY_WEIGHT, parseSearchLocations, isEngagementModelCompatible } from '../../lib/matchScoring.js';
 import { isCandidateWithinBudget } from '../../lib/ctcConversion.js';
 import type { MatchedRequirement, MatchRequirementsResponse } from '../../types/index.js';
@@ -64,9 +64,10 @@ export async function handler(
     for (const req of requirements) {
       const criteria = req.parsed_criteria;
 
-      // Core skill pre-filter: skip requirement if it has a coreSkill and candidate lacks it in primary skills
+      // Core skill pre-filter: skip requirement if it has a coreSkill and candidate
+      // lacks it (or all its components, for stack abbreviations) in primary skills
       const normalizedCoreSkill = criteria.coreSkill ? normalizeSkill(criteria.coreSkill) : null;
-      if (normalizedCoreSkill && !candidatePrimarySkills.has(normalizedCoreSkill)) {
+      if (normalizedCoreSkill && !coreSkillSatisfiedBy(normalizedCoreSkill, candidatePrimarySkills)) {
         continue;
       }
 

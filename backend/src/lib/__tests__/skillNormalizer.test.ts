@@ -9,6 +9,8 @@ import {
   getRoleCategory,
   calculateRoleMatch,
   isCoreSkill,
+  expandStackAbbreviation,
+  coreSkillSatisfiedBy,
 } from '../skillNormalizer.js';
 
 // ---------------------------------------------------------------------------
@@ -558,5 +560,64 @@ describe('isCoreSkill', () => {
     expect(isCoreSkill('leadership')).toBe(false);
     expect(isCoreSkill('agile')).toBe(false);
     expect(isCoreSkill('problem solving')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// expandStackAbbreviation() / coreSkillSatisfiedBy() (issue #117 round 2)
+// ---------------------------------------------------------------------------
+
+describe('expandStackAbbreviation()', () => {
+  it('expands "mern" to its four MERN components', () => {
+    expect(expandStackAbbreviation('mern')).toEqual(['mongodb', 'expressjs', 'react', 'nodejs']);
+  });
+
+  it('expands "mern stack" (with the word "stack") the same way', () => {
+    expect(expandStackAbbreviation('mern stack')).toEqual(['mongodb', 'expressjs', 'react', 'nodejs']);
+  });
+
+  it('is case- and whitespace-insensitive', () => {
+    expect(expandStackAbbreviation('MERN Stack')).toEqual(['mongodb', 'expressjs', 'react', 'nodejs']);
+    expect(expandStackAbbreviation('  MERN  ')).toEqual(['mongodb', 'expressjs', 'react', 'nodejs']);
+  });
+
+  it('expands MEAN, PERN, and LAMP correctly', () => {
+    expect(expandStackAbbreviation('mean')).toEqual(['mongodb', 'expressjs', 'angular', 'nodejs']);
+    expect(expandStackAbbreviation('pern stack')).toEqual(['postgresql', 'expressjs', 'react', 'nodejs']);
+    expect(expandStackAbbreviation('lamp')).toEqual(['linux', 'apache', 'mysql', 'php']);
+  });
+
+  it('returns null for non-stack skills', () => {
+    expect(expandStackAbbreviation('react')).toBeNull();
+    expect(expandStackAbbreviation('java')).toBeNull();
+    expect(expandStackAbbreviation('')).toBeNull();
+    expect(expandStackAbbreviation('full stack')).toBeNull();
+  });
+});
+
+describe('coreSkillSatisfiedBy()', () => {
+  it('passes when the coreSkill is exactly present (single-skill case)', () => {
+    expect(coreSkillSatisfiedBy('react', new Set(['react', 'nodejs']))).toBe(true);
+  });
+
+  it('passes when a stack abbreviation\'s components are all present', () => {
+    const candidate = new Set(['mongodb', 'expressjs', 'react', 'nodejs', 'aws']);
+    expect(coreSkillSatisfiedBy('mern stack', candidate)).toBe(true);
+    expect(coreSkillSatisfiedBy('mern', candidate)).toBe(true);
+  });
+
+  it('fails for a stack abbreviation when any component is missing', () => {
+    const candidate = new Set(['mongodb', 'expressjs', 'react']); // missing nodejs
+    expect(coreSkillSatisfiedBy('mern stack', candidate)).toBe(false);
+  });
+
+  it('fails for a non-stack coreSkill that is not in candidate skills', () => {
+    expect(coreSkillSatisfiedBy('java', new Set(['react', 'nodejs']))).toBe(false);
+  });
+
+  it('does not expand non-stack coreSkills (no permissive fallback)', () => {
+    // 'react' is not a stack abbreviation, so absence should fail even though
+    // it sits inside the MERN component list.
+    expect(coreSkillSatisfiedBy('react', new Set(['mongodb', 'expressjs', 'nodejs']))).toBe(false);
   });
 });
