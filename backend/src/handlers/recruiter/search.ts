@@ -2,7 +2,7 @@ import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, SearchRequestSchema } from '../../lib/validation.js';
 import { searchCandidates, getShortlistsForRequirement } from '../../lib/dynamodb.js';
-import { normalizeSkill, normalizeSkills } from '../../lib/skillNormalizer.js';
+import { normalizeSkill, normalizeSkills, coreSkillSatisfiedBy } from '../../lib/skillNormalizer.js';
 import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, FUZZY_MATCH_WEIGHT, MUST_HAVE_SECONDARY_WEIGHT, parseSearchLocations, isEngagementModelCompatible } from '../../lib/matchScoring.js';
 import { withOptionalAuth, type OptionalAuthEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
@@ -96,12 +96,8 @@ async function handleRequest(
 
     // Pre-filter: if coreSkill is specified, only score candidates who have it as a primary skill.
     // Secondary skills are too noisy (tangential mentions) — coreSkill must be a core competency.
-    const normalizedCoreSkill = criteria.coreSkill ? normalizeSkill(criteria.coreSkill) : null;
-    const candidatesToScore = normalizedCoreSkill
-      ? searchResult.items.filter((c) => {
-          const primarySkills = new Set(normalizeSkills(c.primary_skills));
-          return primarySkills.has(normalizedCoreSkill);
-        })
+    const candidatesToScore = criteria.coreSkill
+      ? searchResult.items.filter((c) => coreSkillSatisfiedBy(criteria.coreSkill, c.primary_skills))
       : searchResult.items;
 
     // Normalize synonym map from search criteria (may be null for older requirements)

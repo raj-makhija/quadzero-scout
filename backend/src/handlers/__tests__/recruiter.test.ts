@@ -159,7 +159,7 @@ import { handler as saveSearchHandler } from '../recruiter/saveSearch.js';
 import { handler as getSearchesHandler } from '../recruiter/getSearches.js';
 import { handler as deleteSearchHandler } from '../recruiter/deleteSearch.js';
 import { handler as listRecentProfilesHandler } from '../recruiter/listRecentProfiles.js';
-import { getCandidateById, getSavedSearches, getRecentProfiles } from '../../lib/dynamodb.js';
+import { getCandidateById, getSavedSearches, getRecentProfiles, searchCandidates } from '../../lib/dynamodb.js';
 import { parseJobDescription } from '../../lib/llm/index.js';
 import { generateDownloadUrl } from '../../lib/s3.js';
 
@@ -419,6 +419,90 @@ describe('POST /recruiter/search', () => {
     expect(result.statusCode).toBe(200);
     // cand_1 has react (passes threshold), cand_2 does not (fails threshold)
     expect(body.data.candidates.some((c: { candidateId: string }) => c.candidateId === 'cand_1')).toBe(true);
+  });
+
+  it('coreSkill filter expands MERN stack — includes candidate with all four components', async () => {
+    (searchCandidates as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      items: [
+        {
+          candidate_id: 'cand_mern',
+          user_id: 'user_mern',
+          full_name: 'MERN Dev',
+          email: 'mern@example.com',
+          location: 'Bangalore',
+          primary_skills: ['mongodb', 'expressjs', 'react', 'nodejs'],
+          primary_skill_years: { mongodb: 3, expressjs: 3, react: 4, nodejs: 4 },
+          secondary_skills: [],
+          total_experience: 4,
+          seniority: 'mid',
+          availability: 'immediate',
+          industries: [],
+          roles: [],
+          experience_bucket: '3-5',
+          resume_s3_key: 'resumes/mern.pdf',
+          created_at: '2024-01-10T08:00:00Z',
+          last_updated: '2024-01-15T10:30:00Z',
+        },
+      ],
+      lastKey: undefined,
+    });
+
+    const event = makeEvent({
+      body: JSON.stringify({
+        criteria: {
+          coreSkill: 'mern stack',
+          mustHaveSkills: ['mongodb', 'expressjs', 'react', 'nodejs'],
+        },
+      }),
+    });
+    const result = await searchHandler(event);
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.data.candidates).toHaveLength(1);
+    expect(body.data.candidates[0].candidateId).toBe('cand_mern');
+  });
+
+  it('coreSkill filter expands MERN stack — excludes candidate missing a component', async () => {
+    (searchCandidates as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      items: [
+        {
+          candidate_id: 'cand_partial',
+          user_id: 'user_partial',
+          full_name: 'Partial Dev',
+          email: 'partial@example.com',
+          location: 'Bangalore',
+          primary_skills: ['mongodb', 'react', 'nodejs'],
+          primary_skill_years: { mongodb: 3, react: 4, nodejs: 4 },
+          secondary_skills: ['expressjs'],
+          total_experience: 4,
+          seniority: 'mid',
+          availability: 'immediate',
+          industries: [],
+          roles: [],
+          experience_bucket: '3-5',
+          resume_s3_key: 'resumes/partial.pdf',
+          created_at: '2024-01-10T08:00:00Z',
+          last_updated: '2024-01-15T10:30:00Z',
+        },
+      ],
+      lastKey: undefined,
+    });
+
+    const event = makeEvent({
+      body: JSON.stringify({
+        criteria: {
+          coreSkill: 'MERN',
+          mustHaveSkills: ['mongodb', 'expressjs', 'react', 'nodejs'],
+          goodToHaveSkills: ['typescript'],
+        },
+      }),
+    });
+    const result = await searchHandler(event);
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.data.candidates).toHaveLength(0);
   });
 
   it('rejects empty body', async () => {
