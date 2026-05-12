@@ -38,10 +38,14 @@ vi.mock('../matchScoring.js', () => {
   };
 });
 
-vi.mock('../skillNormalizer.js', () => ({
-  normalizeSkill: (skill: string) => skill.toLowerCase(),
-  normalizeSkills: (skills: string[]) => skills.map(s => s.toLowerCase()),
-}));
+vi.mock('../skillNormalizer.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../skillNormalizer.js')>();
+  return {
+    normalizeSkill: (skill: string) => skill.toLowerCase(),
+    normalizeSkills: (skills: string[]) => skills.map((s: string) => s.toLowerCase()),
+    coreSkillSatisfiedBy: actual.coreSkillSatisfiedBy,
+  };
+});
 
 vi.mock('../ctcConversion.js', () => ({
   isCandidateWithinBudget: vi.fn().mockReturnValue(true),
@@ -284,6 +288,48 @@ describe('notifyMatchingRecruiters', () => {
 
     await notifyMatchingRecruiters(['cand_1']);
     expect(mockSendEmail).toHaveBeenCalledOnce();
+  });
+
+  it('TC-NOTIFY-012a: includes candidate when coreSkill is MERN stack and candidate has all four components', async () => {
+    const candidateMern = {
+      ...candidateA,
+      primary_skills: ['mongodb', 'expressjs', 'react', 'nodejs'],
+    };
+    const reqMern = {
+      ...requirementActive,
+      parsed_criteria: {
+        ...requirementActive.parsed_criteria,
+        coreSkill: 'mern stack',
+      },
+    };
+    mockGetCandidateById.mockResolvedValue(candidateMern);
+    mockGetAllActiveRequirements.mockResolvedValue([reqMern]);
+    mockCalculateMatchScore.mockReturnValue(goodMatchScore);
+
+    await notifyMatchingRecruiters(['cand_1']);
+    expect(mockCalculateMatchScore).toHaveBeenCalled();
+    expect(mockSendEmail).toHaveBeenCalledOnce();
+  });
+
+  it('TC-NOTIFY-012b: excludes candidate when coreSkill is MERN stack and candidate is missing a component', async () => {
+    const candidatePartial = {
+      ...candidateA,
+      primary_skills: ['mongodb', 'react', 'nodejs'],
+    };
+    const reqMern = {
+      ...requirementActive,
+      parsed_criteria: {
+        ...requirementActive.parsed_criteria,
+        coreSkill: 'mern stack',
+      },
+    };
+    mockGetCandidateById.mockResolvedValue(candidatePartial);
+    mockGetAllActiveRequirements.mockResolvedValue([reqMern]);
+    mockCalculateMatchScore.mockReturnValue(goodMatchScore);
+
+    await notifyMatchingRecruiters(['cand_1']);
+    expect(mockCalculateMatchScore).not.toHaveBeenCalled();
+    expect(mockSendEmail).not.toHaveBeenCalled();
   });
 
   it('TC-NOTIFY-013: includes candidate even when budget exceeds max (CTC is soft indicator)', async () => {
