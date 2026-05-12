@@ -41,6 +41,7 @@ vi.mock('../matchScoring.js', () => {
 vi.mock('../skillNormalizer.js', () => ({
   normalizeSkill: (skill: string) => skill.toLowerCase(),
   normalizeSkills: (skills: string[]) => skills.map(s => s.toLowerCase()),
+  coreSkillSatisfiedBy: (coreSkill: string, primarySet: Set<string>) => primarySet.has(coreSkill),
 }));
 
 vi.mock('../ctcConversion.js', () => ({

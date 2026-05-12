@@ -1,6 +1,6 @@
 import { getCandidateById, getAllActiveRequirements, getUserById } from './dynamodb.js';
 import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, FUZZY_MATCH_WEIGHT, MUST_HAVE_SECONDARY_WEIGHT, parseSearchLocations, isEngagementModelCompatible } from './matchScoring.js';
-import { normalizeSkill, normalizeSkills } from './skillNormalizer.js';
+import { normalizeSkill, normalizeSkills, coreSkillSatisfiedBy } from './skillNormalizer.js';
 import { isCandidateWithinBudget } from './ctcConversion.js';
 import { sendNewProfilesNotificationEmail, type MatchedProfile } from './emailService.js';
 import { config } from './config.js';
@@ -65,10 +65,11 @@ export async function notifyMatchingRecruiters(candidateIds: string[]): Promise<
 
     const matchedProfiles: MatchedProfile[] = [];
     for (const candidate of candidates) {
-      // Core skill pre-filter: must be in primary skills (secondary is too noisy for the defining technology)
+      // Core skill pre-filter: must be in primary skills (secondary is too noisy for the defining technology).
+      // For stack abbreviations like "MERN stack", require all components in primary skills.
       if (normalizedCoreSkill) {
         const primarySkills = new Set(normalizeSkills(candidate.primary_skills));
-        if (!primarySkills.has(normalizedCoreSkill)) continue;
+        if (!coreSkillSatisfiedBy(normalizedCoreSkill, primarySkills)) continue;
       }
 
       const candSynonyms = normalizeSynonymMap(candidate.skill_synonyms);
