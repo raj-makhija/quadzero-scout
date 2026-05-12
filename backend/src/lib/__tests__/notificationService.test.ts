@@ -41,6 +41,9 @@ vi.mock('../matchScoring.js', () => {
 vi.mock('../skillNormalizer.js', () => ({
   normalizeSkill: (skill: string) => skill.toLowerCase(),
   normalizeSkills: (skills: string[]) => skills.map(s => s.toLowerCase()),
+  // Test shim: literal match. Stack-abbreviation behaviour is exercised by skillNormalizer.test.ts.
+  coreSkillSatisfiedBy: (coreSkill: string | null | undefined, candidateSkills: string[]) =>
+    !coreSkill || candidateSkills.map((s) => s.toLowerCase()).includes(coreSkill.toLowerCase()),
 }));
 
 vi.mock('../ctcConversion.js', () => ({
