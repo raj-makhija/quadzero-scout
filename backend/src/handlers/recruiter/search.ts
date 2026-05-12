@@ -11,9 +11,7 @@ import type { CandidateSearchResult, SearchResponse, SearchCriteria } from '../.
 const SEARCH_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
 interface SearchCacheEntry {
-  scoredCandidates: CandidateSearchResult[];
-  encodedLastKey: string | undefined;
-  hasMore: boolean;
+  scoredCandidates: CandidateSearchResult[]; // full globally-sorted list
   fetchedAt: number;
 }
 
@@ -39,8 +37,7 @@ type CriteriaInput = {
 function buildCacheKey(
   requirementId: string | undefined,
   criteria: CriteriaInput,
-  sortBy: string | undefined,
-  pageKey: string | undefined
+  sortBy: string | undefined
 ): string {
   const effectiveSortBy = sortBy ?? 'matchScore';
   const normalizedCriteria = {
@@ -65,7 +62,7 @@ function buildCacheKey(
         )
       : null,
   };
-  return JSON.stringify({ requirementId: requirementId ?? null, criteria: normalizedCriteria, sortBy: effectiveSortBy, pageKey: pageKey ?? null });
+  return JSON.stringify({ requirementId: requirementId ?? null, criteria: normalizedCriteria, sortBy: effectiveSortBy });
 }
 
 /** Normalize a synonym map: lowercase keys and values. Returns undefined if input is null/undefined. */
@@ -108,28 +105,40 @@ async function handleRequest(
 
     const { criteria, pagination, sortBy, requirementId } = validation.data;
 
-    // Decode last evaluated key if provided
-    let lastEvaluatedKey: Record<string, unknown> | undefined;
+    // Decode page offset (base64-encoded integer) from pagination key
+    let offset = 0;
     if (pagination?.lastEvaluatedKey) {
       try {
-        lastEvaluatedKey = JSON.parse(
+        const decoded = JSON.parse(
           Buffer.from(pagination.lastEvaluatedKey, 'base64').toString()
         );
+        if (typeof decoded !== 'number' || !Number.isInteger(decoded) || decoded < 0) {
+          throw new Error('invalid offset');
+        }
+        offset = decoded;
       } catch {
         return error(ErrorCodes.VALIDATION_ERROR, 'Invalid pagination key', 400);
       }
     }
 
     // Check cache before hitting DynamoDB
-    const cacheKey = buildCacheKey(requirementId, criteria, sortBy, pagination?.lastEvaluatedKey);
+    const cacheKey = buildCacheKey(requirementId, criteria, sortBy);
     const cached = searchCache.get(cacheKey);
     if (cached && Date.now() - cached.fetchedAt < SEARCH_CACHE_TTL) {
+      const limit = pagination?.limit ?? 20;
+      const page = cached.scoredCandidates.slice(offset, offset + limit);
+      const nextOffset = offset + limit;
+      const hasMore = nextOffset < cached.scoredCandidates.length;
+      const encodedNextKey = hasMore
+        ? Buffer.from(JSON.stringify(nextOffset)).toString('base64')
+        : undefined;
+
       const isAuthenticated = !!event.auth;
       const responseCandidates = isAuthenticated
-        ? cached.scoredCandidates
-        : cached.scoredCandidates.map((candidate, index) => ({
+        ? page
+        : page.map((candidate, index) => ({
             candidateId: candidate.candidateId,
-            fullName: `Candidate #${index + 1}`,
+            fullName: `Candidate #${offset + index + 1}`,
             location: undefined,
             primarySkills: [],
             totalExperience: candidate.totalExperience,
@@ -164,9 +173,9 @@ async function handleRequest(
       const cachedResponse: SearchResponse = {
         candidates: responseCandidates,
         pagination: {
-          count: cached.scoredCandidates.length,
-          hasMore: cached.hasMore,
-          lastEvaluatedKey: cached.encodedLastKey,
+          count: page.length,
+          hasMore,
+          lastEvaluatedKey: encodedNextKey,
         },
         totalMatches: cached.scoredCandidates.length,
       };
@@ -177,7 +186,7 @@ async function handleRequest(
           entityType: 'search',
           entityId: 'search',
           metadata: {
-            resultCount: cached.scoredCandidates.length,
+            resultCount: page.length,
             mustHaveSkills: criteria.mustHaveSkills || [],
             goodToHaveSkills: criteria.goodToHaveSkills || [],
             minExperience: criteria.minExperience,
@@ -213,9 +222,9 @@ async function handleRequest(
       engagementModel: criteria.engagementModel,
     };
 
-    // Search candidates and fetch shortlists in parallel
+    // Fetch full corpus and shortlists in parallel
     const [searchResult, shortlists] = await Promise.all([
-      searchCandidates(searchCriteria, undefined, lastEvaluatedKey),
+      searchCandidates(searchCriteria),
       requirementId ? getShortlistsForRequirement(requirementId) : Promise.resolve([]),
     ]);
     const shortlistedCandidateIds = new Set(
@@ -328,29 +337,30 @@ async function handleRequest(
       }
     });
 
-    // Encode next page key (only when DynamoDB has more unscanned records)
-    let encodedLastKey: string | undefined;
-    if (searchResult.lastKey) {
-      encodedLastKey = Buffer.from(JSON.stringify(searchResult.lastKey)).toString('base64');
-    }
-
-    // Store results in cache
+    // Cache the full globally-sorted list; pages are served as offset slices
     searchCache.set(cacheKey, {
       scoredCandidates,
-      encodedLastKey,
-      hasMore: !!searchResult.lastKey,
       fetchedAt: Date.now(),
     });
+
+    // Slice the requested page
+    const limit = pagination?.limit ?? 20;
+    const page = scoredCandidates.slice(offset, offset + limit);
+    const nextOffset = offset + limit;
+    const hasMore = nextOffset < scoredCandidates.length;
+    const encodedNextKey = hasMore
+      ? Buffer.from(JSON.stringify(nextOffset)).toString('base64')
+      : undefined;
 
     // Check if user is authenticated - if not, redact sensitive data
     const isAuthenticated = !!event.auth;
 
     const responseCandidates = isAuthenticated
-      ? scoredCandidates
-      : scoredCandidates.map((candidate, index) => ({
+      ? page
+      : page.map((candidate, index) => ({
           // Redact PII and sensitive details for unauthenticated users
           candidateId: candidate.candidateId,
-          fullName: `Candidate #${index + 1}`, // Hide real name
+          fullName: `Candidate #${offset + index + 1}`, // Hide real name
           location: undefined, // Hide location
           primarySkills: [], // Hide skills
           totalExperience: candidate.totalExperience,
@@ -386,9 +396,9 @@ async function handleRequest(
     const response: SearchResponse = {
       candidates: responseCandidates,
       pagination: {
-        count: scoredCandidates.length,
-        hasMore: !!searchResult.lastKey,
-        lastEvaluatedKey: encodedLastKey,
+        count: page.length,
+        hasMore,
+        lastEvaluatedKey: encodedNextKey,
       },
       totalMatches: scoredCandidates.length,
     };
@@ -399,7 +409,7 @@ async function handleRequest(
         entityType: 'search',
         entityId: 'search',
         metadata: {
-          resultCount: scoredCandidates.length,
+          resultCount: page.length,
           mustHaveSkills: criteria.mustHaveSkills || [],
           goodToHaveSkills: criteria.goodToHaveSkills || [],
           minExperience: criteria.minExperience,

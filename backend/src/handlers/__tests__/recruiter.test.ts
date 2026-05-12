@@ -655,6 +655,154 @@ describe('POST /recruiter/search', () => {
     const overBudgetScore = body.data.candidates.find((c: { candidateId: string }) => c.candidateId === 'cand_over_budget').matchScore;
     expect(overBudgetScore).toBeLessThan(inBudgetScore);
   });
+
+  // TC-SEARCH-GLOBAL-RANK: high-score candidate at any scan position appears on page 1
+  it('globally ranks candidates: high-score candidate from later scan position appears on page 1', async () => {
+    const { searchCandidates } = await import('../../lib/dynamodb.js');
+    vi.mocked(searchCandidates).mockReset();
+
+    const lowBase = {
+      user_id: 'user_low',
+      primary_skills: ['react'],
+      primary_skill_years: { react: 1 },
+      secondary_skills: [],
+      total_experience: 1,
+      seniority: 'junior',
+      availability: 'immediate',
+      engagement_model: 'either',
+      industries: [],
+      roles: [],
+      experience_bucket: '0-2',
+      resume_s3_key: 'resumes/low.pdf',
+      created_at: '2024-01-01T00:00:00Z',
+      last_updated: '2024-01-01T00:00:00Z',
+    };
+
+    // Five low-score candidates appear first in scan order (react only, 1 of 2 must-haves)
+    const lowScorers = Array.from({ length: 5 }, (_, i) => ({
+      ...lowBase,
+      candidate_id: `cand_global_low_${i}`,
+      full_name: `Low Score ${i}`,
+      email: `glow${i}@example.com`,
+    }));
+
+    // High-score candidate appears LAST in scan order (both must-haves matched, more experience)
+    const highScorer = {
+      candidate_id: 'cand_global_high',
+      user_id: 'user_high',
+      full_name: 'High Score',
+      email: 'ghigh@example.com',
+      location: 'Bangalore',
+      primary_skills: ['react', 'nodejs'],
+      primary_skill_years: { react: 5, nodejs: 5 },
+      secondary_skills: [],
+      total_experience: 8,
+      seniority: 'senior',
+      availability: 'immediate',
+      engagement_model: 'either',
+      industries: [],
+      roles: [],
+      experience_bucket: '6-10',
+      resume_s3_key: 'resumes/high.pdf',
+      created_at: '2024-01-10T00:00:00Z',
+      last_updated: '2024-01-15T00:00:00Z',
+    };
+
+    vi.mocked(searchCandidates).mockResolvedValueOnce({
+      items: [...lowScorers, highScorer],
+    });
+
+    // Request page 1 with limit 3; use unique goodToHaveSkills to avoid cache collision with prior tests
+    const event = makeEvent({
+      body: JSON.stringify({
+        criteria: { mustHaveSkills: ['react', 'nodejs'], goodToHaveSkills: ['global-rank-unique'] },
+        pagination: { limit: 3 },
+        sortBy: 'matchScore',
+      }),
+    });
+    const result = await searchHandler(event);
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    const page1Ids = body.data.candidates.map((c: { candidateId: string }) => c.candidateId);
+    // High-score candidate must appear on page 1 and be ranked first
+    expect(page1Ids[0]).toBe('cand_global_high');
+    expect(body.data.pagination.hasMore).toBe(true);
+    expect(body.data.totalMatches).toBeGreaterThan(3);
+  });
+
+  // TC-SEARCH-OFFSET-CACHE: page 2 served from cache without re-querying DynamoDB; no duplicates across pages
+  it('serves page 2 from in-memory cache without re-querying DynamoDB and returns no duplicate candidates', async () => {
+    const { searchCandidates } = await import('../../lib/dynamodb.js');
+    vi.mocked(searchCandidates).mockReset();
+
+    const base = {
+      user_id: 'user_c',
+      primary_skills: ['react', 'nodejs'],
+      primary_skill_years: { react: 3, nodejs: 3 },
+      secondary_skills: [],
+      seniority: 'mid',
+      availability: 'immediate',
+      engagement_model: 'either',
+      industries: [],
+      roles: [],
+      experience_bucket: '3-5',
+      resume_s3_key: 'resumes/c.pdf',
+      created_at: '2024-01-01T00:00:00Z',
+    };
+
+    const candidates = Array.from({ length: 6 }, (_, i) => ({
+      ...base,
+      candidate_id: `cand_offset_${i}`,
+      full_name: `Offset Candidate ${i}`,
+      email: `offset${i}@example.com`,
+      total_experience: i + 1,
+      last_updated: `2024-01-1${i}T00:00:00Z`,
+    }));
+
+    vi.mocked(searchCandidates).mockResolvedValue({ items: candidates });
+
+    const criteriaForCacheTest = {
+      mustHaveSkills: ['react', 'nodejs'],
+      goodToHaveSkills: ['offset-cache-unique-marker'],
+    };
+
+    // Page 1
+    const result1 = await searchHandler(makeEvent({
+      body: JSON.stringify({ criteria: criteriaForCacheTest, pagination: { limit: 3 } }),
+    }));
+    const body1 = parseBody(result1);
+    expect(result1.statusCode).toBe(200);
+    expect(body1.data.pagination.hasMore).toBe(true);
+    expect(body1.data.pagination.lastEvaluatedKey).toBeDefined();
+
+    // Page 2 using the pagination key returned from page 1
+    const result2 = await searchHandler(makeEvent({
+      body: JSON.stringify({
+        criteria: criteriaForCacheTest,
+        pagination: { limit: 3, lastEvaluatedKey: body1.data.pagination.lastEvaluatedKey },
+      }),
+    }));
+    const body2 = parseBody(result2);
+    expect(result2.statusCode).toBe(200);
+
+    // DynamoDB must have been called only once (page 2 served from cache)
+    expect(vi.mocked(searchCandidates)).toHaveBeenCalledTimes(1);
+
+    // No duplicates across pages
+    const page1Ids = body1.data.candidates.map((c: { candidateId: string }) => c.candidateId);
+    const page2Ids = body2.data.candidates.map((c: { candidateId: string }) => c.candidateId);
+    const overlap = page1Ids.filter((id: string) => page2Ids.includes(id));
+    expect(overlap).toHaveLength(0);
+
+    // Together they cover all 6 candidates
+    expect(page1Ids.length + page2Ids.length).toBe(6);
+
+    // Global sort preserved: lowest score on page 1 >= highest score on page 2
+    const minPage1Score = Math.min(...body1.data.candidates.map((c: { matchScore: number }) => c.matchScore));
+    const maxPage2Score = Math.max(...body2.data.candidates.map((c: { matchScore: number }) => c.matchScore));
+    expect(minPage1Score).toBeGreaterThanOrEqual(maxPage2Score);
+  });
 });
 
 // ---------------------------------------------------------------------------
