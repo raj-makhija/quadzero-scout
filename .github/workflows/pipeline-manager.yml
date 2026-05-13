@@ -132,10 +132,13 @@ jobs:
             # timeout strikes fail fast and never consume the larger window,
             # so we scale unconditionally rather than gating on RC=124.
             # 0 strikes -> 600s, 1 -> 1200s, 2 -> 1800s.
-            STRIKES=$(gh issue view "$NEXT" --json labels -q '.labels[].name' \
+            # `|| echo` keeps the substitution exit-0 when no struck-N
+            # labels exist (grep -oE exits 1 on no match, which would
+            # otherwise trip pipefail + the YAML-implicit set -e).
+            STRIKES=$( (gh issue view "$NEXT" --json labels -q '.labels[].name' \
               | grep -oE 'pipeline:struck-[0-9]+' \
               | grep -oE '[0-9]+$' \
-              | sort -nr | head -1)
+              | sort -nr | head -1) || echo 0 )
             STRIKES=${STRIKES:-0}
             export PIPELINE_AGENT_TIMEOUT_SEC=$((600 * (STRIKES + 1)))
             echo "manager: #$NEXT has $STRIKES prior strike(s); PIPELINE_AGENT_TIMEOUT_SEC=$PIPELINE_AGENT_TIMEOUT_SEC"
