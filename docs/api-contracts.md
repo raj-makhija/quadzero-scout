@@ -894,7 +894,7 @@ Authorization: Bearer <jwe_token> (optional)
     "pagination": {
       "count": 1,
       "hasMore": true,
-      "lastEvaluatedKey": "eyJjYW5kaWRhdGVJZCI6ImNhbmRfZGVmNDU2In0="
+      "lastEvaluatedKey": "eyJvZmZzZXQiOjIwfQ=="
     },
     "totalMatches": 45
   }
@@ -945,7 +945,7 @@ Authorization: Bearer <jwe_token> (optional)
 - `criteria.availability`: Optional, array of availability enums
 - `criteria.maxBudgetLpa`: Optional, number, min 0 (in LPA)
 - `criteria.engagementModel`: Optional, enum: `contract`, `full_time`, `either`. When set (and not `either`), candidates with an incompatible engagement model are hard-filtered out. Candidates with `either` always pass.
-- `pagination.lastEvaluatedKey`: Optional, base64-encoded cursor for DynamoDB pagination (only needed when database has >500 candidates)
+- `pagination.lastEvaluatedKey`: Optional, base64-encoded offset cursor (`{ "offset": <number> }`) returned by a previous response; selects the next page from the globally sorted candidate list. Opaque to the client — the encoded payload is an offset number, not a DynamoDB key.
 - `sortBy`: Optional, enum: `matchScore` (default), `experience`, `lastUpdated`. Each option uses composite sorting with tiebreakers (all descending): `matchScore` → lastUpdated → experience; `lastUpdated` → matchScore → experience; `experience` → matchScore → lastUpdated
 - `requirementId`: Optional, UUID string. When provided, the response includes `isShortlisted: true/false` and `isNotSuitable: true/false` for each candidate indicating whether they are already shortlisted or marked as not suitable for this requirement. Shortlisted candidates are visually highlighted (green) and not-suitable candidates are styled with orange styling on the frontend.
 
@@ -955,8 +955,10 @@ Authorization: Bearer <jwe_token> (optional)
 - Candidates exceeding `maxBudgetLpa` are flagged with `ctcMatch: false` (soft indicator, not excluded)
 - **Core skill pre-filter:** If the search criteria includes a `coreSkill`, only candidates possessing that exact normalized skill (primary or secondary) are scored
 - Skills are normalized using the skill normalizer before matching (supports CRM, marketing, design, and HR/finance skills in addition to engineering skills)
-- The backend returns **all** scored candidates in a single response (up to 500 scanned from DynamoDB). Pagination is handled client-side on the frontend (page size: 20)
-- `hasMore` is true only when DynamoDB has more unscanned records beyond the 500 cap
+- The backend scans up to 10,000 candidates from DynamoDB, then applies global scoring and all filters (must-have skills, engagement model, etc.) to the entire corpus before ranking. The result is a single globally ordered list from which pages are sliced.
+- Subsequent pages of the same search are served from an in-memory cached sorted list and do not re-query DynamoDB.
+- `totalMatches` reflects the total number of matching candidates across the full scanned corpus (up to 10,000 items), not a per-page or per-DynamoDB-slice count.
+- `hasMore` is true when additional candidates exist in the global ranked list beyond the current page; false on the final page or when the entire matching corpus fits within one page.
 - **Location** is a soft scoring factor (not a hard filter). Multiple locations (comma/semicolon-separated) use OR matching. `locationMatch` values: `"full"` (+10pts), `"partial"` (no location info, +5pts), `"none"` (+0pts)
 - **Experience** is a soft scoring factor. `experienceMatch` values: `"full"` (within range, +8pts), `"partial"` (within 2 years of boundary, +4pts), `"none"` (way outside, +0pts)
 - **Availability** is a soft scoring factor. `availabilityMatch` values: `"full"` (matches or available earlier, +7pts), `"partial"` (1–2 steps later, +3pts), `"none"` (3+ steps later, +0pts)
