@@ -479,6 +479,36 @@ Bulk Upload:
 
 - **Admin Activity Dashboard** (`/admin/activity`): Admin-only page accessible from the admin sidebar and dashboard. Supports two view modes: "All Recruiters" (cumulative) and "Individual" (single recruiter). In cumulative mode, shows an overall activity summary card and a recruiter breakdown table with per-recruiter counts across action categories, sorted by total activity. In individual mode, shows a recruiter selector dropdown populated by `GET /admin/recruiters/list`, the selected recruiter's activity summary, and an optional detailed log view. The cumulative view queries the AuditLog `DateIndex` GSI across date partitions with batched concurrent queries (10 at a time). The individual view uses the same `USER#{userId}` partition key query as the recruiter endpoint.
 
+### Stack-Abbreviation Expansion
+
+Technology stack abbreviations (MERN, MEAN, PERN, LAMP) appear in resumes and job descriptions as single tokens but represent multiple distinct skills. The pipeline expands them at two points so that both newly parsed records and legacy records match correctly.
+
+**Supported abbreviations and their component mappings:**
+
+| Abbreviation | Components |
+|---|---|
+| MERN | MongoDB, Express.js, React, Node.js |
+| MEAN | MongoDB, Express.js, Angular, Node.js |
+| PERN | PostgreSQL, Express.js, React, Node.js |
+| LAMP | Linux, Apache, MySQL, PHP |
+
+**Point 1 — Parse-time expansion (via LLM prompts)**
+
+Both parsers instruct the LLM to decompose stack abbreviations into their individual component technologies and omit the abbreviation itself from the output skill list:
+
+- Resume parser: rule 10 in the system prompt (`backend/src/lib/llm/index.ts`)
+- JD parser: rule 13 in the system prompt (`backend/src/lib/llm/index.ts`)
+
+This means a resume that says "MERN stack" is stored as `[mongodb, expressjs, react, nodejs]`, and a JD that says "MERN" produces the same components in `mustHaveSkills` or `goodToHaveSkills`. Because both sides are expanded at parse time, the standard skill-matching logic handles them without any special-case code.
+
+**Point 2 — Match-time expansion (via `coreSkillSatisfiedBy`)**
+
+When a recruiter sets the `coreSkill` of a requirement to a stack abbreviation (e.g. "MERN stack"), the `coreSkillSatisfiedBy()` helper in `backend/src/lib/skillNormalizer.ts` expands the abbreviation using `expandStackAbbreviation()` and requires the candidate to have **all** component skills in their primary skills. For non-abbreviation core skills the helper falls back to a normalized literal match.
+
+**Safety-net rationale**
+
+Parse-time expansion handles records created after this feature shipped. Match-time expansion is the safety net for legacy records — profiles and requirements parsed before rule 10 / rule 13 were added may still store the raw abbreviation as a single skill token. Without match-time expansion those legacy records would fail the core skill pre-filter when matched against a stack-abbreviation `coreSkill`, silently excluding valid candidates. The two-point design ensures both old and new records behave correctly without a data migration.
+
 ### Email Ingest Flow (Automated via M365)
 
 ```
