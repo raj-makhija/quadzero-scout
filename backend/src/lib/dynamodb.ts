@@ -1403,6 +1403,45 @@ export async function deleteShortlist(requirementId: string, candidateId: string
   );
 }
 
+export async function updateShortlistRates(
+  requirementId: string,
+  candidateId: string,
+  rates: {
+    proposed_rate_hourly: number;
+    proposed_rate_monthly: number;
+    proposed_rate_annual: number;
+    internal_rate_hourly: number;
+    internal_rate_monthly: number;
+    internal_rate_annual: number;
+    proposed_rate_calculated_at: string;
+  }
+): Promise<void> {
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.shortlistsTable,
+      Key: { requirement_id: requirementId, candidate_id: candidateId },
+      UpdateExpression: [
+        'SET proposed_rate_hourly = :ph',
+        'proposed_rate_monthly = :pm',
+        'proposed_rate_annual = :pa',
+        'internal_rate_hourly = :ih',
+        'internal_rate_monthly = :im',
+        'internal_rate_annual = :ia',
+        'proposed_rate_calculated_at = :cat',
+      ].join(', '),
+      ExpressionAttributeValues: {
+        ':ph': rates.proposed_rate_hourly,
+        ':pm': rates.proposed_rate_monthly,
+        ':pa': rates.proposed_rate_annual,
+        ':ih': rates.internal_rate_hourly,
+        ':im': rates.internal_rate_monthly,
+        ':ia': rates.internal_rate_annual,
+        ':cat': rates.proposed_rate_calculated_at,
+      },
+    })
+  );
+}
+
 export async function updateShortlistStatus(
   requirementId: string,
   candidateId: string,
