@@ -655,6 +655,347 @@ describe('POST /recruiter/search', () => {
     const overBudgetScore = body.data.candidates.find((c: { candidateId: string }) => c.candidateId === 'cand_over_budget').matchScore;
     expect(overBudgetScore).toBeLessThan(inBudgetScore);
   });
+
+  // ---------------------------------------------------------------------------
+  // Global ranking tests (ticket #122)
+  // ---------------------------------------------------------------------------
+
+  it('globally ranks candidates regardless of DynamoDB scan order — high scorer placed late appears first', async () => {
+    vi.mocked(searchCandidates).mockResolvedValueOnce({
+      items: [
+        {
+          candidate_id: 'cand_low_1',
+          user_id: 'u1',
+          full_name: 'Low Scorer 1',
+          email: 'low1@example.com',
+          primary_skills: ['react'],
+          primary_skill_years: { react: 1 },
+          secondary_skills: [],
+          total_experience: 1,
+          seniority: 'junior',
+          availability: '2_weeks',
+          industries: [],
+          roles: [],
+          experience_bucket: '0-2',
+          resume_s3_key: 'r/low1.pdf',
+          created_at: '2024-01-01T00:00:00Z',
+          last_updated: '2024-01-01T00:00:00Z',
+        },
+        {
+          candidate_id: 'cand_low_2',
+          user_id: 'u2',
+          full_name: 'Low Scorer 2',
+          email: 'low2@example.com',
+          primary_skills: ['react'],
+          primary_skill_years: { react: 1 },
+          secondary_skills: [],
+          total_experience: 1,
+          seniority: 'junior',
+          availability: '2_weeks',
+          industries: [],
+          roles: [],
+          experience_bucket: '0-2',
+          resume_s3_key: 'r/low2.pdf',
+          created_at: '2024-01-01T00:00:00Z',
+          last_updated: '2024-01-01T00:00:00Z',
+        },
+        {
+          candidate_id: 'cand_high_scorer',
+          user_id: 'u3',
+          full_name: 'High Scorer',
+          email: 'high@example.com',
+          primary_skills: ['react', 'nodejs', 'typescript'],
+          primary_skill_years: { react: 5, nodejs: 5, typescript: 4 },
+          secondary_skills: ['aws', 'docker'],
+          total_experience: 8,
+          seniority: 'senior',
+          availability: 'immediate',
+          industries: ['fintech'],
+          roles: ['Full Stack Developer'],
+          experience_bucket: '6-10',
+          resume_s3_key: 'r/high.pdf',
+          created_at: '2024-01-10T00:00:00Z',
+          last_updated: '2024-01-15T00:00:00Z',
+        },
+      ],
+      lastKey: undefined,
+    });
+
+    const event = makeEvent({
+      body: JSON.stringify({
+        criteria: { mustHaveSkills: ['react', 'nodejs', 'typescript'] },
+        sortBy: 'matchScore',
+      }),
+    });
+    const result = await searchHandler(event);
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.data.candidates[0].candidateId).toBe('cand_high_scorer');
+  });
+
+  it('in-memory cache serves offset-based pages without re-querying DynamoDB', async () => {
+    const candidates = Array.from({ length: 5 }, (_, i) => ({
+      candidate_id: `cand_cache_${i}`,
+      user_id: `user_cache_${i}`,
+      full_name: `Cache Candidate ${i}`,
+      email: `cache${i}@example.com`,
+      primary_skills: ['java', 'spring'],
+      primary_skill_years: { java: 3 + i, spring: 2 + i },
+      secondary_skills: [],
+      total_experience: 3 + i,
+      seniority: 'mid',
+      availability: 'immediate',
+      industries: [],
+      roles: [],
+      experience_bucket: '3-5',
+      resume_s3_key: `r/cache${i}.pdf`,
+      created_at: '2024-01-01T00:00:00Z',
+      last_updated: `2024-01-${10 + i}T00:00:00Z`,
+    }));
+
+    vi.mocked(searchCandidates).mockResolvedValueOnce({
+      items: candidates,
+      lastKey: undefined,
+    });
+
+    const baseCriteria = { mustHaveSkills: ['java', 'spring'] };
+
+    // Page 1
+    const event1 = makeEvent({
+      body: JSON.stringify({ criteria: baseCriteria, pagination: { limit: 2 } }),
+    });
+    const result1 = await searchHandler(event1);
+    const body1 = parseBody(result1);
+
+    expect(result1.statusCode).toBe(200);
+    expect(body1.data.candidates).toHaveLength(2);
+    expect(body1.data.totalMatches).toBe(5);
+    expect(body1.data.pagination.hasMore).toBe(true);
+
+    // Page 2 — use the returned pagination token
+    const event2 = makeEvent({
+      body: JSON.stringify({
+        criteria: baseCriteria,
+        pagination: { limit: 2, lastEvaluatedKey: body1.data.pagination.lastEvaluatedKey },
+      }),
+    });
+    const result2 = await searchHandler(event2);
+    const body2 = parseBody(result2);
+
+    expect(result2.statusCode).toBe(200);
+    expect(body2.data.candidates).toHaveLength(2);
+    expect(body2.data.totalMatches).toBe(5);
+    expect(body2.data.pagination.hasMore).toBe(true);
+
+    // searchCandidates should have been called only once (cache served page 2)
+    expect(vi.mocked(searchCandidates)).toHaveBeenCalledTimes(1);
+
+    // No duplicates across pages
+    const page1Ids = body1.data.candidates.map((c: { candidateId: string }) => c.candidateId);
+    const page2Ids = body2.data.candidates.map((c: { candidateId: string }) => c.candidateId);
+    const allIds = [...page1Ids, ...page2Ids];
+    expect(new Set(allIds).size).toBe(allIds.length);
+  });
+
+  it('hasMore is false and totalMatches correct on the final page', async () => {
+    const candidates = Array.from({ length: 3 }, (_, i) => ({
+      candidate_id: `cand_final_${i}`,
+      user_id: `user_final_${i}`,
+      full_name: `Final Candidate ${i}`,
+      email: `final${i}@example.com`,
+      primary_skills: ['go', 'kubernetes'],
+      primary_skill_years: { go: 3 + i, kubernetes: 2 + i },
+      secondary_skills: [],
+      total_experience: 3 + i,
+      seniority: 'mid',
+      availability: 'immediate',
+      industries: [],
+      roles: [],
+      experience_bucket: '3-5',
+      resume_s3_key: `r/final${i}.pdf`,
+      created_at: '2024-01-01T00:00:00Z',
+      last_updated: `2024-01-${10 + i}T00:00:00Z`,
+    }));
+
+    vi.mocked(searchCandidates).mockResolvedValueOnce({
+      items: candidates,
+      lastKey: undefined,
+    });
+
+    // Page 1 (limit 2 → hasMore should be true)
+    const event1 = makeEvent({
+      body: JSON.stringify({
+        criteria: { mustHaveSkills: ['go', 'kubernetes'] },
+        pagination: { limit: 2 },
+      }),
+    });
+    const body1 = parseBody(await searchHandler(event1));
+    expect(body1.data.pagination.hasMore).toBe(true);
+    expect(body1.data.totalMatches).toBe(3);
+
+    // Page 2 (1 remaining → hasMore should be false)
+    const event2 = makeEvent({
+      body: JSON.stringify({
+        criteria: { mustHaveSkills: ['go', 'kubernetes'] },
+        pagination: { limit: 2, lastEvaluatedKey: body1.data.pagination.lastEvaluatedKey },
+      }),
+    });
+    const body2 = parseBody(await searchHandler(event2));
+    expect(body2.data.candidates).toHaveLength(1);
+    expect(body2.data.pagination.hasMore).toBe(false);
+    expect(body2.data.totalMatches).toBe(3);
+    expect(body2.data.pagination.lastEvaluatedKey).toBeUndefined();
+  });
+
+  it('returns empty candidates array when all candidates fall below threshold', async () => {
+    vi.mocked(searchCandidates).mockResolvedValueOnce({
+      items: [
+        {
+          candidate_id: 'cand_no_match',
+          user_id: 'u_nm',
+          full_name: 'No Match',
+          email: 'nomatch@example.com',
+          primary_skills: ['cobol'],
+          primary_skill_years: { cobol: 20 },
+          secondary_skills: [],
+          total_experience: 20,
+          seniority: 'senior',
+          availability: 'immediate',
+          industries: [],
+          roles: [],
+          experience_bucket: '16+',
+          resume_s3_key: 'r/nm.pdf',
+          created_at: '2024-01-01T00:00:00Z',
+          last_updated: '2024-01-01T00:00:00Z',
+        },
+      ],
+      lastKey: undefined,
+    });
+
+    const event = makeEvent({
+      body: JSON.stringify({
+        criteria: { mustHaveSkills: ['rust', 'wasm'] },
+      }),
+    });
+    const result = await searchHandler(event);
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.data.candidates).toHaveLength(0);
+    expect(body.data.pagination.hasMore).toBe(false);
+    expect(body.data.totalMatches).toBe(0);
+  });
+
+  it('sortBy=lastUpdated sorts globally by date, not matchScore', async () => {
+    vi.mocked(searchCandidates).mockResolvedValueOnce({
+      items: [
+        {
+          candidate_id: 'cand_old_high',
+          user_id: 'u_oh',
+          full_name: 'Old High Score',
+          email: 'oldhigh@example.com',
+          primary_skills: ['ruby', 'rails'],
+          primary_skill_years: { ruby: 8, rails: 7 },
+          secondary_skills: ['postgresql'],
+          total_experience: 8,
+          seniority: 'senior',
+          availability: 'immediate',
+          industries: [],
+          roles: [],
+          experience_bucket: '6-10',
+          resume_s3_key: 'r/oh.pdf',
+          created_at: '2024-01-01T00:00:00Z',
+          last_updated: '2024-01-01T00:00:00Z',
+        },
+        {
+          candidate_id: 'cand_new_low',
+          user_id: 'u_nl',
+          full_name: 'New Low Score',
+          email: 'newlow@example.com',
+          primary_skills: ['ruby'],
+          primary_skill_years: { ruby: 2 },
+          secondary_skills: [],
+          total_experience: 2,
+          seniority: 'junior',
+          availability: '1_month',
+          industries: [],
+          roles: [],
+          experience_bucket: '0-2',
+          resume_s3_key: 'r/nl.pdf',
+          created_at: '2024-06-01T00:00:00Z',
+          last_updated: '2024-06-01T00:00:00Z',
+        },
+      ],
+      lastKey: undefined,
+    });
+
+    const event = makeEvent({
+      body: JSON.stringify({
+        criteria: { mustHaveSkills: ['ruby'] },
+        sortBy: 'lastUpdated',
+      }),
+    });
+    const result = await searchHandler(event);
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.data.candidates).toHaveLength(2);
+    // cand_new_low has a more recent lastUpdated and should appear first
+    expect(body.data.candidates[0].candidateId).toBe('cand_new_low');
+    expect(body.data.candidates[1].candidateId).toBe('cand_old_high');
+  });
+
+  it('results remain globally sorted across pagination boundaries', async () => {
+    const candidates = Array.from({ length: 4 }, (_, i) => ({
+      candidate_id: `cand_sort_${i}`,
+      user_id: `u_sort_${i}`,
+      full_name: `Sort Candidate ${i}`,
+      email: `sort${i}@example.com`,
+      primary_skills: ['elixir', 'phoenix'],
+      primary_skill_years: { elixir: 2 + i * 2, phoenix: 1 + i * 2 },
+      secondary_skills: [],
+      total_experience: 2 + i * 2,
+      seniority: i >= 2 ? 'senior' : 'mid',
+      availability: 'immediate',
+      industries: [],
+      roles: [],
+      experience_bucket: i >= 2 ? '6-10' : '3-5',
+      resume_s3_key: `r/sort${i}.pdf`,
+      created_at: '2024-01-01T00:00:00Z',
+      last_updated: `2024-01-${10 + i}T00:00:00Z`,
+    }));
+
+    vi.mocked(searchCandidates).mockResolvedValueOnce({
+      items: candidates,
+      lastKey: undefined,
+    });
+
+    // Page 1
+    const event1 = makeEvent({
+      body: JSON.stringify({
+        criteria: { mustHaveSkills: ['elixir', 'phoenix'] },
+        pagination: { limit: 2 },
+        sortBy: 'matchScore',
+      }),
+    });
+    const body1 = parseBody(await searchHandler(event1));
+
+    // Page 2
+    const event2 = makeEvent({
+      body: JSON.stringify({
+        criteria: { mustHaveSkills: ['elixir', 'phoenix'] },
+        pagination: { limit: 2, lastEvaluatedKey: body1.data.pagination.lastEvaluatedKey },
+        sortBy: 'matchScore',
+      }),
+    });
+    const body2 = parseBody(await searchHandler(event2));
+
+    // Lowest score on page 1 >= highest score on page 2
+    const page1Scores = body1.data.candidates.map((c: { matchScore: number }) => c.matchScore);
+    const page2Scores = body2.data.candidates.map((c: { matchScore: number }) => c.matchScore);
+    expect(Math.min(...page1Scores)).toBeGreaterThanOrEqual(Math.max(...page2Scores));
+  });
 });
 
 // ---------------------------------------------------------------------------
