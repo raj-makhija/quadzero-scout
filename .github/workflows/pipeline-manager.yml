@@ -126,6 +126,20 @@ jobs:
             fi
 
             echo "manager: iter $i, advancing #$NEXT"
+
+            # Scale agent timeout by strike count so a ticket that timed out
+            # on pass 1 gets a larger wall-clock budget on pass 2/3. Non-
+            # timeout strikes fail fast and never consume the larger window,
+            # so we scale unconditionally rather than gating on RC=124.
+            # 0 strikes -> 600s, 1 -> 1200s, 2 -> 1800s.
+            STRIKES=$(gh issue view "$NEXT" --json labels -q '.labels[].name' \
+              | grep -oE 'pipeline:struck-[0-9]+' \
+              | grep -oE '[0-9]+$' \
+              | sort -nr | head -1)
+            STRIKES=${STRIKES:-0}
+            export PIPELINE_AGENT_TIMEOUT_SEC=$((600 * (STRIKES + 1)))
+            echo "manager: #$NEXT has $STRIKES prior strike(s); PIPELINE_AGENT_TIMEOUT_SEC=$PIPELINE_AGENT_TIMEOUT_SEC"
+
             if scripts/manager.sh; then
               # Successful advancement. Clear any prior strikes (no-op
               # if there were none) so transient failures don't keep

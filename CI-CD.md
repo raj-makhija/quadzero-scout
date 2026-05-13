@@ -900,16 +900,33 @@ To unstick:
   gh workflow run pipeline-manager.yml
   ```
 
-### 8.3 Agent timed out (600s)
+### 8.3 Agent timed out (600s base, auto-scaled per strike)
 
-`_agent-claude.sh` uses `timeout 600s`. If the developer agent runs
-out of time on a large feature, manager will see no commits and
-escalate the ticket to `cost-review-pending`. To extend:
+`_agent-claude.sh` uses `timeout` with `PIPELINE_AGENT_TIMEOUT_SEC`
+(default 600s). The drain loop in `pipeline-manager.yml` sets this
+per-iteration based on the ticket's current strike count:
 
-```yaml
-# In workflow env block
-PIPELINE_AGENT_TIMEOUT_SEC: '1200'
-```
+| Prior strikes | Timeout |
+|---|---|
+| 0 | 600s (10 min) |
+| 1 | 1200s (20 min) |
+| 2 | 1800s (30 min) |
+
+Rationale: a ticket that timed out on pass 1 likely needs more
+wall-clock to finish, not the same budget retried. Scaling is
+unconditional (not gated on RC=124) because non-timeout strikes --
+branch errors, missing labels, etc. -- fail fast and never consume
+the larger window, so we trade a small amount of worst-case
+runner-minutes for code simplicity.
+
+Strike 3 parks the ticket at `needs-human` (see §8.10), so the
+auto-scaled budget caps at 1800s before human intervention.
+
+To raise the base for a specific run, override
+`PIPELINE_AGENT_TIMEOUT_SEC` in the drain step env block -- but note
+the drain loop will overwrite it per iteration. To raise the floor
+globally, edit the `600 *` literal in `pipeline-manager.yml`'s drain
+step.
 
 ### 8.4 Stale base merge
 
