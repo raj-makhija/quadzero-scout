@@ -87,6 +87,51 @@ describe('normalizeSkill()', () => {
   it('normalizes "vue.js" to "vue"', () => {
     expect(normalizeSkill('vue.js')).toBe('vue');
   });
+
+  // TC-KDB-001: KDB+ alias normalization
+  it('normalizes "kdb" to "kdb"', () => {
+    expect(normalizeSkill('kdb')).toBe('kdb');
+  });
+
+  it('normalizes "kdb+" to "kdb"', () => {
+    expect(normalizeSkill('kdb+')).toBe('kdb');
+  });
+
+  it('normalizes "kdb/q" to "kdb"', () => {
+    expect(normalizeSkill('kdb/q')).toBe('kdb');
+  });
+
+  it('normalizes "KDB" (uppercase) to "kdb"', () => {
+    expect(normalizeSkill('KDB')).toBe('kdb');
+  });
+
+  it('normalizes "KDB+" (mixed case) to "kdb"', () => {
+    expect(normalizeSkill('KDB+')).toBe('kdb');
+  });
+
+  it('normalizes "Kdb+" to "kdb"', () => {
+    expect(normalizeSkill('Kdb+')).toBe('kdb');
+  });
+
+  it('normalizes "kdb +" (space before +) to "kdb"', () => {
+    expect(normalizeSkill('kdb +')).toBe('kdb');
+  });
+
+  it('normalizes "KDB/Q" to "kdb"', () => {
+    expect(normalizeSkill('KDB/Q')).toBe('kdb');
+  });
+
+  it('normalizes "q language" to "kdb"', () => {
+    expect(normalizeSkill('q language')).toBe('kdb');
+  });
+
+  it('normalizes "q lang" to "kdb"', () => {
+    expect(normalizeSkill('q lang')).toBe('kdb');
+  });
+
+  it('normalizes "kx" to "kdb"', () => {
+    expect(normalizeSkill('kx')).toBe('kdb');
+  });
 });
 
 describe('normalizeSkills()', () => {
@@ -196,6 +241,23 @@ describe('getSkillCategory()', () => {
   it('returns "backend_jvm" for java', () => {
     expect(getSkillCategory('java')).toBe('backend_jvm');
   });
+
+  // TC-KDB-002: KDB+ category placement
+  it('returns "time_series_databases" for kdb', () => {
+    expect(getSkillCategory('kdb')).toBe('time_series_databases');
+  });
+
+  it('returns "time_series_databases" for kdb via alias "kdb+"', () => {
+    expect(getSkillCategory('kdb+')).toBe('time_series_databases');
+  });
+
+  it('returns "time_series_databases" for influxdb', () => {
+    expect(getSkillCategory('influxdb')).toBe('time_series_databases');
+  });
+
+  it('returns "time_series_databases" for timescaledb', () => {
+    expect(getSkillCategory('timescaledb')).toBe('time_series_databases');
+  });
 });
 
 describe('getRelatedSkills()', () => {
@@ -247,6 +309,26 @@ describe('getRelatedSkills()', () => {
     expect(related).toContain('aws_lambda');
     expect(related).not.toContain('azure');
     expect(related).not.toContain('google_cloud');
+  });
+
+  // TC-KDB-003: KDB+ related skills
+  it('kdb related skills include influxdb and timescaledb', () => {
+    const related = getRelatedSkills('kdb');
+    expect(related).toContain('influxdb');
+    expect(related).toContain('timescaledb');
+    expect(related).not.toContain('kdb');
+  });
+
+  it('kdb+ alias resolves related skills via normalization', () => {
+    const related = getRelatedSkills('kdb+');
+    expect(related).toContain('influxdb');
+    expect(related).toContain('timescaledb');
+  });
+
+  it('influxdb related skills include kdb and timescaledb', () => {
+    const related = getRelatedSkills('influxdb');
+    expect(related).toContain('kdb');
+    expect(related).toContain('timescaledb');
   });
 });
 
@@ -337,6 +419,63 @@ describe('calculateSkillMatch()', () => {
     expect(result.exactMatched).toEqual([]);
     expect(result.relatedMatched).toEqual([]); // different categories now
     expect(result.missing).toContain('azure');
+  });
+
+  // TC-KDB-004: KDB+ matching via aliases
+  it('candidate "kdb+" exactly matches requirement "KDB" after normalization', () => {
+    const result = calculateSkillMatch(['kdb+'], ['KDB']);
+    expect(result.exactMatched).toContain('kdb');
+    expect(result.missing).toEqual([]);
+  });
+
+  it('candidate "KDB" exactly matches requirement "kdb+" after normalization', () => {
+    const result = calculateSkillMatch(['KDB'], ['kdb+']);
+    expect(result.exactMatched).toContain('kdb');
+    expect(result.missing).toEqual([]);
+  });
+
+  it('candidate "kdb/q" exactly matches requirement "kdb" after normalization', () => {
+    const result = calculateSkillMatch(['kdb/q'], ['kdb']);
+    expect(result.exactMatched).toContain('kdb');
+    expect(result.missing).toEqual([]);
+  });
+
+  it('candidate "q language" exactly matches requirement "KDB+"', () => {
+    const result = calculateSkillMatch(['q language'], ['KDB+']);
+    expect(result.exactMatched).toContain('kdb');
+    expect(result.missing).toEqual([]);
+  });
+
+  // TC-KDB-005: KDB+ secondary skill penalty (must-have weighting)
+  it('candidate with influxdb earns a related match when requirement is kdb', () => {
+    const result = calculateSkillMatch(['influxdb'], ['kdb'], false);
+    expect(result.exactMatched).toEqual([]);
+    expect(result.relatedMatched).toContain('kdb');
+    expect(result.missing).toEqual([]);
+  });
+
+  // TC-KDB-006: must-have ratio with KDB only
+  it('candidate with only kdb as must-have has 1.0 match ratio (not filtered)', () => {
+    const result = calculateSkillMatch(['kdb+'], ['KDB']);
+    expect(result.exactMatched.length).toBe(1);
+    expect(result.missing.length).toBe(0);
+    // ratio = 1/1 = 1.0 — above the 0.40 floor
+  });
+
+  // TC-KDB-007: mixed must-haves — candidate has kdb but not influxdb
+  it('candidate with kdb earns a related match for influxdb (same category, exactOnly=false)', () => {
+    const result = calculateSkillMatch(['kdb'], ['kdb', 'influxdb']);
+    expect(result.exactMatched).toContain('kdb');
+    // influxdb is in the same time_series_databases category, so it is a related match
+    expect(result.relatedMatched).toContain('influxdb');
+    expect(result.missing).toEqual([]);
+  });
+
+  it('candidate with kdb has influxdb in missing when exactOnly=true', () => {
+    const result = calculateSkillMatch(['kdb'], ['kdb', 'influxdb'], true);
+    expect(result.exactMatched).toContain('kdb');
+    expect(result.missing).toContain('influxdb');
+    // exact ratio = 1/2 = 0.5 — above the 0.40 must-have threshold
   });
 });
 

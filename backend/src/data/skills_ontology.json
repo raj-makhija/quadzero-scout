@@ -160,6 +160,20 @@
 
     "cassandra": "cassandra",
 
+    "kdb": "kdb",
+    "kdb+": "kdb",
+    "kdb/q": "kdb",
+    "kdb +": "kdb",
+    "kdb/q language": "kdb",
+    "kx": "kdb",
+    "q language": "kdb",
+    "q lang": "kdb",
+
+    "influxdb": "influxdb",
+    "influx db": "influxdb",
+    "timescaledb": "timescaledb",
+    "timescale db": "timescaledb",
+
     "graphql": "graphql",
     "gql": "graphql",
     "apollo": "apollo_graphql",
@@ -368,6 +382,9 @@
     ],
     "nosql_databases": [
       "mongodb", "cassandra", "dynamodb"
+    ],
+    "time_series_databases": [
+      "kdb", "influxdb", "timescaledb"
     ],
     "cache_search": [
       "redis", "memcached", "elasticsearch", "opensearch"
