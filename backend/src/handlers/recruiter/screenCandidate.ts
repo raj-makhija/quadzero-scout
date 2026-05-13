@@ -1,8 +1,9 @@
 import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, ScreenCandidateRequestSchema } from '../../lib/validation.js';
-import { getCandidateById, saveScreening, updateCandidateProfileFields, getUserById, getSubVendorById } from '../../lib/dynamodb.js';
+import { getCandidateById, saveScreening, updateCandidateProfileFields, getUserById, getSubVendorById, getShortlistsForCandidate, getRequirementById, getActivePricingConfig, updateShortlistRates } from '../../lib/dynamodb.js';
 import { getExperienceBucket } from '../../lib/dynamodb.js';
+import { calculatePricing } from '../../lib/pricingEngine.js';
 import { normalizeSkills } from '../../lib/skillNormalizer.js';
 import { calculateNegotiableCtc } from '../../lib/ctcConversion.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
@@ -209,6 +210,63 @@ async function handleRequest(
       entityId: candidateId,
       metadata: { candidateId, candidateName: candidate.full_name, fieldsUpdated, notes, notInterested: updatedValues.notInterested },
     });
+
+    // If expectedCtc changed, recalculate rates on all active shortlist entries
+    if (dbFields['expected_ctc'] !== undefined) {
+      const newCtcLpa = dbFields['expected_ctc'] as number;
+      const newExperienceYears = (dbFields['total_experience'] as number | undefined) ?? (candidate.total_experience as number);
+      try {
+        const shortlists = await getShortlistsForCandidate(candidateId);
+        const EXIT_STAGES = new Set(['rejected_by_client', 'candidate_withdrawn', 'not_suitable']);
+        const activeShortlists = shortlists.filter(sl => {
+          if (sl.pipeline_stage && EXIT_STAGES.has(sl.pipeline_stage)) return false;
+          if (sl.status === 'rejected' || sl.status === 'not_suitable') return false;
+          return true;
+        });
+        if (activeShortlists.length > 0) {
+          const pricingConfig = await getActivePricingConfig();
+          const recalcNow = new Date().toISOString();
+          const results = await Promise.allSettled(
+            activeShortlists.map(async (sl) => {
+              const requirement = await getRequirementById(sl.requirement_id);
+              if (!requirement) return;
+              const budgetMinHourly = requirement.budget_min_lpa != null
+                ? (requirement.budget_min_lpa * 100_000) / (12 * 160)
+                : undefined;
+              const budgetMaxHourly = requirement.budget_max_lpa != null
+                ? (requirement.budget_max_lpa * 100_000) / (12 * 160)
+                : undefined;
+              const pricing = calculatePricing({
+                candidateExpectedCtcLpa: newCtcLpa,
+                candidateExperienceYears: newExperienceYears,
+                contractDurationMonths: requirement.contract_duration_months ?? 12,
+                paymentTermsDays: requirement.payment_terms_days ?? 30,
+                clientBudgetMinHourly: budgetMinHourly,
+                clientBudgetMaxHourly: budgetMaxHourly,
+                engagementModel: requirement.engagement_model,
+                isRateGstInclusive: requirement.is_rate_gst_inclusive ?? false,
+              }, pricingConfig);
+              await updateShortlistRates(sl.requirement_id, sl.candidate_id, {
+                proposed_rate_hourly: pricing.finalQuotedHourly,
+                proposed_rate_monthly: pricing.finalQuotedMonthly,
+                proposed_rate_annual: pricing.finalQuotedAnnual,
+                internal_rate_hourly: pricing.minimumBillingHourly,
+                internal_rate_monthly: pricing.minimumBillingMonthly,
+                internal_rate_annual: pricing.minimumBillingAnnual,
+                proposed_rate_calculated_at: recalcNow,
+              });
+            })
+          );
+          for (const res of results) {
+            if (res.status === 'rejected') {
+              console.error('Failed to recalculate shortlist rates:', res.reason);
+            }
+          }
+        }
+      } catch (rateErr) {
+        console.error('Failed to recalculate shortlist rates after CTC change:', rateErr);
+      }
+    }
 
     return success({
       candidateId,

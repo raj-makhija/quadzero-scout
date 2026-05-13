@@ -12,6 +12,9 @@ const mockGetScreeningHistory = vi.fn().mockResolvedValue([]);
 const mockGetRequirementById = vi.fn();
 const mockGetShortlistEntry = vi.fn();
 const mockSaveShortlist = vi.fn().mockResolvedValue(undefined);
+const mockGetShortlistsForCandidate = vi.fn().mockResolvedValue([]);
+const mockGetActivePricingConfig = vi.fn().mockResolvedValue({});
+const mockUpdateShortlistRates = vi.fn().mockResolvedValue(undefined);
 const mockGetExperienceBucket = vi.fn((years: number) => {
   if (years <= 2) return '0-2';
   if (years <= 5) return '3-5';
@@ -28,7 +31,25 @@ vi.mock('../../lib/dynamodb.js', () => ({
   getRequirementById: (...args: unknown[]) => mockGetRequirementById(...args),
   getShortlistEntry: (...args: unknown[]) => mockGetShortlistEntry(...args),
   saveShortlist: (...args: unknown[]) => mockSaveShortlist(...args),
+  getShortlistsForCandidate: (...args: unknown[]) => mockGetShortlistsForCandidate(...args),
+  getActivePricingConfig: (...args: unknown[]) => mockGetActivePricingConfig(...args),
+  updateShortlistRates: (...args: unknown[]) => mockUpdateShortlistRates(...args),
   getExperienceBucket: (...args: unknown[]) => mockGetExperienceBucket(...args),
+}));
+
+const mockCalculatePricing = vi.fn().mockReturnValue({
+  finalQuotedHourly: 1500,
+  finalQuotedMonthly: 240000,
+  finalQuotedAnnual: 2880000,
+  minimumBillingHourly: 1200,
+  minimumBillingMonthly: 192000,
+  minimumBillingAnnual: 2304000,
+});
+
+vi.mock('../../lib/pricingEngine.js', () => ({
+  calculatePricing: (...args: unknown[]) => mockCalculatePricing(...args),
+  getExperienceBand: vi.fn(() => 'mid'),
+  getContractDurationDiscount: vi.fn(() => 0),
 }));
 
 vi.mock('../../lib/ctcConversion.js', async () => {
@@ -574,5 +595,266 @@ describe('screenCandidate handler (not interested)', () => {
     const screeningCall = mockSaveScreening.mock.calls[0][0];
     expect(screeningCall.updated_values.linkedin_url).toBe('https://linkedin.com/in/alicesmith');
     expect(screeningCall.updated_values.github_url).toBe('https://github.com/alicesmith');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: Shortlist Rate Recalculation on CTC Change
+// ---------------------------------------------------------------------------
+
+const mockRequirement = {
+  requirement_id: 'req_1',
+  engagement_model: 'full_time_contract',
+  contract_duration_months: 12,
+  payment_terms_days: 30,
+  budget_min_lpa: 20,
+  budget_max_lpa: 30,
+  is_rate_gst_inclusive: false,
+};
+
+const mockShortlistEntry = {
+  requirement_id: 'req_1',
+  candidate_id: 'cand_1',
+  status: 'shortlisted',
+  proposed_rate_hourly: 1000,
+  proposed_rate_monthly: 160000,
+  proposed_rate_annual: 1920000,
+  internal_rate_hourly: 900,
+  internal_rate_monthly: 144000,
+  internal_rate_annual: 1728000,
+  proposed_rate_calculated_at: '2026-04-01T00:00:00Z',
+};
+
+describe('screenCandidate handler (shortlist rate recalculation)', () => {
+  let handler: Function;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockGetCandidateById.mockResolvedValue(mockCandidate);
+    mockGetShortlistsForCandidate.mockResolvedValue([mockShortlistEntry]);
+    mockGetRequirementById.mockResolvedValue(mockRequirement);
+    mockGetActivePricingConfig.mockResolvedValue({});
+    mockCalculatePricing.mockReturnValue({
+      finalQuotedHourly: 1500,
+      finalQuotedMonthly: 240000,
+      finalQuotedAnnual: 2880000,
+      minimumBillingHourly: 1200,
+      minimumBillingMonthly: 192000,
+      minimumBillingAnnual: 2304000,
+    });
+    const mod = await import('../recruiter/screenCandidate.js');
+    handler = mod.handler;
+  });
+
+  it('should recalculate shortlist rates when expectedCtc changes', async () => {
+    const event = makeEvent({
+      candidateId: 'cand_1',
+      updatedValues: { expectedCtc: 20 },
+    });
+
+    const result = await handler(event);
+    const body = JSON.parse(result.body);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.success).toBe(true);
+    expect(mockGetShortlistsForCandidate).toHaveBeenCalledWith('cand_1');
+    expect(mockGetActivePricingConfig).toHaveBeenCalledOnce();
+    expect(mockGetRequirementById).toHaveBeenCalledWith('req_1');
+    expect(mockCalculatePricing).toHaveBeenCalledWith(
+      expect.objectContaining({ candidateExpectedCtcLpa: 20 }),
+      expect.anything()
+    );
+    expect(mockUpdateShortlistRates).toHaveBeenCalledWith(
+      'req_1', 'cand_1',
+      expect.objectContaining({
+        proposed_rate_hourly: 1500,
+        proposed_rate_monthly: 240000,
+        proposed_rate_annual: 2880000,
+        internal_rate_hourly: 1200,
+        internal_rate_monthly: 192000,
+        internal_rate_annual: 2304000,
+        proposed_rate_calculated_at: expect.any(String),
+      })
+    );
+  });
+
+  it('should use new totalExperience for pricing when both CTC and experience change', async () => {
+    const event = makeEvent({
+      candidateId: 'cand_1',
+      updatedValues: { expectedCtc: 25, totalExperience: 10 },
+    });
+
+    await handler(event);
+
+    expect(mockCalculatePricing).toHaveBeenCalledWith(
+      expect.objectContaining({ candidateExpectedCtcLpa: 25, candidateExperienceYears: 10 }),
+      expect.anything()
+    );
+  });
+
+  it('should use candidate existing experience when only CTC changes', async () => {
+    const event = makeEvent({
+      candidateId: 'cand_1',
+      updatedValues: { expectedCtc: 18 },
+    });
+
+    await handler(event);
+
+    expect(mockCalculatePricing).toHaveBeenCalledWith(
+      expect.objectContaining({ candidateExpectedCtcLpa: 18, candidateExperienceYears: mockCandidate.total_experience }),
+      expect.anything()
+    );
+  });
+
+  it('should NOT recalculate rates when expectedCtc is not in updatedValues', async () => {
+    const event = makeEvent({
+      candidateId: 'cand_1',
+      updatedValues: { availability: '2_weeks' },
+    });
+
+    await handler(event);
+
+    expect(mockGetShortlistsForCandidate).not.toHaveBeenCalled();
+    expect(mockUpdateShortlistRates).not.toHaveBeenCalled();
+  });
+
+  it('should succeed with no rate updates when candidate has no shortlist entries', async () => {
+    mockGetShortlistsForCandidate.mockResolvedValue([]);
+
+    const event = makeEvent({
+      candidateId: 'cand_1',
+      updatedValues: { expectedCtc: 20 },
+    });
+
+    const result = await handler(event);
+    expect(result.statusCode).toBe(200);
+    expect(mockUpdateShortlistRates).not.toHaveBeenCalled();
+    expect(mockGetActivePricingConfig).not.toHaveBeenCalled();
+  });
+
+  it('should skip exit-state shortlist entries', async () => {
+    mockGetShortlistsForCandidate.mockResolvedValue([
+      { ...mockShortlistEntry, requirement_id: 'req_active', status: 'shortlisted' },
+      { ...mockShortlistEntry, requirement_id: 'req_rejected', status: 'rejected' },
+      { ...mockShortlistEntry, requirement_id: 'req_not_suitable', status: 'not_suitable' },
+      { ...mockShortlistEntry, requirement_id: 'req_pipeline_exit', status: 'submitted', pipeline_stage: 'rejected_by_client' },
+      { ...mockShortlistEntry, requirement_id: 'req_withdrawn', status: 'submitted', pipeline_stage: 'candidate_withdrawn' },
+    ]);
+    mockGetRequirementById.mockResolvedValue(mockRequirement);
+
+    const event = makeEvent({
+      candidateId: 'cand_1',
+      updatedValues: { expectedCtc: 20 },
+    });
+
+    await handler(event);
+
+    // Only the active entry should be updated
+    expect(mockUpdateShortlistRates).toHaveBeenCalledTimes(1);
+    expect(mockUpdateShortlistRates).toHaveBeenCalledWith('req_active', 'cand_1', expect.anything());
+  });
+
+  it('should be non-fatal when requirement is deleted for one shortlist entry', async () => {
+    mockGetShortlistsForCandidate.mockResolvedValue([
+      { ...mockShortlistEntry, requirement_id: 'req_deleted' },
+      { ...mockShortlistEntry, requirement_id: 'req_valid' },
+    ]);
+    mockGetRequirementById
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(mockRequirement);
+
+    const event = makeEvent({
+      candidateId: 'cand_1',
+      updatedValues: { expectedCtc: 20 },
+    });
+
+    const result = await handler(event);
+
+    // Screening should still succeed
+    expect(result.statusCode).toBe(200);
+    // Only the valid entry should be updated
+    expect(mockUpdateShortlistRates).toHaveBeenCalledTimes(1);
+    expect(mockUpdateShortlistRates).toHaveBeenCalledWith('req_valid', 'cand_1', expect.anything());
+  });
+
+  it('should keep response shape unchanged regardless of rate recalculation', async () => {
+    const event = makeEvent({
+      candidateId: 'cand_1',
+      updatedValues: { expectedCtc: 20 },
+      notes: 'CTC update',
+    });
+
+    const result = await handler(event);
+    const body = JSON.parse(result.body);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.data).toMatchObject({
+      candidateId: 'cand_1',
+      screenedAt: expect.any(String),
+      fieldsUpdated: expect.arrayContaining(['expected_ctc']),
+    });
+    // No extra rate fields in response
+    expect(body.data.proposedRateHourly).toBeUndefined();
+  });
+
+  it('should use server-derived CTC for rate recalculation when expectedCtcType is negotiable', async () => {
+    mockGetCandidateById.mockResolvedValue({
+      ...mockCandidate,
+      current_ctc: 10,
+      total_experience: 6,
+    });
+
+    const event = makeEvent({
+      candidateId: 'cand_1',
+      updatedValues: { currentCtc: 10, expectedCtcType: 'negotiable' },
+    });
+
+    await handler(event);
+
+    // 6 years → 25% increment: 10 * 1.25 = 12.5
+    expect(mockCalculatePricing).toHaveBeenCalledWith(
+      expect.objectContaining({ candidateExpectedCtcLpa: 12.5 }),
+      expect.anything()
+    );
+  });
+
+  it('should be non-fatal when fetching shortlists fails', async () => {
+    mockGetShortlistsForCandidate.mockRejectedValue(new Error('DynamoDB error'));
+
+    const event = makeEvent({
+      candidateId: 'cand_1',
+      updatedValues: { expectedCtc: 20 },
+    });
+
+    const result = await handler(event);
+    expect(result.statusCode).toBe(200);
+    expect(mockUpdateShortlistRates).not.toHaveBeenCalled();
+  });
+
+  it('should convert requirement budget LPA to hourly for pricing input', async () => {
+    const reqWithBudget = {
+      ...mockRequirement,
+      budget_min_lpa: 24,
+      budget_max_lpa: 36,
+    };
+    mockGetRequirementById.mockResolvedValue(reqWithBudget);
+
+    const event = makeEvent({
+      candidateId: 'cand_1',
+      updatedValues: { expectedCtc: 20 },
+    });
+
+    await handler(event);
+
+    // 24 LPA → (24 * 100_000) / (12 * 160) = 2_400_000 / 1920 = 1250
+    // 36 LPA → (36 * 100_000) / (12 * 160) = 3_600_000 / 1920 = 1875
+    expect(mockCalculatePricing).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clientBudgetMinHourly: 1250,
+        clientBudgetMaxHourly: 1875,
+      }),
+      expect.anything()
+    );
   });
 });
