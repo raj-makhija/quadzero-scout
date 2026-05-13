@@ -56,6 +56,9 @@ export default function RecruiterSearchPage() {
     [allResults, showNotSuitable]
   );
   const totalPages = Math.ceil(filteredResults.length / PAGE_SIZE);
+  // Use backend totalMatches for the displayed page count so "Page 1 of 6" is
+  // correct even before all pages are locally loaded.
+  const displayTotalPages = Math.max(totalPages, Math.ceil(totalMatches / PAGE_SIZE));
   const results = useMemo(
     () => filteredResults.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
     [filteredResults, currentPage]
@@ -1366,7 +1369,7 @@ export default function RecruiterSearchPage() {
               )}
 
               {/* Pagination */}
-              {filteredResults.length > PAGE_SIZE && (
+              {(totalMatches > PAGE_SIZE || hasMore) && (
                 <div className="mt-6 flex items-center justify-between">
                   <button
                     onClick={handlePreviousPage}
@@ -1379,7 +1382,7 @@ export default function RecruiterSearchPage() {
                     Previous
                   </button>
                   <span className="text-sm text-gray-600 dark:text-gray-400">
-                    Page {currentPage} of {totalPages}
+                    Page {currentPage} of {displayTotalPages}
                   </span>
                   <button
                     onClick={handleNextPage}
