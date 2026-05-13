@@ -109,7 +109,7 @@ export async function searchCandidates(
   const expressionAttributeValues: Record<string, unknown> = {};
 
   const PAGE_SIZE = 100;
-  const MAX_ITEMS = 2000;
+  const MAX_ITEMS = 10000;
 
   const baseScanParams: {
     TableName: string;
@@ -132,7 +132,7 @@ export async function searchCandidates(
   }
 
   const allItems: CandidateItem[] = [];
-  let currentKey: Record<string, unknown> | undefined = lastEvaluatedKey;
+  let currentKey: Record<string, unknown> | undefined;
 
   do {
     const scanParams = { ...baseScanParams };
