@@ -721,31 +721,37 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                     />
                   </FormField>
                 </div>
-              </div>
-
-              {/* Section: Last Working Day */}
-              <div>
-                <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                  Last Working Day{notInterested ? ' — optional' : ''}
-                </h3>
-                <div className="grid grid-cols-2 gap-4 items-end">
+                <div className="grid grid-cols-2 gap-4 mt-3 items-end">
                   <FormField
                     label="Last Working Day (LWD)"
                     htmlFor="lastWorkingDay"
                     touched={submitAttempted}
                     error={submitAttempted && !notInterested && !lastWorkingDay && !stillOnJob ? 'Required' : undefined}
                   >
-                    <FormInput
-                      id="lastWorkingDay"
-                      type="date"
-                      value={lastWorkingDay}
-                      onChange={(e) => {
-                        setLastWorkingDay(e.target.value);
-                        if (e.target.value) setStillOnJob(false);
-                      }}
-                      disabled={stillOnJob}
-                      hasError={submitAttempted && !notInterested && !lastWorkingDay && !stillOnJob}
-                    />
+                    <div className="flex items-center gap-2">
+                      <FormInput
+                        id="lastWorkingDay"
+                        type="date"
+                        value={lastWorkingDay}
+                        onChange={(e) => {
+                          setLastWorkingDay(e.target.value);
+                          if (e.target.value) setStillOnJob(false);
+                        }}
+                        disabled={stillOnJob}
+                        hasError={submitAttempted && !notInterested && !lastWorkingDay && !stillOnJob}
+                        className="flex-1"
+                      />
+                      {lastWorkingDay && (
+                        <button
+                          type="button"
+                          onClick={() => setLastWorkingDay('')}
+                          className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-700 flex-shrink-0"
+                          title="Clear date"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
                   </FormField>
                   <div className="pb-1">
                     <label className="flex items-start gap-2 cursor-pointer select-none">
