@@ -1,5 +1,6 @@
 import { calculateSkillMatch, normalizeSkill, calculateRoleMatch } from './skillNormalizer.js';
 import { isCandidateWithinBudget } from './ctcConversion.js';
+import { expandLocationAliases } from './locationNormalizer.js';
 import type { CandidateItem, CandidateSearchResult } from '../types/index.js';
 
 export type MatchDetails = CandidateSearchResult['matchDetails'];
@@ -83,7 +84,8 @@ function matchLocation(
 
   const candidateLower = candidateLocation.toLowerCase();
   for (const loc of searchLocations) {
-    if (candidateLower.includes(loc)) return 'full';
+    const aliases = expandLocationAliases(loc);
+    if (aliases.some(alias => candidateLower.includes(alias))) return 'full';
   }
   return 'none';
 }

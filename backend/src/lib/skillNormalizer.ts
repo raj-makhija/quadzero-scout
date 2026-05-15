@@ -195,6 +195,32 @@ export function getRoleCategory(role: string): string | null {
   return null;
 }
 
+const STACK_ABBREVIATIONS: Record<string, string[]> = {
+  mern: ['mongodb', 'expressjs', 'react', 'nodejs'],
+  mean: ['mongodb', 'expressjs', 'angular', 'nodejs'],
+  pern: ['postgresql', 'expressjs', 'react', 'nodejs'],
+  lamp: ['linux', 'apache', 'mysql', 'php'],
+};
+
+export function expandStackAbbreviation(skill: string): string[] | null {
+  const key = skill.toLowerCase().trim().replace(/\s+stack$/i, '');
+  return STACK_ABBREVIATIONS[key] ?? null;
+}
+
+export function coreSkillSatisfiedBy(
+  coreSkill: string | null | undefined,
+  candidatePrimarySkills: string[]
+): boolean {
+  if (!coreSkill) return true;
+  const components = expandStackAbbreviation(coreSkill);
+  if (components) {
+    const candidateSet = new Set(normalizeSkills(candidatePrimarySkills));
+    return components.every((c) => candidateSet.has(c));
+  }
+  const normalizedCoreSkill = normalizeSkill(coreSkill);
+  return new Set(normalizeSkills(candidatePrimarySkills)).has(normalizedCoreSkill);
+}
+
 /**
  * Calculate role match between candidate roles and requirement/search roles.
  * Returns 'full' if any roles share the same category or have token overlap,
