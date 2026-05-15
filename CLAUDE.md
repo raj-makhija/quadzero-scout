@@ -175,6 +175,25 @@ This path tracks ticket lifecycle via `status:*` labels and feeds the scribe age
 - For changes to existing features: update affected tests to reflect new behavior; add tests for any new branches.
 - A change is not "done" until its relevant tests are green locally.
 
+## Cherry-Pick & Hotfix Guardrails
+
+The nightly cherry-pick model (CI-CD.md §5.7) ships tickets independently. This creates failure modes that don't exist in a linear merge model. Keep these in mind when merging to develop and when resolving prod-release-blocked tickets.
+
+### Cross-PR dependency awareness
+If ticket A adds code that ticket B imports, approving B without A will fail at nightly cherry-pick (B's diff references symbols that don't exist on main). Before qa-approving a ticket, check whether its diff depends on other tickets not yet on main. The pipeline detects this at cherry-pick time and marks B as `status:prod-release-blocked`, but catching it earlier avoids a wasted nightly cycle.
+
+### Back-merge immediately after hotfix
+After squash-merging a hotfix PR to main, merge main back into develop in the same session. A stale develop diverges from main, and the next nightly cherry-pick may conflict on files the hotfix touched. The longer the gap, the harder the resolution.
+
+### Verify target branch dependencies before manual cherry-picks
+When manually cherry-picking a ticket's merge commit onto main (to resolve a prod-release-blocked ticket), first confirm that every file the commit imports or references already exists on main. If the commit depends on code from another ticket, that ticket must land on main first — either by approving it through the normal flow or by cherry-picking it manually in the correct order.
+
+### Test mock completeness
+When `dynamodb.ts` (or any heavily-mocked module) gains a new export, add a matching mock entry in `recruiter.test.ts` (and any other test files that mock that module). Vitest's auto-mock won't cover new exports, and the error (`No "X" export is defined on the mock`) only surfaces at test runtime, not at type-check time.
+
+### In-memory state and test isolation
+Module-level state (caches, Maps, singletons) persists across vitest tests. `vi.clearAllMocks()` only resets mock call counts and return values — it does not touch application state. If a module has in-memory state that affects test behavior, export a `_clear*` helper (prefixed with underscore to signal test-only use) and call it in `beforeEach`.
+
 ## Documentation
 
 Two patterns depending on the work:

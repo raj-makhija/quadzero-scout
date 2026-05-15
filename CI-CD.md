@@ -541,6 +541,25 @@ The pipeline detects this and marks A as `prod-release-blocked` rather
 than silently shipping B. To unblock: approve B too, revert B from
 develop, or refactor A. See §8.8.
 
+**Manual trigger**: the nightly release workflow has `workflow_dispatch`,
+so you can run it on-demand via `gh workflow run pipeline-nightly-release.yml`
+(no `--ref` flag needed — the workflow checks out develop internally).
+
+**One-PR-per-ticket limit**: the script resolves each ticket to its
+merge PR via the "Closes #N" backlink. If a ticket was implemented
+across multiple PRs (e.g. PR A merged first, then PR B as a follow-up
+both closing the same ticket), `prod-release.sh` only picks up the
+first PR it finds (line 78-98). Multi-PR tickets may partially ship.
+Keep one PR per ticket; use follow-up tickets for multi-PR work.
+
+**Push-before-deploy ordering**: `prod-release.sh` pushes main to
+origin (triggering Amplify frontend auto-deploy) before running
+`npx serverless deploy` for the backend. This creates a window where
+the new frontend is live but the backend is still on the old version.
+For most changes this is harmless (backwards-compatible APIs). For
+breaking API changes, monitor the deploy window or consider a
+maintenance page. See §11 for the planned fix.
+
 ### 5.8 Release notes (built per-ticket)
 
 Every prod release that ships at least one ticket creates a GitHub
@@ -863,6 +882,31 @@ When the runner deletes a branch via `gh pr close --delete-branch`,
 local `git branch -r` may still show the branch in `origin/...`
 because local fetch caches haven't pruned. Run `git fetch --prune`.
 
+### 7.9 `prod-release.sh` switches working tree mid-run
+
+The script starts on develop (to resolve merge SHAs) but does
+`git checkout main` before cherry-picking. After the checkout,
+`SCRIPT_DIR` (resolved via `dirname "$0"`) points to main's working
+tree. Any script that exists on develop but not on main will fail
+with "file not found" when called via `"$SCRIPT_DIR/..."`. This bit
+us with `set-status.sh` (added on develop, not yet on main).
+
+Rule: call shared helpers through functions sourced from
+`_pipeline-lib.sh` (e.g. `pl_set_status`) rather than via
+`"$SCRIPT_DIR/<script>"`. Sourced functions are already in memory
+and don't depend on the filesystem after source time.
+
+### 7.10 No CI merge gate on GitHub Free
+
+GitHub Free doesn't enforce required status checks on protected
+branches. `merge-pr.sh` doesn't verify CI status before merging.
+A PR with failing CI can be merged by the pipeline. The tester's
+npm-test gate (§8.11) catches most regressions before a PR is
+opened, but it's not a substitute for a proper merge gate.
+
+Mitigation: upgrade to GitHub Pro or add a pre-merge CI check in
+`merge-pr.sh`. See §11 for the open follow-up.
+
 ---
 
 ## 8. Failure modes & recovery
@@ -1176,6 +1220,23 @@ Tracked but not blocking. Pick up when convenient.
   ticket ends up resolved by tester arbitration, so we've never
   organically forced 3 strikes. The escalation code is small and
   shares primitives with tested code; low risk.
+- **Deploy-before-push ordering in `prod-release.sh`**: the script
+  pushes main (triggering Amplify frontend) before running `serverless
+  deploy` for backend. Invert the order so backend deploys first,
+  then push main. This eliminates the version-skew window for breaking
+  API changes.
+- **One-PR-per-ticket resolution in `prod-release.sh`**: the merge-SHA
+  lookup (lines 78-98) only picks the first PR that closes a ticket.
+  Multi-PR tickets partially ship. Fix: resolve all closing PRs and
+  cherry-pick each, or enforce one-PR-per-ticket at the pipeline level.
+- **Add CI status check to `merge-pr.sh`**: on GitHub Free, required
+  status checks aren't enforced. Add a `gh pr checks <PR> --required`
+  guard (or equivalent) before squash-merging. See §7.10.
+- **Node.js 20 deprecation in GitHub Actions**: `actions/checkout@v4`
+  runs on Node.js 20, which GitHub is deprecating. Deadline:
+  **June 2, 2026**. After that date, workflows using node20 actions
+  will fail. Upgrade `actions/checkout` to v5 (or whichever version
+  ships node24 support) across all workflow files before the deadline.
 - **Switch bot identity from PAT to GitHub App**: today every
   pipeline action (comments, label edits, status changes, PR opens
   + merges, releases) is attributed to `raj-makhija` because the
