@@ -21,6 +21,7 @@ const FIELD_MAP: Record<string, string> = {
   totalExperience: 'total_experience',
   seniority: 'seniority',
   availability: 'availability',
+  lastWorkingDay: 'last_working_day',
   engagementModel: 'engagement_model',
   industries: 'industries',
   roles: 'roles',

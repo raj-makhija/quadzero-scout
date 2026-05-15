@@ -99,7 +99,7 @@ export async function saveCandidateProfile(candidate: CandidateItem): Promise<vo
 export async function searchCandidates(
   _criteria: SearchCriteria,
   _limit?: number,
-  lastEvaluatedKey?: Record<string, unknown>
+  _lastEvaluatedKey?: Record<string, unknown>
 ): Promise<{ items: CandidateItem[]; lastKey?: Record<string, unknown> }> {
   // Experience, seniority, availability, and location are no longer hard filters —
   // they are handled as scoring factors in matchScoring.ts so that non-matching
@@ -109,7 +109,7 @@ export async function searchCandidates(
   const expressionAttributeValues: Record<string, unknown> = {};
 
   const PAGE_SIZE = 100;
-  const MAX_ITEMS = 2000;
+  const MAX_ITEMS = 10000;
 
   const baseScanParams: {
     TableName: string;
@@ -132,7 +132,7 @@ export async function searchCandidates(
   }
 
   const allItems: CandidateItem[] = [];
-  let currentKey: Record<string, unknown> | undefined = lastEvaluatedKey;
+  let currentKey: Record<string, unknown> | undefined;
 
   do {
     const scanParams = { ...baseScanParams };

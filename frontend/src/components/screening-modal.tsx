@@ -51,6 +51,8 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
   const [linkedinUrl, setLinkedinUrl] = useState('');
   const [githubUrl, setGithubUrl] = useState('');
   const [notInterested, setNotInterested] = useState(false);
+  const [lastWorkingDay, setLastWorkingDay] = useState('');
+  const [stillOnJob, setStillOnJob] = useState(false);
 
   // Advanced fields
   const [fullName, setFullName] = useState('');
@@ -135,6 +137,13 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
         setLinkedinUrl(profile.linkedinUrl || '');
         setGithubUrl(profile.githubUrl || '');
         setNotInterested(profile.notInterested || false);
+
+        // Pre-fill LWD: a date string means a known LWD, null means still employed
+        if (profile.lastWorkingDay) {
+          setLastWorkingDay(profile.lastWorkingDay);
+        } else if (profile.lastWorkingDay === null) {
+          setStillOnJob(true);
+        }
 
         // Pre-fill sub-vendor state
         if (profile.subVendorId) {
@@ -260,6 +269,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
       }
       if (!availability) missingFields.push('Notice Period');
       if (!engagementModel) missingFields.push('Engagement Preference');
+      if (!lastWorkingDay && !stillOnJob) missingFields.push('Last Working Day (select a date or confirm still employed)');
     }
     if (!notes.trim()) missingFields.push('Screening Notes');
 
@@ -286,6 +296,13 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
 
       // Always include not-interested flag
       updatedValues.notInterested = notInterested;
+
+      // Include LWD: date string when known, null when still employed (omit if neither set)
+      if (lastWorkingDay) {
+        updatedValues.lastWorkingDay = lastWorkingDay;
+      } else if (stillOnJob) {
+        updatedValues.lastWorkingDay = null;
+      }
 
       // Only include fields that have values
       if (fullName) updatedValues.fullName = fullName;
@@ -439,7 +456,8 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
     resolvedCandidateId, fullName, email, phone, location,
     currentCtc, expectedCtc, expectedCtcMode, availability, engagementModel,
     totalExperience, seniority, primarySkillsText, secondarySkillsText,
-    industries, roles, certifications, summary, notes, notInterested, onScreeningComplete,
+    industries, roles, certifications, summary, notes, notInterested,
+    lastWorkingDay, stillOnJob, onScreeningComplete,
     isShortlistFlow, additionalFields, customFieldValues,
     subVendorEnabled, subVendorData, initialSubVendorId,
   ]);
@@ -702,6 +720,57 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                       hasError={submitAttempted && !notInterested && !engagementModel}
                     />
                   </FormField>
+                </div>
+                <div className="grid grid-cols-2 gap-4 mt-3 items-end">
+                  <FormField
+                    label="Last Working Day (LWD)"
+                    htmlFor="lastWorkingDay"
+                    touched={submitAttempted}
+                    error={submitAttempted && !notInterested && !lastWorkingDay && !stillOnJob ? 'Required' : undefined}
+                  >
+                    <div className="flex items-center gap-2">
+                      <FormInput
+                        id="lastWorkingDay"
+                        type="date"
+                        value={lastWorkingDay}
+                        onChange={(e) => {
+                          setLastWorkingDay(e.target.value);
+                          if (e.target.value) setStillOnJob(false);
+                        }}
+                        disabled={stillOnJob}
+                        hasError={submitAttempted && !notInterested && !lastWorkingDay && !stillOnJob}
+                        className="flex-1"
+                      />
+                      {lastWorkingDay && (
+                        <button
+                          type="button"
+                          onClick={() => setLastWorkingDay('')}
+                          className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-700 flex-shrink-0"
+                          title="Clear date"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  </FormField>
+                  <div className="pb-1">
+                    <label className="flex items-start gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        id="stillOnJob"
+                        checked={stillOnJob}
+                        onChange={(e) => {
+                          setStillOnJob(e.target.checked);
+                          if (e.target.checked) setLastWorkingDay('');
+                        }}
+                        disabled={!!lastWorkingDay}
+                        className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 disabled:opacity-50"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300 leading-tight">
+                        Still on the job — LWD will be known after resignation
+                      </span>
+                    </label>
+                  </div>
                 </div>
               </div>
 
