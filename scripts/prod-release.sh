@@ -213,7 +213,7 @@ automatically at the next nightly batch. To unblock now:
 (c) Use \`pipeline:retry\` to have the developer agent refactor this
     ticket to remove the dependency" >/dev/null 2>&1 || \
       echo "    (warning: failed to comment on #$ticket)" >&2
-    "$SCRIPT_DIR/set-status.sh" "$ticket" prod-release-blocked || true
+    pl_set_status "$ticket" prod-release-blocked || true
   done < "$BLOCKED_FILE"
 fi
 
@@ -323,7 +323,7 @@ while IFS=' ' read -r ticket sha pr; do
 
 Release: $RELEASE_URL" >/dev/null 2>&1 || true
   fi
-  "$SCRIPT_DIR/set-status.sh" "$ticket" released || true
+  pl_set_status "$ticket" released || true
 done < "$RELEASED_FILE"
 
 # --- Cleanup -------------------------------------------------------------
