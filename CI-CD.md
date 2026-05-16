@@ -1213,11 +1213,6 @@ Tracked but not blocking. Pick up when convenient.
 - **Strip `Co-Authored-By` post-merge**: squash-merges sometimes pull
   in CoAuth from the dev's commits despite agent-prompt instructions
   to omit. Could add a `merge-pr.sh` post-step to filter.
-- **Pre-fill UX gap noted on #73**: re-opening the screening modal
-  after saving "still on the job" doesn't pre-tick the checkbox
-  because DynamoDB REMOVE makes the attribute `undefined`, not `null`.
-  Tester flagged it as a non-blocking concern; file as a follow-up
-  ticket for the dev agent to address in a future iteration.
 - **3-strike escalation organic test**: every contradictory-spec
   ticket ends up resolved by tester arbitration, so we've never
   organically forced 3 strikes. The escalation code is small and
