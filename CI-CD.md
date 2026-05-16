@@ -545,20 +545,18 @@ develop, or refactor A. See §8.8.
 so you can run it on-demand via `gh workflow run pipeline-nightly-release.yml`
 (no `--ref` flag needed — the workflow checks out develop internally).
 
-**One-PR-per-ticket limit**: the script resolves each ticket to its
-merge PR via the "Closes #N" backlink. If a ticket was implemented
-across multiple PRs (e.g. PR A merged first, then PR B as a follow-up
-both closing the same ticket), `prod-release.sh` only picks up the
-first PR it finds (line 78-98). Multi-PR tickets may partially ship.
-Keep one PR per ticket; use follow-up tickets for multi-PR work.
+**Multi-PR tickets**: the script resolves ALL PRs that close a ticket
+(via `closedByPullRequestsReferences` + the PR Number project field),
+not just the first. Each PR is cherry-picked independently in develop
+merge order. A ticket is marked `released` only if ALL of its PRs
+apply cleanly; if ANY PR conflicts, the ticket is `prod-release-blocked`.
+One-PR-per-ticket is still recommended to keep cherry-picks atomic.
 
-**Push-before-deploy ordering**: `prod-release.sh` pushes main to
-origin (triggering Amplify frontend auto-deploy) before running
-`npx serverless deploy` for the backend. This creates a window where
-the new frontend is live but the backend is still on the old version.
-For most changes this is harmless (backwards-compatible APIs). For
-breaking API changes, monitor the deploy window or consider a
-maintenance page. See §11 for the planned fix.
+**Deploy ordering**: `prod-release.sh` deploys the backend via
+`serverless deploy --stage prod` BEFORE pushing main to origin.
+This ensures the new API is live before Amplify auto-deploys the
+new frontend, avoiding a version-skew window where the frontend
+references endpoints or fields the backend doesn't serve yet.
 
 ### 5.8 Release notes (built per-ticket)
 
@@ -1220,15 +1218,6 @@ Tracked but not blocking. Pick up when convenient.
   ticket ends up resolved by tester arbitration, so we've never
   organically forced 3 strikes. The escalation code is small and
   shares primitives with tested code; low risk.
-- **Deploy-before-push ordering in `prod-release.sh`**: the script
-  pushes main (triggering Amplify frontend) before running `serverless
-  deploy` for backend. Invert the order so backend deploys first,
-  then push main. This eliminates the version-skew window for breaking
-  API changes.
-- **One-PR-per-ticket resolution in `prod-release.sh`**: the merge-SHA
-  lookup (lines 78-98) only picks the first PR that closes a ticket.
-  Multi-PR tickets partially ship. Fix: resolve all closing PRs and
-  cherry-pick each, or enforce one-PR-per-ticket at the pipeline level.
 - **Add CI status check to `merge-pr.sh`**: on GitHub Free, required
   status checks aren't enforced. Add a `gh pr checks <PR> --required`
   guard (or equivalent) before squash-merging. See §7.10.

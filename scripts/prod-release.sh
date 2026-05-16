@@ -44,6 +44,8 @@ DEVELOP_ORDER_FILE="$TMPDIR_RUN/develop-order.txt"
 ORDERED_FILE="$TMPDIR_RUN/ordered.txt"
 RELEASED_FILE="$TMPDIR_RUN/released.txt"
 BLOCKED_FILE="$TMPDIR_RUN/blocked.txt"          # "<ticket>|<sha>|<pr>|<files>"
+RELEASED_TICKETS="$TMPDIR_RUN/released-tickets.txt"
+BLOCKED_TICKETS="$TMPDIR_RUN/blocked-tickets.txt"
 CP_OUT="$TMPDIR_RUN/cp-out.txt"
 NOTES_FILE="$TMPDIR_RUN/notes.md"
 
@@ -72,29 +74,49 @@ if [[ "$CANDIDATE_COUNT" -eq 0 ]]; then
 fi
 echo "==> $CANDIDATE_COUNT candidate ticket(s) found" >&2
 
-# Resolve each candidate to its merge SHA on develop. Skip anything we
-# can't pin to a real merge commit reachable from develop.
+# Resolve each candidate to its merge SHA(s) on develop. A ticket may
+# have been implemented across multiple PRs; resolve all of them.
 : > "$RESOLVED_FILE"
 while IFS= read -r ticket; do
-  pr="$("$SCRIPT_DIR/get-field.sh" "$ticket" "PR Number" 2>/dev/null || true)"
-  if [[ -z "$pr" ]]; then
-    pr="$(gh issue view "$ticket" --json closedByPullRequestsReferences \
-      -q '.closedByPullRequestsReferences[0].number // empty' 2>/dev/null || true)"
+  # Collect all PRs: closedByPullRequestsReferences + PR Number field
+  all_prs="$(gh issue view "$ticket" --json closedByPullRequestsReferences \
+    -q '[.closedByPullRequestsReferences[].number] | .[]' 2>/dev/null || true)"
+  field_pr="$("$SCRIPT_DIR/get-field.sh" "$ticket" "PR Number" 2>/dev/null || true)"
+  if [[ -n "$field_pr" ]]; then
+    all_prs="$(printf '%s\n%s' "$all_prs" "$field_pr")"
   fi
-  if [[ -z "$pr" ]]; then
+  # Deduplicate and drop blanks
+  all_prs="$(echo "$all_prs" | sort -un | sed '/^$/d')"
+
+  if [[ -z "$all_prs" ]]; then
     echo "  #$ticket: no PR found, skipping" >&2
     continue
   fi
-  sha="$(gh pr view "$pr" --json mergeCommit -q '.mergeCommit.oid // empty' 2>/dev/null || true)"
-  if [[ -z "$sha" ]]; then
-    echo "  #$ticket: PR #$pr not merged, skipping" >&2
-    continue
+
+  pr_count="$(echo "$all_prs" | wc -l | awk '{print $1}')"
+  if [[ "$pr_count" -gt 1 ]]; then
+    echo "  #$ticket: multi-PR ticket ($pr_count PRs: $(echo "$all_prs" | tr '\n' ' '))" >&2
   fi
-  if ! git merge-base --is-ancestor "$sha" origin/develop 2>/dev/null; then
-    echo "  #$ticket: merge SHA $sha not reachable from develop, skipping" >&2
-    continue
+
+  resolved_any=false
+  while IFS= read -r pr; do
+    [[ -z "$pr" ]] && continue
+    sha="$(gh pr view "$pr" --json mergeCommit -q '.mergeCommit.oid // empty' 2>/dev/null || true)"
+    if [[ -z "$sha" ]]; then
+      echo "  #$ticket: PR #$pr not merged, skipping" >&2
+      continue
+    fi
+    if ! git merge-base --is-ancestor "$sha" origin/develop 2>/dev/null; then
+      echo "  #$ticket: merge SHA $sha (PR #$pr) not reachable from develop, skipping" >&2
+      continue
+    fi
+    echo "$ticket $sha $pr" >> "$RESOLVED_FILE"
+    resolved_any=true
+  done <<< "$all_prs"
+
+  if [[ "$resolved_any" == "false" ]]; then
+    echo "  #$ticket: no valid merge commits found across $pr_count PR(s)" >&2
   fi
-  echo "$ticket $sha $pr" >> "$RESOLVED_FILE"
 done < <(jq -r '.[].number' "$CANDIDATES_FILE")
 
 if [[ ! -s "$RESOLVED_FILE" ]]; then
@@ -187,19 +209,38 @@ RELEASED_COUNT="$(wc -l < "$RELEASED_FILE" | awk '{print $1}')"
 BLOCKED_COUNT="$(wc -l < "$BLOCKED_FILE" | awk '{print $1}')"
 echo "==> cherry-pick summary: $RELEASED_COUNT applied, $BLOCKED_COUNT blocked" >&2
 
+# --- Aggregate per-ticket status -----------------------------------------
+# A ticket is "blocked" if ANY of its PRs conflicted; "released" only if
+# ALL of its PRs applied cleanly and none are blocked.
+awk '{print $1}' "$RELEASED_FILE" | sort -un > "$RELEASED_TICKETS"
+awk -F'|' '{print $1}' "$BLOCKED_FILE" | sort -un > "$BLOCKED_TICKETS"
+
+# Tickets with at least one blocked PR get blocked status (even if other
+# PRs applied). Remove them from the released set.
+PURE_RELEASED="$TMPDIR_RUN/pure-released.txt"
+comm -23 "$RELEASED_TICKETS" "$BLOCKED_TICKETS" > "$PURE_RELEASED"
+
+RELEASED_TICKET_COUNT="$(wc -l < "$PURE_RELEASED" | awk '{print $1}')"
+BLOCKED_TICKET_COUNT="$(wc -l < "$BLOCKED_TICKETS" | awk '{print $1}')"
+
 # --- Comment on blocked tickets + flip their status ----------------------
 TODAY="$(date -u +%Y-%m-%d)"
-if [[ "$BLOCKED_COUNT" -gt 0 ]]; then
-  while IFS='|' read -r ticket sha pr files; do
-    files_md="$(echo "$files" | tr ' ' '\n' | sed '/^$/d' | sed 's/^/- /')"
-    gh issue comment "$ticket" --body "[/prod-release] BLOCKED at nightly batch $TODAY.
-
-Cherry-pick of merge commit \`$sha\` (PR #$pr) onto main failed -- conflicts in:
-
+if [[ "$BLOCKED_TICKET_COUNT" -gt 0 ]]; then
+  while IFS= read -r ticket; do
+    # Collect all blocked PRs for this ticket
+    blocked_detail=""
+    while IFS='|' read -r _t sha pr files; do
+      files_md="$(echo "$files" | tr ' ' '\n' | sed '/^$/d' | sed 's/^/- /')"
+      blocked_detail="${blocked_detail}
+Cherry-pick of merge commit \`$sha\` (PR #$pr) -- conflicts in:
 \`\`\`
 $files_md
 \`\`\`
+"
+    done < <(grep "^$ticket|" "$BLOCKED_FILE")
 
+    gh issue comment "$ticket" --body "[/prod-release] BLOCKED at nightly batch $TODAY.
+${blocked_detail}
 This ticket has been QA-approved, but its commits depend on something that
 is not yet on main. Likely cause: an earlier ticket sitting underneath this
 one on develop has not been approved yet, or a conflicting change was
@@ -214,11 +255,11 @@ automatically at the next nightly batch. To unblock now:
     ticket to remove the dependency" >/dev/null 2>&1 || \
       echo "    (warning: failed to comment on #$ticket)" >&2
     pl_set_status "$ticket" prod-release-blocked || true
-  done < "$BLOCKED_FILE"
+  done < "$BLOCKED_TICKETS"
 fi
 
 # --- If nothing applied, exit cleanly ------------------------------------
-if [[ "$RELEASED_COUNT" -eq 0 ]]; then
+if [[ "$RELEASED_TICKET_COUNT" -eq 0 ]]; then
   echo "no tickets cherry-picked successfully; nothing to ship tonight" >&2
   git checkout develop >&2
   git branch -D "$RELEASE_BRANCH" 2>/dev/null || true
@@ -234,10 +275,9 @@ if ! git merge --ff-only "$RELEASE_BRANCH" >&2; then
   exit 1
 fi
 
-echo "==> pushing main (Amplify will auto-deploy frontend)" >&2
-git push origin main >&2
-
 # --- Deploy backend (skipped via PIPELINE_SKIP_DEPLOY=1) -----------------
+# Backend deploys BEFORE pushing main so the new API is live before
+# Amplify auto-deploys the new frontend (avoids version-skew window).
 if [[ "${PIPELINE_SKIP_DEPLOY:-}" == "1" ]]; then
   echo "==> PIPELINE_SKIP_DEPLOY=1 -- skipping serverless deploy" >&2
 else
@@ -276,28 +316,33 @@ else
   (cd infra/ && npx serverless deploy --stage prod)
 fi
 
+echo "==> pushing main (Amplify will auto-deploy frontend)" >&2
+git push origin main >&2
+
 # --- Build release notes manually + create GitHub Release ----------------
 NEW_MAIN_SHA="$(git rev-parse main)"
 RELEASE_TITLE="Production release $(date -u +'%Y-%m-%d %H:%M') UTC"
 
-echo "==> building release notes from $RELEASED_COUNT released ticket(s)" >&2
+echo "==> building release notes from $RELEASED_TICKET_COUNT released ticket(s)" >&2
 
 {
   echo "## What's Changed"
   echo
-  while IFS=' ' read -r ticket sha pr; do
+  while IFS= read -r ticket; do
     title="$(gh issue view "$ticket" --json title -q .title 2>/dev/null || echo "(title unavailable)")"
-    echo "* $title (#$ticket, PR #$pr)"
-  done < "$RELEASED_FILE"
+    pr_list="$(awk -v t="$ticket" '$1 == t {print $3}' "$RELEASED_FILE" | tr '\n' ',' | sed 's/,$//' | sed 's/,/, #/g')"
+    echo "* $title (#$ticket, PR #$pr_list)"
+  done < "$PURE_RELEASED"
 
-  if [[ "$BLOCKED_COUNT" -gt 0 ]]; then
+  if [[ "$BLOCKED_TICKET_COUNT" -gt 0 ]]; then
     echo
     echo "## Blocked tickets (retrying next nightly)"
     echo
-    while IFS='|' read -r ticket sha pr files; do
+    while IFS= read -r ticket; do
       title="$(gh issue view "$ticket" --json title -q .title 2>/dev/null || echo "(title unavailable)")"
-      echo "* $title (#$ticket) -- conflicts: $files"
-    done < "$BLOCKED_FILE"
+      all_files="$(grep "^$ticket|" "$BLOCKED_FILE" | awk -F'|' '{print $4}' | tr ' ' '\n' | sort -u | tr '\n' ' ' | sed 's/ $//')"
+      echo "* $title (#$ticket) -- conflicts: $all_files"
+    done < "$BLOCKED_TICKETS"
   fi
 
   echo
@@ -316,21 +361,21 @@ else
   echo "    (release create failed; continuing without release URL)" >&2
 fi
 
-# --- Comment + status:released on every released ticket ------------------
-while IFS=' ' read -r ticket sha pr; do
+# --- Comment + status:released on every fully-released ticket ------------
+while IFS= read -r ticket; do
   if [[ -n "$RELEASE_URL" ]]; then
     gh issue comment "$ticket" --body "[/prod-release] Released to prod $(date -u +'%Y-%m-%d %H:%M') UTC.
 
 Release: $RELEASE_URL" >/dev/null 2>&1 || true
   fi
   pl_set_status "$ticket" released || true
-done < "$RELEASED_FILE"
+done < "$PURE_RELEASED"
 
 # --- Cleanup -------------------------------------------------------------
 git checkout develop >&2
 git branch -D "$RELEASE_BRANCH" 2>/dev/null || true
 
-echo "prod-release complete: $RELEASED_COUNT shipped, $BLOCKED_COUNT blocked" >&2
+echo "prod-release complete: $RELEASED_TICKET_COUNT ticket(s) shipped, $BLOCKED_TICKET_COUNT ticket(s) blocked" >&2
 
 # Kick the manager so any post-release state changes (status transitions
 # etc.) get picked up immediately rather than waiting for cron.
