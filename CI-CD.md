@@ -894,16 +894,20 @@ Rule: call shared helpers through functions sourced from
 `"$SCRIPT_DIR/<script>"`. Sourced functions are already in memory
 and don't depend on the filesystem after source time.
 
-### 7.10 No CI merge gate on GitHub Free
+### 7.10 CI merge gate (compensates for GitHub Free)
 
 GitHub Free doesn't enforce required status checks on protected
-branches. `merge-pr.sh` doesn't verify CI status before merging.
-A PR with failing CI can be merged by the pipeline. The tester's
-npm-test gate (§8.11) catches most regressions before a PR is
-opened, but it's not a substitute for a proper merge gate.
+branches. To compensate, `merge-pr.sh` runs `gh pr checks` before
+merging and blocks if any check has failed. If checks are only
+pending (slow CI), the script warns and proceeds — the tester's
+npm-test gate (§8.11) has already verified tests pass.
 
-Mitigation: upgrade to GitHub Pro or add a pre-merge CI check in
-`merge-pr.sh`. See §11 for the open follow-up.
+On CI failure, `merge-pr.sh` exits non-zero without merging. The
+strike system (§8.10) handles retries: if CI keeps failing across
+consecutive pipeline ticks, the ticket escalates to `needs-human`.
+
+Set `PIPELINE_SKIP_CI_CHECK=1` in the workflow env to bypass (e.g.
+for repos without CI configured).
 
 ---
 
@@ -1218,9 +1222,6 @@ Tracked but not blocking. Pick up when convenient.
   ticket ends up resolved by tester arbitration, so we've never
   organically forced 3 strikes. The escalation code is small and
   shares primitives with tested code; low risk.
-- **Add CI status check to `merge-pr.sh`**: on GitHub Free, required
-  status checks aren't enforced. Add a `gh pr checks <PR> --required`
-  guard (or equivalent) before squash-merging. See §7.10.
 - **Node.js 20 deprecation in GitHub Actions**: `actions/checkout@v4`
   runs on Node.js 20, which GitHub is deprecating. Deadline:
   **June 2, 2026**. After that date, workflows using node20 actions

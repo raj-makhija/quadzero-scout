@@ -45,6 +45,23 @@ set -e
 
 case "$STALE_EXIT" in
   0)
+    # CI gate: GitHub Free doesn't enforce required status checks, so we
+    # check here before merging. Skip with PIPELINE_SKIP_CI_CHECK=1.
+    if [[ "${PIPELINE_SKIP_CI_CHECK:-}" != "1" ]]; then
+      set +e
+      CI_OUTPUT="$(gh pr checks "$PR" 2>&1)"
+      CI_RC=$?
+      set -e
+      if [[ "$CI_RC" -ne 0 ]]; then
+        FAIL_LINES="$(echo "$CI_OUTPUT" | grep -i 'fail' || true)"
+        if [[ -n "$FAIL_LINES" ]]; then
+          echo "CI checks failed on PR #$PR; not merging" >&2
+          echo "$CI_OUTPUT" >&2
+          exit 1
+        fi
+        echo "    (CI checks pending; proceeding — tester gate already ran tests)" >&2
+      fi
+    fi
     echo "clean; squash-merging PR #$PR" >&2
     CUR="$(git branch --show-current)"
     if [[ "$CUR" != "develop" ]]; then
