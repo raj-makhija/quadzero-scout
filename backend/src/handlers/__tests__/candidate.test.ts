@@ -477,4 +477,37 @@ describe('GET /candidate/profile/{candidateId}', () => {
     const result = await getProfileHandler(event);
     expect(result.statusCode).toBe(400);
   });
+
+  it('returns lastWorkingDay as date string when set', async () => {
+    vi.mocked(getCandidateById).mockResolvedValueOnce({
+      candidate_id: 'cand_lwd',
+      user_id: 'user_1',
+      full_name: 'Jane Doe',
+      last_working_day: '2025-06-15',
+      experience_bucket: '3-5',
+    });
+
+    const event = makeEvent({ pathParameters: { candidateId: 'cand_lwd' } });
+    const result = await getProfileHandler(event);
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.data.lastWorkingDay).toBe('2025-06-15');
+  });
+
+  it('returns lastWorkingDay as null when attribute absent (still on job)', async () => {
+    vi.mocked(getCandidateById).mockResolvedValueOnce({
+      candidate_id: 'cand_soj',
+      user_id: 'user_1',
+      full_name: 'Bob Smith',
+      experience_bucket: '6-10',
+    });
+
+    const event = makeEvent({ pathParameters: { candidateId: 'cand_soj' } });
+    const result = await getProfileHandler(event);
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.data.lastWorkingDay).toBeNull();
+  });
 });
