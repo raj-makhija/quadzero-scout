@@ -60,6 +60,7 @@ export async function handler(
       subVendorContactPerson: candidate.sub_vendor_contact_person,
       subVendorContactPhone: candidate.sub_vendor_contact_phone,
       subVendorContactEmail: candidate.sub_vendor_contact_email,
+      lastWorkingDay: candidate.last_working_day ?? null,
     };
 
     return success(response);
