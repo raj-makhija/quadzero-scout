@@ -138,10 +138,10 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
         setGithubUrl(profile.githubUrl || '');
         setNotInterested(profile.notInterested || false);
 
-        // Pre-fill LWD: a date string means a known LWD, null means still employed
+        // Pre-fill LWD: a date string means a known LWD, null/undefined means still employed
         if (profile.lastWorkingDay) {
           setLastWorkingDay(profile.lastWorkingDay);
-        } else if (profile.lastWorkingDay === null) {
+        } else if (profile.lastWorkingDay == null && profile.lastScreenedAt) {
           setStillOnJob(true);
         }
 
