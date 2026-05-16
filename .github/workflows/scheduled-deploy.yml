@@ -27,7 +27,7 @@ jobs:
       qa_has_changes: ${{ steps.check.outputs.qa_has_changes }}
       prod_has_changes: ${{ steps.check.outputs.prod_has_changes }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -47,7 +47,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: qa
           fetch-depth: 0
@@ -60,7 +60,7 @@ jobs:
           git merge origin/develop --no-edit
           git push origin qa
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '20'
 
@@ -80,7 +80,7 @@ jobs:
           npm init -y > /dev/null 2>&1
           npm install @sparticuz/chromium@143.0.4 --ignore-scripts
 
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -98,7 +98,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: main
           fetch-depth: 0
@@ -111,7 +111,7 @@ jobs:
           git merge origin/qa --no-edit
           git push origin main
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '20'
 
@@ -131,7 +131,7 @@ jobs:
           npm init -y > /dev/null 2>&1
           npm install @sparticuz/chromium@143.0.4 --ignore-scripts
 
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}

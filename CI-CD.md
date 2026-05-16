@@ -1222,11 +1222,6 @@ Tracked but not blocking. Pick up when convenient.
   ticket ends up resolved by tester arbitration, so we've never
   organically forced 3 strikes. The escalation code is small and
   shares primitives with tested code; low risk.
-- **Node.js 20 deprecation in GitHub Actions**: `actions/checkout@v4`
-  runs on Node.js 20, which GitHub is deprecating. Deadline:
-  **June 2, 2026**. After that date, workflows using node20 actions
-  will fail. Upgrade `actions/checkout` to v5 (or whichever version
-  ships node24 support) across all workflow files before the deadline.
 - **Switch bot identity from PAT to GitHub App**: today every
   pipeline action (comments, label edits, status changes, PR opens
   + merges, releases) is attributed to `raj-makhija` because the
