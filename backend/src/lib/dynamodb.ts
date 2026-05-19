@@ -1520,6 +1520,24 @@ export async function updateShortlistPipelineStage(
   );
 }
 
+export async function updateShortlistQuotedRate(
+  requirementId: string,
+  candidateId: string,
+  quotedRateHourly: number
+): Promise<void> {
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.shortlistsTable,
+      Key: { requirement_id: requirementId, candidate_id: candidateId },
+      UpdateExpression: 'SET quoted_rate_hourly = :qr, last_activity_at = :now',
+      ExpressionAttributeValues: {
+        ':qr': quotedRateHourly,
+        ':now': new Date().toISOString(),
+      },
+    })
+  );
+}
+
 export async function savePipelineActivity(item: PipelineActivityItem): Promise<void> {
   await docClient.send(
     new PutCommand({

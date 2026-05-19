@@ -868,6 +868,13 @@ class ApiClient {
     );
   }
 
+  async updateSubmissionRate(requirementId: string, candidateId: string, params: UpdateSubmissionRateParams) {
+    return this.request<{ updated: boolean; candidateId: string; requirementId: string; quotedRateHourly: number }>(
+      `/recruiter/requirements/${requirementId}/candidates/${candidateId}/submission`,
+      { method: 'PUT', body: JSON.stringify(params) }
+    );
+  }
+
   async recordClientFeedback(requirementId: string, candidateId: string, params: RecordClientFeedbackParams) {
     return this.request<{ recorded: boolean }>(
       `/recruiter/requirements/${requirementId}/candidates/${candidateId}/client-feedback`,
@@ -1806,6 +1813,7 @@ export interface SubmitToClientParams {
   ccEmails?: string[];
   offline?: boolean;
   offlineSentAt?: string;
+  quotedRateHourly: number;
 }
 
 export interface SubmitBatchToClientParams {
@@ -1814,6 +1822,11 @@ export interface SubmitBatchToClientParams {
   clientName?: string;
   coverNote?: string;
   ccEmails?: string[];
+  quotedRates: Record<string, number>;
+}
+
+export interface UpdateSubmissionRateParams {
+  quotedRateHourly: number;
 }
 
 export interface RecordClientFeedbackParams {
@@ -1877,6 +1890,7 @@ export interface PipelineCandidateView {
   internalRateHourly?: number;
   internalRateMonthly?: number;
   internalRateAnnual?: number;
+  quotedRateHourly?: number;
 }
 
 export interface PipelineViewResponse {
