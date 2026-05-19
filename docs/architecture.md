@@ -930,6 +930,9 @@ The pricing engine is a deterministic module that generates recommended billing 
 - **Audit flags**: `marginUplifted`, `marginConstrained`, `contributionCapped`, `variableMarkupAdjusted` provide transparency into pricing decisions.
 - **4-band experience mapping**: Simplified from the 7-level ATS seniority system. Uses years as the primary discriminator (0-4: junior, 5-8: mid, 9-12: senior, 12+: architect).
 - **INR-centric**: All calculations in INR. CTC input is LPA (Lakhs Per Annum), converted to monthly (÷12). Hourly assumes 160 hours/month.
+- **Configurable GST rate**: `gstRatePct` is an admin-configurable decimal field in `PricingConfig` (stored in DynamoDB), with a default of 0.18 (18%). It replaces the previously hardcoded `GST_RATE = 0.18` constant. The admin pricing configuration page exposes a "GST Rate (%)" input field where admins can set any value from 0% to 100%.
+- **GST rate in PricingOutput**: `PricingOutput` includes `gstRatePct` so the frontend always uses the live configured rate rather than a hardcoded fallback. When admin saves updated pricing config, the 5-minute cache is invalidated, and recruiters see the new rate on their next pricing calculation without manual intervention.
+- **GST-inclusive display (frontend)**: The pricing panel shows GST-inclusive secondary rates (labelled "all incl.") alongside each base rate. These are computed as `base × (1 + gstRatePct)`, with rounding anchored to the monthly tier: `monthlyIncl = ceil(monthly × (1 + gstRatePct), ₹1,000)`, then `hourlyIncl = ceil(monthlyIncl / 160, ₹10)` and `annualIncl = ceil(monthlyIncl × 12, ₹10,000)`.
 
 ## Audit Trail
 
