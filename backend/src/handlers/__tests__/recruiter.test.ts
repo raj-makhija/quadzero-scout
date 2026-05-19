@@ -89,6 +89,7 @@ vi.mock('../../lib/dynamodb.js', () => ({
     ],
     lastKey: undefined,
   }),
+  getShortlistsForRequirement: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('../../lib/llm/index.js', () => ({
@@ -161,7 +162,7 @@ import { handler as saveSearchHandler } from '../recruiter/saveSearch.js';
 import { handler as getSearchesHandler } from '../recruiter/getSearches.js';
 import { handler as deleteSearchHandler } from '../recruiter/deleteSearch.js';
 import { handler as listRecentProfilesHandler } from '../recruiter/listRecentProfiles.js';
-import { getCandidateById, getSavedSearches, getRecentProfiles, searchCandidates } from '../../lib/dynamodb.js';
+import { getCandidateById, getSavedSearches, getRecentProfiles, searchCandidates, getShortlistsForRequirement } from '../../lib/dynamodb.js';
 import { parseJobDescription } from '../../lib/llm/index.js';
 import { generateDownloadUrl } from '../../lib/s3.js';
 
@@ -993,6 +994,60 @@ describe('POST /recruiter/search', () => {
     const page1Scores = body1.data.candidates.map((c: { matchScore: number }) => c.matchScore);
     const page2Scores = body2.data.candidates.map((c: { matchScore: number }) => c.matchScore);
     expect(Math.min(...page1Scores)).toBeGreaterThanOrEqual(Math.max(...page2Scores));
+  });
+
+  it('returns fresh shortlist status on cache hit when requirementId is provided', async () => {
+    vi.mocked(searchCandidates).mockResolvedValueOnce({
+      items: [
+        {
+          candidate_id: 'cand_sl',
+          user_id: 'u_sl',
+          full_name: 'Shortlist Test',
+          email: 'sl@example.com',
+          primary_skills: ['react', 'nodejs'],
+          primary_skill_years: { react: 4, nodejs: 3 },
+          secondary_skills: [],
+          total_experience: 5,
+          seniority: 'mid',
+          availability: 'immediate',
+          industries: [],
+          roles: [],
+          experience_bucket: '3-5',
+          resume_s3_key: 'r/sl.pdf',
+          created_at: '2024-01-01T00:00:00Z',
+          last_updated: '2024-01-15T00:00:00Z',
+        },
+      ],
+      lastKey: undefined,
+    });
+
+    const reqId = '00000000-0000-0000-0000-000000000099';
+    const criteria = { mustHaveSkills: ['react', 'nodejs'] };
+
+    // First search — no shortlists exist
+    vi.mocked(getShortlistsForRequirement).mockResolvedValueOnce([]);
+    const event1 = makeEvent({
+      body: JSON.stringify({ criteria, requirementId: reqId }),
+    });
+    const body1 = parseBody(await searchHandler(event1));
+    expect(body1.data.candidates[0].isShortlisted).toBe(false);
+    expect(body1.data.candidates[0].isNotSuitable).toBe(false);
+
+    // Second search (cache hit) — candidate now shortlisted
+    vi.mocked(getShortlistsForRequirement).mockResolvedValueOnce([
+      { requirement_id: reqId, candidate_id: 'cand_sl', status: 'shortlisted', tagged_by: 'u1', tagged_at: '2024-01-16T00:00:00Z' },
+    ]);
+    const event2 = makeEvent({
+      body: JSON.stringify({ criteria, requirementId: reqId }),
+    });
+    const body2 = parseBody(await searchHandler(event2));
+    expect(body2.data.candidates[0].isShortlisted).toBe(true);
+    expect(body2.data.candidates[0].isNotSuitable).toBe(false);
+
+    // DynamoDB scan should have been called only once (cache served the second request)
+    expect(vi.mocked(searchCandidates)).toHaveBeenCalledTimes(1);
+    // But shortlist fetch should have been called twice (always fresh)
+    expect(vi.mocked(getShortlistsForRequirement)).toHaveBeenCalledTimes(2);
   });
 });
 
