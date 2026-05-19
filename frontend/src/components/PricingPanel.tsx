@@ -288,6 +288,14 @@ export function PricingPanel({
     );
   }
 
+  const gstMultiplier = 1 + (result?.gstRatePct ?? 0.18);
+  const quotedMonthlyIncl = result ? roundUpToNearest(result.finalQuotedMonthly * gstMultiplier, 1000) : 0;
+  const quotedHourlyIncl = result ? roundUpToNearest(quotedMonthlyIncl / 160, 10) : 0;
+  const quotedAnnualIncl = result ? roundUpToNearest(quotedMonthlyIncl * 12, 10000) : 0;
+  const minMonthlyIncl = result ? roundUpToNearest(result.minimumBillingMonthly * gstMultiplier, 1000) : 0;
+  const minHourlyIncl = result ? roundUpToNearest(minMonthlyIncl / 160, 10) : 0;
+  const minAnnualIncl = result ? roundUpToNearest(minMonthlyIncl * 12, 10000) : 0;
+
   return (
     <div>
       <h3 className="font-medium text-gray-900 dark:text-gray-100 mb-4">
@@ -423,17 +431,17 @@ export function PricingPanel({
               <div>
                 <div className="text-lg font-bold text-green-700 dark:text-green-300">{formatInr(result.finalQuotedHourly)}</div>
                 <div className="text-xs text-green-600 dark:text-green-400">per hour</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{formatInr(roundUpToNearest(result.finalQuotedHourly * (1 + (result.gstRatePct ?? 0.18)), 100))} all incl.</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{formatInr(quotedHourlyIncl)} all incl.</div>
               </div>
               <div>
                 <div className="text-lg font-bold text-green-700 dark:text-green-300">{formatInr(result.finalQuotedMonthly)}</div>
                 <div className="text-xs text-green-600 dark:text-green-400">per month</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{formatInr(roundUpToNearest(result.finalQuotedMonthly * (1 + (result.gstRatePct ?? 0.18)), 1000))} all incl.</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{formatInr(quotedMonthlyIncl)} all incl.</div>
               </div>
               <div>
                 <div className="text-lg font-bold text-green-700 dark:text-green-300">{formatInr(result.finalQuotedAnnual)}</div>
                 <div className="text-xs text-green-600 dark:text-green-400">per annum</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{formatInr(roundUpToNearest(result.finalQuotedAnnual * (1 + (result.gstRatePct ?? 0.18)), 10000))} all incl.</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{formatInr(quotedAnnualIncl)} all incl.</div>
               </div>
             </div>
           </div>
@@ -458,17 +466,17 @@ export function PricingPanel({
                 <div>
                   <div className="text-lg font-bold text-gray-700 dark:text-gray-300">{formatInr(result.minimumBillingHourly)}</div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">per hour</div>
-                  <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{formatInr(roundUpToNearest(result.minimumBillingHourly * (1 + (result.gstRatePct ?? 0.18)), 100))} all incl.</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{formatInr(minHourlyIncl)} all incl.</div>
                 </div>
                 <div>
                   <div className="text-lg font-bold text-gray-700 dark:text-gray-300">{formatInr(result.minimumBillingMonthly)}</div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">per month</div>
-                  <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{formatInr(roundUpToNearest(result.minimumBillingMonthly * (1 + (result.gstRatePct ?? 0.18)), 1000))} all incl.</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{formatInr(minMonthlyIncl)} all incl.</div>
                 </div>
                 <div>
                   <div className="text-lg font-bold text-gray-700 dark:text-gray-300">{formatInr(result.minimumBillingAnnual ?? 0)}</div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">per annum</div>
-                  <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{formatInr(roundUpToNearest((result.minimumBillingAnnual ?? 0) * (1 + (result.gstRatePct ?? 0.18)), 10000))} all incl.</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{formatInr(minAnnualIncl)} all incl.</div>
                 </div>
               </div>
             )}
