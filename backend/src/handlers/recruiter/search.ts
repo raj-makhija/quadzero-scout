@@ -17,6 +17,10 @@ interface SearchCacheEntry {
 
 const searchCache = new Map<string, SearchCacheEntry>();
 
+export function _clearSearchCache(): void {
+  searchCache.clear();
+}
+
 type CriteriaInput = {
   coreSkill?: string;
   mustHaveSkills?: string[];
@@ -152,17 +156,8 @@ async function handleRequest(
         engagementModel: criteria.engagementModel,
       };
 
-      // Full corpus scan (always from the beginning) and fetch shortlists in parallel
-      const [searchResult, shortlists] = await Promise.all([
-        searchCandidates(searchCriteria),
-        requirementId ? getShortlistsForRequirement(requirementId) : Promise.resolve([]),
-      ]);
-      const shortlistedCandidateIds = new Set(
-        shortlists.filter((s) => s.status !== 'not_suitable').map((s) => s.candidate_id)
-      );
-      const notSuitableCandidateIds = new Set(
-        shortlists.filter((s) => s.status === 'not_suitable').map((s) => s.candidate_id)
-      );
+      // Full corpus scan (always from the beginning)
+      const searchResult = await searchCandidates(searchCriteria);
 
       // Pre-filter: if coreSkill is specified, only score candidates who have it as a primary skill.
       // Secondary skills are too noisy (tangential mentions) — coreSkill must be a core competency.
@@ -216,8 +211,8 @@ async function handleRequest(
             notInterestedAt: candidate.not_interested_at,
             roles: candidate.roles || [],
             headline: candidate.headline,
-            isShortlisted: shortlistedCandidateIds.has(candidate.candidate_id),
-            isNotSuitable: notSuitableCandidateIds.has(candidate.candidate_id),
+            isShortlisted: false,
+            isNotSuitable: false,
             subVendorId: candidate.sub_vendor_id,
             subVendorName: candidate.sub_vendor_name,
             subVendorContactPerson: candidate.sub_vendor_contact_person,
@@ -272,6 +267,22 @@ async function handleRequest(
         scoredCandidates: allScoredCandidates,
         fetchedAt: Date.now(),
       });
+    }
+
+    // Always fetch fresh shortlist status so it reflects recent shortlist/not-suitable changes
+    if (requirementId) {
+      const shortlists = await getShortlistsForRequirement(requirementId);
+      const shortlistedCandidateIds = new Set(
+        shortlists.filter((s) => s.status !== 'not_suitable').map((s) => s.candidate_id)
+      );
+      const notSuitableCandidateIds = new Set(
+        shortlists.filter((s) => s.status === 'not_suitable').map((s) => s.candidate_id)
+      );
+      allScoredCandidates = allScoredCandidates.map((c) => ({
+        ...c,
+        isShortlisted: shortlistedCandidateIds.has(c.candidateId),
+        isNotSuitable: notSuitableCandidateIds.has(c.candidateId),
+      }));
     }
 
     // Serve page as an offset-based slice of the globally sorted list
