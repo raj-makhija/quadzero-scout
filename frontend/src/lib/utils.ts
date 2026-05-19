@@ -213,3 +213,7 @@ export function formatInr(value: number): string {
     maximumFractionDigits: 0,
   }).format(value);
 }
+
+export function roundUpToNearest(value: number, nearest: number): number {
+  return Math.ceil(value / nearest) * nearest;
+}
