@@ -1,14 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Loader2, AlertCircle, Send, MailCheck } from 'lucide-react';
+import { X, Loader2, AlertCircle, Send, MailCheck, AlertTriangle } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
+import type { PipelineCandidateView } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
+import { formatInr } from '@/lib/utils';
 
 interface SubmitToClientModalProps {
   requirementId: string;
-  candidateIds: string[];
-  candidateNames: string[];
+  candidates: Pick<PipelineCandidateView, 'candidateId' | 'fullName' | 'proposedRateHourly' | 'internalRateHourly'>[];
   isOpen: boolean;
   onClose: () => void;
   onSubmitted: () => void;
@@ -17,8 +18,7 @@ interface SubmitToClientModalProps {
 
 export function SubmitToClientModal({
   requirementId,
-  candidateIds,
-  candidateNames,
+  candidates,
   isOpen,
   onClose,
   onSubmitted,
@@ -32,10 +32,23 @@ export function SubmitToClientModal({
   const [errorMessage, setErrorMessage] = useState('');
   const [offline, setOffline] = useState(false);
   const [offlineSentAt, setOfflineSentAt] = useState('');
+  const [singleRate, setSingleRate] = useState('');
+  const [batchRates, setBatchRates] = useState<Record<string, string>>({});
 
   if (!isOpen) return null;
 
-  const isBatch = candidateIds.length > 1;
+  const isBatch = candidates.length > 1;
+
+  const getSingleRateNum = () => {
+    const val = parseFloat(singleRate);
+    return isNaN(val) ? -1 : val;
+  };
+
+  const single = candidates[0];
+  const singleRateNum = getSingleRateNum();
+  const isSingleBelowMin = singleRateNum >= 0
+    && single?.internalRateHourly !== undefined
+    && singleRateNum < single.internalRateHourly;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,6 +56,23 @@ export function SubmitToClientModal({
     if (!offline && !clientEmail.trim()) {
       setErrorMessage('Client email is required when sending via Scout.');
       return;
+    }
+
+    if (isBatch) {
+      const missing: string[] = [];
+      for (const c of candidates) {
+        const val = parseFloat(batchRates[c.candidateId] || '');
+        if (isNaN(val) || val < 0) missing.push(c.fullName);
+      }
+      if (missing.length > 0) {
+        setErrorMessage(`Quoted Rate is required for: ${missing.join(', ')}`);
+        return;
+      }
+    } else {
+      if (!singleRate.trim() || isNaN(singleRateNum) || singleRateNum < 0) {
+        setErrorMessage('Quoted Rate is required.');
+        return;
+      }
     }
 
     const parsedCcEmails = ccEmails
@@ -55,15 +85,20 @@ export function SubmitToClientModal({
       setErrorMessage('');
 
       if (isBatch) {
+        const quotedRates: Record<string, number> = {};
+        for (const c of candidates) {
+          quotedRates[c.candidateId] = parseFloat(batchRates[c.candidateId]);
+        }
         await api.submitBatchToClient(requirementId, {
-          candidateIds,
+          candidateIds: candidates.map(c => c.candidateId),
           clientEmail: clientEmail.trim() || undefined!,
           clientName: clientName.trim() || undefined,
           coverNote: coverNote.trim() || undefined,
           ccEmails: parsedCcEmails.length > 0 ? parsedCcEmails : undefined,
+          quotedRates,
         });
       } else {
-        await api.submitCandidateToClient(requirementId, candidateIds[0], {
+        await api.submitCandidateToClient(requirementId, candidates[0].candidateId, {
           clientEmail: clientEmail.trim() || undefined,
           clientName: clientName.trim() || undefined,
           coverNote: coverNote.trim() || undefined,
@@ -72,6 +107,7 @@ export function SubmitToClientModal({
           offlineSentAt: offline && offlineSentAt
             ? new Date(offlineSentAt).toISOString()
             : undefined,
+          quotedRateHourly: singleRateNum,
         });
       }
 
@@ -80,17 +116,18 @@ export function SubmitToClientModal({
         title: offline
           ? 'Submission recorded (sent offline)'
           : isBatch
-            ? `${candidateIds.length} candidates submitted to client`
+            ? `${candidates.length} candidates submitted to client`
             : 'Candidate submitted to client',
       });
 
-      // Reset form
       setClientEmail('');
       setClientName(contactPersonName || '');
       setCoverNote('');
       setCcEmails('');
       setOffline(false);
       setOfflineSentAt('');
+      setSingleRate('');
+      setBatchRates({});
       onSubmitted();
     } catch (err) {
       if (err instanceof ApiError) {
@@ -105,19 +142,16 @@ export function SubmitToClientModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-black bg-opacity-50" onClick={onClose} />
 
-      {/* Modal */}
       <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col mx-4">
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
           <div>
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
               Submit to Client
             </h2>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              {isBatch ? `${candidateIds.length} candidates` : candidateNames[0]}
+              {isBatch ? `${candidates.length} candidates` : candidates[0]?.fullName}
             </p>
           </div>
           <button
@@ -128,9 +162,7 @@ export function SubmitToClientModal({
           </button>
         </div>
 
-        {/* Body */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-          {/* Error */}
           {errorMessage && (
             <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-2">
               <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
@@ -138,22 +170,80 @@ export function SubmitToClientModal({
             </div>
           )}
 
-          {/* Candidate list */}
-          {isBatch && (
+          {/* Quoted Rate — single candidate */}
+          {!isBatch && (
             <div>
-              <label className="text-sm text-gray-500 dark:text-gray-400 block mb-1">
-                Candidates
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">
+                Quoted Rate (₹/hr) <span className="text-red-500">*</span>
               </label>
-              <div className="flex flex-wrap gap-1">
-                {candidateNames.map((name, idx) => (
-                  <span
-                    key={candidateIds[idx]}
-                    className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded px-2 py-0.5"
-                  >
-                    {name}
-                  </span>
-                ))}
-              </div>
+              {single?.proposedRateHourly !== undefined && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  Recommended: {formatInr(single.proposedRateHourly)}/hr
+                  {single.internalRateHourly !== undefined && (
+                    <> &middot; Minimum: {formatInr(single.internalRateHourly)}/hr</>
+                  )}
+                </p>
+              )}
+              <input
+                type="number"
+                min="0"
+                step="any"
+                value={singleRate}
+                onChange={(e) => setSingleRate(e.target.value)}
+                placeholder="Enter quoted rate"
+                className="input w-full text-sm"
+              />
+              {isSingleBelowMin && (
+                <div className="mt-1.5 p-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded flex items-start gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-600 mt-0.5 flex-shrink-0" />
+                  <p className="text-xs text-amber-700 dark:text-amber-300">
+                    Below minimum rate ({formatInr(single.internalRateHourly!)}/hr). You may still proceed.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Quoted Rates — batch */}
+          {isBatch && (
+            <div className="space-y-3">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block">
+                Quoted Rate per Candidate (₹/hr) <span className="text-red-500">*</span>
+              </label>
+              {candidates.map((c) => {
+                const rateVal = parseFloat(batchRates[c.candidateId] || '');
+                const belowMin = !isNaN(rateVal) && rateVal >= 0
+                  && c.internalRateHourly !== undefined
+                  && rateVal < c.internalRateHourly;
+                return (
+                  <div key={c.candidateId}>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-600 dark:text-gray-300 w-32 truncate flex-shrink-0">{c.fullName}</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={batchRates[c.candidateId] || ''}
+                        onChange={(e) => setBatchRates(prev => ({ ...prev, [c.candidateId]: e.target.value }))}
+                        placeholder="Rate"
+                        className="input flex-1 text-sm"
+                      />
+                    </div>
+                    {c.proposedRateHourly !== undefined && (
+                      <p className="text-xs text-gray-400 mt-0.5 ml-[8.5rem]">
+                        Rec: {formatInr(c.proposedRateHourly)}/hr
+                        {c.internalRateHourly !== undefined && <> &middot; Min: {formatInr(c.internalRateHourly)}/hr</>}
+                      </p>
+                    )}
+                    {belowMin && (
+                      <div className="mt-1 ml-[8.5rem] p-1.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded flex items-start gap-1">
+                        <AlertTriangle className="h-3 w-3 text-amber-600 mt-0.5 flex-shrink-0" />
+                        <p className="text-xs text-amber-700 dark:text-amber-300">Below minimum. You may still proceed.</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -178,7 +268,6 @@ export function SubmitToClientModal({
             </label>
           )}
 
-          {/* Offline sent date/time */}
           {offline && !isBatch && (
             <div>
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">
@@ -196,7 +285,6 @@ export function SubmitToClientModal({
             </div>
           )}
 
-          {/* Client Email */}
           <div>
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">
               Client Email {!offline && <span className="text-red-500">*</span>}
@@ -216,7 +304,6 @@ export function SubmitToClientModal({
             )}
           </div>
 
-          {/* Client Name */}
           <div>
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">
               Client Name
@@ -230,7 +317,6 @@ export function SubmitToClientModal({
             />
           </div>
 
-          {/* Cover Note — hide for offline */}
           {!offline && (
             <div>
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">
@@ -247,7 +333,6 @@ export function SubmitToClientModal({
             </div>
           )}
 
-          {/* CC Emails — hide for offline */}
           {!offline && (
             <div>
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">
@@ -266,7 +351,6 @@ export function SubmitToClientModal({
             </div>
           )}
 
-          {/* Submit button */}
           <div className="pt-2">
             <button
               type="submit"
@@ -286,7 +370,7 @@ export function SubmitToClientModal({
               ) : (
                 <>
                   <Send className="h-4 w-4" />
-                  {isBatch ? `Send ${candidateIds.length} Candidates` : 'Send'}
+                  {isBatch ? `Send ${candidates.length} Candidates` : 'Send'}
                 </>
               )}
             </button>

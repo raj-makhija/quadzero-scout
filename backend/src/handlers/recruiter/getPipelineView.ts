@@ -72,6 +72,7 @@ async function handleRequest(
         internalRateHourly: item.internal_rate_hourly,
         internalRateMonthly: item.internal_rate_monthly,
         internalRateAnnual: item.internal_rate_annual,
+        quotedRateHourly: item.quoted_rate_hourly,
       });
     }
 

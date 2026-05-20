@@ -404,6 +404,7 @@ export const SubmitCandidateToClientRequestSchema = z.object({
   ccEmails: z.array(z.string().email()).max(10).optional(),
   offline: z.boolean().optional(),
   offlineSentAt: z.string().datetime().optional(),
+  quotedRateHourly: z.number().nonnegative(),
 });
 
 export const SubmitBatchToClientRequestSchema = z.object({
@@ -412,6 +413,7 @@ export const SubmitBatchToClientRequestSchema = z.object({
   clientName: z.string().max(200).optional(),
   coverNote: z.string().max(5000).optional(),
   ccEmails: z.array(z.string().email()).max(10).optional(),
+  quotedRates: z.record(z.string(), z.number().nonnegative()),
 });
 
 export const RecordClientFeedbackRequestSchema = z.object({
@@ -444,6 +446,10 @@ export const UpdatePipelineStageRequestSchema = z.object({
   stage: PipelineStageEnum,
   reason: z.string().max(2000).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const UpdateSubmissionRateRequestSchema = z.object({
+  quotedRateHourly: z.number().nonnegative(),
 });
 
 export const AddPipelineNoteRequestSchema = z.object({

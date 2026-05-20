@@ -20,6 +20,7 @@ import { toast } from '@/hooks/use-toast';
 import { PipelineTimeline } from './pipeline-timeline';
 import { FeedbackFormModal } from './feedback-form-modal';
 import { InterviewScheduleModal } from './interview-schedule-modal';
+import { UpdateSubmissionRateModal } from './update-submission-rate-modal';
 
 const STAGE_DOT_COLORS: Record<string, string> = {
   shortlisted: 'bg-blue-400',
@@ -61,6 +62,7 @@ export function PipelineCandidateCard({
   const [interviewOpen, setInterviewOpen] = useState(false);
   const [advancingToOffer, setAdvancingToOffer] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [editRateOpen, setEditRateOpen] = useState(false);
 
   const stage = candidate.pipelineStage;
   const dotColor = STAGE_DOT_COLORS[stage] || 'bg-gray-400';
@@ -122,9 +124,14 @@ export function PipelineCandidateCard({
         );
       case 'submitted_to_client':
         return (
-          <button onClick={() => { setFeedbackMode('client'); setFeedbackOpen(true); }} className={`${pillBase} bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50`}>
-            <MessageSquare className="h-3 w-3" /> Record Feedback
-          </button>
+          <>
+            <button onClick={() => setEditRateOpen(true)} className={`${pillBase} bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50`}>
+              Edit Rate
+            </button>
+            <button onClick={() => { setFeedbackMode('client'); setFeedbackOpen(true); }} className={`${pillBase} bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50`}>
+              <MessageSquare className="h-3 w-3" /> Record Feedback
+            </button>
+          </>
         );
       case 'client_reviewed':
         return (
@@ -207,13 +214,18 @@ export function PipelineCandidateCard({
             {candidate.proposedRateHourly && (
               <div className="mt-1.5 flex items-center flex-wrap gap-x-3 gap-y-1 text-xs">
                 <span className="text-green-600 dark:text-green-400">
-                  Quoted: {formatInr(candidate.proposedRateHourly)}/hr &middot; {formatInr(candidate.proposedRateMonthly!)}/mo
+                  Recommended: {formatInr(candidate.proposedRateHourly)}/hr &middot; {formatInr(candidate.proposedRateMonthly!)}/mo
                 </span>
                 {candidate.internalRateHourly && (
                   <span className="text-gray-500 dark:text-gray-400">
                     Internal: {formatInr(candidate.internalRateHourly)}/hr &middot; {formatInr(candidate.internalRateMonthly!)}/mo
                   </span>
                 )}
+              </div>
+            )}
+            {candidate.quotedRateHourly != null && (
+              <div className="mt-1 text-xs text-blue-600 dark:text-blue-400">
+                Quoted: {formatInr(candidate.quotedRateHourly)}/hr
               </div>
             )}
 
@@ -284,6 +296,22 @@ export function PipelineCandidateCard({
           else onRefresh();
         }}
         currentRound={candidate.interviewRoundCount}
+      />
+
+      {/* Update rate modal */}
+      <UpdateSubmissionRateModal
+        requirementId={requirementId}
+        candidateId={candidate.candidateId}
+        candidateName={candidate.fullName}
+        currentRate={candidate.quotedRateHourly}
+        internalRateHourly={candidate.internalRateHourly}
+        proposedRateHourly={candidate.proposedRateHourly}
+        isOpen={editRateOpen}
+        onClose={() => setEditRateOpen(false)}
+        onUpdated={() => {
+          setEditRateOpen(false);
+          onRefresh();
+        }}
       />
 
       {/* Interview schedule modal */}
