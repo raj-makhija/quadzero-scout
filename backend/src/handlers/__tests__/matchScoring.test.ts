@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { CandidateItem } from '../../types/index.js';
-import { calculateMatchScore, parseSearchLocations, MIN_MUST_HAVE_MATCH_RATIO, RELATED_MATCH_WEIGHT, MUST_HAVE_RELATED_WEIGHT, MUST_HAVE_WEIGHT, GOOD_TO_HAVE_WEIGHT, SKILL_PROMINENCE_WEIGHT, SKILL_YEARS_WEIGHT, ROLE_MATCH_WEIGHT } from '../../lib/matchScoring.js';
+import { calculateMatchScore, parseSearchLocations, MIN_MUST_HAVE_MATCH_RATIO, RELATED_MATCH_WEIGHT, MUST_HAVE_RELATED_WEIGHT, MUST_HAVE_WEIGHT, GOOD_TO_HAVE_WEIGHT, SKILL_PROMINENCE_WEIGHT, SKILL_YEARS_WEIGHT, ROLE_MATCH_WEIGHT, CTC_OVER_BUDGET_MAX_PENALTY } from '../../lib/matchScoring.js';
 
 // ---------------------------------------------------------------------------
 // Match Scoring Algorithm Tests
@@ -34,7 +34,7 @@ function makeCandidate(overrides: Partial<CandidateItem> = {}): CandidateItem {
 
 describe('Match Scoring Algorithm', () => {
   // TC-SCORE-001
-  it('returns max score for perfect match (base 100 + skill relevance bonus)', () => {
+  it('returns max score of 100 for perfect match even when relevance bonus would exceed it', () => {
     const candidate = makeCandidate();
     const result = calculateMatchScore(
       candidate,
@@ -44,9 +44,8 @@ describe('Match Scoring Algorithm', () => {
       10,                              // max exp: 6 <= 10
       ['senior', 'lead']              // seniority: matches
     );
-    // Base 100 (40+22+8+8+5+10+7) + prominence bonus (both in top 3 → 8 each) + years bonus (react:4, nodejs:3 → 2 each)
-    // = 100 + (8+2 + 8+2)/2 = 110
-    expect(result.score).toBe(110);
+    // Base 100 + prominence/years bonus would = 110; capped at 100
+    expect(result.score).toBe(100);
     expect(result.details.mustHaveMatched).toContain('react');
     expect(result.details.mustHaveMatched).toContain('nodejs');
     expect(result.details.mustHaveRelated).toEqual([]);
@@ -196,12 +195,12 @@ describe('Match Scoring Algorithm', () => {
     expect(result.score).toBe(100);
   });
 
-  it('empty good-to-have skills results in full 22 points', () => {
+  it('empty good-to-have skills results in full 22 points (score capped at 100)', () => {
     const candidate = makeCandidate();
     const result = calculateMatchScore(candidate, ['react'], []);
     // must-have: 40 (1/1), good-to-have: 22, role: 8, exp: 8, seniority: 5, location: 10, availability: 7 = 100
-    // + prominence (react at pos 0 → 8) + years (react: 4yrs → 2) = 10
-    expect(result.score).toBe(110);
+    // + prominence/years bonus would push to 110; capped at 100
+    expect(result.score).toBe(100);
   });
 
   // TC-SCORE-012: Related skill does NOT score for must-have (exact-only)
@@ -460,34 +459,28 @@ describe('Match Scoring Algorithm', () => {
 
   // --- Skill Relevance Bonus Tests ---
 
-  // TC-SCORE-034: Skill in top-3 primary position gets full prominence bonus
-  it('must-have skill in top-3 position gets full prominence bonus', () => {
+  // TC-SCORE-034: Skill in top-3 primary position gets full prominence bonus (capped at 100)
+  it('must-have skill in top-3 position gets full prominence bonus (score capped at 100)', () => {
     const candidate = makeCandidate({
       primary_skills: ['oracle', 'java', 'sql'],
       primary_skill_years: { oracle: 8, java: 5, sql: 4 },
       secondary_skills: [],
     });
     const result = calculateMatchScore(candidate, ['oracle'], []);
-    // Base: 45 + 25 + 8 + 5 + 10 + 7 = 100
-    // Prominence: oracle at pos 0 → 8 points
-    // Years: oracle 8yrs (≥5) → 4 points
-    // Bonus: (8 + 4) / 1 = 12
-    expect(result.score).toBe(112);
+    // Base: 100; Prominence bonus 8 + years bonus 4 = 12; gross 112 → capped at 100
+    expect(result.score).toBe(100);
   });
 
-  // TC-SCORE-035: Skill in position 4-6 gets half prominence bonus
-  it('must-have skill in position 4-6 gets half prominence bonus', () => {
+  // TC-SCORE-035: Skill in position 4-6 gets half prominence bonus (capped at 100)
+  it('must-have skill in position 4-6 gets half prominence bonus (score capped at 100)', () => {
     const candidate = makeCandidate({
       primary_skills: ['java', 'python', 'react', 'oracle', 'sql'],
       primary_skill_years: { java: 5, python: 4, react: 3, oracle: 6, sql: 4 },
       secondary_skills: [],
     });
     const result = calculateMatchScore(candidate, ['oracle'], []);
-    // Base: 100
-    // Prominence: oracle at pos 3 → 8 * 0.5 = 4
-    // Years: oracle 6yrs (≥5) → 4
-    // Bonus: (4 + 4) / 1 = 8
-    expect(result.score).toBe(108);
+    // Base: 100; Prominence bonus 4 + years bonus 4 = 8; gross 108 → capped at 100
+    expect(result.score).toBe(100);
   });
 
   // TC-SCORE-036: Skill only in secondary skills gets partial must-have credit (0.5 weight) and no prominence bonus
@@ -504,34 +497,28 @@ describe('Match Scoring Algorithm', () => {
     expect(result.score).toBe(80);
   });
 
-  // TC-SCORE-037: Skill with <2 years gets no years bonus
-  it('must-have skill with less than 2 years gets no years bonus', () => {
+  // TC-SCORE-037: Skill with <2 years gets no years bonus (capped at 100)
+  it('must-have skill with less than 2 years gets no years bonus (score capped at 100)', () => {
     const candidate = makeCandidate({
       primary_skills: ['oracle'],
       primary_skill_years: { oracle: 1 },
       secondary_skills: [],
     });
     const result = calculateMatchScore(candidate, ['oracle'], []);
-    // Base: 100
-    // Prominence: oracle at pos 0 → 8
-    // Years: oracle 1yr (<2) → 0
-    // Bonus: (8 + 0) / 1 = 8
-    expect(result.score).toBe(108);
+    // Base: 100; Prominence bonus 8, years 0; gross 108 → capped at 100
+    expect(result.score).toBe(100);
   });
 
-  // TC-SCORE-038: Skill at position 10+ gets no prominence bonus
-  it('must-have skill at position 10+ gets no prominence bonus', () => {
+  // TC-SCORE-038: Skill at position 10+ gets no prominence bonus (capped at 100)
+  it('must-have skill at position 10+ gets no prominence bonus (score capped at 100)', () => {
     const candidate = makeCandidate({
       primary_skills: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'oracle'],
       primary_skill_years: { oracle: 8 },
       secondary_skills: [],
     });
     const result = calculateMatchScore(candidate, ['oracle'], []);
-    // Base: 100
-    // Prominence: oracle at pos 10 → 0
-    // Years: oracle 8yrs (≥5) → 4
-    // Bonus: (0 + 4) / 1 = 4
-    expect(result.score).toBe(104);
+    // Base: 100; Prominence 0 (pos 10), years 4; gross 104 → capped at 100
+    expect(result.score).toBe(100);
   });
 
   it('SKILL_PROMINENCE_WEIGHT is 8', () => {
@@ -540,6 +527,77 @@ describe('Match Scoring Algorithm', () => {
 
   it('SKILL_YEARS_WEIGHT is 4', () => {
     expect(SKILL_YEARS_WEIGHT).toBe(4);
+  });
+
+  // --- Score Cap Tests ---
+
+  // TC-SCORE-CAP-001: Score is always capped at 100 regardless of bonus
+  it('score never exceeds 100 even with maximum relevance bonus', () => {
+    const candidate = makeCandidate({
+      primary_skills: ['oracle'],
+      primary_skill_years: { oracle: 10 },
+      secondary_skills: [],
+    });
+    const result = calculateMatchScore(candidate, ['oracle'], []);
+    expect(result.score).toBeLessThanOrEqual(100);
+  });
+
+  // TC-SCORE-CAP-002: Relevance bonus preserves ordering when base < 100
+  it('relevance bonus differentiates candidates when base score is below 100', () => {
+    // Seniority mismatch (-5) + location mismatch (-10) → base 85, so bonus can differentiate
+    const highProminence = makeCandidate({
+      primary_skills: ['oracle', 'java'],
+      primary_skill_years: { oracle: 8, java: 3 },
+      secondary_skills: [],
+      location: 'Mumbai',
+    });
+    const lowProminence = makeCandidate({
+      primary_skills: ['java', 'python', 'react', 'node', 'go', 'rust', 'oracle', 'sql', 'mongo', 'redis', 'kafka'],
+      primary_skill_years: { oracle: 8 },
+      secondary_skills: [],
+      location: 'Mumbai',
+    });
+    // base = 40+22+8+8+0+0+7 = 85 (seniority=['principal'] mismatches 'senior', location mismatch)
+    const highResult = calculateMatchScore(highProminence, ['oracle'], [], undefined, undefined, ['principal'], undefined, ['bangalore']);
+    const lowResult = calculateMatchScore(lowProminence, ['oracle'], [], undefined, undefined, ['principal'], undefined, ['bangalore']);
+    // highProminence: pos 0, 8yrs → bonus 12 → 97; lowProminence: pos 10, 8yrs → bonus 4 → 89
+    expect(highResult.score).toBeGreaterThan(lowResult.score);
+    expect(highResult.score).toBeLessThanOrEqual(100);
+    expect(lowResult.score).toBeLessThanOrEqual(100);
+  });
+
+  // TC-SCORE-CAP-003: Base score exactly 100 (no bonus active path) still returns 100
+  it('base score of 100 with no must-have skills returns exactly 100', () => {
+    const candidate = makeCandidate();
+    const result = calculateMatchScore(candidate, [], []);
+    expect(result.score).toBe(100);
+  });
+
+  // TC-SCORE-CAP-004: CTC penalty is applied before the cap
+  it('CTC penalty is applied before the 100-cap (penalty reduces from over-100 gross to under 100)', () => {
+    // Candidate with location mismatch (base 90) + full relevance bonus → gross ~102
+    // Apply a CTC penalty so the result is < 100, confirming penalty ran before cap
+    const candidate = makeCandidate({
+      primary_skills: ['oracle'],
+      primary_skill_years: { oracle: 8 },
+      secondary_skills: [],
+      expected_ctc: 45, // 1.5× budget → overRatio=0.5 → penalty=10
+    });
+    const resultWithPenalty = calculateMatchScore(
+      candidate, ['oracle'], [],
+      undefined, undefined, undefined,
+      30,          // maxBudgetLpa
+      ['bangalore'] // location mismatch: -10 from base
+    );
+    const resultNoPenalty = calculateMatchScore(
+      candidate, ['oracle'], [],
+      undefined, undefined, undefined,
+      undefined,   // no budget
+      ['bangalore']
+    );
+    expect(resultNoPenalty.score).toBeLessThanOrEqual(100);
+    expect(resultWithPenalty.score).toBeLessThan(resultNoPenalty.score);
+    expect(resultWithPenalty.score).toBeGreaterThanOrEqual(0);
   });
 
   // --- Role Match Tests ---
@@ -602,12 +660,13 @@ describe('Match Scoring Algorithm', () => {
     });
     const searchRoles = ['Java Developer', 'Backend Engineer'];
 
+    // Location filter ensures base < 100 so role match can differentiate the final scores
     const devResult = calculateMatchScore(
-      developerCandidate, ['java', 'rest_api'], [], undefined, undefined, undefined, undefined, [], [],
+      developerCandidate, ['java', 'rest_api'], [], undefined, undefined, undefined, undefined, ['bangalore'], [],
       undefined, undefined, searchRoles
     );
     const testResult = calculateMatchScore(
-      testerCandidate, ['java', 'rest_api'], [], undefined, undefined, undefined, undefined, [], [],
+      testerCandidate, ['java', 'rest_api'], [], undefined, undefined, undefined, undefined, ['bangalore'], [],
       undefined, undefined, searchRoles
     );
 
@@ -627,8 +686,9 @@ describe('Match Scoring Algorithm', () => {
       primary_skills: ['react'],
       secondary_skills: ['nodejs'],
     });
-    const primaryResult = calculateMatchScore(primaryOnly, ['react', 'nodejs'], []);
-    const splitResult = calculateMatchScore(primaryPlusSecondary, ['react', 'nodejs'], []);
+    // Location filter keeps base < 100 so relevance bonus doesn't push both to 100
+    const primaryResult = calculateMatchScore(primaryOnly, ['react', 'nodejs'], [], undefined, undefined, undefined, undefined, ['bangalore']);
+    const splitResult = calculateMatchScore(primaryPlusSecondary, ['react', 'nodejs'], [], undefined, undefined, undefined, undefined, ['bangalore']);
     expect(primaryResult.score).toBeGreaterThan(splitResult.score);
     expect(splitResult.details.mustHaveMatched).toEqual(['react']);
     expect(splitResult.details.mustHaveSecondary).toEqual(['nodejs']);
@@ -648,5 +708,125 @@ describe('Match Scoring Algorithm', () => {
       + result.details.mustHaveSecondary.length * 0.5
     ) / 3;
     expect(effective).toBeLessThan(MIN_MUST_HAVE_MATCH_RATIO);
+  });
+
+  // --- CTC Over-Budget Penalty Tests ---
+
+  // TC-SCORE-CTC-001: over-budget candidate scores lower than identical in-budget candidate
+  it('over-budget candidate scores lower than identical in-budget candidate', () => {
+    const inBudget = makeCandidate({ expected_ctc: 20 });
+    const overBudget = makeCandidate({ expected_ctc: 60 }); // 2× maxBudgetLpa
+    const maxBudgetLpa = 30;
+
+    const inResult = calculateMatchScore(inBudget, [], [], undefined, undefined, undefined, maxBudgetLpa);
+    const overResult = calculateMatchScore(overBudget, [], [], undefined, undefined, undefined, maxBudgetLpa);
+
+    expect(overResult.score).toBeLessThan(inResult.score);
+  });
+
+  // TC-SCORE-CTC-002: penalty is proportional to degree of over-budget
+  it('penalty is proportional — 2× over budget penalised more than 10% over', () => {
+    const slightlyOver = makeCandidate({ expected_ctc: 33 }); // 10% over 30
+    const significantlyOver = makeCandidate({ expected_ctc: 60 }); // 2× over 30
+    const maxBudgetLpa = 30;
+
+    const slightResult = calculateMatchScore(slightlyOver, [], [], undefined, undefined, undefined, maxBudgetLpa);
+    const sigResult = calculateMatchScore(significantlyOver, [], [], undefined, undefined, undefined, maxBudgetLpa);
+
+    // 2× over budget (penalty=20) must rank lower than 10% over budget (penalty=2)
+    expect(sigResult.score).toBeLessThan(slightResult.score);
+  });
+
+  // TC-SCORE-CTC-003: candidate at or below budget ceiling receives no penalty
+  it('candidate at budget ceiling receives no score penalty', () => {
+    const atBudget = makeCandidate({ expected_ctc: 30 });
+    const noCTC = makeCandidate();
+    const maxBudgetLpa = 30;
+
+    const atResult = calculateMatchScore(atBudget, [], [], undefined, undefined, undefined, maxBudgetLpa);
+    const noResult = calculateMatchScore(noCTC, [], [], undefined, undefined, undefined, maxBudgetLpa);
+
+    expect(atResult.score).toBe(noResult.score);
+  });
+
+  // TC-SCORE-CTC-004: no maxBudgetLpa → CTC does not affect score
+  it('when maxBudgetLpa is absent, expected_ctc does not affect score', () => {
+    const withCTC = makeCandidate({ expected_ctc: 200 });
+    const noCTC = makeCandidate();
+
+    const withResult = calculateMatchScore(withCTC, [], []);
+    const withoutResult = calculateMatchScore(noCTC, [], []);
+
+    expect(withResult.score).toBe(withoutResult.score);
+  });
+
+  // TC-SCORE-CTC-005: no expected_ctc → score unaffected regardless of maxBudgetLpa
+  it('when expected_ctc is absent, maxBudgetLpa does not affect score', () => {
+    const withBudget = calculateMatchScore(makeCandidate(), [], [], undefined, undefined, undefined, 50);
+    const withoutBudget = calculateMatchScore(makeCandidate(), [], []);
+
+    expect(withBudget.score).toBe(withoutBudget.score);
+  });
+
+  // TC-SCORE-CTC-006: ctcMatch boolean uses 0.85 threshold, independent of penalty
+  it('ctcMatch is false when expectedCtc > maxBudgetLpa × 0.85, true otherwise', () => {
+    const maxBudgetLpa = 30;
+    const overThreshold = makeCandidate({ expected_ctc: 26 }); // 26 > 30 * 0.85 = 25.5
+    const underThreshold = makeCandidate({ expected_ctc: 20 }); // 20 <= 25.5
+
+    const overResult = calculateMatchScore(overThreshold, [], [], undefined, undefined, undefined, maxBudgetLpa);
+    const underResult = calculateMatchScore(underThreshold, [], [], undefined, undefined, undefined, maxBudgetLpa);
+
+    expect(overResult.details.ctcMatch).toBe(false);
+    expect(underResult.details.ctcMatch).toBe(true);
+    // Both are under budget ceiling (26 <= 30, 20 <= 30) so neither incurs a penalty
+    expect(overResult.score).toBe(underResult.score);
+  });
+
+  // TC-SCORE-CTC-007: score never goes below zero for extreme over-budget
+  it('score never goes below zero even for extreme over-budget (10× budget)', () => {
+    const candidate = makeCandidate({
+      primary_skills: ['cobol'],
+      secondary_skills: [],
+      expected_ctc: 300, // 10× the 30 LPA budget
+    });
+
+    const result = calculateMatchScore(
+      candidate,
+      ['react', 'nodejs', 'typescript', 'python', 'java'],
+      [],
+      undefined, undefined,
+      ['principal'],
+      30
+    );
+
+    expect(result.score).toBeGreaterThanOrEqual(0);
+  });
+
+  // TC-SCORE-CTC-008: maxBudgetLpa = 0 does not cause division-by-zero
+  it('maxBudgetLpa = 0 does not throw and applies no penalty', () => {
+    const candidate = makeCandidate({ expected_ctc: 10 });
+
+    expect(() => {
+      const result = calculateMatchScore(candidate, [], [], undefined, undefined, undefined, 0);
+      expect(result.score).toBeGreaterThanOrEqual(0);
+    }).not.toThrow();
+  });
+
+  // TC-SCORE-CTC-009: candidate at ctcMatch 0.85 threshold is within budget ceiling → no penalty
+  it('candidate at ctcMatch 0.85 threshold (within budget ceiling) receives no penalty', () => {
+    const atThreshold = makeCandidate({ expected_ctc: 25.5 }); // exactly 30 * 0.85
+    const noCTC = makeCandidate();
+    const maxBudgetLpa = 30;
+
+    const atResult = calculateMatchScore(atThreshold, [], [], undefined, undefined, undefined, maxBudgetLpa);
+    const noResult = calculateMatchScore(noCTC, [], [], undefined, undefined, undefined, maxBudgetLpa);
+
+    expect(atResult.score).toBe(noResult.score); // 25.5 <= 30 → no penalty
+    expect(atResult.details.ctcMatch).toBe(true);
+  });
+
+  it('CTC_OVER_BUDGET_MAX_PENALTY is 20', () => {
+    expect(CTC_OVER_BUDGET_MAX_PENALTY).toBe(20);
   });
 });

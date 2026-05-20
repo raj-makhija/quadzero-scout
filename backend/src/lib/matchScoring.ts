@@ -39,6 +39,9 @@ export const SKILL_PROMINENCE_WEIGHT = 8;
 /** Bonus points for years of experience in matched skills. */
 export const SKILL_YEARS_WEIGHT = 4;
 
+/** Maximum score penalty applied when a candidate's expected CTC exceeds the budget ceiling. */
+export const CTC_OVER_BUDGET_MAX_PENALTY = 20;
+
 /** Tolerance (in years) for partial experience match outside the specified range. */
 const EXPERIENCE_PARTIAL_TOLERANCE = 2;
 
@@ -228,6 +231,22 @@ function calculateSkillRelevanceBonus(
   return totalBonus / matchedSkills.length;
 }
 
+/**
+ * Compute a proportional score penalty for candidates whose expected CTC exceeds
+ * the budget ceiling. Returns 0 when either value is absent, when maxBudgetLpa is
+ * zero (guards against division by zero), or when the candidate is at or under budget.
+ * Penalty is capped at CTC_OVER_BUDGET_MAX_PENALTY.
+ */
+function calculateCtcPenalty(
+  expectedCtc: number | undefined | null,
+  maxBudgetLpa: number | undefined | null
+): number {
+  if (expectedCtc == null || maxBudgetLpa == null || maxBudgetLpa <= 0) return 0;
+  if (expectedCtc <= maxBudgetLpa) return 0;
+  const overRatio = (expectedCtc - maxBudgetLpa) / maxBudgetLpa;
+  return Math.min(overRatio * CTC_OVER_BUDGET_MAX_PENALTY, CTC_OVER_BUDGET_MAX_PENALTY);
+}
+
 export function calculateMatchScore(
   candidate: CandidateItem,
   mustHaveSkills: string[],
@@ -346,8 +365,11 @@ export function calculateMatchScore(
   // CTC budget check
   const ctcMatch = isCandidateWithinBudget(candidate.expected_ctc, maxBudgetLpa);
 
+  // CTC over-budget penalty — proportional to how far the candidate exceeds maxBudgetLpa
+  const ctcPenalty = calculateCtcPenalty(candidate.expected_ctc, maxBudgetLpa);
+
   return {
-    score: Math.round(score),
+    score: Math.min(100, Math.max(0, Math.round(score - ctcPenalty))),
     details: {
       mustHaveMatched: mustHaveMatch.exactMatched,
       mustHaveFuzzy: mustHaveMatch.fuzzyMatched,

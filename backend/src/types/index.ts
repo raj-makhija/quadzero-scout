@@ -126,6 +126,7 @@ export interface CandidateItem {
   github_url?: string;
   cover_letter?: string;
   headline?: string;
+  last_working_day?: string;
   not_interested?: boolean;
   not_interested_at?: string;
   not_interested_by?: string;
