@@ -34,7 +34,7 @@ async function handleRequest(
       return error(ErrorCodes.VALIDATION_ERROR, formatZodErrors(validation.errors), 400);
     }
 
-    const { candidateIds, clientEmail, clientName, coverNote, ccEmails } = validation.data;
+    const { candidateIds, clientEmail, clientName, coverNote, ccEmails, quotedRates } = validation.data;
 
     // Fetch requirement
     const requirement = await getRequirementById(requirementId);
@@ -94,7 +94,7 @@ async function handleRequest(
         await transitionPipelineStage(
           requirementId, cid, 'shortlisted', 'submitted_to_client',
           event.auth.userId, undefined,
-          { submitted_at: now, submitted_by: event.auth.userId }
+          { submitted_at: now, submitted_by: event.auth.userId, quoted_rate_hourly: quotedRates[cid] }
         );
         await createPipelineActivity(requirementId, cid, 'email_sent', event.auth.userId, {
           email_type: 'batch_submission',
