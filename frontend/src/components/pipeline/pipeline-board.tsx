@@ -106,8 +106,7 @@ export function PipelineBoard({ requirementId }: PipelineBoardProps) {
   const [notSuitableExpanded, setNotSuitableExpanded] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [submitModalOpen, setSubmitModalOpen] = useState(false);
-  const [submitCandidateIds, setSubmitCandidateIds] = useState<string[]>([]);
-  const [submitCandidateNames, setSubmitCandidateNames] = useState<string[]>([]);
+  const [submitCandidates, setSubmitCandidates] = useState<PipelineCandidateView[]>([]);
   const groupRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const fetchData = useCallback(async () => {
@@ -218,14 +217,12 @@ export function PipelineBoard({ requirementId }: PipelineBoardProps) {
     const shortlisted = data.stages['shortlisted'] || [];
     const selected = shortlisted.filter((c) => selectedIds.has(c.candidateId));
     if (selected.length === 0) return;
-    setSubmitCandidateIds(selected.map((c) => c.candidateId));
-    setSubmitCandidateNames(selected.map((c) => c.fullName));
+    setSubmitCandidates(selected);
     setSubmitModalOpen(true);
   };
 
   const handleSubmitSingle = (candidate: PipelineCandidateView) => {
-    setSubmitCandidateIds([candidate.candidateId]);
-    setSubmitCandidateNames([candidate.fullName]);
+    setSubmitCandidates([candidate]);
     setSubmitModalOpen(true);
   };
 
@@ -505,19 +502,16 @@ export function PipelineBoard({ requirementId }: PipelineBoardProps) {
       {/* Submit to client modal */}
       <SubmitToClientModal
         requirementId={requirementId}
-        candidateIds={submitCandidateIds}
-        candidateNames={submitCandidateNames}
+        candidates={submitCandidates}
         isOpen={submitModalOpen}
         onClose={() => {
           setSubmitModalOpen(false);
-          setSubmitCandidateIds([]);
-          setSubmitCandidateNames([]);
+          setSubmitCandidates([]);
         }}
         onSubmitted={() => {
           setSubmitModalOpen(false);
-          const ids = [...submitCandidateIds];
-          setSubmitCandidateIds([]);
-          setSubmitCandidateNames([]);
+          const ids = submitCandidates.map(c => c.candidateId);
+          setSubmitCandidates([]);
           setSelectedIds(new Set());
           for (const id of ids) {
             handleStageChange(id, 'submitted_to_client');
