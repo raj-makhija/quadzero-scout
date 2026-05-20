@@ -652,6 +652,9 @@ functions:
           path: /recruiter/requirements/{requirementId}/candidates/{candidateId}/activities
           method: GET
       - httpApi:
+          path: /recruiter/requirements/{requirementId}/candidates/{candidateId}/submission
+          method: PUT
+      - httpApi:
           path: /recruiter/requirements/{requirementId}/candidates/{candidateId}/notes
           method: POST
 

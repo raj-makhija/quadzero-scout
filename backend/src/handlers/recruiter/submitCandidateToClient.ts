@@ -35,7 +35,7 @@ async function handleRequest(
       return error(ErrorCodes.VALIDATION_ERROR, formatZodErrors(validation.errors), 400);
     }
 
-    const { clientEmail, clientName, coverNote, ccEmails, offline, offlineSentAt } = validation.data;
+    const { clientEmail, clientName, coverNote, ccEmails, offline, offlineSentAt, quotedRateHourly } = validation.data;
 
     // clientEmail is required when not offline
     if (!offline && !clientEmail) {
@@ -73,6 +73,7 @@ async function handleRequest(
         {
           submitted_at: offlineSentAt || now,
           submitted_by: event.auth.userId,
+          quoted_rate_hourly: quotedRateHourly,
         }
       );
 
@@ -113,6 +114,7 @@ async function handleRequest(
         {
           submitted_at: now,
           submitted_by: event.auth.userId,
+          quoted_rate_hourly: quotedRateHourly,
         }
       );
 

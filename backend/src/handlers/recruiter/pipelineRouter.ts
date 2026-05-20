@@ -29,6 +29,8 @@ export const handler = async (
     module = await import('./getPipelineView.js');
   } else if (method === 'GET' && path.endsWith('/activities')) {
     module = await import('./getCandidateActivities.js');
+  } else if (method === 'PUT' && path.endsWith('/submission')) {
+    module = await import('./updateSubmissionRate.js');
   } else if (method === 'POST' && path.endsWith('/notes')) {
     module = await import('./addPipelineNote.js');
   } else {

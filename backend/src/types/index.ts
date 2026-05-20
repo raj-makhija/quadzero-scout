@@ -800,6 +800,7 @@ export interface ShortlistItem {
   internal_rate_monthly?: number;
   internal_rate_annual?: number;
   proposed_rate_calculated_at?: string;
+  quoted_rate_hourly?: number;
 }
 
 // ─── Pipeline Activity Types ────────────────────────────────────────────────
@@ -813,6 +814,7 @@ export const PipelineActivityTypeEnum = z.enum([
   'note',
   'offer_extended',
   'offer_response',
+  'quoted_rate_updated',
 ]);
 export type PipelineActivityType = z.infer<typeof PipelineActivityTypeEnum>;
 
@@ -968,6 +970,7 @@ export interface PipelineCandidateView {
   internalRateHourly?: number;
   internalRateMonthly?: number;
   internalRateAnnual?: number;
+  quotedRateHourly?: number;
 }
 
 export interface PipelineViewResponse {
@@ -1333,7 +1336,8 @@ export type AuditAction =
   | 'PIPELINE_INTERVIEW_SCHEDULED'
   | 'PIPELINE_INTERVIEW_FEEDBACK'
   | 'PIPELINE_STAGE_UPDATE'
-  | 'PIPELINE_NOTE_ADDED';
+  | 'PIPELINE_NOTE_ADDED'
+  | 'PIPELINE_UPDATE_QUOTED_RATE';
 
 export type AuditEntityType =
   | 'session'
