@@ -212,8 +212,8 @@ echo "==> cherry-pick summary: $RELEASED_COUNT applied, $BLOCKED_COUNT blocked" 
 # --- Aggregate per-ticket status -----------------------------------------
 # A ticket is "blocked" if ANY of its PRs conflicted; "released" only if
 # ALL of its PRs applied cleanly and none are blocked.
-awk '{print $1}' "$RELEASED_FILE" | sort -un > "$RELEASED_TICKETS"
-awk -F'|' '{print $1}' "$BLOCKED_FILE" | sort -un > "$BLOCKED_TICKETS"
+awk '{print $1}' "$RELEASED_FILE" | sort -u > "$RELEASED_TICKETS"
+awk -F'|' '{print $1}' "$BLOCKED_FILE" | sort -u > "$BLOCKED_TICKETS"
 
 # Tickets with at least one blocked PR get blocked status (even if other
 # PRs applied). Remove them from the released set.
