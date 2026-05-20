@@ -1335,7 +1335,8 @@ export type AuditAction =
   | 'PIPELINE_INTERVIEW_SCHEDULED'
   | 'PIPELINE_INTERVIEW_FEEDBACK'
   | 'PIPELINE_STAGE_UPDATE'
-  | 'PIPELINE_NOTE_ADDED';
+  | 'PIPELINE_NOTE_ADDED'
+  | 'PIPELINE_UPDATE_QUOTED_RATE';
 
 export type AuditEntityType =
   | 'session'
