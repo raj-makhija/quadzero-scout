@@ -1,15 +1,22 @@
 #!/usr/bin/env bash
-# prod-release.sh -- nightly batch release using per-ticket cherry-pick.
+# prod-release.sh -- nightly batch release using merge-forward with
+# cherry-pick fallback.
 #
-# Finds all tickets with status:qa-approved (or status:prod-release-blocked
-# from a prior failed nightly), excludes anything already status:released,
-# sorts by their merge order on develop (oldest first), and cherry-picks
-# each onto main on a fresh release branch.
+# Phase 1 (merge-forward): walks develop-only commits oldest-first.
+# As long as every commit belongs to an approved or released ticket
+# (or is a back-merge from main), the script extends a "merge-up-to"
+# pointer. It then `git merge --no-ff` that pointer onto a release
+# branch created from main. Because main is a strict subset of
+# develop, this merge is always conflict-free.
 #
-#   - Tickets that cherry-pick cleanly: applied to main; status set to
-#     released; release URL commented on the ticket.
-#   - Tickets that conflict: marked status:prod-release-blocked; conflict
-#     files commented on the ticket; retried automatically next nightly.
+# Phase 2 (cherry-pick fallback): any approved tickets whose merge
+# commits sit after the first unapproved gap on develop are
+# cherry-picked individually, same as the legacy model.
+#
+#   - Tickets that apply cleanly (via merge or cherry-pick): applied
+#     to main; status set to released; release URL commented.
+#   - Tickets that conflict (cherry-pick only): marked
+#     status:prod-release-blocked; retried next nightly.
 #
 # Usage:
 #   scripts/prod-release.sh
@@ -48,6 +55,8 @@ RELEASED_TICKETS="$TMPDIR_RUN/released-tickets.txt"
 BLOCKED_TICKETS="$TMPDIR_RUN/blocked-tickets.txt"
 CP_OUT="$TMPDIR_RUN/cp-out.txt"
 NOTES_FILE="$TMPDIR_RUN/notes.md"
+RELEASED_SHAS_FILE="$TMPDIR_RUN/released-shas.txt"
+SAFE_SHAS_FILE="$TMPDIR_RUN/safe-shas.txt"
 
 echo "==> fetching origin (branches + tags)" >&2
 git fetch origin --tags --quiet
@@ -124,6 +133,45 @@ if [[ ! -s "$RESOLVED_FILE" ]]; then
   exit 0
 fi
 
+# --- Resolve released ticket SHAs (for merge-forward safe set) ------------
+echo "==> resolving status:released tickets for merge-forward path" >&2
+
+: > "$RELEASED_SHAS_FILE"
+released_query="$(gh issue list --state all --label "status:released" --limit 500 \
+  --json number -q '.[].number' 2>/dev/null || true)"
+
+if [[ -n "$released_query" ]]; then
+  while IFS= read -r ticket; do
+    [[ -z "$ticket" ]] && continue
+    all_prs="$(gh issue view "$ticket" --json closedByPullRequestsReferences \
+      -q '[.closedByPullRequestsReferences[].number] | .[]' 2>/dev/null || true)"
+    field_pr="$("$SCRIPT_DIR/get-field.sh" "$ticket" "PR Number" 2>/dev/null || true)"
+    if [[ -n "$field_pr" ]]; then
+      all_prs="$(printf '%s\n%s' "$all_prs" "$field_pr")"
+    fi
+    all_prs="$(echo "$all_prs" | sort -un | sed '/^$/d')"
+    [[ -z "$all_prs" ]] && continue
+
+    while IFS= read -r pr; do
+      [[ -z "$pr" ]] && continue
+      sha="$(gh pr view "$pr" --json mergeCommit -q '.mergeCommit.oid // empty' 2>/dev/null || true)"
+      [[ -z "$sha" ]] && continue
+      if git merge-base --is-ancestor "$sha" origin/develop 2>/dev/null; then
+        echo "$sha" >> "$RELEASED_SHAS_FILE"
+      fi
+    done <<< "$all_prs"
+  done <<< "$released_query"
+fi
+
+RELEASED_SHA_COUNT="$(wc -l < "$RELEASED_SHAS_FILE" | awk '{print $1}')"
+echo "==> $RELEASED_SHA_COUNT released ticket SHA(s) resolved for merge-forward" >&2
+
+# --- Build safe SHA set (approved + released) -----------------------------
+{
+  awk '{print $2}' "$RESOLVED_FILE"
+  cat "$RELEASED_SHAS_FILE"
+} | sort -u > "$SAFE_SHAS_FILE"
+
 # --- Topo-sort by develop merge order (oldest first) ----------------------
 echo "==> topo-sorting candidates by develop merge order" >&2
 
@@ -134,6 +182,41 @@ else
 fi
 git rev-list --topo-order --reverse "$RANGE" > "$DEVELOP_ORDER_FILE"
 
+# --- Classify develop-only commits and find merge-up-to point ---------------
+echo "==> classifying develop-only commits for merge-forward" >&2
+
+MERGE_UP_TO_SHA=""
+UNAPPROVED_FOUND=false
+
+while IFS= read -r develop_sha; do
+  if grep -qxF "$develop_sha" "$SAFE_SHAS_FILE"; then
+    if [[ "$UNAPPROVED_FOUND" == "false" ]]; then
+      MERGE_UP_TO_SHA="$develop_sha"
+    fi
+    continue
+  fi
+
+  # Back-merge commit: a merge with a second parent reachable from main
+  if git rev-parse --verify "$develop_sha^2" >/dev/null 2>&1; then
+    parent2="$(git rev-parse "$develop_sha^2")"
+    if git merge-base --is-ancestor "$parent2" origin/main 2>/dev/null; then
+      if [[ "$UNAPPROVED_FOUND" == "false" ]]; then
+        MERGE_UP_TO_SHA="$develop_sha"
+      fi
+      continue
+    fi
+  fi
+
+  UNAPPROVED_FOUND=true
+done < "$DEVELOP_ORDER_FILE"
+
+if [[ -n "$MERGE_UP_TO_SHA" ]]; then
+  echo "==> merge-up-to point: $(git log --oneline -1 "$MERGE_UP_TO_SHA")" >&2
+else
+  echo "==> no merge-up-to point (first develop commit is unapproved or no safe prefix)" >&2
+fi
+
+# --- Build ordered list of approved tickets (for cherry-pick fallback) ------
 : > "$ORDERED_FILE"
 while IFS= read -r develop_sha; do
   match="$(awk -v sha="$develop_sha" '$2 == sha {print; exit}' "$RESOLVED_FILE" || true)"
@@ -143,7 +226,7 @@ while IFS= read -r develop_sha; do
 done < "$DEVELOP_ORDER_FILE"
 
 ORDERED_COUNT="$(wc -l < "$ORDERED_FILE" | awk '{print $1}')"
-echo "==> $ORDERED_COUNT ticket(s) to attempt cherry-pick (in develop merge order)" >&2
+echo "==> $ORDERED_COUNT approved ticket SHA(s) total" >&2
 
 if [[ "$ORDERED_COUNT" -eq 0 ]]; then
   echo "no tickets remain after topo-sort; exiting" >&2
@@ -170,14 +253,52 @@ git branch | awk '/release\//{print $NF}' | grep -v '^\*' \
   | xargs -r -I{} git branch -D {} 2>/dev/null || true
 git checkout -B "$RELEASE_BRANCH" >&2
 
-# --- Cherry-pick each ticket ---------------------------------------------
+# --- Two-phase apply: merge-forward + cherry-pick fallback -----------------
 : > "$RELEASED_FILE"
 : > "$BLOCKED_FILE"
+MERGE_APPLIED=false
 
-while IFS=' ' read -r ticket sha pr; do
-  echo "==> #$ticket: cherry-picking $sha (PR #$pr)" >&2
+# Phase 1: merge-forward (if a safe contiguous prefix exists)
+if [[ -n "$MERGE_UP_TO_SHA" ]]; then
+  echo "==> Phase 1: merging develop up to $MERGE_UP_TO_SHA" >&2
   set +e
-  git cherry-pick --no-edit "$sha" > "$CP_OUT" 2>&1
+  git merge --no-ff "$MERGE_UP_TO_SHA" \
+    -m "release: merge develop up to $(git log --format='%h %s' -1 "$MERGE_UP_TO_SHA")" \
+    > "$CP_OUT" 2>&1
+  MERGE_RC=$?
+  set -e
+
+  if [[ $MERGE_RC -eq 0 ]]; then
+    echo "    merge OK" >&2
+    MERGE_APPLIED=true
+
+    # Record approved tickets covered by the merge
+    while IFS=' ' read -r ticket sha pr; do
+      if git merge-base --is-ancestor "$sha" "$MERGE_UP_TO_SHA" 2>/dev/null; then
+        echo "$ticket $sha $pr" >> "$RELEASED_FILE"
+      fi
+    done < "$ORDERED_FILE"
+  else
+    echo "    UNEXPECTED merge conflict -- aborting, falling back to cherry-pick" >&2
+    git merge --abort >/dev/null 2>&1 || true
+    MERGE_UP_TO_SHA=""
+  fi
+else
+  echo "==> Phase 1: skipped (no safe contiguous prefix)" >&2
+fi
+
+# Phase 2: cherry-pick remaining approved tickets not covered by the merge
+FALLBACK_COUNT=0
+while IFS=' ' read -r ticket sha pr; do
+  # Skip if already released by Phase 1
+  if grep -q "^$ticket $sha $pr$" "$RELEASED_FILE" 2>/dev/null; then
+    continue
+  fi
+
+  FALLBACK_COUNT=$((FALLBACK_COUNT + 1))
+  echo "==> Phase 2: #$ticket: cherry-picking $sha (PR #$pr)" >&2
+  set +e
+  git cherry-pick --no-edit --strategy-option=patience "$sha" > "$CP_OUT" 2>&1
   CP_RC=$?
   set -e
 
@@ -187,7 +308,7 @@ while IFS=' ' read -r ticket sha pr; do
     continue
   fi
 
-  # Detect "empty cherry-pick" (commit's diff is already in main)
+  # Detect "empty cherry-pick" (commit's diff is already in main/merged content)
   if grep -qiE 'nothing to commit|empty commit|previous cherry-pick is now empty' "$CP_OUT"; then
     echo "    EMPTY -- already in main, marking released" >&2
     git cherry-pick --skip >/dev/null 2>&1 || git cherry-pick --abort >/dev/null 2>&1 || true
@@ -207,7 +328,11 @@ done < "$ORDERED_FILE"
 
 RELEASED_COUNT="$(wc -l < "$RELEASED_FILE" | awk '{print $1}')"
 BLOCKED_COUNT="$(wc -l < "$BLOCKED_FILE" | awk '{print $1}')"
-echo "==> cherry-pick summary: $RELEASED_COUNT applied, $BLOCKED_COUNT blocked" >&2
+if [[ "$MERGE_APPLIED" == "true" ]]; then
+  echo "==> release summary: merge-forward applied, $RELEASED_COUNT SHA(s) released, $BLOCKED_COUNT blocked, $FALLBACK_COUNT cherry-picked" >&2
+else
+  echo "==> release summary: cherry-pick only, $RELEASED_COUNT applied, $BLOCKED_COUNT blocked" >&2
+fi
 
 # --- Aggregate per-ticket status -----------------------------------------
 # A ticket is "blocked" if ANY of its PRs conflicted; "released" only if
@@ -260,7 +385,7 @@ fi
 
 # --- If nothing applied, exit cleanly ------------------------------------
 if [[ "$RELEASED_TICKET_COUNT" -eq 0 ]]; then
-  echo "no tickets cherry-picked successfully; nothing to ship tonight" >&2
+  echo "no tickets applied successfully; nothing to ship tonight" >&2
   git checkout develop >&2
   git branch -D "$RELEASE_BRANCH" 2>/dev/null || true
   exit 0
