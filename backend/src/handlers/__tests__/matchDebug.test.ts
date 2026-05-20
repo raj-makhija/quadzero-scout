@@ -145,3 +145,42 @@ describe('matchDebug handler — MERN stack coreSkill filter reporting', () => {
     expect(body.data.excludedBy).not.toContain('coreSkill');
   });
 });
+
+describe('matchDebug handler — role-qualified compound coreSkill filter', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('passes coreSkill filter for candidate with "aws" when coreSkill is "AWS Architect"', async () => {
+    (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeCandidate(['aws', 'terraform', 'python'])
+    );
+    (getRequirementById as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeRequirement('AWS Architect')
+    );
+
+    const response = await handler(makeEvent('cand_test', 'req_1'));
+    const body = JSON.parse((response as { body: string }).body);
+
+    expect(body.data.filters.coreSkill.passed).toBe(true);
+    expect(body.data.excludedBy).not.toContain('coreSkill');
+    expect(body.data.wouldBeExcluded).toBe(false);
+    expect(body.data.filters.coreSkill.detail).toContain('aws');
+  });
+
+  it('fails coreSkill filter for candidate with no AWS skills when coreSkill is "AWS Architect"', async () => {
+    (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeCandidate(['react', 'nodejs', 'python'])
+    );
+    (getRequirementById as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeRequirement('AWS Architect')
+    );
+
+    const response = await handler(makeEvent('cand_test', 'req_1'));
+    const body = JSON.parse((response as { body: string }).body);
+
+    expect(body.data.filters.coreSkill.passed).toBe(false);
+    expect(body.data.excludedBy).toContain('coreSkill');
+    expect(body.data.wouldBeExcluded).toBe(true);
+  });
+});

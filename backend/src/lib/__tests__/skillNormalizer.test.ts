@@ -11,6 +11,7 @@ import {
   isCoreSkill,
   expandStackAbbreviation,
   coreSkillSatisfiedBy,
+  coreSkillMatchResult,
 } from '../skillNormalizer.js';
 
 // ---------------------------------------------------------------------------
@@ -802,5 +803,79 @@ describe('coreSkillSatisfiedBy()', () => {
 
   it('is case-insensitive for the coreSkill input', () => {
     expect(coreSkillSatisfiedBy('MERN', ['mongodb', 'expressjs', 'react', 'nodejs'])).toBe(true);
+  });
+
+  // Role-qualified compound coreSkills (e.g. "AWS Architect")
+  it('passes "AWS Architect" when candidate has "aws" in primary skills', () => {
+    expect(coreSkillSatisfiedBy('AWS Architect', ['aws', 'terraform', 'python'])).toBe(true);
+  });
+
+  it('fails "AWS Architect" when candidate has no AWS-related skills', () => {
+    expect(coreSkillSatisfiedBy('AWS Architect', ['react', 'nodejs', 'python'])).toBe(false);
+  });
+
+  it('passes "AWS Architect" when candidate has the full compound phrase as a skill', () => {
+    expect(coreSkillSatisfiedBy('AWS Architect', ['aws architect', 'terraform'])).toBe(true);
+  });
+
+  it('passes "Java Developer" when candidate has "java"', () => {
+    expect(coreSkillSatisfiedBy('Java Developer', ['java', 'spring', 'sql'])).toBe(true);
+  });
+
+  it('passes "Salesforce Admin" when candidate has "salesforce"', () => {
+    expect(coreSkillSatisfiedBy('Salesforce Admin', ['salesforce', 'apex'])).toBe(true);
+  });
+
+  it('passes "iOS Developer" when candidate has "ios"', () => {
+    expect(coreSkillSatisfiedBy('iOS Developer', ['ios', 'swift', 'xcode'])).toBe(true);
+  });
+
+  it('is case-insensitive for compound coreSkills — "aws architect" and "AWS Architect" behave identically', () => {
+    expect(coreSkillSatisfiedBy('aws architect', ['aws'])).toBe(true);
+    expect(coreSkillSatisfiedBy('AWS Architect', ['aws'])).toBe(true);
+    expect(coreSkillSatisfiedBy('Aws Architect', ['aws'])).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// coreSkillMatchResult — matchType discrimination
+// ---------------------------------------------------------------------------
+
+describe('coreSkillMatchResult()', () => {
+  it('returns matchType "skipped" for null coreSkill', () => {
+    const result = coreSkillMatchResult(null, ['react']);
+    expect(result.passed).toBe(true);
+    expect(result.matchType).toBe('skipped');
+  });
+
+  it('returns matchType "exact" for literal single-word match', () => {
+    const result = coreSkillMatchResult('react', ['react', 'typescript']);
+    expect(result.passed).toBe(true);
+    expect(result.matchType).toBe('exact');
+  });
+
+  it('returns matchType "stack" for MERN abbreviation', () => {
+    const result = coreSkillMatchResult('mern', ['mongodb', 'expressjs', 'react', 'nodejs']);
+    expect(result.passed).toBe(true);
+    expect(result.matchType).toBe('stack');
+  });
+
+  it('returns matchType "token" and matchedToken for "AWS Architect" with candidate having "aws"', () => {
+    const result = coreSkillMatchResult('AWS Architect', ['aws', 'terraform']);
+    expect(result.passed).toBe(true);
+    expect(result.matchType).toBe('token');
+    expect(result.matchedToken).toBe('aws');
+  });
+
+  it('returns matchType "none" when candidate lacks the core technology', () => {
+    const result = coreSkillMatchResult('AWS Architect', ['react', 'nodejs']);
+    expect(result.passed).toBe(false);
+    expect(result.matchType).toBe('none');
+  });
+
+  it('returns matchType "none" for a failed literal match (single word)', () => {
+    const result = coreSkillMatchResult('react', ['nodejs', 'typescript']);
+    expect(result.passed).toBe(false);
+    expect(result.matchType).toBe('none');
   });
 });
