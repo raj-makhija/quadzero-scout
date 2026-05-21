@@ -281,6 +281,7 @@ export interface SearchRequest {
     lastEvaluatedKey?: string;
   };
   sortBy?: 'matchScore' | 'experience' | 'lastUpdated';
+  includeNotSuitable?: boolean;
 }
 
 export interface CandidateSearchResult {
