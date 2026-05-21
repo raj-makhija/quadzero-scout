@@ -9,9 +9,8 @@ import { BaseLLMProvider } from '../llm/base.js';
 vi.mock('../config.js', () => ({
   config: {
     llm: {
-      provider: 'gemini',
-      geminiApiKey: 'fake',
-      geminiModel: 'gemini-2.5-flash',
+      provider: 'claude',
+      anthropicApiKey: 'fake',
       maxRetries: 1,
     },
   },
@@ -23,8 +22,8 @@ vi.mock('../dynamodb.js', () => ({
 
 // Capture the provider instance constructed by getLLMProvider() so each test
 // can swap out its `complete` handler.
-class StubGeminiProvider extends BaseLLMProvider {
-  readonly name = 'gemini';
+class StubClaudeProvider extends BaseLLMProvider {
+  readonly name = 'claude';
   public handler: (messages: LLMMessage[], options?: LLMOptions) => Promise<LLMResponse> =
     async () => ({ content: '{}' });
   async complete(messages: LLMMessage[], options?: LLMOptions): Promise<LLMResponse> {
@@ -32,10 +31,10 @@ class StubGeminiProvider extends BaseLLMProvider {
   }
 }
 
-const stubProvider = new StubGeminiProvider();
+const stubProvider = new StubClaudeProvider();
 
-vi.mock('../llm/gemini.js', () => ({
-  GeminiProvider: vi.fn().mockImplementation(() => stubProvider),
+vi.mock('../llm/claude.js', () => ({
+  ClaudeProvider: vi.fn().mockImplementation(() => stubProvider),
 }));
 
 // Import after mocks

@@ -253,7 +253,10 @@ describe('Enum schemas', () => {
     expect(LLMProviderEnum.safeParse('claude').success).toBe(true);
     expect(LLMProviderEnum.safeParse('openai').success).toBe(true);
     expect(LLMProviderEnum.safeParse('openrouter').success).toBe(true);
-    expect(LLMProviderEnum.safeParse('gemini').success).toBe(true);
+  });
+
+  it('LLMProviderEnum rejects gemini', () => {
+    expect(LLMProviderEnum.safeParse('gemini').success).toBe(false);
   });
 
   it('LLMProviderEnum rejects invalid providers', () => {

@@ -34,8 +34,6 @@ provider:
     OPENROUTER_API_KEY: ${ssm:/quadzero-scout/${self:provider.stage}/OPENROUTER_API_KEY, env:OPENROUTER_API_KEY, ''}
     OPENROUTER_MODEL: ${ssm:/quadzero-scout/${self:provider.stage}/OPENROUTER_MODEL, env:OPENROUTER_MODEL, 'anthropic/claude-3.5-sonnet'}
     OPENROUTER_REFERER: ${ssm:/quadzero-scout/${self:provider.stage}/OPENROUTER_REFERER, env:OPENROUTER_REFERER, 'https://quadzero-scout.com'}
-    GEMINI_API_KEY: ${ssm:/quadzero-scout/${self:provider.stage}/GEMINI_API_KEY, env:GEMINI_API_KEY, ''}
-    GEMINI_MODEL: ${ssm:/quadzero-scout/${self:provider.stage}/GEMINI_MODEL, env:GEMINI_MODEL, 'gemini-2.0-flash'}
     LLM_FALLBACK_PROVIDER: ${ssm:/quadzero-scout/${self:provider.stage}/LLM_FALLBACK_PROVIDER, env:LLM_FALLBACK_PROVIDER, ''}
     USD_TO_INR_RATE: ${ssm:/quadzero-scout/${self:provider.stage}/USD_TO_INR_RATE, env:USD_TO_INR_RATE, '85'}
     NEXTAUTH_SECRET: ${ssm:/quadzero-scout/${self:provider.stage}/NEXTAUTH_SECRET, env:NEXTAUTH_SECRET, ''}
@@ -126,8 +124,6 @@ custom:
       - OPENROUTER_API_KEY
       - OPENROUTER_MODEL
       - OPENROUTER_REFERER
-      - GEMINI_API_KEY
-      - GEMINI_MODEL
       - LLM_FALLBACK_PROVIDER
       - USD_TO_INR_RATE
       - NEXTAUTH_SECRET
