@@ -214,7 +214,7 @@ export function PipelineCandidateCard({
             {candidate.proposedRateHourly && (
               <div className="mt-1.5 flex items-center flex-wrap gap-x-3 gap-y-1 text-xs">
                 <span className="text-green-600 dark:text-green-400">
-                  Recommended: {formatInr(candidate.proposedRateHourly)}/hr &middot; {formatInr(candidate.proposedRateMonthly!)}/mo
+                  Recommended Rate: {formatInr(candidate.proposedRateHourly)}/hr &middot; {formatInr(candidate.proposedRateMonthly!)}/mo
                 </span>
                 {candidate.internalRateHourly && (
                   <span className="text-gray-500 dark:text-gray-400">
