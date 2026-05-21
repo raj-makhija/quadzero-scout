@@ -107,7 +107,7 @@ async function handleRequest(
       );
     }
 
-    const { criteria, pagination, sortBy, requirementId } = validation.data;
+    const { criteria, pagination, sortBy, requirementId, includeNotSuitable } = validation.data;
 
     // Decode offset-based pagination token
     let offset = 0;
@@ -285,9 +285,13 @@ async function handleRequest(
       }));
     }
 
+    const visibleCandidates = includeNotSuitable === false
+      ? allScoredCandidates.filter(c => !c.isNotSuitable)
+      : allScoredCandidates;
+
     // Serve page as an offset-based slice of the globally sorted list
-    const pageCandidates = allScoredCandidates.slice(offset, offset + pageSize);
-    const hasMore = offset + pageSize < allScoredCandidates.length;
+    const pageCandidates = visibleCandidates.slice(offset, offset + pageSize);
+    const hasMore = offset + pageSize < visibleCandidates.length;
     const encodedNextKey = hasMore
       ? Buffer.from(JSON.stringify({ offset: offset + pageSize })).toString('base64')
       : undefined;
@@ -338,7 +342,7 @@ async function handleRequest(
         hasMore,
         lastEvaluatedKey: encodedNextKey,
       },
-      totalMatches: allScoredCandidates.length,
+      totalMatches: visibleCandidates.length,
     };
 
     if (event.auth) {

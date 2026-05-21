@@ -53,9 +53,8 @@ export default function RecruiterSearchPage() {
   const totalPages = Math.ceil(allResults.length / PAGE_SIZE);
   const displayTotalPages = Math.max(totalPages, Math.ceil(totalMatches / PAGE_SIZE));
   const results = useMemo(() => {
-    const pageSlice = allResults.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-    return showNotSuitable ? pageSlice : pageSlice.filter(c => !c.isNotSuitable);
-  }, [allResults, currentPage, showNotSuitable]);
+    return allResults.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  }, [allResults, currentPage]);
   const [formattingCandidateId, setFormattingCandidateId] = useState<string | null>(null);
   const [sourceRequirementId, setSourceRequirementId] = useState<string | null>(prefilled?.requirementId || null);
   const [sortBy, setSortBy] = useState<'matchScore' | 'experience' | 'lastUpdated'>('matchScore');
@@ -140,12 +139,12 @@ export default function RecruiterSearchPage() {
   }, [engagementModel, payroll]);
 
   // Search helper — reusable for both button click and state restore
-  const runSearch = useCallback(async (criteria: SearchCriteria, lastEvaluatedKey?: string, sort?: 'matchScore' | 'experience' | 'lastUpdated', append?: boolean) => {
+  const runSearch = useCallback(async (criteria: SearchCriteria, lastEvaluatedKey?: string, sort?: 'matchScore' | 'experience' | 'lastUpdated', append?: boolean, includeNotSuitable?: boolean) => {
     try {
       setLoading(true);
       setError(null);
       const pagination = lastEvaluatedKey ? { lastEvaluatedKey } : undefined;
-      const response = await api.searchCandidates(criteria, pagination, sort || sortBy, sourceRequirementId || undefined);
+      const response = await api.searchCandidates(criteria, pagination, sort || sortBy, sourceRequirementId || undefined, includeNotSuitable);
       if (append) {
         setAllResults(prev => [...prev, ...response.candidates]);
       } else {
@@ -169,7 +168,7 @@ export default function RecruiterSearchPage() {
     sessionStorage.removeItem(STORAGE_KEY);
 
     if (prefilled.viewMode === 'results' && prefilled.searchCriteria) {
-      runSearch(prefilled.searchCriteria);
+      runSearch(prefilled.searchCriteria, undefined, undefined, false, showNotSuitable);
     }
   }, [prefilled, runSearch]);
 
@@ -303,7 +302,7 @@ export default function RecruiterSearchPage() {
   };
 
   const handleSearch = async () => {
-    await runSearch(searchCriteria);
+    await runSearch(searchCriteria, undefined, undefined, false, showNotSuitable);
   };
 
   const handleNextPage = async () => {
@@ -315,7 +314,7 @@ export default function RecruiterSearchPage() {
       // Fetch more results from server and advance
       setCurrentPage(prev => prev + 1);
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      await runSearch(searchCriteria, paginationKey, undefined, true);
+      await runSearch(searchCriteria, paginationKey, undefined, true, showNotSuitable);
     }
   };
 
@@ -377,9 +376,9 @@ export default function RecruiterSearchPage() {
   const handleSortChange = useCallback((newSort: 'matchScore' | 'experience' | 'lastUpdated') => {
     setSortBy(newSort);
     if (allResults.length > 0) {
-      runSearch(searchCriteria, undefined, newSort);
+      runSearch(searchCriteria, undefined, newSort, false, showNotSuitable);
     }
-  }, [allResults.length, searchCriteria, runSearch]);
+  }, [allResults.length, searchCriteria, runSearch, showNotSuitable]);
 
   const handleScreenCandidate = useCallback((candidate: CandidateSearchResult) => {
     setScreeningCandidate(candidate);
@@ -1091,7 +1090,7 @@ export default function RecruiterSearchPage() {
                     <input
                       type="checkbox"
                       checked={showNotSuitable}
-                      onChange={(e) => { setShowNotSuitable(e.target.checked); setCurrentPage(1); }}
+                      onChange={(e) => { const next = e.target.checked; setShowNotSuitable(next); setCurrentPage(1); runSearch(searchCriteria, undefined, undefined, false, next); }}
                       className="rounded border-gray-300 dark:border-gray-600"
                     />
                     Show not suitable

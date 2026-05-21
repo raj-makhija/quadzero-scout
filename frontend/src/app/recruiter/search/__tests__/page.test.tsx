@@ -26,11 +26,13 @@ vi.mock('next-auth/react', () => ({
 
 const mockSearchCandidates = vi.fn();
 const mockGetClientNames = vi.fn();
+const mockGetRequirement = vi.fn();
 
 vi.mock('@/lib/api', () => ({
   api: {
     searchCandidates: (...args: any[]) => mockSearchCandidates(...args),
     getClientNames: (...args: any[]) => mockGetClientNames(...args),
+    getRequirement: (...args: any[]) => mockGetRequirement(...args),
   },
   ApiError: class extends Error {
     code: string;
@@ -137,6 +139,7 @@ describe('RecruiterSearchPage — pagination', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetClientNames.mockResolvedValue({ clientNames: [], endClients: [] });
+    mockGetRequirement.mockResolvedValue({ requirementId: 'req-123', clientName: 'Test', engagementModel: 'full_time_regular' });
 
     // Prefill sessionStorage so the page starts in results view and auto-searches
     const prefilled = {
@@ -246,5 +249,45 @@ describe('RecruiterSearchPage — pagination', () => {
       expect(screen.getByText('Page 2 of 5')).toBeInTheDocument();
     });
     expect(screen.getByText('100 candidates found')).toBeInTheDocument();
+  });
+
+  it('toggling "Show not suitable" triggers a re-fetch with includeNotSuitable and resets to page 1', async () => {
+    window.scrollTo = vi.fn() as any;
+    mockSearchCandidates.mockResolvedValue({
+      candidates: makeCandidates(PAGE_SIZE),
+      pagination: {
+        count: PAGE_SIZE,
+        hasMore: true,
+        lastEvaluatedKey: Buffer.from(JSON.stringify({ offset: PAGE_SIZE })).toString('base64'),
+      },
+      totalMatches: 100,
+    });
+
+    const prefilled = {
+      viewMode: 'results',
+      searchCriteria: { mustHaveSkills: ['react'] },
+      requirementId: 'req-123',
+    };
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation((key) => {
+      if (key === STORAGE_KEY) return JSON.stringify(prefilled);
+      return null;
+    });
+
+    render(<RecruiterSearchPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('100 candidates found')).toBeInTheDocument();
+    });
+
+    mockSearchCandidates.mockClear();
+
+    const toggle = screen.getByLabelText('Show not suitable');
+    fireEvent.click(toggle);
+
+    await waitFor(() => {
+      expect(mockSearchCandidates).toHaveBeenCalledTimes(1);
+    });
+    const callArgs = mockSearchCandidates.mock.calls[0];
+    expect(callArgs[4]).toBe(true);
   });
 });

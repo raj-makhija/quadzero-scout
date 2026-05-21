@@ -1052,6 +1052,130 @@ describe('POST /recruiter/search', () => {
     // But shortlist fetch should have been called twice (always fresh)
     expect(vi.mocked(getShortlistsForRequirement)).toHaveBeenCalledTimes(2);
   });
+
+  it('excludes not-suitable candidates from results and totalMatches when includeNotSuitable is false', async () => {
+    vi.mocked(searchCandidates).mockResolvedValueOnce({
+      items: [
+        {
+          candidate_id: 'cand_a',
+          user_id: 'u_a',
+          full_name: 'Suitable Alice',
+          email: 'a@example.com',
+          primary_skills: ['react'],
+          primary_skill_years: { react: 4 },
+          secondary_skills: [],
+          total_experience: 5,
+          seniority: 'mid',
+          availability: 'immediate',
+          industries: [],
+          roles: [],
+          experience_bucket: '3-5',
+          resume_s3_key: 'r/a.pdf',
+          created_at: '2024-01-01T00:00:00Z',
+          last_updated: '2024-01-15T00:00:00Z',
+        },
+        {
+          candidate_id: 'cand_b',
+          user_id: 'u_b',
+          full_name: 'Not Suitable Bob',
+          email: 'b@example.com',
+          primary_skills: ['react'],
+          primary_skill_years: { react: 3 },
+          secondary_skills: [],
+          total_experience: 4,
+          seniority: 'mid',
+          availability: 'immediate',
+          industries: [],
+          roles: [],
+          experience_bucket: '3-5',
+          resume_s3_key: 'r/b.pdf',
+          created_at: '2024-01-01T00:00:00Z',
+          last_updated: '2024-01-14T00:00:00Z',
+        },
+      ],
+      lastKey: undefined,
+    });
+
+    const reqId = '00000000-0000-0000-0000-000000000088';
+    vi.mocked(getShortlistsForRequirement).mockResolvedValueOnce([
+      { requirement_id: reqId, candidate_id: 'cand_b', status: 'not_suitable', tagged_by: 'u1', tagged_at: '2024-01-16T00:00:00Z' },
+    ]);
+
+    const event = makeEvent({
+      body: JSON.stringify({
+        criteria: { mustHaveSkills: ['react'] },
+        requirementId: reqId,
+        includeNotSuitable: false,
+      }),
+    });
+    const body = parseBody(await searchHandler(event));
+
+    expect(body.data.candidates).toHaveLength(1);
+    expect(body.data.candidates[0].candidateId).toBe('cand_a');
+    expect(body.data.totalMatches).toBe(1);
+  });
+
+  it('includes not-suitable candidates when includeNotSuitable is true or omitted', async () => {
+    vi.mocked(searchCandidates).mockResolvedValueOnce({
+      items: [
+        {
+          candidate_id: 'cand_a',
+          user_id: 'u_a',
+          full_name: 'Suitable Alice',
+          email: 'a@example.com',
+          primary_skills: ['react'],
+          primary_skill_years: { react: 4 },
+          secondary_skills: [],
+          total_experience: 5,
+          seniority: 'mid',
+          availability: 'immediate',
+          industries: [],
+          roles: [],
+          experience_bucket: '3-5',
+          resume_s3_key: 'r/a.pdf',
+          created_at: '2024-01-01T00:00:00Z',
+          last_updated: '2024-01-15T00:00:00Z',
+        },
+        {
+          candidate_id: 'cand_b',
+          user_id: 'u_b',
+          full_name: 'Not Suitable Bob',
+          email: 'b@example.com',
+          primary_skills: ['react'],
+          primary_skill_years: { react: 3 },
+          secondary_skills: [],
+          total_experience: 4,
+          seniority: 'mid',
+          availability: 'immediate',
+          industries: [],
+          roles: [],
+          experience_bucket: '3-5',
+          resume_s3_key: 'r/b.pdf',
+          created_at: '2024-01-01T00:00:00Z',
+          last_updated: '2024-01-14T00:00:00Z',
+        },
+      ],
+      lastKey: undefined,
+    });
+
+    const reqId = '00000000-0000-0000-0000-000000000088';
+    vi.mocked(getShortlistsForRequirement).mockResolvedValueOnce([
+      { requirement_id: reqId, candidate_id: 'cand_b', status: 'not_suitable', tagged_by: 'u1', tagged_at: '2024-01-16T00:00:00Z' },
+    ]);
+
+    const event = makeEvent({
+      body: JSON.stringify({
+        criteria: { mustHaveSkills: ['react'] },
+        requirementId: reqId,
+        includeNotSuitable: true,
+      }),
+    });
+    const body = parseBody(await searchHandler(event));
+
+    expect(body.data.candidates).toHaveLength(2);
+    expect(body.data.totalMatches).toBe(2);
+    expect(body.data.candidates.find((c: { candidateId: string }) => c.candidateId === 'cand_b').isNotSuitable).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
