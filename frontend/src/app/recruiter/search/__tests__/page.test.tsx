@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -219,5 +219,32 @@ describe('RecruiterSearchPage — pagination', () => {
     });
     expect(screen.queryByText('Previous')).not.toBeInTheDocument();
     expect(screen.queryByText('Next')).not.toBeInTheDocument();
+  });
+
+  it('does not accumulate totalMatches when fetching next page', async () => {
+    window.scrollTo = vi.fn() as any;
+    const totalMatches = 100;
+    mockSearchCandidates.mockResolvedValue({
+      candidates: makeCandidates(PAGE_SIZE),
+      pagination: {
+        count: PAGE_SIZE,
+        hasMore: true,
+        lastEvaluatedKey: Buffer.from(JSON.stringify({ offset: PAGE_SIZE })).toString('base64'),
+      },
+      totalMatches,
+    });
+
+    render(<RecruiterSearchPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('100 candidates found')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Next'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Page 2 of 5')).toBeInTheDocument();
+    });
+    expect(screen.getByText('100 candidates found')).toBeInTheDocument();
   });
 });

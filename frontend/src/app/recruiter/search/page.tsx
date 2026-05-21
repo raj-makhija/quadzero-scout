@@ -50,19 +50,12 @@ export default function RecruiterSearchPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [showNotSuitable, setShowNotSuitable] = useState(false);
 
-  // Derive the current page of results from allResults (filtering not-suitable unless toggled)
-  const filteredResults = useMemo(
-    () => showNotSuitable ? allResults : allResults.filter(c => !c.isNotSuitable),
-    [allResults, showNotSuitable]
-  );
-  const totalPages = Math.ceil(filteredResults.length / PAGE_SIZE);
-  // Use backend totalMatches for the displayed page count so "Page 1 of 6" is
-  // correct even before all pages are locally loaded.
+  const totalPages = Math.ceil(allResults.length / PAGE_SIZE);
   const displayTotalPages = Math.max(totalPages, Math.ceil(totalMatches / PAGE_SIZE));
-  const results = useMemo(
-    () => filteredResults.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
-    [filteredResults, currentPage]
-  );
+  const results = useMemo(() => {
+    const pageSlice = allResults.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+    return showNotSuitable ? pageSlice : pageSlice.filter(c => !c.isNotSuitable);
+  }, [allResults, currentPage, showNotSuitable]);
   const [formattingCandidateId, setFormattingCandidateId] = useState<string | null>(null);
   const [sourceRequirementId, setSourceRequirementId] = useState<string | null>(prefilled?.requirementId || null);
   const [sortBy, setSortBy] = useState<'matchScore' | 'experience' | 'lastUpdated'>('matchScore');
@@ -159,7 +152,7 @@ export default function RecruiterSearchPage() {
         setAllResults(response.candidates);
         setCurrentPage(1);
       }
-      setTotalMatches(prev => append ? prev + response.totalMatches : response.totalMatches);
+      setTotalMatches(response.totalMatches);
       setPaginationKey(response.pagination.lastEvaluatedKey);
       setHasMore(response.pagination.hasMore);
       setViewMode('results');
