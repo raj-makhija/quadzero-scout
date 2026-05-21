@@ -32,7 +32,7 @@ export type UserRole = z.infer<typeof UserRoleEnum>;
 export const UserStatusEnum = z.enum(['pending', 'approved', 'rejected']);
 export type UserStatus = z.infer<typeof UserStatusEnum>;
 
-export const LLMProviderEnum = z.enum(['claude', 'openai', 'openrouter', 'gemini']);
+export const LLMProviderEnum = z.enum(['claude', 'openai', 'openrouter']);
 export type LLMProvider = z.infer<typeof LLMProviderEnum>;
 
 export const EngagementModelEnum = z.enum(['full_time_regular', 'full_time_contract', 'part_time_contract']);

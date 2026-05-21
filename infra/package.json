@@ -6,7 +6,6 @@
     "@aws-sdk/client-textract": "^3.975.0",
     "@aws-sdk/lib-dynamodb": "^3.975.0",
     "@aws-sdk/s3-request-presigner": "^3.975.0",
-    "@google/generative-ai": "^0.24.1",
     "openai": "^6.16.0",
     "pdf-parse": "^1.1.1",
     "serverless": "^3.40.0",

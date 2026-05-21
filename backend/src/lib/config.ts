@@ -51,8 +51,6 @@ interface Config {
     openrouterApiKey: string;
     openrouterModel: string;
     openrouterReferer: string;
-    geminiApiKey: string;
-    geminiModel: string;
     maxRetries: number;
     fallbackProvider: LLMProvider | '';
   };
@@ -117,8 +115,6 @@ export const config: Config = {
     openrouterApiKey: getEnvVar('OPENROUTER_API_KEY', ''),
     openrouterModel: getEnvVar('OPENROUTER_MODEL', 'anthropic/claude-3.5-sonnet'),
     openrouterReferer: getEnvVar('OPENROUTER_REFERER', 'https://quadzero-scout.com'),
-    geminiApiKey: getEnvVar('GEMINI_API_KEY', ''),
-    geminiModel: getEnvVar('GEMINI_MODEL', 'gemini-2.0-flash'),
     maxRetries: 3,
     fallbackProvider: getEnvVar('LLM_FALLBACK_PROVIDER', '') as LLMProvider | '',
   },

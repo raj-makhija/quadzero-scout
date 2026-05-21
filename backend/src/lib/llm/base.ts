@@ -20,7 +20,7 @@ export interface LLMOptions {
 export function isRateLimitError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
   const status = (err as any)?.status ?? (err as any)?.statusCode;
-  return status === 429 || /\b429\b|rate.?limit|resource exhausted|too many requests|quota/i.test(message);
+  return status === 429 || /\b429\b|rate.?limit|too many requests|quota/i.test(message);
 }
 
 export abstract class BaseLLMProvider {

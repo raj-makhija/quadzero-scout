@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { BaseLLMProvider } from '../llm/base.js';
+import { BaseLLMProvider, isRateLimitError } from '../llm/base.js';
 import type { LLMMessage, LLMResponse, LLMOptions } from '../llm/base.js';
 
 // ---------------------------------------------------------------------------
@@ -20,6 +20,37 @@ class TestLLMProvider extends BaseLLMProvider {
     return this.handler(messages, options);
   }
 }
+
+describe('isRateLimitError()', () => {
+  it('detects errors with status 429 property', () => {
+    const err = Object.assign(new Error('rate limited'), { status: 429 });
+    expect(isRateLimitError(err)).toBe(true);
+  });
+
+  it('detects "rate limit" wording', () => {
+    expect(isRateLimitError(new Error('Rate limit hit'))).toBe(true);
+  });
+
+  it('detects "quota" wording', () => {
+    expect(isRateLimitError(new Error('Daily quota exceeded'))).toBe(true);
+  });
+
+  it('detects "too many requests" wording', () => {
+    expect(isRateLimitError(new Error('429 Too Many Requests'))).toBe(true);
+  });
+
+  it('returns false for non-rate-limit errors', () => {
+    expect(isRateLimitError(new Error('500 Internal Server Error'))).toBe(false);
+    expect(isRateLimitError(new Error('Invalid API key'))).toBe(false);
+    expect(isRateLimitError(new Error('schema validation failed'))).toBe(false);
+  });
+
+  it('handles non-Error inputs', () => {
+    expect(isRateLimitError('429 too many requests')).toBe(true);
+    expect(isRateLimitError(null)).toBe(false);
+    expect(isRateLimitError(undefined)).toBe(false);
+  });
+});
 
 describe('BaseLLMProvider.parseJsonResponse()', () => {
   const provider = new TestLLMProvider(async () => ({ content: '{}' }));

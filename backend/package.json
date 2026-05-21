@@ -25,7 +25,6 @@
     "@aws-sdk/client-textract": "^3.700.0",
     "@aws-sdk/lib-dynamodb": "^3.700.0",
     "@aws-sdk/s3-request-presigner": "^3.700.0",
-    "@google/generative-ai": "^0.24.1",
     "@sparticuz/chromium": "^143.0.4",
     "bcryptjs": "^3.0.3",
     "dotenv": "^17.2.3",
