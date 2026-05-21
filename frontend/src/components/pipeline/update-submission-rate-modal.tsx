@@ -87,7 +87,7 @@ export function UpdateSubmissionRateModal({
             </label>
             {proposedRateHourly !== undefined && (
               <p className="text-xs text-gray-400 mb-1">
-                Recommended: {formatInr(proposedRateHourly)}/hr
+                Recommended Rate: {formatInr(proposedRateHourly)}/hr
                 {internalRateHourly !== undefined && <> &middot; Minimum: {formatInr(internalRateHourly)}/hr</>}
               </p>
             )}

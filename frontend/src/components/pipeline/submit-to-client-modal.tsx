@@ -178,7 +178,7 @@ export function SubmitToClientModal({
               </label>
               {single?.proposedRateHourly !== undefined && (
                 <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                  Recommended: {formatInr(single.proposedRateHourly)}/hr
+                  Recommended Rate: {formatInr(single.proposedRateHourly)}/hr
                   {single.internalRateHourly !== undefined && (
                     <> &middot; Minimum: {formatInr(single.internalRateHourly)}/hr</>
                   )}
@@ -231,7 +231,7 @@ export function SubmitToClientModal({
                     </div>
                     {c.proposedRateHourly !== undefined && (
                       <p className="text-xs text-gray-400 mt-0.5 ml-[8.5rem]">
-                        Rec: {formatInr(c.proposedRateHourly)}/hr
+                        Rec. Rate: {formatInr(c.proposedRateHourly)}/hr
                         {c.internalRateHourly !== undefined && <> &middot; Min: {formatInr(c.internalRateHourly)}/hr</>}
                       </p>
                     )}
