@@ -842,7 +842,8 @@ Authorization: Bearer <jwe_token> (optional)
     "lastEvaluatedKey": null
   },
   "sortBy": "matchScore",
-  "requirementId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+  "requirementId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "includeNotSuitable": false
 }
 ```
 
@@ -948,6 +949,7 @@ Authorization: Bearer <jwe_token> (optional)
 - `pagination.lastEvaluatedKey`: Optional, base64-encoded offset cursor (`{ "offset": <number> }`) returned by a previous response; selects the next page from the globally sorted candidate list. Opaque to the client — the encoded payload is an offset number, not a DynamoDB key.
 - `sortBy`: Optional, enum: `matchScore` (default), `experience`, `lastUpdated`. Each option uses composite sorting with tiebreakers (all descending): `matchScore` → lastUpdated → experience; `lastUpdated` → matchScore → experience; `experience` → matchScore → lastUpdated
 - `requirementId`: Optional, UUID string. When provided, the response includes `isShortlisted: true/false` and `isNotSuitable: true/false` for each candidate indicating whether they are already shortlisted or marked as not suitable for this requirement. Shortlisted candidates are visually highlighted (green) and not-suitable candidates are styled with orange styling on the frontend.
+- `includeNotSuitable`: Optional, boolean. When `false`, candidates marked as not suitable for the given `requirementId` are excluded from both the paginated results and from `totalMatches`. When `true` or omitted, all candidates are returned regardless of not-suitable status. Has no effect when `requirementId` is absent.
 
 **Notes:**
 - Unauthenticated users see redacted results (names hidden, skills hidden, CTC hidden)
@@ -2094,7 +2096,7 @@ Authorization: Bearer <jwe_token>
 - Returns 409 if the candidate is already marked as `not_suitable` for this requirement
 - Returns 404 if the requirement or candidate does not exist
 - Not-suitable candidates are excluded from `GET /recruiter/requirements/{id}/shortlisted` responses
-- Not-suitable candidates are returned by `POST /recruiter/search` with `isNotSuitable: true` (when `requirementId` is provided)
+- Not-suitable candidates are returned by `POST /recruiter/search` with `isNotSuitable: true` (when `requirementId` is provided). To exclude them from both the paginated results and `totalMatches`, set `includeNotSuitable: false` in the request body; exclusion only takes effect when `requirementId` is also provided.
 - A not-suitable candidate can be re-shortlisted via `POST /recruiter/shortlist`, which changes the status back to `shortlisted`
 
 ---
