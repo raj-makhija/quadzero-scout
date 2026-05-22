@@ -143,6 +143,19 @@ jobs:
             export PIPELINE_AGENT_TIMEOUT_SEC=$((600 * (STRIKES + 1)))
             echo "manager: #$NEXT has $STRIKES prior strike(s); PIPELINE_AGENT_TIMEOUT_SEC=$PIPELINE_AGENT_TIMEOUT_SEC"
 
+            # Reset to a clean develop checkout before handing off. The
+            # prior iteration's manager.sh may have failed mid-edit --
+            # especially an agent timeout (exit 124) -- leaving uncommitted
+            # changes, or left the tree on another branch (prod-release.sh
+            # checks out main). Without this, create-branch.sh's
+            # pl_require_clean_tree guard strikes THIS ticket for the
+            # previous ticket's mess. All real agent work is committed and
+            # pushed to origin branches, so discarding local tree state is
+            # safe. `git clean -fd` (no -x) keeps gitignored node_modules.
+            git reset --hard --quiet || true
+            git clean -fd --quiet || true
+            git checkout --quiet develop || true
+
             if scripts/manager.sh; then
               # Successful advancement. Clear any prior strikes (no-op
               # if there were none) so transient failures don't keep
