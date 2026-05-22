@@ -1,7 +1,7 @@
 import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, SearchRequestSchema } from '../../lib/validation.js';
-import { searchCandidates, getShortlistsForRequirement } from '../../lib/dynamodb.js';
+import { searchCandidates, getShortlistsForRequirement, getPlacedCandidateIds } from '../../lib/dynamodb.js';
 import { normalizeSkill, normalizeSkills, coreSkillSatisfiedBy } from '../../lib/skillNormalizer.js';
 import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, FUZZY_MATCH_WEIGHT, MUST_HAVE_SECONDARY_WEIGHT, parseSearchLocations, isEngagementModelCompatible } from '../../lib/matchScoring.js';
 import { withOptionalAuth, type OptionalAuthEvent } from '../../lib/auth.js';
@@ -284,6 +284,10 @@ async function handleRequest(
         isNotSuitable: notSuitableCandidateIds.has(c.candidateId),
       }));
     }
+
+    // Exclude placed candidates (pipeline_stage 'joined' on any requirement) — always fresh
+    const placedCandidateIds = await getPlacedCandidateIds();
+    allScoredCandidates = allScoredCandidates.filter(c => !placedCandidateIds.has(c.candidateId));
 
     const visibleCandidates = includeNotSuitable === false
       ? allScoredCandidates.filter(c => !c.isNotSuitable)

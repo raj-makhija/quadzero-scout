@@ -1394,6 +1394,37 @@ export async function getShortlistsForRequirement(requirementId: string): Promis
   return (result.Items || []) as ShortlistItem[];
 }
 
+export async function getPlacedCandidateIds(): Promise<Set<string>> {
+  const ids = new Set<string>();
+  let currentKey: Record<string, unknown> | undefined;
+
+  do {
+    const params: {
+      TableName: string;
+      FilterExpression: string;
+      ExpressionAttributeValues: Record<string, unknown>;
+      ProjectionExpression: string;
+      ExclusiveStartKey?: Record<string, unknown>;
+    } = {
+      TableName: config.dynamodb.shortlistsTable,
+      FilterExpression: 'pipeline_stage = :stage',
+      ExpressionAttributeValues: { ':stage': 'joined' },
+      ProjectionExpression: 'candidate_id',
+    };
+    if (currentKey) {
+      params.ExclusiveStartKey = currentKey;
+    }
+
+    const result = await docClient.send(new ScanCommand(params));
+    for (const item of result.Items || []) {
+      ids.add(item.candidate_id as string);
+    }
+    currentKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (currentKey);
+
+  return ids;
+}
+
 export async function deleteShortlist(requirementId: string, candidateId: string): Promise<void> {
   await docClient.send(
     new DeleteCommand({
