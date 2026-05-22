@@ -832,6 +832,31 @@ describe('screenCandidate handler (shortlist rate recalculation)', () => {
     expect(mockUpdateShortlistRates).not.toHaveBeenCalled();
   });
 
+  it('should not modify quoted_rate_hourly when recalculating rates on submitted entries', async () => {
+    const submittedEntry = {
+      ...mockShortlistEntry,
+      status: 'submitted',
+      pipeline_stage: 'submitted_to_client',
+      quoted_rate_hourly: 1400,
+    };
+    mockGetShortlistsForCandidate.mockResolvedValue([submittedEntry]);
+
+    const event = makeEvent({
+      candidateId: 'cand_1',
+      updatedValues: { expectedCtc: 25 },
+    });
+
+    const result = await handler(event);
+    expect(result.statusCode).toBe(200);
+
+    expect(mockUpdateShortlistRates).toHaveBeenCalledTimes(1);
+    const ratesArg = mockUpdateShortlistRates.mock.calls[0][2];
+    expect(ratesArg).not.toHaveProperty('quoted_rate_hourly');
+    expect(ratesArg).toHaveProperty('proposed_rate_hourly');
+    expect(ratesArg).toHaveProperty('internal_rate_hourly');
+    expect(ratesArg).toHaveProperty('proposed_rate_calculated_at');
+  });
+
   it('should convert requirement budget LPA to hourly for pricing input', async () => {
     const reqWithBudget = {
       ...mockRequirement,
