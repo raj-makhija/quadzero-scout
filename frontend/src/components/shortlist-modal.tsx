@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { X, AlertCircle, Loader2 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import type { CandidateSearchResult, SearchCriteria, PricingOutput } from '@/lib/api';
@@ -61,6 +61,27 @@ export function ShortlistModal({
   const [errorMessage, setErrorMessage] = useState('');
   const [confirmNotInterested, setConfirmNotInterested] = useState(false);
   const [pricingResult, setPricingResult] = useState<PricingOutput | null>(null);
+  const [freshCtc, setFreshCtc] = useState<{
+    expectedCtc?: number | null;
+    currentCtc?: number | null;
+    totalExperience?: number;
+    expectedCtcType?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.getProfile(candidate.candidateId).then((profile) => {
+      if (!cancelled) {
+        setFreshCtc({
+          expectedCtc: profile.expectedCtc,
+          currentCtc: profile.currentCtc,
+          totalExperience: profile.totalExperience,
+          expectedCtcType: profile.expectedCtcType,
+        });
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [candidate.candidateId]);
 
   const isShortlistMode = requirementContext != null;
 
@@ -391,10 +412,10 @@ export function ShortlistModal({
           <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
             <PricingPanel
               candidateId={candidate.candidateId}
-              candidateExpectedCtcLpa={candidate.expectedCtc}
-              candidateCurrentCtcLpa={candidate.currentCtc}
-              candidateExperienceYears={candidate.totalExperience}
-              expectedCtcType={candidate.expectedCtcType}
+              candidateExpectedCtcLpa={freshCtc ? freshCtc.expectedCtc : candidate.expectedCtc}
+              candidateCurrentCtcLpa={freshCtc ? freshCtc.currentCtc : candidate.currentCtc}
+              candidateExperienceYears={freshCtc?.totalExperience ?? candidate.totalExperience}
+              expectedCtcType={freshCtc?.expectedCtcType ?? candidate.expectedCtcType}
               isInternalRecruiter={isInternalRecruiter}
               onCtcUpdated={onCtcUpdated}
               onPricingCalculated={setPricingResult}
