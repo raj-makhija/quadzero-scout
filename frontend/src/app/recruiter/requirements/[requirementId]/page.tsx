@@ -736,14 +736,11 @@ export default function RequirementDetailPage() {
                         <label className="text-xs text-gray-500 dark:text-gray-400">Payroll</label>
                         <p className="font-medium text-gray-900 dark:text-gray-100">{formatPayroll(requirement.payroll)}</p>
                       </div>
-                      {(requirement.budgetMinLpa != null || requirement.budgetMaxLpa != null) && (
+                      {requirement.maxResourceBudgetLpa != null && (
                         <div>
-                          <label className="text-xs text-gray-500 dark:text-gray-400">Budget Range</label>
+                          <label className="text-xs text-gray-500 dark:text-gray-400">Max Resource Budget</label>
                           <p className="font-medium text-gray-900 dark:text-gray-100">
-                            {requirement.budgetMinLpa ?? '0'} - {requirement.budgetMaxLpa ?? '∞'} LPA
-                            {requirement.isRateGstInclusive && (
-                              <span className="ml-1.5 text-xs font-medium text-amber-600 dark:text-amber-400">(incl. GST)</span>
-                            )}
+                            {requirement.maxResourceBudgetLpa} LPA
                           </p>
                         </div>
                       )}

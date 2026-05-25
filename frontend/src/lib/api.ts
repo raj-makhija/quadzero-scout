@@ -1213,6 +1213,7 @@ export interface RequirementSummary {
   contactPersonName?: string;
   coreSkill?: string | null;
   isRateGstInclusive?: boolean;
+  maxResourceBudgetLpa?: number;
 }
 
 export interface BenchListCandidate {
