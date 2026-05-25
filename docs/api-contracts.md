@@ -1172,7 +1172,8 @@ Authorization: Bearer <jwe_token>
             "type": "date",
             "required": true
           }
-        ]
+        ],
+        "maxResourceBudgetLpa": 16.5
       }
     ],
     "pagination": {
@@ -1182,6 +1183,9 @@ Authorization: Bearer <jwe_token>
   }
 }
 ```
+
+**Notes:**
+- `maxResourceBudgetLpa`: Computed (not stored). The maximum candidate CTC this budget can support, in LPA, derived from `budgetMaxLpa` after accounting for GST deduction (when `isRateGstInclusive` is `true`), working capital cost (based on `paymentTermsDays`), and minimum contribution floor. Rounded to 1 decimal place (e.g., `16.5`). Only present when `budgetMaxLpa` is set. Absent if the budget is too low to cover the minimum contribution floor.
 
 ---
 
@@ -1291,6 +1295,7 @@ Get a specific requirement by ID.
 |-------|------|-------------|
 | contactPersonName | String | HR contact person name at the client organization (may be absent) |
 | isRateGstInclusive | Boolean | Whether budget figures include 18% GST. Defaults to `false`. |
+| maxResourceBudgetLpa | Number | Computed (not stored): the maximum candidate CTC this budget can support, in LPA, derived from `budgetMaxLpa` after accounting for GST deduction (when `isRateGstInclusive` is `true`), working capital cost (based on `paymentTermsDays`), and minimum contribution floor. Rounded to 1 decimal place (e.g., `16.5`). Only present when `budgetMaxLpa` is set. Absent if the budget is too low to cover the minimum contribution floor. |
 | statusHistory | Array | Array of status change records, each containing `status`, `reason`, `changedBy`, and `changedAt` |
 | additionalFields | Array | Array of `AdditionalFieldDefinition` objects defining custom fields for this requirement (see Shared Types). May be empty or absent if none were configured. |
 | changeHistory | Array | Array of field-level change audit records (see `RequirementChangeEntry` in data model). Each entry contains `changedAt`, `changedBy`, and `changes` (array of `{field, oldValue, newValue}`). May be empty or absent if no updates have been made. |
