@@ -1,9 +1,10 @@
 import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, UpdateCandidateCtcRequestSchema } from '../../lib/validation.js';
-import { updateCandidateCtc as updateCtcInDb } from '../../lib/dynamodb.js';
+import { updateCandidateCtc as updateCtcInDb, getCandidateById } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
+import { recalcShortlistRatesForCandidate } from '../../lib/recalcShortlistRates.js';
 
 async function handleRequest(
   event: AuthenticatedEvent
@@ -36,6 +37,14 @@ async function handleRequest(
     const { candidateId, expectedCtc, currentCtc } = validation.data;
 
     await updateCtcInDb(candidateId, expectedCtc, currentCtc);
+
+    try {
+      const candidate = await getCandidateById(candidateId);
+      const experienceYears = candidate?.total_experience as number ?? 0;
+      await recalcShortlistRatesForCandidate(candidateId, expectedCtc, experienceYears);
+    } catch (recalcErr) {
+      console.error('Failed to recalculate shortlist rates after CTC update:', recalcErr);
+    }
 
     logAuditEvent(event.auth, event, {
       action: 'CANDIDATE_SCREEN',
