@@ -210,6 +210,30 @@ export function calculatePricing(
   };
 }
 
+export function calculateMaxResourceBudgetLpa(
+  budgetMaxLpa: number,
+  paymentTermsDays: number,
+  isRateGstInclusive: boolean,
+  config: PricingConfig
+): number | undefined {
+  const gstRate = config.gstRatePct ?? 0.18;
+  const effectiveBudgetLpa = isRateGstInclusive
+    ? budgetMaxLpa / (1 + gstRate)
+    : budgetMaxLpa;
+  const effectiveBudgetMonthly = (effectiveBudgetLpa * LAKHS) / 12;
+
+  const workingCapitalFactor =
+    1 + (paymentTermsDays / 30) * (config.costOfCapitalPctAnnual / 12);
+  const maxMonthlyCtc =
+    (effectiveBudgetMonthly - config.minContributionPerMonth) /
+    workingCapitalFactor;
+
+  if (maxMonthlyCtc <= 0) return undefined;
+
+  const maxCtcLpa = (maxMonthlyCtc * 12) / LAKHS;
+  return Math.round(maxCtcLpa * 10) / 10;
+}
+
 function applyBudgetOptimization(
   input: PricingInput,
   config: PricingConfig,

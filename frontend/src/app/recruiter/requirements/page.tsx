@@ -270,9 +270,9 @@ export default function RequirementsListPage() {
                     {req.endClient && <span>End Client: {req.endClient}</span>}
                     <span>{formatEngagementModel(req.engagementModel)}</span>
                     <span>Payroll: {formatPayroll(req.payroll)}</span>
-                    {(req.budgetMinLpa != null || req.budgetMaxLpa != null) && (
+                    {req.maxResourceBudgetLpa != null && (
                       <span>
-                        Budget: {req.budgetMinLpa ?? '0'} - {req.budgetMaxLpa ?? '∞'} LPA
+                        Max Resource Budget: {req.maxResourceBudgetLpa} LPA
                       </span>
                     )}
                   </div>

@@ -1,7 +1,8 @@
 import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
-import { getAllRequirementsPaginated } from '../../lib/dynamodb.js';
+import { getAllRequirementsPaginated, getActivePricingConfig } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import { calculateMaxResourceBudgetLpa } from '../../lib/pricingEngine.js';
 
 async function handleRequest(
   event: AuthenticatedEvent
@@ -25,6 +26,7 @@ async function handleRequest(
       dateTo
     );
 
+    const pricingConfig = await getActivePricingConfig();
     const requirements = result.items.map((item) => ({
       requirementId: item.requirement_id,
       clientName: item.client_name,
@@ -47,6 +49,14 @@ async function handleRequest(
       contactPersonName: item.contact_person_name,
       isRateGstInclusive: item.is_rate_gst_inclusive ?? false,
       coreSkill: item.parsed_criteria?.coreSkill || null,
+      maxResourceBudgetLpa: item.budget_max_lpa != null
+        ? calculateMaxResourceBudgetLpa(
+            item.budget_max_lpa,
+            item.payment_terms_days ?? 0,
+            item.is_rate_gst_inclusive ?? false,
+            pricingConfig
+          )
+        : undefined,
     }));
 
     return success({
