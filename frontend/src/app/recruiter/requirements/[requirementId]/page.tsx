@@ -528,7 +528,7 @@ export default function RequirementDetailPage() {
                 </div>
               </div>
 
-              <div className="p-6 space-y-5">
+              <div className="p-6 space-y-3">
                 {/* Edit Mode */}
                 {editing ? (
                   <div className="space-y-4">
@@ -726,90 +726,96 @@ export default function RequirementDetailPage() {
                   </div>
                 ) : (
                   <>
-                    {/* Quick info grid (view mode) */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    {/* Info grid: engagement terms + criteria metadata in one compact block */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                       <div>
                         <label className="text-xs text-gray-500 dark:text-gray-400">Engagement</label>
-                        <p className="font-medium text-gray-900 dark:text-gray-100">{formatEngagementModel(requirement.engagementModel)}</p>
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{formatEngagementModel(requirement.engagementModel)}</p>
                       </div>
                       <div>
                         <label className="text-xs text-gray-500 dark:text-gray-400">Payroll</label>
-                        <p className="font-medium text-gray-900 dark:text-gray-100">{formatPayroll(requirement.payroll)}</p>
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{formatPayroll(requirement.payroll)}</p>
                       </div>
                       {requirement.maxResourceBudgetLpa != null && (
                         <div>
                           <label className="text-xs text-gray-500 dark:text-gray-400">Max Resource Budget</label>
-                          <p className="font-medium text-gray-900 dark:text-gray-100">
-                            {requirement.maxResourceBudgetLpa} LPA
-                          </p>
+                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{requirement.maxResourceBudgetLpa} LPA</p>
                         </div>
                       )}
                       {(requirement.parsedCriteria.minExperience != null || requirement.parsedCriteria.maxExperience != null) && (
                         <div>
                           <label className="text-xs text-gray-500 dark:text-gray-400">Experience</label>
-                          <p className="font-medium text-gray-900 dark:text-gray-100">
-                            {requirement.parsedCriteria.minExperience ?? 0} - {requirement.parsedCriteria.maxExperience ?? '∞'} years
+                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                            {requirement.parsedCriteria.minExperience ?? 0}–{requirement.parsedCriteria.maxExperience ?? '∞'} yrs
                           </p>
                         </div>
                       )}
                       <div>
                         <label className="text-xs text-gray-500 dark:text-gray-400">Contract Duration</label>
-                        <p className="font-medium text-gray-900 dark:text-gray-100">
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
                           {requirement.contractDurationMonths != null ? `${requirement.contractDurationMonths} months` : 'Not specified'}
                         </p>
                       </div>
                       <div>
                         <label className="text-xs text-gray-500 dark:text-gray-400">Payment Terms</label>
-                        <p className="font-medium text-gray-900 dark:text-gray-100">
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
                           {requirement.paymentTermsDays != null ? `Net ${requirement.paymentTermsDays} days` : 'Not specified'}
                         </p>
                       </div>
+                      {requirement.parsedCriteria.seniority.length > 0 && (
+                        <div>
+                          <label className="text-xs text-gray-500 dark:text-gray-400">Seniority</label>
+                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                            {requirement.parsedCriteria.seniority.map(formatSeniority).join(', ')}
+                          </p>
+                        </div>
+                      )}
+                      {requirement.parsedCriteria.availability && requirement.parsedCriteria.availability.length > 0 && (
+                        <div>
+                          <label className="text-xs text-gray-500 dark:text-gray-400">Notice Period</label>
+                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                            {requirement.parsedCriteria.availability.map(formatAvailability).join(', ')}
+                          </p>
+                        </div>
+                      )}
+                      {requirement.parsedCriteria.location && (
+                        <div>
+                          <label className="text-xs text-gray-500 dark:text-gray-400">Location</label>
+                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{requirement.parsedCriteria.location}</p>
+                        </div>
+                      )}
                     </div>
 
-                    {/* Parsed Criteria */}
-                    {requirement.parsedCriteria.mustHaveSkills.length > 0 && (
-                      <div>
-                        <label className="text-sm text-gray-500 dark:text-gray-400 block mb-1">Must-Have Skills</label>
-                        <div className="flex flex-wrap gap-1">
-                          {requirement.parsedCriteria.mustHaveSkills.map((skill) => (
-                            <span key={skill} className="badge bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 text-xs">{skill}</span>
-                          ))}
-                        </div>
+                    {/* Skills — side by side */}
+                    {(requirement.parsedCriteria.mustHaveSkills.length > 0 || requirement.parsedCriteria.goodToHaveSkills.length > 0) && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {requirement.parsedCriteria.mustHaveSkills.length > 0 && (
+                          <div>
+                            <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Must-Have Skills</label>
+                            <div className="flex flex-wrap gap-1">
+                              {requirement.parsedCriteria.mustHaveSkills.map((skill) => (
+                                <span key={skill} className="badge bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 text-xs">{skill}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {requirement.parsedCriteria.goodToHaveSkills.length > 0 && (
+                          <div>
+                            <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Good-to-Have Skills</label>
+                            <div className="flex flex-wrap gap-1">
+                              {requirement.parsedCriteria.goodToHaveSkills.map((skill) => (
+                                <span key={skill} className="badge bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs">{skill}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
 
-                    {requirement.parsedCriteria.goodToHaveSkills.length > 0 && (
-                      <div>
-                        <label className="text-sm text-gray-500 dark:text-gray-400 block mb-1">Good-to-Have Skills</label>
-                        <div className="flex flex-wrap gap-1">
-                          {requirement.parsedCriteria.goodToHaveSkills.map((skill) => (
-                            <span key={skill} className="badge bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs">{skill}</span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {requirement.parsedCriteria.seniority.length > 0 && (
-                      <div>
-                        <label className="text-sm text-gray-500 dark:text-gray-400 block mb-1">Seniority</label>
-                        <p className="text-gray-900 dark:text-gray-100">
-                          {requirement.parsedCriteria.seniority.map(formatSeniority).join(', ')}
-                        </p>
-                      </div>
-                    )}
-
-                    {requirement.parsedCriteria.availability && requirement.parsedCriteria.availability.length > 0 && (
-                      <div>
-                        <label className="text-sm text-gray-500 dark:text-gray-400 block mb-1">Notice Period</label>
-                        <p className="text-gray-900 dark:text-gray-100">
-                          {requirement.parsedCriteria.availability.map(formatAvailability).join(', ')}
-                        </p>
-                      </div>
-                    )}
-
+                    {/* Roles */}
                     {requirement.parsedCriteria.roles && requirement.parsedCriteria.roles.length > 0 && (
                       <div>
-                        <label className="text-sm text-gray-500 dark:text-gray-400 block mb-1">Roles</label>
+                        <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Roles</label>
                         <div className="flex flex-wrap gap-1">
                           {requirement.parsedCriteria.roles.map((role) => (
                             <span key={role} className="badge bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 text-xs">{role}</span>
@@ -818,17 +824,10 @@ export default function RequirementDetailPage() {
                       </div>
                     )}
 
-                    {requirement.parsedCriteria.location && (
-                      <div>
-                        <label className="text-sm text-gray-500 dark:text-gray-400 block mb-1">Location</label>
-                        <p className="text-gray-900 dark:text-gray-100">{requirement.parsedCriteria.location}</p>
-                      </div>
-                    )}
-
                     {/* Additional Data Points */}
                     {requirement.additionalFields && requirement.additionalFields.length > 0 && (
                       <div>
-                        <label className="text-sm text-gray-500 dark:text-gray-400 block mb-1">Additional Data Points</label>
+                        <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Additional Data Points</label>
                         <div className="flex flex-wrap gap-1">
                           {requirement.additionalFields.map((f) => (
                             <span key={f.key} className="badge bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 text-xs">
@@ -840,7 +839,7 @@ export default function RequirementDetailPage() {
                     )}
 
                     {/* JD Text (collapsible) */}
-                    <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                    <div className="border-t border-gray-200 dark:border-gray-700 pt-3">
                       <button
                         onClick={() => setJdExpanded(!jdExpanded)}
                         className="flex items-center justify-between w-full text-left"
@@ -861,7 +860,7 @@ export default function RequirementDetailPage() {
                     </div>
 
                     {/* Actions */}
-                    <div className="flex flex-wrap gap-3 pt-2">
+                    <div className="flex flex-wrap gap-3 pt-1">
                       <button onClick={handleSearchCandidates} className="btn-primary">
                         Search Candidates
                       </button>
