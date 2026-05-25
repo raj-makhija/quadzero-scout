@@ -736,12 +736,12 @@ export default function RequirementDetailPage() {
                         <label className="text-xs text-gray-500 dark:text-gray-400">Payroll</label>
                         <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{formatPayroll(requirement.payroll)}</p>
                       </div>
-                      {requirement.maxResourceBudgetLpa != null && (
-                        <div>
-                          <label className="text-xs text-gray-500 dark:text-gray-400">Max Resource Budget</label>
-                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{requirement.maxResourceBudgetLpa} LPA</p>
-                        </div>
-                      )}
+                      <div>
+                        <label className="text-xs text-gray-500 dark:text-gray-400">Max Resource Budget</label>
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                          {requirement.maxResourceBudgetLpa != null ? `${requirement.maxResourceBudgetLpa} LPA` : 'Not specified'}
+                        </p>
+                      </div>
                       {(requirement.parsedCriteria.minExperience != null || requirement.parsedCriteria.maxExperience != null) && (
                         <div>
                           <label className="text-xs text-gray-500 dark:text-gray-400">Experience</label>
