@@ -1,7 +1,8 @@
 import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
-import { getRequirementById, getUserById } from '../../lib/dynamodb.js';
+import { getRequirementById, getUserById, getActivePricingConfig } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import { calculateMaxResourceBudgetLpa } from '../../lib/pricingEngine.js';
 import type { RequirementRequestEntry, StatusHistoryEntry, RequirementChangeEntry } from '../../types/index.js';
 
 async function handleRequest(
@@ -60,6 +61,17 @@ async function handleRequest(
       })
     );
 
+    let maxResourceBudgetLpa: number | undefined;
+    if (item.budget_max_lpa != null) {
+      const pricingConfig = await getActivePricingConfig();
+      maxResourceBudgetLpa = calculateMaxResourceBudgetLpa(
+        item.budget_max_lpa,
+        item.payment_terms_days ?? 0,
+        item.is_rate_gst_inclusive ?? false,
+        pricingConfig
+      );
+    }
+
     return success({
       requirementId: item.requirement_id,
       recruiterId: item.recruiter_id,
@@ -89,6 +101,7 @@ async function handleRequest(
       contactPersonName: item.contact_person_name,
       isRateGstInclusive: item.is_rate_gst_inclusive ?? false,
       changeHistory,
+      maxResourceBudgetLpa,
     });
   } catch (err) {
     console.error('Error fetching requirement:', err);

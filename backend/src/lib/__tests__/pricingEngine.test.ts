@@ -3,6 +3,7 @@ import {
   calculatePricing,
   getExperienceBand,
   getContractDurationDiscount,
+  calculateMaxResourceBudgetLpa,
 } from '../pricingEngine.js';
 import type { PricingConfig, PricingInput } from '../../types/index.js';
 
@@ -880,5 +881,63 @@ describe('GST-inclusive rate adjustment', () => {
     expect(withGst.finalQuotedHourly).toBeLessThanOrEqual(withoutGst.finalQuotedHourly);
     // GST-inclusive should yield lower or equal contribution
     expect(withGst.finalContribution).toBeLessThanOrEqual(withoutGst.finalContribution);
+  });
+});
+
+// ===========================================================================
+// TC-MAXBUDGET: calculateMaxResourceBudgetLpa
+// ===========================================================================
+describe('calculateMaxResourceBudgetLpa()', () => {
+  // TC-MAXBUDGET-001 — Normal path: no GST, standard payment terms
+  it('computes a positive max CTC for standard non-GST input', () => {
+    // budgetMaxLpa = 20, paymentTermsDays = 30
+    // effectiveBudgetMonthly = 20 * 100000 / 12 ≈ 166666.67
+    // workingCapitalFactor = 1 + (30/30) * (0.12/12) = 1 + 0.01 = 1.01
+    // maxMonthlyCtc = (166666.67 - 30000) / 1.01 ≈ 135313.53
+    // maxCtcLpa = 135313.53 * 12 / 100000 ≈ 16.2
+    const result = calculateMaxResourceBudgetLpa(20, 30, false, DEFAULT_CONFIG);
+    expect(result).toBeDefined();
+    expect(result).toBeGreaterThan(0);
+    expect(result).toBeCloseTo(16.2, 1);
+  });
+
+  // TC-MAXBUDGET-002 — GST-inclusive path: value should be lower
+  it('returns a lower value when rate is GST-inclusive', () => {
+    const nonGst = calculateMaxResourceBudgetLpa(20, 30, false, DEFAULT_CONFIG);
+    const withGst = calculateMaxResourceBudgetLpa(20, 30, true, DEFAULT_CONFIG);
+    expect(nonGst).toBeDefined();
+    expect(withGst).toBeDefined();
+    expect(withGst!).toBeLessThan(nonGst!);
+
+    // GST-inclusive effective budget = 20 / 1.18 ≈ 16.949
+    // effectiveBudgetMonthly = 16.949 * 100000 / 12 ≈ 141242.94
+    // maxMonthlyCtc = (141242.94 - 30000) / 1.01 ≈ 110141.52
+    // maxCtcLpa = 110141.52 * 12 / 100000 ≈ 13.2
+    expect(withGst).toBeCloseTo(13.2, 1);
+  });
+
+  // TC-MAXBUDGET-003 — Budget too low: returns undefined
+  it('returns undefined when budget is too low to cover minimum contribution', () => {
+    // budgetMaxLpa = 2 → effectiveBudgetMonthly = 2*100000/12 ≈ 16666.67
+    // minContributionPerMonth = 30000
+    // 16666.67 - 30000 < 0 → undefined
+    const result = calculateMaxResourceBudgetLpa(2, 30, false, DEFAULT_CONFIG);
+    expect(result).toBeUndefined();
+  });
+
+  // TC-MAXBUDGET-004 — Zero payment terms: working capital factor = 1
+  it('uses working capital factor of 1 when payment terms are zero', () => {
+    // paymentTermsDays = 0
+    // workingCapitalFactor = 1 + 0 = 1
+    // effectiveBudgetMonthly = 20 * 100000 / 12 ≈ 166666.67
+    // maxMonthlyCtc = (166666.67 - 30000) / 1 = 136666.67
+    // maxCtcLpa = 136666.67 * 12 / 100000 = 16.4
+    const result = calculateMaxResourceBudgetLpa(20, 0, false, DEFAULT_CONFIG);
+    expect(result).toBeDefined();
+    expect(result).toBeCloseTo(16.4, 1);
+
+    // Should be slightly higher than with 30-day terms (no working capital cost)
+    const with30days = calculateMaxResourceBudgetLpa(20, 30, false, DEFAULT_CONFIG);
+    expect(result!).toBeGreaterThan(with30days!);
   });
 });
