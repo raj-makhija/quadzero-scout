@@ -41,14 +41,19 @@ permissions:
 
 jobs:
   drain:
-    # Skip when triggered by an issues event for any label OTHER than auto-pipeline.
-    # All other event types proceed unconditionally. Explicit per-event check
-    # avoids null access on github.event.label for non-issues events.
+    # Skip when triggered by an issues event for a label other than the two we
+    # care about: auto-pipeline (initial opt-in) and pipeline:struck-* (auto-
+    # retry after a strike, so the workflow's own strike scaling can drive the
+    # next attempt without needing cron or /retry). All other event types
+    # proceed unconditionally. Explicit per-event check avoids null access on
+    # github.event.label for non-issues events.
     if: |
       github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'repository_dispatch' ||
-      (github.event_name == 'issues' && github.event.label.name == 'auto-pipeline')
+      (github.event_name == 'issues' &&
+       (github.event.label.name == 'auto-pipeline' ||
+        startsWith(github.event.label.name, 'pipeline:struck-')))
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
