@@ -412,8 +412,8 @@ export function ShortlistModal({
           <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
             <PricingPanel
               candidateId={candidate.candidateId}
-              candidateExpectedCtcLpa={freshCtc ? freshCtc.expectedCtc : candidate.expectedCtc}
-              candidateCurrentCtcLpa={freshCtc ? freshCtc.currentCtc : candidate.currentCtc}
+              candidateExpectedCtcLpa={freshCtc ? (freshCtc.expectedCtc ?? undefined) : candidate.expectedCtc}
+              candidateCurrentCtcLpa={freshCtc ? (freshCtc.currentCtc ?? undefined) : candidate.currentCtc}
               candidateExperienceYears={freshCtc?.totalExperience ?? candidate.totalExperience}
               expectedCtcType={freshCtc?.expectedCtcType ?? candidate.expectedCtcType}
               isInternalRecruiter={isInternalRecruiter}
