@@ -55,6 +55,7 @@ provider:
     DYNAMODB_TABLE_SCREENING_LOCKS: ${self:custom.screeningLocksTable}
     DYNAMODB_TABLE_SUB_VENDORS: ${self:custom.subVendorsTable}
     DYNAMODB_TABLE_PIPELINE_ACTIVITY: ${self:custom.pipelineActivityTable}
+    DYNAMODB_TABLE_CANDIDATE_ATTACHMENTS: ${self:custom.candidateAttachmentsTable}
     GRAPH_TENANT_ID: ${ssm:/quadzero-scout/${self:provider.stage}/GRAPH_TENANT_ID, env:GRAPH_TENANT_ID, ''}
     GRAPH_CLIENT_ID: ${ssm:/quadzero-scout/${self:provider.stage}/GRAPH_CLIENT_ID, env:GRAPH_CLIENT_ID, ''}
     GRAPH_CLIENT_SECRET: ${ssm:/quadzero-scout/${self:provider.stage}/GRAPH_CLIENT_SECRET, env:GRAPH_CLIENT_SECRET, ''}
@@ -117,6 +118,7 @@ custom:
   screeningLocksTable: ScreeningLocks-${self:provider.stage}
   subVendorsTable: SubVendors-${self:provider.stage}
   pipelineActivityTable: PipelineActivity-${self:provider.stage}
+  candidateAttachmentsTable: CandidateAttachments-${self:provider.stage}
 
   dotenv:
     include:
@@ -693,6 +695,23 @@ functions:
       - httpApi:
           path: /recruiter/screening-lock/release-beacon
           method: POST
+
+  # Candidate Attachment Endpoints (single Lambda router)
+  recruiterAttachments:
+    handler: src/handlers/recruiter/attachmentRouter.handler
+    events:
+      - httpApi:
+          path: /recruiter/candidates/{candidateId}/attachment-upload-url
+          method: POST
+      - httpApi:
+          path: /recruiter/candidates/{candidateId}/attachments
+          method: POST
+      - httpApi:
+          path: /recruiter/candidates/{candidateId}/attachments
+          method: GET
+      - httpApi:
+          path: /recruiter/candidates/{candidateId}/attachments/{attachmentId}/download-url
+          method: GET
 
   adminGetPricingConfig:
     handler: src/handlers/admin/getPricingConfig.handler

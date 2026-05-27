@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { X, AlertCircle, Loader2, ChevronDown, ChevronUp, Lock } from 'lucide-react';
+import { X, AlertCircle, Loader2, ChevronDown, ChevronUp, Lock, Upload, FileText, Trash2 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import type { CandidateSearchResult, ScreeningUpdatedValues, AdditionalFieldDefinition, ScreeningLockConflict } from '@/lib/api';
 import { SubVendorInlineEditor, type SubVendorEditorState } from '@/components/sub-vendor-inline-editor';
@@ -76,6 +76,17 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
     subVendorId: '', contactPersonName: '', companyName: '', email: '', phone: '',
   });
   const [initialSubVendorId, setInitialSubVendorId] = useState('');
+
+  // Document attachments
+  const [pendingAttachments, setPendingAttachments] = useState<Array<{
+    file: File;
+    tag: string;
+    uploading: boolean;
+    uploaded: boolean;
+    error?: string;
+  }>>([]);
+  const [attachmentTag, setAttachmentTag] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Track which fields are empty/missing for highlighting
   const [emptyFields, setEmptyFields] = useState<Set<string>>(new Set());
@@ -398,6 +409,34 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
 
       await api.screenCandidate(resolvedCandidateId, updatedValues, notes || undefined);
 
+      // Upload pending attachments
+      for (const attachment of pendingAttachments) {
+        try {
+          const { uploadUrl, s3Key, attachmentId } = await api.getAttachmentUploadUrl(
+            resolvedCandidateId,
+            attachment.file.name,
+            attachment.file.type,
+            attachment.file.size
+          );
+          await fetch(uploadUrl, {
+            method: 'PUT',
+            body: attachment.file,
+            headers: { 'Content-Type': attachment.file.type },
+          });
+          await api.saveAttachment({
+            candidateId: resolvedCandidateId,
+            attachmentId,
+            s3Key,
+            fileName: attachment.file.name,
+            contentType: attachment.file.type,
+            fileSize: attachment.file.size,
+            tag: attachment.tag || undefined,
+          });
+        } catch (err) {
+          console.error('Failed to upload attachment:', attachment.file.name, err);
+        }
+      }
+
       // Release the screening lock (fire-and-forget)
       if (lockAcquiredRef.current) {
         lockAcquiredRef.current = false;
@@ -460,6 +499,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
     lastWorkingDay, stillOnJob, onScreeningComplete,
     isShortlistFlow, additionalFields, customFieldValues,
     subVendorEnabled, subVendorData, initialSubVendorId,
+    pendingAttachments,
   ]);
 
   return (
@@ -1055,6 +1095,100 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                     hasError={submitAttempted && !notes.trim()}
                   />
                 </FormField>
+              </div>
+
+              {/* Documents */}
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                  Documents (optional)
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                  Attach salary slips, appraisal letters, or other supporting documents. PDF, DOCX, DOC, JPG, PNG up to 10 MB each.
+                </p>
+
+                {/* Tag input + file picker */}
+                <div className="flex gap-2 mb-3">
+                  <input
+                    type="text"
+                    value={attachmentTag}
+                    onChange={(e) => setAttachmentTag(e.target.value)}
+                    placeholder="Tag (e.g. Salary Slip)"
+                    maxLength={100}
+                    className="input text-sm flex-1"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="btn-secondary text-sm flex items-center gap-1.5"
+                  >
+                    <Upload className="h-3.5 w-3.5" />
+                    Add Files
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept=".pdf,.docx,.doc,.jpg,.jpeg,.png"
+                    className="hidden"
+                    onChange={(e) => {
+                      const files = e.target.files;
+                      if (!files) return;
+                      const validTypes = [
+                        'application/pdf',
+                        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                        'application/msword',
+                        'image/jpeg',
+                        'image/png',
+                      ];
+                      const newAttachments = Array.from(files)
+                        .filter((f) => {
+                          if (!validTypes.includes(f.type)) return false;
+                          if (f.size > 10_485_760) return false;
+                          return true;
+                        })
+                        .map((f) => ({
+                          file: f,
+                          tag: attachmentTag,
+                          uploading: false,
+                          uploaded: false,
+                        }));
+                      setPendingAttachments((prev) => [...prev, ...newAttachments]);
+                      e.target.value = '';
+                    }}
+                  />
+                </div>
+
+                {/* Pending attachments list */}
+                {pendingAttachments.length > 0 && (
+                  <div className="space-y-2">
+                    {pendingAttachments.map((att, idx) => (
+                      <div
+                        key={`${att.file.name}-${idx}`}
+                        className="flex items-center justify-between p-2 border border-gray-200 dark:border-gray-700 rounded text-sm"
+                      >
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <FileText className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                          <div className="min-w-0">
+                            <p className="truncate text-gray-900 dark:text-gray-100">{att.file.name}</p>
+                            <p className="text-xs text-gray-500">
+                              {(att.file.size / 1024).toFixed(0)} KB
+                              {att.tag && <> &middot; {att.tag}</>}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPendingAttachments((prev) => prev.filter((_, i) => i !== idx))
+                          }
+                          className="p-1 text-gray-400 hover:text-red-500"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </>
           )}

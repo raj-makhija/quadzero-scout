@@ -934,6 +934,48 @@ class ApiClient {
     );
   }
 
+  // Candidate Attachment endpoints
+  async getAttachmentUploadUrl(candidateId: string, fileName: string, contentType: string, fileSize: number) {
+    return this.request<{
+      uploadUrl: string;
+      s3Key: string;
+      attachmentId: string;
+      expiresIn: number;
+    }>(`/recruiter/candidates/${candidateId}/attachment-upload-url`, {
+      method: 'POST',
+      body: JSON.stringify({ candidateId, fileName, contentType, fileSize }),
+    });
+  }
+
+  async saveAttachment(data: {
+    candidateId: string;
+    attachmentId: string;
+    s3Key: string;
+    fileName: string;
+    contentType: string;
+    fileSize: number;
+    tag?: string;
+  }) {
+    return this.request<{ saved: boolean; attachmentId: string }>(
+      `/recruiter/candidates/${data.candidateId}/attachments`,
+      { method: 'POST', body: JSON.stringify(data) }
+    );
+  }
+
+  async listAttachments(candidateId: string) {
+    return this.request<{
+      attachments: AttachmentSummary[];
+    }>(`/recruiter/candidates/${candidateId}/attachments`);
+  }
+
+  async getAttachmentDownloadUrl(candidateId: string, attachmentId: string) {
+    return this.request<{
+      downloadUrl: string;
+      fileName: string;
+      expiresIn: number;
+    }>(`/recruiter/candidates/${candidateId}/attachments/${attachmentId}/download-url`);
+  }
+
   // Public Requirements Board endpoints (no auth)
   async listPublicRequirements(limit?: number, offset?: number): Promise<{
     requirements: PublicRequirementSummary[];
@@ -1696,6 +1738,19 @@ export interface ScreeningLockConflict {
   lockedBy: string;
   lockedByEmail: string;
   lockedAt: string;
+}
+
+// Attachment types
+export interface AttachmentSummary {
+  attachmentId: string;
+  candidateId: string;
+  fileName: string;
+  contentType: string;
+  fileSize: number;
+  tag: string;
+  uploadedBy: string;
+  uploadedByEmail: string;
+  uploadedAt: string;
 }
 
 // Locate Profile types

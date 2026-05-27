@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import { X, AlertCircle, Loader2, Send } from 'lucide-react';
+import { X, AlertCircle, Loader2, Send, FileText, Download } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
-import type { CandidateSearchResult, SearchCriteria, PricingOutput } from '@/lib/api';
+import type { CandidateSearchResult, SearchCriteria, PricingOutput, AttachmentSummary } from '@/lib/api';
 import { PricingPanel } from '@/components/PricingPanel';
 import { SubmitToClientModal } from '@/components/pipeline/submit-to-client-modal';
 import { getScreeningStatus, isScreeningExpired } from '@/components/screening-modal';
@@ -15,6 +15,12 @@ import {
   getMatchScoreBgColor,
   formatDate,
 } from '@/lib/utils';
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 interface RequirementContext {
   requirementId: string;
@@ -74,6 +80,32 @@ export function ShortlistModal({
     internalRateHourly?: number;
   }>({});
   const [loadingRates, setLoadingRates] = useState(false);
+  const [activeTab, setActiveTab] = useState<'details' | 'documents'>('details');
+  const [attachments, setAttachments] = useState<AttachmentSummary[]>([]);
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setAttachmentsLoading(true);
+    api.listAttachments(candidate.candidateId).then((res) => {
+      if (!cancelled) setAttachments(res.attachments);
+    }).catch(() => {}).finally(() => {
+      if (!cancelled) setAttachmentsLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [candidate.candidateId]);
+
+  const handleDownloadAttachment = useCallback(async (attachmentId: string) => {
+    setDownloadingId(attachmentId);
+    try {
+      const { downloadUrl } = await api.getAttachmentDownloadUrl(candidate.candidateId, attachmentId);
+      window.open(downloadUrl, '_blank');
+    } catch {
+      // silent
+    }
+    setDownloadingId(null);
+  }, [candidate.candidateId]);
 
   const handleOpenSubmitToClient = useCallback(async () => {
     if (!requirementContext) return;
@@ -186,8 +218,98 @@ export function ShortlistModal({
           </button>
         </div>
 
+        {/* Tab Bar */}
+        <div className="flex border-b border-gray-200 dark:border-gray-700 px-6">
+          <button
+            onClick={() => setActiveTab('details')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+              activeTab === 'details'
+                ? 'border-primary-600 text-primary-600 dark:border-primary-400 dark:text-primary-400'
+                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+            }`}
+          >
+            Details
+          </button>
+          <button
+            onClick={() => setActiveTab('documents')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px flex items-center gap-1.5 ${
+              activeTab === 'documents'
+                ? 'border-primary-600 text-primary-600 dark:border-primary-400 dark:text-primary-400'
+                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+            }`}
+          >
+            <FileText className="h-3.5 w-3.5" />
+            Documents
+            {attachments.length > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300">
+                {attachments.length}
+              </span>
+            )}
+          </button>
+        </div>
+
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+          {activeTab === 'documents' ? (
+            /* Documents Tab */
+            <div>
+              {attachmentsLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary-600" />
+                  <span className="ml-2 text-sm text-gray-500">Loading documents...</span>
+                </div>
+              ) : attachments.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <FileText className="h-10 w-10 text-gray-300 dark:text-gray-600 mb-3" />
+                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">No documents attached</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                    Documents can be uploaded during screening
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {attachments.map((attachment) => (
+                    <div
+                      key={attachment.attachmentId}
+                      className="flex items-center justify-between p-3 border border-gray-200 dark:border-gray-700 rounded-lg"
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <FileText className="h-5 w-5 text-gray-400 flex-shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                            {attachment.fileName}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                            {attachment.tag && (
+                              <span className="badge text-xs bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                                {attachment.tag}
+                              </span>
+                            )}
+                            <span>{formatFileSize(attachment.fileSize)}</span>
+                            <span>{formatDate(attachment.uploadedAt)}</span>
+                            <span>{attachment.uploadedByEmail}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleDownloadAttachment(attachment.attachmentId)}
+                        disabled={downloadingId === attachment.attachmentId}
+                        className="ml-2 p-2 text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 flex-shrink-0"
+                        title="Download"
+                      >
+                        {downloadingId === attachment.attachmentId ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Download className="h-4 w-4" />
+                        )}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+          <>
           {/* Error message */}
           {errorMessage && (
             <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-2">
@@ -469,6 +591,8 @@ export function ShortlistModal({
                 maxLength={1000}
               />
             </div>
+          )}
+          </>
           )}
         </div>
 

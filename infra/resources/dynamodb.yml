@@ -481,6 +481,30 @@ Resources:
         - Key: Project
           Value: quadzero-scout
 
+  # CandidateAttachments Table (document attachments per candidate)
+  CandidateAttachmentsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: ${self:custom.candidateAttachmentsTable}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: candidate_id
+          AttributeType: S
+        - AttributeName: attachment_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: candidate_id
+          KeyType: HASH
+        - AttributeName: attachment_id
+          KeyType: RANGE
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Project
+          Value: quadzero-scout
+
 Outputs:
   TalentProfilesTableArn:
     Description: TalentProfiles table ARN
@@ -571,3 +595,9 @@ Outputs:
     Value: !GetAtt PipelineActivityTable.Arn
     Export:
       Name: ${self:provider.stage}-PipelineActivityTableArn
+
+  CandidateAttachmentsTableArn:
+    Description: CandidateAttachments table ARN
+    Value: !GetAtt CandidateAttachmentsTable.Arn
+    Export:
+      Name: ${self:provider.stage}-CandidateAttachmentsTableArn

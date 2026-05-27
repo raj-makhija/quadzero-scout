@@ -8,11 +8,13 @@ import type { CandidateSearchResult, SearchCriteria } from '@/lib/api';
 
 const mockGetProfile = vi.fn();
 const mockShortlistCandidate = vi.fn();
+const mockListAttachments = vi.fn();
 
 vi.mock('@/lib/api', () => ({
   api: {
     getProfile: (...args: unknown[]) => mockGetProfile(...args),
     shortlistCandidate: (...args: unknown[]) => mockShortlistCandidate(...args),
+    listAttachments: (...args: unknown[]) => mockListAttachments(...args),
   },
   ApiError: class ApiError extends Error {
     code: string;
@@ -101,6 +103,7 @@ describe('ShortlistModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     capturedPricingProps = {};
+    mockListAttachments.mockResolvedValue({ attachments: [] });
   });
 
   it('passes fresh expectedCtc from profile refetch to PricingPanel', async () => {
