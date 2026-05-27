@@ -642,6 +642,9 @@ functions:
       - httpApi:
           path: /recruiter/requirements/{requirementId}/candidates/{candidateId}/notes
           method: POST
+      - httpApi:
+          path: /recruiter/requirements/{requirementId}/candidates/{candidateId}/shortlist-entry
+          method: GET
 
   # Candidate Screening Endpoints
   recruiterScreenCandidate:
