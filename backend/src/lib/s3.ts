@@ -49,6 +49,8 @@ function getContentTypeFromKey(s3Key: string): string {
     case 'pdf': return 'application/pdf';
     case 'docx': return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
     case 'doc': return 'application/msword';
+    case 'jpg': case 'jpeg': return 'image/jpeg';
+    case 'png': return 'image/png';
     default: return 'application/octet-stream';
   }
 }
@@ -120,6 +122,53 @@ export async function deleteObject(s3Key: string): Promise<void> {
     Key: s3Key,
   });
   await s3Client.send(command);
+}
+
+export async function generateAttachmentUploadUrl(
+  candidateId: string,
+  fileName: string,
+  contentType: string
+): Promise<PresignedUrlResult> {
+  const uniqueId = crypto.randomUUID();
+  const sanitizedFileName = fileName
+    .replace(/[^a-zA-Z0-9.-]/g, '_')
+    .toLowerCase();
+  const key = `candidate-attachments/${candidateId}/${uniqueId}-${sanitizedFileName}`;
+
+  const command = new PutObjectCommand({
+    Bucket: config.s3.resumesBucket,
+    Key: key,
+    ContentType: contentType,
+  });
+
+  const url = await getSignedUrl(s3Client, command, {
+    expiresIn: config.s3.presignedUrlExpiry,
+  });
+
+  return { url, key, expiresIn: config.s3.presignedUrlExpiry };
+}
+
+export async function generateAttachmentDownloadUrl(
+  s3Key: string,
+  fileName?: string
+): Promise<PresignedUrlResult> {
+  const contentType = getContentTypeFromKey(s3Key);
+  const disposition = fileName
+    ? `attachment; filename="${fileName}"`
+    : 'inline';
+
+  const command = new GetObjectCommand({
+    Bucket: config.s3.resumesBucket,
+    Key: s3Key,
+    ResponseContentType: contentType,
+    ResponseContentDisposition: disposition,
+  });
+
+  const url = await getSignedUrl(s3Client, command, {
+    expiresIn: config.s3.presignedUrlExpiry,
+  });
+
+  return { url, key: s3Key, expiresIn: config.s3.presignedUrlExpiry };
 }
 
 export async function putObject(

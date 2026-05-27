@@ -1151,6 +1151,49 @@ export interface ListSubVendorsResponse {
   subVendors: SubVendorSummary[];
 }
 
+// ─── Candidate Attachment Types ─────────────────────────────────────────────
+
+export const AttachmentContentTypeEnum = z.enum([
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/msword',
+  'image/jpeg',
+  'image/png',
+]);
+export type AttachmentContentType = z.infer<typeof AttachmentContentTypeEnum>;
+
+export const GetAttachmentUploadUrlRequestSchema = z.object({
+  candidateId: z.string().uuid(),
+  fileName: z.string().min(1).max(255),
+  contentType: AttachmentContentTypeEnum,
+  fileSize: z.number().int().min(1).max(10_485_760),
+});
+export type GetAttachmentUploadUrlRequest = z.infer<typeof GetAttachmentUploadUrlRequestSchema>;
+
+export const SaveAttachmentRequestSchema = z.object({
+  candidateId: z.string().uuid(),
+  attachmentId: z.string().uuid(),
+  s3Key: z.string().min(1),
+  fileName: z.string().min(1).max(255),
+  contentType: AttachmentContentTypeEnum,
+  fileSize: z.number().int().min(1).max(10_485_760),
+  tag: z.string().max(100).optional().default(''),
+});
+export type SaveAttachmentRequest = z.infer<typeof SaveAttachmentRequestSchema>;
+
+export interface AttachmentItem {
+  candidate_id: string;
+  attachment_id: string;
+  s3_key: string;
+  filename: string;
+  content_type: string;
+  file_size: number;
+  tag: string;
+  uploaded_by: string;
+  uploaded_by_email: string;
+  uploaded_at: string;
+}
+
 // ─── Candidate Screening Types ──────────────────────────────────────────────
 
 export interface ScreeningProfileData {

@@ -9,7 +9,7 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { config } from './config.js';
-import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, StatusHistoryEntry, RequirementChangeEntry, PricingConfig, PricingConfigItem, SessionSettings, SessionSettingsItem, ShortlistItem, ClientItem, SubVendorItem, ScreeningItem, ScreeningLockItem, AuditLogItem, AuditLogEntry, PipelineActivityItem } from '../types/index.js';
+import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, StatusHistoryEntry, RequirementChangeEntry, PricingConfig, PricingConfigItem, SessionSettings, SessionSettingsItem, ShortlistItem, ClientItem, SubVendorItem, ScreeningItem, ScreeningLockItem, AuditLogItem, AuditLogEntry, PipelineActivityItem, AttachmentItem } from '../types/index.js';
 import { DEFAULT_SESSION_TIMEOUT_SECONDS } from '../types/index.js';
 
 const client = new DynamoDBClient({ region: config.region });
@@ -2475,3 +2475,39 @@ export async function getScreeningLock(
 }
 
 export { SCREENING_LOCK_TTL_SECONDS };
+
+// ─── Candidate Attachment Operations ──────────────────────────────────────────
+
+export async function saveAttachment(item: AttachmentItem): Promise<void> {
+  await docClient.send(
+    new PutCommand({
+      TableName: config.dynamodb.candidateAttachmentsTable,
+      Item: item,
+    })
+  );
+}
+
+export async function listAttachments(candidateId: string): Promise<AttachmentItem[]> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: config.dynamodb.candidateAttachmentsTable,
+      KeyConditionExpression: 'candidate_id = :cid',
+      ExpressionAttributeValues: { ':cid': candidateId },
+      ScanIndexForward: false,
+    })
+  );
+  return (result.Items as AttachmentItem[]) || [];
+}
+
+export async function getAttachment(
+  candidateId: string,
+  attachmentId: string
+): Promise<AttachmentItem | null> {
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: config.dynamodb.candidateAttachmentsTable,
+      Key: { candidate_id: candidateId, attachment_id: attachmentId },
+    })
+  );
+  return (result.Item as AttachmentItem) || null;
+}
