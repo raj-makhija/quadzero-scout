@@ -23,8 +23,12 @@ async function handleRequest(
       requirementId,
       candidateId,
       proposedRateHourly: entry.proposed_rate_hourly ?? null,
+      proposedRateMonthly: entry.proposed_rate_monthly ?? null,
       internalRateHourly: entry.internal_rate_hourly ?? null,
+      internalRateMonthly: entry.internal_rate_monthly ?? null,
       quotedRateHourly: entry.quoted_rate_hourly ?? null,
+      quotedRateDenomination: entry.quoted_rate_denomination ?? null,
+      quotedRateGstInclusive: entry.quoted_rate_gst_inclusive ?? null,
     });
   } catch (err) {
     console.error('Error fetching shortlist entry rates:', err);

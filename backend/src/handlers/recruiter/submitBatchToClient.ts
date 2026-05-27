@@ -8,6 +8,7 @@ import { getEffectiveStage, transitionPipelineStage, createPipelineActivity } fr
 import { sendBatchSubmissionEmail, getFormattedResumeUrl } from '../../lib/emailService.js';
 import { getUserById } from '../../lib/dynamodb.js';
 import type { CandidateItem } from '../../types/index.js';
+import { convertQuotedRate } from '../../lib/rateConversion.js';
 
 async function handleRequest(
   event: AuthenticatedEvent
@@ -34,7 +35,9 @@ async function handleRequest(
       return error(ErrorCodes.VALIDATION_ERROR, formatZodErrors(validation.errors), 400);
     }
 
-    const { candidateIds, clientEmail, clientName, coverNote, ccEmails, quotedRates } = validation.data;
+    const { candidateIds, clientEmail, clientName, coverNote, ccEmails, quotedRates, quotedRateDenomination, quotedRateGstInclusive } = validation.data;
+    const denomination = quotedRateDenomination || 'hourly';
+    const gstInclusive = quotedRateGstInclusive || false;
 
     // Fetch requirement
     const requirement = await getRequirementById(requirementId);
@@ -94,7 +97,7 @@ async function handleRequest(
         await transitionPipelineStage(
           requirementId, cid, 'shortlisted', 'submitted_to_client',
           event.auth.userId, undefined,
-          { submitted_at: now, submitted_by: event.auth.userId, quoted_rate_hourly: quotedRates[cid] }
+          { submitted_at: now, submitted_by: event.auth.userId, ...convertQuotedRate(quotedRates[cid], denomination), quoted_rate_denomination: denomination, quoted_rate_gst_inclusive: gstInclusive }
         );
         await createPipelineActivity(requirementId, cid, 'email_sent', event.auth.userId, {
           email_type: 'batch_submission',

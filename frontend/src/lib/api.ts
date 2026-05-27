@@ -873,8 +873,12 @@ class ApiClient {
       requirementId: string;
       candidateId: string;
       proposedRateHourly: number | null;
+      proposedRateMonthly: number | null;
       internalRateHourly: number | null;
+      internalRateMonthly: number | null;
       quotedRateHourly: number | null;
+      quotedRateDenomination: QuotedRateDenomination | null;
+      quotedRateGstInclusive: boolean | null;
     }>(`/recruiter/requirements/${requirementId}/candidates/${candidateId}/shortlist-entry`);
   }
 
@@ -1872,6 +1876,8 @@ export interface MatchDebugFilterResult {
 }
 
 // Pipeline types
+export type QuotedRateDenomination = 'hourly' | 'monthly' | 'annual';
+
 export interface SubmitToClientParams {
   clientEmail?: string;
   clientName?: string;
@@ -1880,6 +1886,8 @@ export interface SubmitToClientParams {
   offline?: boolean;
   offlineSentAt?: string;
   quotedRateHourly: number;
+  quotedRateDenomination?: QuotedRateDenomination;
+  quotedRateGstInclusive?: boolean;
 }
 
 export interface SubmitBatchToClientParams {
@@ -1889,10 +1897,14 @@ export interface SubmitBatchToClientParams {
   coverNote?: string;
   ccEmails?: string[];
   quotedRates: Record<string, number>;
+  quotedRateDenomination?: QuotedRateDenomination;
+  quotedRateGstInclusive?: boolean;
 }
 
 export interface UpdateSubmissionRateParams {
   quotedRateHourly: number;
+  quotedRateDenomination?: QuotedRateDenomination;
+  quotedRateGstInclusive?: boolean;
 }
 
 export interface RecordClientFeedbackParams {
@@ -1957,6 +1969,10 @@ export interface PipelineCandidateView {
   internalRateMonthly?: number;
   internalRateAnnual?: number;
   quotedRateHourly?: number;
+  quotedRateMonthly?: number;
+  quotedRateAnnual?: number;
+  quotedRateDenomination?: QuotedRateDenomination;
+  quotedRateGstInclusive?: boolean;
 }
 
 export interface PipelineViewResponse {

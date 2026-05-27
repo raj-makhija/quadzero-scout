@@ -6,10 +6,16 @@ import { api, ApiError } from '@/lib/api';
 import type { PipelineCandidateView } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 import { formatInr } from '@/lib/utils';
+import {
+  type QuotedRateDenomination,
+  DENOMINATION_LABELS,
+  DENOMINATION_SUFFIXES,
+  getReferenceRateInDenom,
+} from '@/lib/rateUtils';
 
 interface SubmitToClientModalProps {
   requirementId: string;
-  candidates: Pick<PipelineCandidateView, 'candidateId' | 'fullName' | 'proposedRateHourly' | 'internalRateHourly'>[];
+  candidates: Pick<PipelineCandidateView, 'candidateId' | 'fullName' | 'proposedRateHourly' | 'proposedRateMonthly' | 'internalRateHourly' | 'internalRateMonthly'>[];
   isOpen: boolean;
   onClose: () => void;
   onSubmitted: () => void;
@@ -34,6 +40,8 @@ export function SubmitToClientModal({
   const [offlineSentAt, setOfflineSentAt] = useState('');
   const [singleRate, setSingleRate] = useState('');
   const [batchRates, setBatchRates] = useState<Record<string, string>>({});
+  const [denomination, setDenomination] = useState<QuotedRateDenomination>('hourly');
+  const [gstInclusive, setGstInclusive] = useState(false);
 
   if (!isOpen) return null;
 
@@ -46,9 +54,12 @@ export function SubmitToClientModal({
 
   const single = candidates[0];
   const singleRateNum = getSingleRateNum();
+  const singleInternalInDenom = getReferenceRateInDenom(single?.internalRateHourly, single?.internalRateMonthly, denomination);
   const isSingleBelowMin = singleRateNum >= 0
-    && single?.internalRateHourly !== undefined
-    && singleRateNum < single.internalRateHourly;
+    && singleInternalInDenom !== undefined
+    && singleRateNum < singleInternalInDenom;
+
+  const denomSuffix = DENOMINATION_SUFFIXES[denomination];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,6 +107,8 @@ export function SubmitToClientModal({
           coverNote: coverNote.trim() || undefined,
           ccEmails: parsedCcEmails.length > 0 ? parsedCcEmails : undefined,
           quotedRates,
+          quotedRateDenomination: denomination,
+          quotedRateGstInclusive: gstInclusive,
         });
       } else {
         await api.submitCandidateToClient(requirementId, candidates[0].candidateId, {
@@ -108,6 +121,8 @@ export function SubmitToClientModal({
             ? new Date(offlineSentAt).toISOString()
             : undefined,
           quotedRateHourly: singleRateNum,
+          quotedRateDenomination: denomination,
+          quotedRateGstInclusive: gstInclusive,
         });
       }
 
@@ -128,6 +143,8 @@ export function SubmitToClientModal({
       setOfflineSentAt('');
       setSingleRate('');
       setBatchRates({});
+      setDenomination('hourly');
+      setGstInclusive(false);
       onSubmitted();
     } catch (err) {
       if (err instanceof ApiError) {
@@ -139,6 +156,8 @@ export function SubmitToClientModal({
       setLoading(false);
     }
   };
+
+  const singleProposedInDenom = getReferenceRateInDenom(single?.proposedRateHourly, single?.proposedRateMonthly, denomination);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -170,17 +189,33 @@ export function SubmitToClientModal({
             </div>
           )}
 
+          {/* Rate denomination selector */}
+          <div>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">
+              Rate Type
+            </label>
+            <select
+              value={denomination}
+              onChange={(e) => setDenomination(e.target.value as QuotedRateDenomination)}
+              className="input w-full text-sm"
+            >
+              {(Object.keys(DENOMINATION_LABELS) as QuotedRateDenomination[]).map((d) => (
+                <option key={d} value={d}>{DENOMINATION_LABELS[d]}</option>
+              ))}
+            </select>
+          </div>
+
           {/* Quoted Rate — single candidate */}
           {!isBatch && (
             <div>
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">
-                Quoted Rate (₹/hr) <span className="text-red-500">*</span>
+                Quoted Rate (₹{denomSuffix}) <span className="text-red-500">*</span>
               </label>
-              {single?.proposedRateHourly !== undefined && (
+              {singleProposedInDenom !== undefined && (
                 <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                  Recommended Rate: {formatInr(single.proposedRateHourly)}/hr
-                  {single.internalRateHourly !== undefined && (
-                    <> &middot; Minimum: {formatInr(single.internalRateHourly)}/hr</>
+                  Recommended: {formatInr(singleProposedInDenom)}{denomSuffix}
+                  {singleInternalInDenom !== undefined && (
+                    <> &middot; Minimum: {formatInr(singleInternalInDenom)}{denomSuffix}</>
                   )}
                 </p>
               )}
@@ -197,7 +232,7 @@ export function SubmitToClientModal({
                 <div className="mt-1.5 p-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded flex items-start gap-1.5">
                   <AlertTriangle className="h-3.5 w-3.5 text-amber-600 mt-0.5 flex-shrink-0" />
                   <p className="text-xs text-amber-700 dark:text-amber-300">
-                    Below minimum rate ({formatInr(single.internalRateHourly!)}/hr). You may still proceed.
+                    Below minimum rate ({formatInr(singleInternalInDenom!)}{denomSuffix}). You may still proceed.
                   </p>
                 </div>
               )}
@@ -208,13 +243,15 @@ export function SubmitToClientModal({
           {isBatch && (
             <div className="space-y-3">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block">
-                Quoted Rate per Candidate (₹/hr) <span className="text-red-500">*</span>
+                Quoted Rate per Candidate (₹{denomSuffix}) <span className="text-red-500">*</span>
               </label>
               {candidates.map((c) => {
                 const rateVal = parseFloat(batchRates[c.candidateId] || '');
+                const cInternalInDenom = getReferenceRateInDenom(c.internalRateHourly, c.internalRateMonthly, denomination);
                 const belowMin = !isNaN(rateVal) && rateVal >= 0
-                  && c.internalRateHourly !== undefined
-                  && rateVal < c.internalRateHourly;
+                  && cInternalInDenom !== undefined
+                  && rateVal < cInternalInDenom;
+                const cProposedInDenom = getReferenceRateInDenom(c.proposedRateHourly, c.proposedRateMonthly, denomination);
                 return (
                   <div key={c.candidateId}>
                     <div className="flex items-center gap-2">
@@ -229,10 +266,10 @@ export function SubmitToClientModal({
                         className="input flex-1 text-sm"
                       />
                     </div>
-                    {c.proposedRateHourly !== undefined && (
+                    {cProposedInDenom !== undefined && (
                       <p className="text-xs text-gray-400 mt-0.5 ml-[8.5rem]">
-                        Rec. Rate: {formatInr(c.proposedRateHourly)}/hr
-                        {c.internalRateHourly !== undefined && <> &middot; Min: {formatInr(c.internalRateHourly)}/hr</>}
+                        Rec: {formatInr(cProposedInDenom)}{denomSuffix}
+                        {cInternalInDenom !== undefined && <> &middot; Min: {formatInr(cInternalInDenom)}{denomSuffix}</>}
                       </p>
                     )}
                     {belowMin && (
@@ -246,6 +283,17 @@ export function SubmitToClientModal({
               })}
             </div>
           )}
+
+          {/* GST inclusive checkbox */}
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={gstInclusive}
+              onChange={(e) => setGstInclusive(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            />
+            <span className="text-sm text-gray-700 dark:text-gray-300">GST inclusive</span>
+          </label>
 
           {/* Offline toggle */}
           {!isBatch && (
