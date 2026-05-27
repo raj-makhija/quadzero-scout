@@ -7,6 +7,7 @@ import { logAuditEvent } from '../../lib/audit.js';
 import { getEffectiveStage, transitionPipelineStage, createPipelineActivity } from '../../lib/pipelineService.js';
 import { sendCandidateSubmissionEmail, getFormattedResumeUrl } from '../../lib/emailService.js';
 import { getUserById } from '../../lib/dynamodb.js';
+import { convertQuotedRate } from '../../lib/rateConversion.js';
 
 async function handleRequest(
   event: AuthenticatedEvent
@@ -35,7 +36,10 @@ async function handleRequest(
       return error(ErrorCodes.VALIDATION_ERROR, formatZodErrors(validation.errors), 400);
     }
 
-    const { clientEmail, clientName, coverNote, ccEmails, offline, offlineSentAt, quotedRateHourly } = validation.data;
+    const { clientEmail, clientName, coverNote, ccEmails, offline, offlineSentAt, quotedRateHourly, quotedRateDenomination, quotedRateGstInclusive } = validation.data;
+    const denomination = quotedRateDenomination || 'hourly';
+    const gstInclusive = quotedRateGstInclusive || false;
+    const converted = convertQuotedRate(quotedRateHourly, denomination);
 
     // clientEmail is required when not offline
     if (!offline && !clientEmail) {
@@ -73,7 +77,9 @@ async function handleRequest(
         {
           submitted_at: offlineSentAt || now,
           submitted_by: event.auth.userId,
-          quoted_rate_hourly: quotedRateHourly,
+          ...converted,
+          quoted_rate_denomination: denomination,
+          quoted_rate_gst_inclusive: gstInclusive,
         }
       );
 
@@ -114,7 +120,9 @@ async function handleRequest(
         {
           submitted_at: now,
           submitted_by: event.auth.userId,
-          quoted_rate_hourly: quotedRateHourly,
+          ...converted,
+          quoted_rate_denomination: denomination,
+          quoted_rate_gst_inclusive: gstInclusive,
         }
       );
 
