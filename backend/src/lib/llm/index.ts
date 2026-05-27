@@ -6,6 +6,7 @@ import { BaseLLMProvider, LLMMessage, LLMOptions } from './base.js';
 import { ClaudeProvider } from './claude.js';
 import { OpenAIProvider } from './openai.js';
 import { OpenRouterProvider } from './openrouter.js';
+import { GeminiProvider } from './gemini.js';
 import { isRateLimitError } from './base.js';
 import { LLMResumeOutputSchema, LLMJDOutputSchema } from '../../types/index.js';
 import { normalizeSeniorityArray } from '../seniorityNormalizer.js';
@@ -25,6 +26,8 @@ function buildProvider(name: string): BaseLLMProvider {
       return new OpenAIProvider();
     case 'openrouter':
       return new OpenRouterProvider();
+    case 'gemini':
+      return new GeminiProvider();
     default:
       throw new Error(`Unknown LLM provider: ${name}`);
   }
