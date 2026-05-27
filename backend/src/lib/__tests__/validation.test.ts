@@ -8,6 +8,7 @@ import {
   SaveSearchRequestSchema,
   SaveRequirementRequestSchema,
   UpdateCandidateCustomFieldsRequestSchema,
+  ScreenCandidateRequestSchema,
   validate,
   formatZodErrors,
 } from '../validation.js';
@@ -284,12 +285,12 @@ describe('SaveProfileRequestSchema', () => {
   });
 
   // TC-PROFILE-021
-  it('rejects summary exceeding 2000 characters', () => {
+  it('accepts summary exceeding 2000 characters', () => {
     const result = validate(SaveProfileRequestSchema, {
       profile: { ...validProfile, summary: 'x'.repeat(2001) },
       resumeS3Key: 'resumes/2024/01/abc.pdf',
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
   // TC-VALID-010
@@ -887,6 +888,32 @@ describe('UpdateCandidateCustomFieldsRequestSchema', () => {
     const result = validate(UpdateCandidateCustomFieldsRequestSchema, {
       candidateId: 'cand-123',
       customFields: { notes: 'x'.repeat(500) },
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe('ScreenCandidateRequestSchema', () => {
+  it('accepts summary exceeding 2000 characters', () => {
+    const result = validate(ScreenCandidateRequestSchema, {
+      candidateId: 'cand-123',
+      updatedValues: { summary: 'x'.repeat(2001) },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts summary of exactly 2000 characters', () => {
+    const result = validate(ScreenCandidateRequestSchema, {
+      candidateId: 'cand-123',
+      updatedValues: { summary: 'x'.repeat(2000) },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts very long summary (10000+ characters)', () => {
+    const result = validate(ScreenCandidateRequestSchema, {
+      candidateId: 'cand-123',
+      updatedValues: { summary: 'x'.repeat(10001) },
     });
     expect(result.success).toBe(true);
   });
