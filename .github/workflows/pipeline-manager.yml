@@ -98,7 +98,7 @@ jobs:
           PIPELINE_DEVELOPER_AGENT: claude
           PIPELINE_PR_REVIEWER_AGENT: claude
           PIPELINE_TESTER_AGENT: claude
-          PIPELINE_MAX_ATTEMPTS: '3'
+          PIPELINE_MAX_ATTEMPTS: '5'
           PIPELINE_MAX_STRIKES: '3'
           GH_RUN_ID: ${{ github.run_id }}
         run: |
@@ -146,7 +146,13 @@ jobs:
               | sort -nr | head -1) || echo 0 )
             STRIKES=${STRIKES:-0}
             export PIPELINE_AGENT_TIMEOUT_SEC=$((600 * (STRIKES + 1)))
-            echo "manager: #$NEXT has $STRIKES prior strike(s); PIPELINE_AGENT_TIMEOUT_SEC=$PIPELINE_AGENT_TIMEOUT_SEC"
+            # Attempt = rework counter (reviewer-driven); Strikes = dispatch-failure
+            # counter (manager.sh non-zero exit). Logged together so the timeout
+            # value reads correctly -- it scales with strikes, not attempts.
+            # Attempt is the value before any rework increment in manager.sh below.
+            ATTEMPT="$(scripts/get-field.sh "$NEXT" "Attempt" 2>/dev/null || echo 0)"
+            ATTEMPT=${ATTEMPT:-0}
+            echo "manager: #$NEXT attempt=$ATTEMPT strikes=$STRIKES; PIPELINE_AGENT_TIMEOUT_SEC=$PIPELINE_AGENT_TIMEOUT_SEC"
 
             # Reset to a clean develop checkout before handing off. The
             # prior iteration's manager.sh may have failed mid-edit --
