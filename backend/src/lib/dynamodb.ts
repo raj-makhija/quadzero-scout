@@ -1523,15 +1523,26 @@ export async function updateShortlistPipelineStage(
 export async function updateShortlistQuotedRate(
   requirementId: string,
   candidateId: string,
-  quotedRateHourly: number
+  fields: {
+    quoted_rate_hourly: number;
+    quoted_rate_monthly: number;
+    quoted_rate_annual: number;
+    quoted_rate_denomination: string;
+    quoted_rate_gst_inclusive: boolean;
+  }
 ): Promise<void> {
   await docClient.send(
     new UpdateCommand({
       TableName: config.dynamodb.shortlistsTable,
       Key: { requirement_id: requirementId, candidate_id: candidateId },
-      UpdateExpression: 'SET quoted_rate_hourly = :qr, last_activity_at = :now',
+      UpdateExpression:
+        'SET quoted_rate_hourly = :qrh, quoted_rate_monthly = :qrm, quoted_rate_annual = :qra, quoted_rate_denomination = :qrd, quoted_rate_gst_inclusive = :qrg, last_activity_at = :now',
       ExpressionAttributeValues: {
-        ':qr': quotedRateHourly,
+        ':qrh': fields.quoted_rate_hourly,
+        ':qrm': fields.quoted_rate_monthly,
+        ':qra': fields.quoted_rate_annual,
+        ':qrd': fields.quoted_rate_denomination,
+        ':qrg': fields.quoted_rate_gst_inclusive,
         ':now': new Date().toISOString(),
       },
     })

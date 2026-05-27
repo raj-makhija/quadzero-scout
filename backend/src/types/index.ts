@@ -772,6 +772,9 @@ export type InterviewDecision = z.infer<typeof InterviewDecisionEnum>;
 export const CommunicationSourceEnum = z.enum(['email', 'call', 'chat', 'internal']);
 export type CommunicationSource = z.infer<typeof CommunicationSourceEnum>;
 
+export const QuotedRateDenominationEnum = z.enum(['hourly', 'monthly', 'annual']);
+export type QuotedRateDenomination = z.infer<typeof QuotedRateDenominationEnum>;
+
 export interface ShortlistItem {
   requirement_id: string;
   candidate_id: string;
@@ -801,6 +804,10 @@ export interface ShortlistItem {
   internal_rate_annual?: number;
   proposed_rate_calculated_at?: string;
   quoted_rate_hourly?: number;
+  quoted_rate_monthly?: number;
+  quoted_rate_annual?: number;
+  quoted_rate_denomination?: QuotedRateDenomination;
+  quoted_rate_gst_inclusive?: boolean;
 }
 
 // ─── Pipeline Activity Types ────────────────────────────────────────────────

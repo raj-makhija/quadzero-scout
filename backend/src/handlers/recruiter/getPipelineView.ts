@@ -73,6 +73,10 @@ async function handleRequest(
         internalRateMonthly: item.internal_rate_monthly,
         internalRateAnnual: item.internal_rate_annual,
         quotedRateHourly: item.quoted_rate_hourly,
+        quotedRateMonthly: item.quoted_rate_monthly,
+        quotedRateAnnual: item.quoted_rate_annual,
+        quotedRateDenomination: item.quoted_rate_denomination,
+        quotedRateGstInclusive: item.quoted_rate_gst_inclusive,
       });
     }
 

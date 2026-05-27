@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { LLMJDOutputSchema, PricingConfigSchema, SessionSettingsSchema, AdditionalFieldDefinitionSchema, SeniorityEnum, AvailabilityEnum, PipelineStageEnum, ClientFeedbackRatingEnum, InterviewFeedbackRatingEnum, InterviewTypeEnum, InterviewDecisionEnum, CommunicationSourceEnum } from '../types/index.js';
+import { LLMJDOutputSchema, PricingConfigSchema, SessionSettingsSchema, AdditionalFieldDefinitionSchema, SeniorityEnum, AvailabilityEnum, PipelineStageEnum, ClientFeedbackRatingEnum, InterviewFeedbackRatingEnum, InterviewTypeEnum, InterviewDecisionEnum, CommunicationSourceEnum, QuotedRateDenominationEnum } from '../types/index.js';
 
 // Upload URL Request Validation
 export const UploadUrlRequestSchema = z.object({
@@ -406,6 +406,8 @@ export const SubmitCandidateToClientRequestSchema = z.object({
   offline: z.boolean().optional(),
   offlineSentAt: z.string().datetime().optional(),
   quotedRateHourly: z.number().nonnegative(),
+  quotedRateDenomination: QuotedRateDenominationEnum.optional(),
+  quotedRateGstInclusive: z.boolean().optional(),
 });
 
 export const SubmitBatchToClientRequestSchema = z.object({
@@ -415,6 +417,8 @@ export const SubmitBatchToClientRequestSchema = z.object({
   coverNote: z.string().max(5000).optional(),
   ccEmails: z.array(z.string().email()).max(10).optional(),
   quotedRates: z.record(z.string(), z.number().nonnegative()),
+  quotedRateDenomination: QuotedRateDenominationEnum.optional(),
+  quotedRateGstInclusive: z.boolean().optional(),
 });
 
 export const RecordClientFeedbackRequestSchema = z.object({
@@ -451,6 +455,8 @@ export const UpdatePipelineStageRequestSchema = z.object({
 
 export const UpdateSubmissionRateRequestSchema = z.object({
   quotedRateHourly: z.number().nonnegative(),
+  quotedRateDenomination: QuotedRateDenominationEnum.optional(),
+  quotedRateGstInclusive: z.boolean().optional(),
 });
 
 export const AddPipelineNoteRequestSchema = z.object({
