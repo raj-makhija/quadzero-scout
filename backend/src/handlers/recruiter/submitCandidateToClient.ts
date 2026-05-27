@@ -35,7 +35,28 @@ async function handleRequest(
       return error(ErrorCodes.VALIDATION_ERROR, formatZodErrors(validation.errors), 400);
     }
 
-    const { clientEmail, clientName, coverNote, ccEmails, offline, offlineSentAt, quotedRateHourly } = validation.data;
+    const { clientEmail, clientName, coverNote, ccEmails, offline, offlineSentAt, quotedRateHourly, quotedRateDenomination, quotedRateGstInclusive } = validation.data;
+
+    const HOURS_PER_MONTH = 160;
+    const denom = quotedRateDenomination || 'hourly';
+    const gstInclusive = quotedRateGstInclusive ?? false;
+    let rateHourly: number, rateMonthly: number, rateAnnual: number;
+    switch (denom) {
+      case 'monthly':
+        rateMonthly = quotedRateHourly;
+        rateHourly = rateMonthly / HOURS_PER_MONTH;
+        rateAnnual = rateMonthly * 12;
+        break;
+      case 'annual':
+        rateAnnual = quotedRateHourly;
+        rateMonthly = rateAnnual / 12;
+        rateHourly = rateMonthly / HOURS_PER_MONTH;
+        break;
+      default:
+        rateHourly = quotedRateHourly;
+        rateMonthly = rateHourly * HOURS_PER_MONTH;
+        rateAnnual = rateMonthly * 12;
+    }
 
     // clientEmail is required when not offline
     if (!offline && !clientEmail) {
@@ -73,7 +94,11 @@ async function handleRequest(
         {
           submitted_at: offlineSentAt || now,
           submitted_by: event.auth.userId,
-          quoted_rate_hourly: quotedRateHourly,
+          quoted_rate_hourly: rateHourly,
+          quoted_rate_monthly: rateMonthly,
+          quoted_rate_annual: rateAnnual,
+          quoted_rate_denomination: denom,
+          quoted_rate_gst_inclusive: gstInclusive,
         }
       );
 
@@ -114,7 +139,11 @@ async function handleRequest(
         {
           submitted_at: now,
           submitted_by: event.auth.userId,
-          quoted_rate_hourly: quotedRateHourly,
+          quoted_rate_hourly: rateHourly,
+          quoted_rate_monthly: rateMonthly,
+          quoted_rate_annual: rateAnnual,
+          quoted_rate_denomination: denom,
+          quoted_rate_gst_inclusive: gstInclusive,
         }
       );
 

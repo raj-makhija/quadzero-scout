@@ -33,7 +33,28 @@ async function handleRequest(
       return error(ErrorCodes.VALIDATION_ERROR, formatZodErrors(validation.errors), 400);
     }
 
-    const { quotedRateHourly } = validation.data;
+    const { quotedRateHourly, quotedRateDenomination, quotedRateGstInclusive } = validation.data;
+
+    const HOURS_PER_MONTH = 160;
+    const denom = quotedRateDenomination || 'hourly';
+    const gstInclusive = quotedRateGstInclusive ?? false;
+    let rateHourly: number, rateMonthly: number, rateAnnual: number;
+    switch (denom) {
+      case 'monthly':
+        rateMonthly = quotedRateHourly;
+        rateHourly = rateMonthly / HOURS_PER_MONTH;
+        rateAnnual = rateMonthly * 12;
+        break;
+      case 'annual':
+        rateAnnual = quotedRateHourly;
+        rateMonthly = rateAnnual / 12;
+        rateHourly = rateMonthly / HOURS_PER_MONTH;
+        break;
+      default:
+        rateHourly = quotedRateHourly;
+        rateMonthly = rateHourly * HOURS_PER_MONTH;
+        rateAnnual = rateMonthly * 12;
+    }
 
     const shortlistEntry = await getShortlistEntry(requirementId, candidateId);
     if (!shortlistEntry) {
@@ -47,21 +68,29 @@ async function handleRequest(
 
     const previousRate = shortlistEntry.quoted_rate_hourly;
 
-    await updateShortlistQuotedRate(requirementId, candidateId, quotedRateHourly);
+    await updateShortlistQuotedRate(requirementId, candidateId, {
+      hourly: rateHourly,
+      monthly: rateMonthly,
+      annual: rateAnnual,
+      denomination: denom,
+      gstInclusive,
+    });
 
     await createPipelineActivity(requirementId, candidateId, 'quoted_rate_updated', event.auth.userId, {
       previous_rate_hourly: previousRate ?? null,
-      new_rate_hourly: quotedRateHourly,
+      new_rate_hourly: rateHourly,
+      denomination: denom,
+      gst_inclusive: gstInclusive,
     });
 
     logAuditEvent(event.auth, event, {
       action: 'PIPELINE_UPDATE_QUOTED_RATE',
       entityType: 'pipeline',
       entityId: `${requirementId}:${candidateId}`,
-      metadata: { requirementId, candidateId, previousRate, newRate: quotedRateHourly },
+      metadata: { requirementId, candidateId, previousRate, newRate: rateHourly, denomination: denom },
     });
 
-    return success({ updated: true, candidateId, requirementId, quotedRateHourly });
+    return success({ updated: true, candidateId, requirementId, quotedRateHourly: rateHourly });
   } catch (err) {
     console.error('Error updating submission rate:', err);
     return error(ErrorCodes.INTERNAL_ERROR, 'Failed to update submission rate', 500, { message: (err as Error).message });

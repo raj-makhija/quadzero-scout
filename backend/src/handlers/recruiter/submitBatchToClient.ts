@@ -34,7 +34,11 @@ async function handleRequest(
       return error(ErrorCodes.VALIDATION_ERROR, formatZodErrors(validation.errors), 400);
     }
 
-    const { candidateIds, clientEmail, clientName, coverNote, ccEmails, quotedRates } = validation.data;
+    const { candidateIds, clientEmail, clientName, coverNote, ccEmails, quotedRates, quotedRateDenomination, quotedRateGstInclusive } = validation.data;
+
+    const HOURS_PER_MONTH = 160;
+    const denom = quotedRateDenomination || 'hourly';
+    const gstInclusive = quotedRateGstInclusive ?? false;
 
     // Fetch requirement
     const requirement = await getRequirementById(requirementId);
@@ -91,10 +95,17 @@ async function handleRequest(
     const now = new Date().toISOString();
     await Promise.all(
       candidateIds.map(async (cid) => {
+        const enteredRate = quotedRates[cid];
+        let rH: number, rM: number, rA: number;
+        switch (denom) {
+          case 'monthly': rM = enteredRate; rH = rM / HOURS_PER_MONTH; rA = rM * 12; break;
+          case 'annual': rA = enteredRate; rM = rA / 12; rH = rM / HOURS_PER_MONTH; break;
+          default: rH = enteredRate; rM = rH * HOURS_PER_MONTH; rA = rM * 12;
+        }
         await transitionPipelineStage(
           requirementId, cid, 'shortlisted', 'submitted_to_client',
           event.auth.userId, undefined,
-          { submitted_at: now, submitted_by: event.auth.userId, quoted_rate_hourly: quotedRates[cid] }
+          { submitted_at: now, submitted_by: event.auth.userId, quoted_rate_hourly: rH, quoted_rate_monthly: rM, quoted_rate_annual: rA, quoted_rate_denomination: denom, quoted_rate_gst_inclusive: gstInclusive }
         );
         await createPipelineActivity(requirementId, cid, 'email_sent', event.auth.userId, {
           email_type: 'batch_submission',

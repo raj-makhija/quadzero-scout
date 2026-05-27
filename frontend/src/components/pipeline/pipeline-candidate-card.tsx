@@ -225,7 +225,12 @@ export function PipelineCandidateCard({
             )}
             {candidate.quotedRateHourly != null && (
               <div className="mt-1 text-xs text-blue-600 dark:text-blue-400">
-                Quoted: {formatInr(candidate.quotedRateHourly)}/hr
+                Quoted: {formatInr(
+                  candidate.quotedRateDenomination === 'annual' ? candidate.quotedRateAnnual!
+                  : candidate.quotedRateDenomination === 'monthly' ? candidate.quotedRateMonthly!
+                  : candidate.quotedRateHourly
+                )}{candidate.quotedRateDenomination === 'annual' ? '/yr' : candidate.quotedRateDenomination === 'monthly' ? '/mo' : '/hr'}
+                {candidate.quotedRateGstInclusive && ' (GST incl.)'}
               </div>
             )}
 
@@ -303,9 +308,17 @@ export function PipelineCandidateCard({
         requirementId={requirementId}
         candidateId={candidate.candidateId}
         candidateName={candidate.fullName}
-        currentRate={candidate.quotedRateHourly}
+        currentRate={
+          candidate.quotedRateDenomination === 'annual' ? candidate.quotedRateAnnual
+          : candidate.quotedRateDenomination === 'monthly' ? candidate.quotedRateMonthly
+          : candidate.quotedRateHourly
+        }
+        currentDenomination={candidate.quotedRateDenomination}
+        currentGstInclusive={candidate.quotedRateGstInclusive}
         internalRateHourly={candidate.internalRateHourly}
+        internalRateMonthly={candidate.internalRateMonthly}
         proposedRateHourly={candidate.proposedRateHourly}
+        proposedRateMonthly={candidate.proposedRateMonthly}
         isOpen={editRateOpen}
         onClose={() => setEditRateOpen(false)}
         onUpdated={() => {

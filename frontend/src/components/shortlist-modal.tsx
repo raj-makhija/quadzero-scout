@@ -71,7 +71,9 @@ export function ShortlistModal({
   const [submitToClientOpen, setSubmitToClientOpen] = useState(false);
   const [submitCandidateRates, setSubmitCandidateRates] = useState<{
     proposedRateHourly?: number;
+    proposedRateMonthly?: number;
     internalRateHourly?: number;
+    internalRateMonthly?: number;
   }>({});
   const [loadingRates, setLoadingRates] = useState(false);
 
@@ -85,7 +87,9 @@ export function ShortlistModal({
       );
       setSubmitCandidateRates({
         proposedRateHourly: rates.proposedRateHourly ?? undefined,
+        proposedRateMonthly: rates.proposedRateMonthly ?? undefined,
         internalRateHourly: rates.internalRateHourly ?? undefined,
+        internalRateMonthly: rates.internalRateMonthly ?? undefined,
       });
     } catch {
       setSubmitCandidateRates({});
@@ -584,7 +588,9 @@ export function ShortlistModal({
             candidateId: candidate.candidateId,
             fullName: candidate.fullName,
             proposedRateHourly: submitCandidateRates.proposedRateHourly,
+            proposedRateMonthly: submitCandidateRates.proposedRateMonthly,
             internalRateHourly: submitCandidateRates.internalRateHourly,
+            internalRateMonthly: submitCandidateRates.internalRateMonthly,
           }]}
           isOpen={submitToClientOpen}
           onClose={() => setSubmitToClientOpen(false)}
