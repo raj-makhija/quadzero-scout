@@ -33,6 +33,8 @@ export const handler = async (
     module = await import('./updateSubmissionRate.js');
   } else if (method === 'POST' && path.endsWith('/notes')) {
     module = await import('./addPipelineNote.js');
+  } else if (method === 'GET' && path.endsWith('/shortlist-entry')) {
+    module = await import('./getShortlistEntryRates.js');
   } else {
     return {
       statusCode: 404,
