@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import { X, AlertCircle, Loader2 } from 'lucide-react';
+import { X, AlertCircle, Loader2, Send } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import type { CandidateSearchResult, SearchCriteria, PricingOutput } from '@/lib/api';
 import { PricingPanel } from '@/components/PricingPanel';
+import { SubmitToClientModal } from '@/components/pipeline/submit-to-client-modal';
 import { getScreeningStatus, isScreeningExpired } from '@/components/screening-modal';
 import {
   formatSeniority,
@@ -67,6 +68,31 @@ export function ShortlistModal({
     totalExperience?: number;
     expectedCtcType?: string;
   } | null>(null);
+  const [submitToClientOpen, setSubmitToClientOpen] = useState(false);
+  const [submitCandidateRates, setSubmitCandidateRates] = useState<{
+    proposedRateHourly?: number;
+    internalRateHourly?: number;
+  }>({});
+  const [loadingRates, setLoadingRates] = useState(false);
+
+  const handleOpenSubmitToClient = useCallback(async () => {
+    if (!requirementContext) return;
+    setLoadingRates(true);
+    try {
+      const rates = await api.getShortlistEntryRates(
+        requirementContext.requirementId,
+        candidate.candidateId
+      );
+      setSubmitCandidateRates({
+        proposedRateHourly: rates.proposedRateHourly ?? undefined,
+        internalRateHourly: rates.internalRateHourly ?? undefined,
+      });
+    } catch {
+      setSubmitCandidateRates({});
+    }
+    setLoadingRates(false);
+    setSubmitToClientOpen(true);
+  }, [requirementContext, candidate.candidateId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -452,14 +478,33 @@ export function ShortlistModal({
           {isShortlistMode && (
             <>
               {candidate.isShortlisted ? (
-                <div className="flex items-center justify-center gap-2 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                  <svg className="w-5 h-5 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  <span className="text-sm font-medium text-green-700 dark:text-green-300">
-                    Shortlisted for {requirementContext.clientName}
-                  </span>
-                </div>
+                <>
+                  <div className="flex items-center justify-center gap-2 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                    <svg className="w-5 h-5 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span className="text-sm font-medium text-green-700 dark:text-green-300">
+                      Shortlisted for {requirementContext.clientName}
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleOpenSubmitToClient}
+                    disabled={loadingRates}
+                    className="btn-primary w-full flex items-center justify-center gap-2"
+                  >
+                    {loadingRates ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Loading...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4" />
+                        Submit to Client
+                      </>
+                    )}
+                  </button>
+                </>
               ) : candidate.notInterested && !confirmNotInterested ? (
                 <button
                   onClick={() => setConfirmNotInterested(true)}
@@ -531,6 +576,24 @@ export function ShortlistModal({
           )}
         </div>
       </div>
+
+      {requirementContext && (
+        <SubmitToClientModal
+          requirementId={requirementContext.requirementId}
+          candidates={[{
+            candidateId: candidate.candidateId,
+            fullName: candidate.fullName,
+            proposedRateHourly: submitCandidateRates.proposedRateHourly,
+            internalRateHourly: submitCandidateRates.internalRateHourly,
+          }]}
+          isOpen={submitToClientOpen}
+          onClose={() => setSubmitToClientOpen(false)}
+          onSubmitted={() => {
+            setSubmitToClientOpen(false);
+            onClose();
+          }}
+        />
+      )}
     </div>
   );
 }

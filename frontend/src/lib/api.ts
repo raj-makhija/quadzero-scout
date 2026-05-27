@@ -868,6 +868,16 @@ class ApiClient {
     );
   }
 
+  async getShortlistEntryRates(requirementId: string, candidateId: string) {
+    return this.request<{
+      requirementId: string;
+      candidateId: string;
+      proposedRateHourly: number | null;
+      internalRateHourly: number | null;
+      quotedRateHourly: number | null;
+    }>(`/recruiter/requirements/${requirementId}/candidates/${candidateId}/shortlist-entry`);
+  }
+
   async updateSubmissionRate(requirementId: string, candidateId: string, params: UpdateSubmissionRateParams) {
     return this.request<{ updated: boolean; candidateId: string; requirementId: string; quotedRateHourly: number }>(
       `/recruiter/requirements/${requirementId}/candidates/${candidateId}/submission`,
