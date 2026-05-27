@@ -174,6 +174,18 @@ jobs:
               scripts/clear-strikes.sh "$NEXT" || true
             else
               RC=$?
+              # RC=75 is the _agent-claude.sh sentinel for Claude plan
+              # quota exhaustion (CLAUDE_CODE_OAUTH_TOKEN). The in-flight
+              # ticket's status is unchanged (set -e aborted the wrapper
+              # before the status-advance call), so the next cron tick
+              # will re-dispatch the same step once the plan resets.
+              # Do NOT strike: this is a transient external condition,
+              # not a ticket-specific failure.
+              if [[ $RC -eq 75 ]]; then
+                echo "manager: #$NEXT bail without strike -- claude plan quota exhausted; aborting drain"
+                gh issue comment "$NEXT" --body "[manager:paused] Drain aborted at $(date -u +%Y-%m-%dT%H:%M:%SZ) -- Claude plan quota exhausted (CLAUDE_CODE_OAUTH_TOKEN). Ticket state unchanged; next cron tick will retry once the plan window resets. Workflow run: ${GH_RUN_ID}" || true
+                break
+              fi
               echo "manager: #$NEXT advancement failed (exit $RC); striking"
               scripts/strike-ticket.sh "$NEXT" "manager.sh exit $RC at $(date -u +%Y-%m-%dT%H:%M:%SZ); see workflow run ${GH_RUN_ID}" || true
               STRUCK_THIS_DRAIN="${STRUCK_THIS_DRAIN:+$STRUCK_THIS_DRAIN|}${NEXT}"

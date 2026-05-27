@@ -85,6 +85,15 @@ set -e
 
 cat "$RESPONSE_FILE" >&2
 
+# Claude plan quota exhaustion (CLAUDE_CODE_OAUTH_TOKEN / Pro/Max subscription).
+# The CLI prints a "usage limit reached" message and may exit 0 or non-zero
+# depending on version; either way we want a distinguishable sentinel exit
+# so the drain loop can bail without striking the in-flight ticket.
+if grep -qiE 'claude (ai )?usage limit|usage limit reached|5[- ]hour limit|weekly limit|your limit will reset' "$RESPONSE_FILE"; then
+  echo "error: claude plan quota exhausted (CLAUDE_CODE_OAUTH_TOKEN); exiting 75 to pause drain" >&2
+  exit 75
+fi
+
 if [[ $RC -eq 124 ]]; then
   echo "error: claude timed out after ${TIMEOUT_SEC}s" >&2
   exit 124
