@@ -143,10 +143,21 @@ custom:
     platform: node
     concurrency: 10
 
+  # Ticket #209: bypass CloudFormation 500-resource limit by splitting the
+  # generated template into nested stacks. perGroupFunction puts each Lambda
+  # and its child resources into its own nested stack. Tables/S3 buckets in
+  # the top-level resources: block stay in the root stack.
+  splitStacks:
+    perFunction: false
+    perType: false
+    perGroupFunction: true
+    nestedStackCount: 10
+
 plugins:
   - serverless-dotenv-plugin
   - serverless-esbuild
   - serverless-offline
+  - serverless-plugin-split-stacks
 
 package:
   individually: true

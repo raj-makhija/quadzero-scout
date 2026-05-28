@@ -13,6 +13,7 @@
     "serverless-dotenv-plugin": "^6.0.0",
     "serverless-esbuild": "^1.57.0",
     "serverless-offline": "^13.9.0",
+    "serverless-plugin-split-stacks": "^1.14.0",
     "uuid": "^13.0.0",
     "zod": "^4.3.6"
   }
