@@ -414,6 +414,16 @@ can be re-fired later.
 | `pipeline:park` | Halt processing; set Pipeline Status=needs-human | none |
 | `pipeline:show-status` | Bot replies with current Pipeline Status / Agent / Attempt / Base SHA / PR Number | none |
 
+**Precondition for `pipeline:prod-release`**: the ticket must be in
+`status:qa-approved` or `status:prod-release-blocked` for the release
+to actually happen. `prod-release.sh` builds its candidate set from
+those two status labels and ignores everything else. If you label a
+`status:ready-for-qa` ticket with `pipeline:prod-release`, the route
+command will succeed and the runner will execute the script — but the
+ticket simply won't be in the candidate set, so nothing ships and no
+error surfaces. Run `scripts/set-status.sh <N> qa-approved` first if
+you're bypassing the normal qa-deploy → qa-approve sequence.
+
 **Why labels rather than slash commands**: GitHub's label picker is a
 dropdown with predefined options — no typo risk on the command name.
 Labels also live visibly on the ticket while the action runs.

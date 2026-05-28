@@ -826,6 +826,35 @@ A read-only, unauthenticated page at `/vendor/requirements` that lists open posi
 - Lifecycle policies for cost optimization
 - Versioning enabled for data protection
 
+### CloudFormation 500-resource limit
+
+CloudFormation imposes a hard limit of **500 resources per stack**. With ~80 Lambda functions — each contributing a `Function`, `LogGroup`, `Permission`, API Gateway `Integration`, `Route`, and one or more `Version` resources — the monolithic Serverless stack approached this ceiling in May 2026. #162 surfaced the blocker when a qa deploy failed with `Number of resources, 503, is greater than maximum allowed, 500`; #209 introduced the mitigation now running on all three stages.
+
+The fix is `serverless-plugin-split-stacks` (configured in `infra/serverless.yml` under `custom.splitStacks`):
+
+```yaml
+custom:
+  splitStacks:
+    perFunction: false
+    perType: false
+    perGroupFunction: true
+    nestedStackCount: 10
+```
+
+The `perGroupFunction` strategy hashes each Lambda's normalized logical ID modulo `nestedStackCount` and assigns it (and its function-scoped child resources) to one of N nested CFN stacks. **What moves**: primarily `AWS::Lambda::Version` resources, plus some function-scoped permissions. **What stays in the root stack**: DynamoDB tables and S3 buckets declared in `infra/resources/*.yml`, the IAM role, the HTTP API and its routes/integrations, and the Lambda function definitions themselves.
+
+Live state after the split (per the #209 deploy):
+
+| Stage | Root resources | Nested stacks | Per-nested resources |
+|---|---|---|---|
+| dev | 431 | 10 | 5–13 |
+| qa  | 431 | 10 | 5–13 |
+| prod | 423 | 10 | 5–13 |
+
+All stacks have substantial headroom before re-hitting the 500 limit. The plugin's own ceiling of 200 nested stacks is irrelevant at this scale.
+
+This is a tactical bridge, not the long-term answer. The intended fix is to decompose the monolithic Serverless service into per-domain "Lambdalith" services — tracked in #210. The plugin will be removed once that lands, at which point each Lambdalith stack starts well under 500 resources on its own.
+
 ## Environment Configuration
 
 | Environment | Purpose | Stage Name |
