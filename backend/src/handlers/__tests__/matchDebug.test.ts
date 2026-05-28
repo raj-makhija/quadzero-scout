@@ -115,7 +115,7 @@ describe('matchDebug handler — MERN stack coreSkill filter reporting', () => {
     expect(body.data.wouldBeExcluded).toBe(true);
   });
 
-  it('reports coreSkill passed for non-stack coreSkill with matching candidate', async () => {
+  it('reports coreSkill passed with exact match detail for non-stack coreSkill with matching candidate', async () => {
     (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(
       makeCandidate(['react', 'typescript'])
     );
@@ -128,6 +128,7 @@ describe('matchDebug handler — MERN stack coreSkill filter reporting', () => {
 
     expect(body.data.filters.coreSkill.passed).toBe(true);
     expect(body.data.excludedBy).not.toContain('coreSkill');
+    expect(body.data.filters.coreSkill.detail).toContain('exact match');
   });
 
   it('skips coreSkill filter when coreSkill is null', async () => {

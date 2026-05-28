@@ -835,6 +835,14 @@ describe('coreSkillSatisfiedBy()', () => {
     expect(coreSkillSatisfiedBy('AWS Architect', ['aws'])).toBe(true);
     expect(coreSkillSatisfiedBy('Aws Architect', ['aws'])).toBe(true);
   });
+
+  it('returns false for all-qualifier compound like "Senior Developer" since no tech token remains', () => {
+    expect(coreSkillSatisfiedBy('Senior Developer', ['react', 'nodejs'])).toBe(false);
+  });
+
+  it('passes "Python Intern" when candidate has "python"', () => {
+    expect(coreSkillSatisfiedBy('Python Intern', ['python', 'django'])).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------

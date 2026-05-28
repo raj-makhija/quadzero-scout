@@ -202,10 +202,6 @@ const STACK_ABBREVIATIONS: Record<string, string[]> = {
   lamp: ['linux', 'apache', 'mysql', 'php'],
 };
 
-/**
- * Returns the component skills for a known stack abbreviation (MERN/MEAN/PERN/LAMP),
- * stripping a trailing " stack" suffix and ignoring case. Returns null for non-abbreviations.
- */
 export function expandStackAbbreviation(skill: string): string[] | null {
   const key = skill.toLowerCase().trim().replace(/\s+stack$/i, '');
   return STACK_ABBREVIATIONS[key] ?? null;
@@ -217,7 +213,7 @@ const ROLE_QUALIFIER_WORDS = new Set([
   'architect', 'developer', 'dev', 'admin', 'administrator',
   'engineer', 'engineering', 'manager', 'management', 'analyst',
   'specialist', 'consultant', 'designer', 'expert', 'programmer',
-  'professional', 'lead', 'head', 'associate', 'senior', 'junior',
+  'professional', 'lead', 'head', 'associate', 'senior', 'junior', 'intern',
   'staff', 'principal', 'director', 'officer', 'technician',
   'scientist', 'researcher',
 ]);
