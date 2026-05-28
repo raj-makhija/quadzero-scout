@@ -308,7 +308,11 @@ export function PipelineCandidateCard({
         requirementId={requirementId}
         candidateId={candidate.candidateId}
         candidateName={candidate.fullName}
-        currentRate={candidate.quotedRateHourly}
+        currentRate={
+          candidate.quotedRateDenomination === 'annual' ? candidate.quotedRateAnnual
+            : candidate.quotedRateDenomination === 'monthly' ? candidate.quotedRateMonthly
+            : candidate.quotedRateHourly
+        }
         currentDenomination={candidate.quotedRateDenomination}
         currentGstInclusive={candidate.quotedRateGstInclusive}
         internalRateHourly={candidate.internalRateHourly}
