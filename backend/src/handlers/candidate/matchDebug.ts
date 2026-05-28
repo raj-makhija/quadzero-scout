@@ -159,7 +159,7 @@ export async function handler(
             : coreSkillResult.matchType === 'token'
               ? `Matched coreSkill '${rawCoreSkill}' via technology token '${coreSkillResult.matchedToken}' in candidate primary skills`
               : coreSkillPassed
-                ? `Normalized coreSkill '${normalizedCoreSkill}' found in candidate primary skills`
+                ? `Normalized coreSkill '${normalizedCoreSkill}' found in candidate primary skills (exact match)`
                 : `Normalized coreSkill '${normalizedCoreSkill}' NOT in candidate primary skills: [${candidatePrimaryNormalized.join(', ')}]`,
         },
         mustHaveRatio: {
