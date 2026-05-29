@@ -207,18 +207,81 @@ export function expandStackAbbreviation(skill: string): string[] | null {
   return STACK_ABBREVIATIONS[key] ?? null;
 }
 
+// Words that qualify a role (e.g. "Architect" in "AWS Architect") but are not themselves
+// a technology. Used to extract the tech token from compound coreSkill phrases.
+const ROLE_QUALIFIER_WORDS = new Set([
+  'architect', 'developer', 'dev', 'admin', 'administrator',
+  'engineer', 'engineering', 'manager', 'management', 'analyst',
+  'specialist', 'consultant', 'designer', 'expert', 'programmer',
+  'professional', 'lead', 'head', 'associate', 'senior', 'junior', 'intern',
+  'staff', 'principal', 'director', 'officer', 'technician',
+  'scientist', 'researcher',
+]);
+
+export type CoreSkillMatchType = 'skipped' | 'stack' | 'exact' | 'token' | 'none';
+
+export interface CoreSkillMatchResult {
+  passed: boolean;
+  matchType: CoreSkillMatchType;
+  matchedToken?: string;
+}
+
+/**
+ * Returns a structured match result for the coreSkill filter.
+ * matchType distinguishes how the candidate passed (or why they didn't):
+ *   'skipped' — coreSkill is null/undefined, filter not applied
+ *   'stack'   — known stack abbreviation (MERN/MEAN/PERN/LAMP), all components required
+ *   'exact'   — normalized coreSkill found verbatim in candidate primary skills
+ *   'token'   — compound coreSkill (e.g. "AWS Architect"): tech token matched after stripping role qualifiers
+ *   'none'    — candidate does not satisfy the coreSkill requirement
+ */
+export function coreSkillMatchResult(
+  coreSkill: string | null | undefined,
+  candidatePrimarySkills: string[]
+): CoreSkillMatchResult {
+  if (!coreSkill) return { passed: true, matchType: 'skipped' };
+
+  const components = expandStackAbbreviation(coreSkill);
+  if (components) {
+    const candidateSet = new Set(normalizeSkills(candidatePrimarySkills));
+    return { passed: components.every((c) => candidateSet.has(c)), matchType: 'stack' };
+  }
+
+  const normalizedCoreSkill = normalizeSkill(coreSkill);
+  const candidateSet = new Set(normalizeSkills(candidatePrimarySkills));
+
+  if (candidateSet.has(normalizedCoreSkill)) {
+    return { passed: true, matchType: 'exact' };
+  }
+
+  // For compound coreSkills (e.g. "AWS Architect", "Salesforce Admin"), split the raw
+  // phrase into tokens BEFORE normalization (so ontology phrase mappings don't collapse
+  // multi-word compounds into a single token), strip role-qualifier words, then normalize
+  // each remaining technology token and check against the candidate set.
+  const rawTokens = coreSkill.toLowerCase().trim().split(/\s+/);
+  const techRawTokens = rawTokens.filter((t) => !ROLE_QUALIFIER_WORDS.has(t));
+  if (techRawTokens.length > 0 && techRawTokens.length < rawTokens.length) {
+    const matchedRawToken = techRawTokens.find((t) => candidateSet.has(normalizeSkill(t)));
+    if (matchedRawToken) {
+      return { passed: true, matchType: 'token', matchedToken: normalizeSkill(matchedRawToken) };
+    }
+  }
+
+  return { passed: false, matchType: 'none' };
+}
+
+/**
+ * Returns true if the candidate's primary skills satisfy the coreSkill requirement.
+ * For known stack abbreviations (MERN/MEAN/PERN/LAMP), ALL component skills must be present.
+ * For compound role-qualified coreSkills (e.g. "AWS Architect"), matches if the candidate
+ * holds the core technology token (e.g. "aws"). Falls back to a normalized literal match.
+ * Returns true if coreSkill is null/undefined (filter is skipped).
+ */
 export function coreSkillSatisfiedBy(
   coreSkill: string | null | undefined,
   candidatePrimarySkills: string[]
 ): boolean {
-  if (!coreSkill) return true;
-  const components = expandStackAbbreviation(coreSkill);
-  if (components) {
-    const candidateSet = new Set(normalizeSkills(candidatePrimarySkills));
-    return components.every((c) => candidateSet.has(c));
-  }
-  const normalizedCoreSkill = normalizeSkill(coreSkill);
-  return new Set(normalizeSkills(candidatePrimarySkills)).has(normalizedCoreSkill);
+  return coreSkillMatchResult(coreSkill, candidatePrimarySkills).passed;
 }
 
 /**

@@ -978,6 +978,10 @@ export interface PipelineCandidateView {
   internalRateMonthly?: number;
   internalRateAnnual?: number;
   quotedRateHourly?: number;
+  quotedRateMonthly?: number;
+  quotedRateAnnual?: number;
+  quotedRateDenomination?: QuotedRateDenomination;
+  quotedRateGstInclusive?: boolean;
 }
 
 export interface PipelineViewResponse {

@@ -2,7 +2,7 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, MatchDebugRequestSchema } from '../../lib/validation.js';
 import { getCandidateById, getRequirementById } from '../../lib/dynamodb.js';
-import { normalizeSkill, normalizeSkills } from '../../lib/skillNormalizer.js';
+import { normalizeSkill, normalizeSkills, coreSkillMatchResult } from '../../lib/skillNormalizer.js';
 import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, FUZZY_MATCH_WEIGHT, MUST_HAVE_SECONDARY_WEIGHT, parseSearchLocations, isEngagementModelCompatible } from '../../lib/matchScoring.js';
 import { isCandidateWithinBudget } from '../../lib/ctcConversion.js';
 
@@ -58,7 +58,6 @@ export async function handler(
     const candidatePrimaryRaw = candidate.primary_skills || [];
     const candidateSecondaryRaw = candidate.secondary_skills || [];
     const candidatePrimaryNormalized = normalizeSkills(candidatePrimaryRaw);
-    const candidatePrimarySet = new Set(candidatePrimaryNormalized);
 
     const normalizedMustHave = normalizeSkills(criteria.mustHaveSkills || []);
     const normalizedGoodToHave = normalizeSkills(criteria.goodToHaveSkills || []);
@@ -71,7 +70,8 @@ export async function handler(
     // --- Filter 1: CoreSkill pre-filter ---
     const rawCoreSkill = criteria.coreSkill || null;
     const normalizedCoreSkill = rawCoreSkill ? normalizeSkill(rawCoreSkill) : null;
-    const coreSkillPassed = !normalizedCoreSkill || candidatePrimarySet.has(normalizedCoreSkill);
+    const coreSkillResult = coreSkillMatchResult(rawCoreSkill, candidatePrimaryRaw);
+    const coreSkillPassed = coreSkillResult.passed;
 
     // --- Run scoring (even if filters would reject, for diagnostic purposes) ---
     const { score, details } = calculateMatchScore(
@@ -154,11 +154,13 @@ export async function handler(
       filters: {
         coreSkill: {
           passed: coreSkillPassed,
-          detail: normalizedCoreSkill
-            ? coreSkillPassed
-              ? `Normalized coreSkill '${normalizedCoreSkill}' found in candidate primary skills`
-              : `Normalized coreSkill '${normalizedCoreSkill}' NOT in candidate primary skills: [${candidatePrimaryNormalized.join(', ')}]`
-            : 'No coreSkill specified — filter skipped',
+          detail: !rawCoreSkill
+            ? 'No coreSkill specified — filter skipped'
+            : coreSkillResult.matchType === 'token'
+              ? `Matched coreSkill '${rawCoreSkill}' via technology token '${coreSkillResult.matchedToken}' in candidate primary skills`
+              : coreSkillPassed
+                ? `Normalized coreSkill '${normalizedCoreSkill}' found in candidate primary skills (exact match)`
+                : `Normalized coreSkill '${normalizedCoreSkill}' NOT in candidate primary skills: [${candidatePrimaryNormalized.join(', ')}]`,
         },
         mustHaveRatio: {
           passed: mustHaveRatioPassed,
