@@ -8,6 +8,7 @@ export interface PresignedUrlResult {
   url: string;
   key: string;
   expiresIn: number;
+  attachmentId?: string;
 }
 
 export async function generateUploadUrl(
@@ -145,7 +146,7 @@ export async function generateAttachmentUploadUrl(
     expiresIn: config.s3.presignedUrlExpiry,
   });
 
-  return { url, key, expiresIn: config.s3.presignedUrlExpiry };
+  return { url, key, expiresIn: config.s3.presignedUrlExpiry, attachmentId: uniqueId };
 }
 
 export async function generateAttachmentDownloadUrl(
