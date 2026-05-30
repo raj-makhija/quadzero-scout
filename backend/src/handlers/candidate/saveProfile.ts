@@ -148,6 +148,8 @@ export async function handler(
       },
       linkedin_url: profile.linkedinUrl || existingCandidate?.linkedin_url,
       github_url: profile.githubUrl || existingCandidate?.github_url,
+      hackerrank_url: profile.hackerrankUrl || existingCandidate?.hackerrank_url,
+      hackerrank_score: profile.hackerrankScore ?? existingCandidate?.hackerrank_score,
       cover_letter: profile.coverLetter || existingCandidate?.cover_letter,
       sub_vendor_id: profile.subVendorId || existingCandidate?.sub_vendor_id,
       sub_vendor_name: subVendor?.sub_vendor_name || existingCandidate?.sub_vendor_name,

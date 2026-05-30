@@ -15,6 +15,8 @@ interface CandidateNameSearchResult {
   lastScreenedAt?: string;
   linkedinUrl?: string;
   githubUrl?: string;
+  hackerrankUrl?: string;
+  hackerrankScore?: number;
   notInterested?: boolean;
   notInterestedAt?: string;
 }
@@ -49,6 +51,8 @@ async function handleRequest(
       lastScreenedAt: item.last_screened_at ?? undefined,
       linkedinUrl: item.linkedin_url,
       githubUrl: item.github_url,
+      hackerrankUrl: item.hackerrank_url,
+      hackerrankScore: item.hackerrank_score,
       notInterested: item.not_interested || false,
       notInterestedAt: item.not_interested_at ?? undefined,
     }));

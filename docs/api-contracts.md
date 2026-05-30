@@ -440,6 +440,8 @@ Authorization: Bearer <jwe_token>
     "expectedCtc": 25.0,
     "linkedinUrl": "https://linkedin.com/in/johndoe",
     "githubUrl": "https://github.com/johndoe",
+    "hackerrankUrl": "https://www.hackerrank.com/johndoe",
+    "hackerrankScore": 85,
     "coverLetter": "Dear Hiring Manager, I am writing to express my interest in the Full Stack Developer position...",
     "customFields": {
       "date_of_joining": "2024-03-01",
@@ -476,6 +478,8 @@ Authorization: Bearer <jwe_token>
 - `profile.expectedCtc`: Optional, number, min 0, max 500 (in LPA)
 - `profile.linkedinUrl`: Optional, string (URL), LinkedIn profile URL
 - `profile.githubUrl`: Optional, string (URL), GitHub profile URL
+- `profile.hackerrankUrl`: Optional, string (URL), HackerRank profile URL
+- `profile.hackerrankScore`: Optional, number (0–100), HackerRank score
 - `profile.coverLetter`: Optional, string, cover letter or email body text
 - `profile.customFields`: Optional, `Record<string, string | number>` map of custom field key-value pairs
 - `profile.subVendorId`: Optional, string (UUID). When provided, links the candidate to a sub-vendor from the SubVendors table. The sub-vendor's name and contact person are denormalized onto the candidate profile.
@@ -527,6 +531,8 @@ Authorization: Bearer <jwe_token>
     "formattedResumeS3Key": "formatted-resumes/abc123.pdf",
     "linkedinUrl": "https://linkedin.com/in/johndoe",
     "githubUrl": "https://github.com/johndoe",
+    "hackerrankUrl": "https://www.hackerrank.com/johndoe",
+    "hackerrankScore": 85,
     "coverLetter": "Dear Hiring Manager, I am writing to express my interest in the Full Stack Developer position...",
     "customFields": {
       "date_of_joining": "2024-03-01",
@@ -546,6 +552,8 @@ Authorization: Bearer <jwe_token>
 **Notes:**
 - `linkedinUrl`: Optional string containing the candidate's LinkedIn profile URL. Auto-extracted from resume/email body by LLM; can be manually set during screening. May be absent if not found.
 - `githubUrl`: Optional string containing the candidate's GitHub profile URL. Auto-extracted from resume/email body by LLM; can be manually set during screening. May be absent if not found.
+- `hackerrankUrl`: Optional string containing the candidate's HackerRank profile URL. Auto-extracted from resume/email body by LLM; can be manually set during screening. May be absent if not found.
+- `hackerrankScore`: Optional number (0–100) representing the candidate's HackerRank score. Manually entered during screening. May be absent if not set.
 - `coverLetter`: Optional string containing the candidate's cover letter or supplementary text. For email-ingested candidates, this is the plain-text email body (HTML stripped). May be absent if no cover letter was provided.
 - `customFields`: Optional map of key-value pairs representing recruiter-defined custom fields for this candidate. Keys correspond to `AdditionalFieldDefinition.key` values. May be empty or absent if no custom fields have been set.
 - `subVendorId`: Optional string linking the candidate to a sub-vendor. May be absent if the candidate was not sourced via a sub-vendor.

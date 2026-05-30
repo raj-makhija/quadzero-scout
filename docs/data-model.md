@@ -51,6 +51,8 @@ Stores candidate profile data extracted from resumes and edited by candidates.
 | custom_fields | Map\<String, String\|Number\> | No | Dynamic key-value pairs for additional data points (e.g., date_of_birth, pan_number). Populated by recruiters when requirements request additional candidate information. |
 | linkedin_url | String | No | LinkedIn profile URL. Auto-extracted from resume/email body by LLM; can be manually set during screening. |
 | github_url | String | No | GitHub profile URL. Auto-extracted from resume/email body by LLM; can be manually set during screening. |
+| hackerrank_url | String | No | HackerRank profile URL. Auto-extracted from resume/email body by LLM; can be manually set during screening. |
+| hackerrank_score | Number | No | HackerRank score (0–100). Manually entered during screening. |
 | cover_letter | String | No | Cover letter or supplementary text. For email-ingested candidates, this is the plain-text email body (HTML stripped). |
 | headline | String | No | Short recruiter-validated title for the candidate (e.g., "Sr. Python Developer"). Set during screening; auto-generated from seniority + roles/skills if absent. Max 200 chars. |
 | last_screened_at | String | No | ISO 8601 timestamp of last screening |
@@ -113,6 +115,8 @@ Stores candidate profile data extracted from resumes and edited by candidates.
   },
   "linkedin_url": "https://linkedin.com/in/johndoe",
   "github_url": "https://github.com/johndoe",
+  "hackerrank_url": "https://www.hackerrank.com/johndoe",
+  "hackerrank_score": 85,
   "cover_letter": "Dear Hiring Manager, I am writing to express my interest in the Full Stack Developer position...",
   "not_interested": false,
   "sub_vendor_id": "sv_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
@@ -1227,7 +1231,9 @@ export const CandidateProfileSchema = z.object({
   certifications: z.array(z.string()).optional().default([]),
   summary: z.string().optional(),
   currentCtc: z.number().min(0).max(500).optional(),
-  expectedCtc: z.number().min(0).max(500).optional()
+  expectedCtc: z.number().min(0).max(500).optional(),
+  hackerrankUrl: z.string().url().optional(),
+  hackerrankScore: z.number().min(0).max(100).optional()
 });
 ```
 
@@ -1267,7 +1273,12 @@ export const LLMResumeOutputSchema = z.object({
   certifications: z.array(z.string()).nullable().optional().transform(v => v ?? []),
   summary: z.string().optional().nullable(),
   currentCtc: z.number().nullable().optional().transform(v => v ?? null),
-  expectedCtc: z.number().nullable().optional().transform(v => v ?? null)
+  expectedCtc: z.number().nullable().optional().transform(v => v ?? null),
+  hackerrankUrl: z.string().nullable().optional().transform(v => {
+    if (!v) return null;
+    const url = v.startsWith('http') ? v : `https://${v}`;
+    try { new URL(url); return url; } catch { return null; }
+  })
 });
 ```
 

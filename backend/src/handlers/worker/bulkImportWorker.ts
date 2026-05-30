@@ -156,6 +156,7 @@ async function processOneResume(
     resume_s3_key: s3Key,
     linkedin_url: profile.linkedinUrl ?? undefined,
     github_url: profile.githubUrl ?? undefined,
+    hackerrank_url: profile.hackerrankUrl ?? undefined,
     skills_schema_version: parseResult.promptVersion != null
       ? `v${parseResult.promptVersion}`
       : existingCandidate?.skills_schema_version,

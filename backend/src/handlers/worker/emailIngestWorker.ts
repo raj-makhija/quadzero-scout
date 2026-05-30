@@ -340,6 +340,7 @@ async function processAttachment(
       resume_s3_key: s3Key,
       linkedin_url: profile.linkedinUrl ?? undefined,
       github_url: profile.githubUrl ?? undefined,
+      hackerrank_url: profile.hackerrankUrl ?? undefined,
       cover_letter: emailBodyText || undefined,
       skills_schema_version: parseResult.promptVersion != null
         ? `v${parseResult.promptVersion}`
