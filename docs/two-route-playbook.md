@@ -304,7 +304,7 @@ For chore/scaffolding commits where this is annoying, use
 ticket without that label cannot accumulate strikes. A Cowork ticket
 *with* `auto-pipeline` parked at `needs-human` is excluded from the
 actionable queue but `validate-ticket-types.sh` still scans it
-(harmless; it just no-ops if the type label is present).
+(harmless; it just no-ops if the type and scope labels are present).
 
 **Don't run git operations from the bash sandbox** when working on the
 Windows-mounted clone. `.git` corrupts visibly

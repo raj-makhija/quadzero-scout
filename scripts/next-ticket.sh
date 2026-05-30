@@ -70,15 +70,16 @@ RESP="$(gh api graphql \
   -f owner="$OWNER" -f repo="$REPO")"
 
 # Filter: only issues that have a project item on OUR project, are not
-# flagged pipeline:awaiting-type (validator-set; needs human to add a
-# type:* label before they're actionable), then check that Pipeline
-# Status is unset OR not in the exclude list. Same output contract as
-# the previous Project.items implementation.
+# flagged pipeline:awaiting-type or pipeline:awaiting-scope (validator-set;
+# need a human to add the missing type:*/scope:* label before they're
+# actionable), then check that Pipeline Status is unset OR not in the
+# exclude list. Same output contract as the previous Project.items
+# implementation.
 echo "$RESP" | jq -r --argjson exclude "$EXCLUDE_STATES" --arg sf "$PL_STATE_FIELD" --arg pid "$PL_PROJECT_ID" '
   .data.repository.issues.nodes[]
   | . as $issue
   | ($issue.labels.nodes | map(.name)) as $labels
-  | select($labels | any(. == "pipeline:awaiting-type") | not)
+  | select($labels | any(. == "pipeline:awaiting-type" or . == "pipeline:awaiting-scope") | not)
   | ($issue.projectItems.nodes
       | map(select(.project.id == $pid))
       | .[0]) as $item

@@ -454,6 +454,7 @@ gh label create "pipeline:retry"         --color "FBCA04" --description "Trigger
 gh label create "pipeline:park"          --color "C5DEF5" --description "Trigger: halt processing; set Pipeline Status=needs-human"
 gh label create "pipeline:show-status"   --color "C5DEF5" --description "Trigger: bot replies with current ticket state"
 gh label create "pipeline:awaiting-type" --color "EDEDED" --description "Validator-set: ticket needs a type:* label before pipeline can act on it (auto-cleared once added)"
+gh label create "pipeline:awaiting-scope" --color "EDEDED" --description "Validator-set: ticket needs a scope:* label before pipeline can act on it (auto-cleared once added)"
 gh label create "pipeline:struck-1"      --color "FBCA04" --description "Manager-set: 1 consecutive failure. Resets on next successful advancement"
 gh label create "pipeline:struck-2"      --color "F59E0B" --description "Manager-set: 2 consecutive failures. One more strike = parked at needs-human"
 gh label create "pipeline:struck-out"    --color "B60205" --description "Manager-set: hit PIPELINE_MAX_STRIKES; ticket parked at needs-human. Use pipeline:retry to reset"
@@ -1059,30 +1060,35 @@ qa-rejected. The cherry-pick is on main; reverting requires a manual
 flow for this — qa-reject is intended for tickets still in QA, not
 already-shipped ones.
 
-### 8.9 Ticket missing a `type:*` label
+### 8.9 Ticket missing a `type:*` or `scope:*` label
 
-Symptom: a ticket has `pipeline:awaiting-type` and a `[manager]`
-comment asking for a type label. No further pipeline action happens
-until the label is added.
+Symptom: a ticket has `pipeline:awaiting-type` and/or
+`pipeline:awaiting-scope` plus a `[manager]` comment asking for the
+missing label. No further pipeline action happens until it's added.
 
 What happened: at the top of every drain, `scripts/validate-ticket-types.sh`
-walks every open `auto-pipeline` ticket. Tickets without any `type:*`
-label get the `pipeline:awaiting-type` flag (so they're visible on
-the project board) and a comment listing the valid types. They're
-also excluded from `next-ticket.sh`'s actionable queue, so the
-pipeline doesn't keep crashing on them every cron tick.
+walks every open `auto-pipeline` ticket and applies two independent
+gates. Tickets without any `type:*` label get `pipeline:awaiting-type`;
+tickets without any `scope:*` label get `pipeline:awaiting-scope` (so
+they're visible on the project board) plus a comment listing the valid
+labels. Either flag excludes the ticket from `next-ticket.sh`'s
+actionable queue, so the pipeline doesn't keep crashing on it every
+cron tick. A ticket missing both labels is flagged for both in one pass.
 
-Fix: add one of `type:feature`, `type:bug`, `type:bugfix`,
-`type:chore`, `type:docs`, `type:refactor`, `type:hotfix` to the
-ticket. The next manager run sees the type label, removes
-`pipeline:awaiting-type`, and the ticket re-enters the actionable
-queue. No further intervention.
+Fix: add the missing label(s). Type — one of `type:feature`,
+`type:bug`, `type:bugfix`, `type:chore`, `type:docs`, `type:refactor`,
+`type:hotfix`. Scope — one of `scope:small`, `scope:medium`,
+`scope:large`. The next manager run sees the label, removes the
+matching `pipeline:awaiting-*` flag, and (once both gates pass) the
+ticket re-enters the actionable queue. No further intervention.
 
 Why the validator: before this fix, a label-less ticket caused
 `manager.sh` to exit non-zero because branch / PR derivation needed
 a type. Cron retried every 5 min, hit the same ticket, failed the
 same way, starving every other ticket in the queue. Validator
 pre-flights the failure with a friendly comment instead of a wedge.
+Scope is gated the same way so the developer model tier (which keys
+off `scope:large`) always has a label to read.
 
 ### 8.10 Strike system: per-ticket failure isolation
 
