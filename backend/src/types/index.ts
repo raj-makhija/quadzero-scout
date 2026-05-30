@@ -1073,6 +1073,10 @@ export interface ShortlistedCandidate {
   hackerrankScore?: number;
   notInterested?: boolean;
   notInterestedAt?: string;
+  proposedRateHourly?: number;
+  proposedRateMonthly?: number;
+  internalRateHourly?: number;
+  internalRateMonthly?: number;
 }
 
 export interface ShortlistedCandidatesResponse {

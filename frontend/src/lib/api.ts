@@ -1566,6 +1566,10 @@ export interface ShortlistedCandidate {
   notes?: string;
   status: ShortlistStatus;
   customFields?: Record<string, string | number>;
+  proposedRateHourly?: number;
+  proposedRateMonthly?: number;
+  internalRateHourly?: number;
+  internalRateMonthly?: number;
 }
 
 export interface ShortlistedCandidatesResponse {
