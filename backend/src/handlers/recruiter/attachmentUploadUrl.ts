@@ -17,7 +17,7 @@ async function handleRequest(event: AuthenticatedEvent) {
     return success({
       uploadUrl: result.url,
       s3Key: result.key,
-      attachmentId: result.key.split('/').pop()!.split('-')[0],
+      attachmentId: result.attachmentId,
       expiresIn: result.expiresIn,
       fileSize,
     });

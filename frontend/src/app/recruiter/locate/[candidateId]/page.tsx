@@ -169,6 +169,11 @@ export default function CandidateProfilePage() {
       setProfile((prev) =>
         prev ? { ...prev, lastUpdated: now, lastScreenedAt: now } : prev
       );
+      // Refresh attachments — screening may have uploaded new documents
+      setAttachmentsLoading(true);
+      api.listAttachments(candidateId).then((res) => {
+        setCandidateAttachments(res.attachments);
+      }).catch(() => {}).finally(() => setAttachmentsLoading(false));
       // Retry shortlist if there was a pending requirement
       if (screeningForShortlist) {
         const req = screeningForShortlist;
@@ -178,7 +183,7 @@ export default function CandidateProfilePage() {
         setShortlistError('');
       }
     },
-    [screeningForShortlist]
+    [screeningForShortlist, candidateId]
   );
 
   const handleRemoveShortlist = useCallback(
