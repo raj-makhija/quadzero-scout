@@ -10,7 +10,7 @@
 # Model tiering: the developer is the heaviest workload, so we pick the
 # model based on Attempt:
 #   - Attempt 1 (implement): PIPELINE_DEVELOPER_MODEL        (default: claude-sonnet-4-6)
-#   - Attempt >=2 (rework):  PIPELINE_DEVELOPER_REWORK_MODEL (default: claude-opus-4-6)
+#   - Attempt >=2 (rework):  PIPELINE_DEVELOPER_REWORK_MODEL (default: claude-opus-4-8)
 # The escalation buys a sharper model only when attempt 1 already failed,
 # keeping cost conditional on difficulty.
 #
@@ -172,7 +172,7 @@ PROMPT
   # Each is overridable via env var so users can pin or experiment.
   local model
   if [[ "$attempt" -ge 2 ]]; then
-    model="${PIPELINE_DEVELOPER_REWORK_MODEL:-claude-opus-4-6}"
+    model="${PIPELINE_DEVELOPER_REWORK_MODEL:-claude-opus-4-8}"
   else
     model="${PIPELINE_DEVELOPER_MODEL:-claude-sonnet-4-6}"
   fi

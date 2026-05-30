@@ -216,7 +216,7 @@ The project number is in `.pipeline-config.json` under `.project.number`.
 | `PIPELINE_AGENT_MODEL` | unset | Read by `_agent-claude.sh`; if set, passed to claude as `--model <value>`. The per-agent scripts set this themselves; setting it directly only matters for ad-hoc invocations of the wrapper. |
 | `PIPELINE_TESTER_MODEL` | `claude-sonnet-4-6` | Model used by `dummy-tester.sh` (write + validate). |
 | `PIPELINE_DEVELOPER_MODEL` | `claude-sonnet-4-6` | Model used by `dummy-developer.sh` on attempt 1 (`implement`). |
-| `PIPELINE_DEVELOPER_REWORK_MODEL` | `claude-opus-4-6` | Model used by `dummy-developer.sh` on attempt >= 2 (`rework`). Conditional escalation buys a sharper model only when attempt 1 already failed. |
+| `PIPELINE_DEVELOPER_REWORK_MODEL` | `claude-opus-4-8` | Model used by `dummy-developer.sh` on attempt >= 2 (`rework`). Conditional escalation buys a sharper model only when attempt 1 already failed. |
 | `PIPELINE_PR_REVIEWER_MODEL` | `claude-haiku-4-5-20251001` | Model used by `dummy-pr-reviewer.sh`. |
 | `PIPELINE_SCRIBE_MODEL` | `claude-haiku-4-5-20251001` | Model used by `scribe.sh`. |
 
@@ -319,7 +319,7 @@ previous run is still draining, the second run queues and starts after.
 | `PIPELINE_AGENT_MODEL` | unset | Read by `_agent-claude.sh`; if set, passed to claude as `--model <value>`. The per-agent scripts set this themselves; setting it directly only matters for ad-hoc invocations of the wrapper. |
 | `PIPELINE_TESTER_MODEL` | `claude-sonnet-4-6` | Model used by `dummy-tester.sh` (write + validate). |
 | `PIPELINE_DEVELOPER_MODEL` | `claude-sonnet-4-6` | Model used by `dummy-developer.sh` on attempt 1 (`implement`). |
-| `PIPELINE_DEVELOPER_REWORK_MODEL` | `claude-opus-4-6` | Model used by `dummy-developer.sh` on attempt >= 2 (`rework`). Conditional escalation buys a sharper model only when attempt 1 already failed. |
+| `PIPELINE_DEVELOPER_REWORK_MODEL` | `claude-opus-4-8` | Model used by `dummy-developer.sh` on attempt >= 2 (`rework`). Conditional escalation buys a sharper model only when attempt 1 already failed. |
 | `PIPELINE_PR_REVIEWER_MODEL` | `claude-haiku-4-5-20251001` | Model used by `dummy-pr-reviewer.sh`. |
 | `PIPELINE_SCRIBE_MODEL` | `claude-haiku-4-5-20251001` | Model used by `scribe.sh`. |
 
