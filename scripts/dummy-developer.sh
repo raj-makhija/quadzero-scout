@@ -8,11 +8,13 @@
 # without burning tokens.
 #
 # Model tiering: the developer is the heaviest workload, so we pick the
-# model based on Attempt:
-#   - Attempt 1 (implement): PIPELINE_DEVELOPER_MODEL        (default: claude-sonnet-4-6)
-#   - Attempt >=2 (rework):  PIPELINE_DEVELOPER_REWORK_MODEL (default: claude-opus-4-8)
-# The escalation buys a sharper model only when attempt 1 already failed,
-# keeping cost conditional on difficulty.
+# model based on Attempt and the ticket's scope:* label:
+#   - Attempt >=2 (rework):      PIPELINE_DEVELOPER_REWORK_MODEL (default: claude-opus-4-8)
+#   - Attempt 1, scope:large:    PIPELINE_DEVELOPER_LARGE_MODEL  (default: claude-opus-4-8)
+#   - Attempt 1, small/medium:   PIPELINE_DEVELOPER_MODEL        (default: claude-sonnet-4-6)
+# The escalation buys a sharper model only when attempt 1 already failed
+# or the ticket is large, keeping cost conditional on difficulty. Rework
+# is checked first so a failed attempt escalates regardless of scope.
 #
 # Usage:
 #   scripts/dummy-developer.sh <ticket> <mode>
@@ -168,11 +170,22 @@ Report a one-sentence summary of what you did at the end of your output.
 PROMPT
 )"
 
-  # Pick model based on attempt: Sonnet on first attempt, Opus on rework.
-  # Each is overridable via env var so users can pin or experiment.
+  # Detect ticket scope from labels (one gh call). scope:* is mandatory
+  # (validate-ticket-types.sh gates it), so the label is present here.
+  local is_large="false"
+  if gh issue view "$ticket" --json labels -q '.labels[].name' 2>/dev/null \
+       | grep -qx "scope:large"; then
+    is_large="true"
+  fi
+
+  # Pick model: Sonnet on a small/medium first attempt, Opus on rework
+  # (already failed once) or on a scope:large ticket (start strong).
+  # Each tier is overridable via env var so users can pin or experiment.
   local model
   if [[ "$attempt" -ge 2 ]]; then
     model="${PIPELINE_DEVELOPER_REWORK_MODEL:-claude-opus-4-8}"
+  elif [[ "$is_large" == "true" ]]; then
+    model="${PIPELINE_DEVELOPER_LARGE_MODEL:-claude-opus-4-8}"
   else
     model="${PIPELINE_DEVELOPER_MODEL:-claude-sonnet-4-6}"
   fi

@@ -92,8 +92,9 @@ before invoking `_agent-claude.sh`; the wrapper passes it to `claude
 | Agent | Default model | Override env var | Why |
 |---|---|---|---|
 | Tester (write + validate) | `claude-sonnet-4-6` | `PIPELINE_TESTER_MODEL` | Reasoning over acceptance criteria; Sonnet hits the price/quality knee. |
-| Developer (`implement`, attempt 1) | `claude-sonnet-4-6` | `PIPELINE_DEVELOPER_MODEL` | The dominant cost driver; Sonnet handles most multi-file features. |
-| Developer (`rework`, attempt >= 2) | `claude-opus-4-8` | `PIPELINE_DEVELOPER_REWORK_MODEL` | Conditional escalation on retry: buys a sharper model only when attempt 1 already failed, keeping cost tied to difficulty. |
+| Developer (`implement`, attempt 1, `scope:small`/`scope:medium`) | `claude-sonnet-4-6` | `PIPELINE_DEVELOPER_MODEL` | The dominant cost driver; Sonnet handles most multi-file features. |
+| Developer (`implement`, attempt 1, `scope:large`) | `claude-opus-4-8` | `PIPELINE_DEVELOPER_LARGE_MODEL` | Large/complex ticket: start strong on attempt 1 to avoid burning rework attempts. Keyed off the (mandatory) `scope:large` label. |
+| Developer (`rework`, attempt >= 2) | `claude-opus-4-8` | `PIPELINE_DEVELOPER_REWORK_MODEL` | Conditional escalation on retry: buys a sharper model only when attempt 1 already failed. Checked before scope, so a failed attempt escalates regardless of size. |
 | PR-Reviewer | `claude-haiku-4-5-20251001` | `PIPELINE_PR_REVIEWER_MODEL` | Tester has already validated correctness; reviewer checks scope, conventions, security, cost flags -- a classification-shaped task Haiku handles cheaply. |
 | Scribe | `claude-haiku-4-5-20251001` | `PIPELINE_SCRIBE_MODEL` | YES/NO docs decision plus a templated follow-up body. Cheap, fast. |
 
