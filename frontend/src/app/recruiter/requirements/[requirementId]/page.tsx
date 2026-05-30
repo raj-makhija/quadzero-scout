@@ -17,6 +17,7 @@ import {
   formatSeniority,
   formatAvailability,
   generateJobTitle,
+  formatInr,
 } from '@/lib/utils';
 
 const FIELD_LABELS: Record<string, string> = {
@@ -972,6 +973,20 @@ export default function RequirementDetailPage() {
                           </div>
                           {candidate.notes && (
                             <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 italic">{candidate.notes}</p>
+                          )}
+                          {(candidate.proposedRateHourly != null || candidate.proposedRateMonthly != null || candidate.internalRateHourly != null || candidate.internalRateMonthly != null) && (
+                            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                              {(candidate.proposedRateHourly != null || candidate.proposedRateMonthly != null) && (
+                                <span className="text-green-600 dark:text-green-400">
+                                  Recommended Rate:{candidate.proposedRateHourly != null ? ` ${formatInr(candidate.proposedRateHourly)}/hr` : ''}{candidate.proposedRateHourly != null && candidate.proposedRateMonthly != null ? ' · ' : ''}{candidate.proposedRateMonthly != null ? ` ${formatInr(candidate.proposedRateMonthly)}/mo` : ''}
+                                </span>
+                              )}
+                              {(candidate.internalRateHourly != null || candidate.internalRateMonthly != null) && (
+                                <span className="text-gray-500 dark:text-gray-400">
+                                  Internal Rate:{candidate.internalRateHourly != null ? ` ${formatInr(candidate.internalRateHourly)}/hr` : ''}{candidate.internalRateHourly != null && candidate.internalRateMonthly != null ? ' · ' : ''}{candidate.internalRateMonthly != null ? ` ${formatInr(candidate.internalRateMonthly)}/mo` : ''}
+                                </span>
+                              )}
+                            </div>
                           )}
                           {/* Additional fields completion status */}
                           {requirement?.additionalFields && requirement.additionalFields.length > 0 && (

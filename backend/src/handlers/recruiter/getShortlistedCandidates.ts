@@ -38,6 +38,10 @@ async function handleRequest(
           hackerrankScore: candidate.hackerrank_score,
           notInterested: candidate.not_interested || false,
           notInterestedAt: candidate.not_interested_at,
+          proposedRateHourly: entry.proposed_rate_hourly,
+          proposedRateMonthly: entry.proposed_rate_monthly,
+          internalRateHourly: entry.internal_rate_hourly,
+          internalRateMonthly: entry.internal_rate_monthly,
         });
       }
     });
