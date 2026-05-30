@@ -50,6 +50,8 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
   const [headline, setHeadline] = useState('');
   const [linkedinUrl, setLinkedinUrl] = useState('');
   const [githubUrl, setGithubUrl] = useState('');
+  const [hackerrankUrl, setHackerrankUrl] = useState('');
+  const [hackerrankScore, setHackerrankScore] = useState('');
   const [notInterested, setNotInterested] = useState(false);
   const [lastWorkingDay, setLastWorkingDay] = useState('');
   const [stillOnJob, setStillOnJob] = useState(false);
@@ -147,6 +149,8 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
         setHeadline(profile.headline || generateHeadline(profile.seniority || '', profile.roles, profile.primarySkills));
         setLinkedinUrl(profile.linkedinUrl || '');
         setGithubUrl(profile.githubUrl || '');
+        setHackerrankUrl(profile.hackerrankUrl || '');
+        setHackerrankScore(profile.hackerrankScore != null ? String(profile.hackerrankScore) : '');
         setNotInterested(profile.notInterested || false);
 
         // Pre-fill LWD: a date string means a known LWD, null/undefined means still employed
@@ -188,6 +192,8 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
         if (!profile.availability) empty.add('availability');
         if (!profile.linkedinUrl) empty.add('linkedinUrl');
         if (!profile.githubUrl) empty.add('githubUrl');
+        if (!profile.hackerrankUrl) empty.add('hackerrankUrl');
+        if (profile.hackerrankScore == null) empty.add('hackerrankScore');
         setEmptyFields(empty);
       } catch {
         // Fall back to search result data if available
@@ -337,6 +343,8 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
       if (headline) updatedValues.headline = headline;
       if (linkedinUrl) updatedValues.linkedinUrl = linkedinUrl;
       if (githubUrl) updatedValues.githubUrl = githubUrl;
+      updatedValues.hackerrankUrl = hackerrankUrl || null;
+      updatedValues.hackerrankScore = hackerrankScore !== '' ? parseFloat(hackerrankScore) : null;
 
       // Parse comma-separated fields
       if (primarySkillsText) {
@@ -890,6 +898,36 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                       value={githubUrl}
                       onChange={(e) => setGithubUrl(e.target.value)}
                       placeholder="https://github.com/username"
+                    />
+                  </FormField>
+                </div>
+                <div className="grid grid-cols-2 gap-4 mt-3">
+                  <FormField
+                    label="HackerRank URL"
+                    htmlFor="hackerrankUrl"
+                    className={emptyFields.has('hackerrankUrl') && !hackerrankUrl ? 'bg-amber-50 dark:bg-amber-900/10 p-2 rounded' : ''}
+                  >
+                    <FormInput
+                      id="hackerrankUrl"
+                      type="url"
+                      value={hackerrankUrl}
+                      onChange={(e) => setHackerrankUrl(e.target.value)}
+                      placeholder="https://www.hackerrank.com/username"
+                    />
+                  </FormField>
+                  <FormField
+                    label="HackerRank Score"
+                    htmlFor="hackerrankScore"
+                    className={emptyFields.has('hackerrankScore') && hackerrankScore === '' ? 'bg-amber-50 dark:bg-amber-900/10 p-2 rounded' : ''}
+                  >
+                    <FormInput
+                      id="hackerrankScore"
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={hackerrankScore}
+                      onChange={(e) => setHackerrankScore(e.target.value)}
+                      placeholder="e.g. 85"
                     />
                   </FormField>
                 </div>

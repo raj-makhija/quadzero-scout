@@ -65,6 +65,8 @@ async function handleRequest(
         customFields: candidate.custom_fields,
         linkedinUrl: candidate.linkedin_url,
         githubUrl: candidate.github_url,
+        hackerrankUrl: candidate.hackerrank_url,
+        hackerrankScore: candidate.hackerrank_score,
         notInterested: candidate.not_interested,
         proposedRateHourly: item.proposed_rate_hourly,
         proposedRateMonthly: item.proposed_rate_monthly,

@@ -34,6 +34,8 @@ async function handleRequest(
           customFields: candidate.custom_fields || {},
           linkedinUrl: candidate.linkedin_url,
           githubUrl: candidate.github_url,
+          hackerrankUrl: candidate.hackerrank_url,
+          hackerrankScore: candidate.hackerrank_score,
           notInterested: candidate.not_interested || false,
           notInterestedAt: candidate.not_interested_at,
         });

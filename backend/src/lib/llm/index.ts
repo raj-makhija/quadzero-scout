@@ -96,6 +96,7 @@ You MUST respond with valid JSON matching this exact schema:
   "expectedCtc": number or null - expected CTC in LPA. Look for phrases like "expected CTC", "expected salary", "desired compensation". If not found, use null,
   "linkedinUrl": "string or null - LinkedIn profile URL (e.g. https://linkedin.com/in/username)",
   "githubUrl": "string or null - GitHub profile URL (e.g. https://github.com/username)",
+  "hackerrankUrl": "string or null - HackerRank profile URL (e.g. https://www.hackerrank.com/username)",
   "skillSynonyms": {"skill_name": ["synonym1", "synonym2"]} - for each skill in primarySkills and secondarySkills, provide 2-3 common alternative phrasings. Use lowercase. Example: {"delivery governance": ["delivery management", "delivery oversight"], "client relationship management": ["client relationship", "client engagement"]}
 }
 
@@ -107,7 +108,7 @@ Rules:
 5. ONLY output valid JSON, no additional text
 6. For CTC values, always convert to LPA (Lakhs Per Annum). If given as monthly, multiply by 12. If given in absolute rupees, divide by 100000. Round to 2 decimal places
 7. If supplementary information (email body / cover letter) is provided after the resume, use it to fill in missing fields — especially currentCtc, expectedCtc, and availability (notice period). Resume data takes precedence; supplementary data fills gaps
-8. For linkedinUrl and githubUrl, extract any LinkedIn or GitHub profile URLs found in the resume text or supplementary information. Look for patterns like linkedin.com/in/..., github.com/..., or explicit labels like "LinkedIn:" or "GitHub:". Return null if not found
+8. For linkedinUrl, githubUrl, and hackerrankUrl, extract any LinkedIn, GitHub, or HackerRank profile URLs found in the resume text or supplementary information. Look for patterns like linkedin.com/in/..., github.com/..., hackerrank.com/..., or explicit labels like "LinkedIn:", "GitHub:", "HackerRank:". Return null if not found
 9. For skillSynonyms: generate 2-3 alternative phrasings for each extracted skill (both primarySkills and secondarySkills). Include common abbreviations, longer/shorter forms, and semantically equivalent terms. This helps with matching against job descriptions that may use different terminology
 10. For stack abbreviations: expand MERN (MongoDB → mongodb, Express.js → expressjs, React → react, Node.js → nodejs), MEAN (MongoDB → mongodb, Express.js → expressjs, Angular → angular, Node.js → nodejs), PERN (PostgreSQL → postgresql, Express.js → expressjs, React → react, Node.js → nodejs), LAMP (Linux → linux, Apache → apache, MySQL → mysql, PHP → php) into their individual component technologies. Do NOT emit the abbreviation itself as a skill — emit the components instead`;
 

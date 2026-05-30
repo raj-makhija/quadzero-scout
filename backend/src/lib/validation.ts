@@ -45,6 +45,8 @@ export const SaveProfileRequestSchema = z.object({
     customFields: z.record(z.string(), z.union([z.string(), z.number()])).optional().default({}),
     linkedinUrl: z.string().url().optional(),
     githubUrl: z.string().url().optional(),
+    hackerrankUrl: z.string().url().optional(),
+    hackerrankScore: z.number().min(0).max(100).optional(),
     coverLetter: z.string().optional(),
     headline: z.string().optional(),
     subVendorId: z.string().optional(),
@@ -362,6 +364,16 @@ export const ScreenCandidateRequestSchema = z.object({
     ).optional(),
     linkedinUrl: z.string().url().optional(),
     githubUrl: z.string().url().optional(),
+    hackerrankUrl: z.preprocess(
+      (val) => {
+        if (typeof val === 'string' && val.length > 0 && !val.startsWith('http')) {
+          return `https://${val}`;
+        }
+        return val;
+      },
+      z.string().url().optional()
+    ),
+    hackerrankScore: z.number().min(0).max(100).nullable().optional(),
     notInterested: z.boolean().optional(),
     subVendorId: z.string().nullable().optional(),
   }),
