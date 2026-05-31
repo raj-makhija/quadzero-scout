@@ -1467,3 +1467,13 @@ export interface ListAuditLogsResponse {
     nextToken?: string;
   };
 }
+
+// AI-generated screening questions (ticket #191)
+export const ScreeningQuestionSchema = z.object({
+  question: z.string().min(1),
+  category: z.string().optional(),
+});
+
+export const ScreeningQuestionsSchema = z.array(ScreeningQuestionSchema);
+
+export type ScreeningQuestion = z.infer<typeof ScreeningQuestionSchema>;

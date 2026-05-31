@@ -9,6 +9,7 @@ const PROMPT_LABELS: Record<string, string> = {
   resume_parser: 'Resume Parser',
   jd_parser: 'Job Description Parser',
   resume_formatter: 'Resume Formatter',
+  screening_questions: 'Screening Questions',
 };
 
 export default function PromptsPage() {

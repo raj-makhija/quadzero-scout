@@ -678,6 +678,13 @@ functions:
           path: /recruiter/screening-history/{candidateId}
           method: GET
 
+  recruiterGenerateScreeningQuestions:
+    handler: src/handlers/recruiter/generateScreeningQuestions.handler
+    events:
+      - httpApi:
+          path: /recruiter/screening-questions
+          method: POST
+
   # Screening Lock Endpoints
   recruiterAcquireScreeningLock:
     handler: src/handlers/recruiter/acquireScreeningLock.handler
