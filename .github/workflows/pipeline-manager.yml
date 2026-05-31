@@ -118,6 +118,14 @@ jobs:
           # Cron retry semantics: one strike per cron tick, max.
           STRUCK_THIS_DRAIN=""
 
+          # Aggregate wall-clock budget for the whole drain, kept below the
+          # job's timeout-minutes (30 = 1800s) so the loop exits cleanly --
+          # running its strike/clear-strikes/tree-reset logic and releasing
+          # the concurrency lock -- instead of being cancelled mid-agent when
+          # the job timeout fires. Leftover tickets are picked up by the next
+          # 5-min cron tick. SECONDS counts from the start of this step's shell.
+          DRAIN_BUDGET_SEC=1620
+
           for i in $(seq 1 25); do
             if [[ -n "$STRUCK_THIS_DRAIN" ]]; then
               NEXT="$(scripts/next-ticket.sh | grep -vE "^($STRUCK_THIS_DRAIN)\b" | head -1 | awk '{print $1}' || true)"
@@ -145,7 +153,21 @@ jobs:
               | grep -oE '[0-9]+$' \
               | sort -nr | head -1) || echo 0 )
             STRIKES=${STRIKES:-0}
-            export PIPELINE_AGENT_TIMEOUT_SEC=$((600 * (STRIKES + 1)))
+            PIPELINE_AGENT_TIMEOUT_SEC=$((600 * (STRIKES + 1)))
+
+            # Don't start an iteration that can't finish before the job
+            # timeout. Defer to the next cron tick once the budget is gone,
+            # and clamp this iteration's agent timeout to the time left so
+            # its `timeout` always expires before the job is killed.
+            REMAINING=$((DRAIN_BUDGET_SEC - SECONDS))
+            if (( REMAINING <= 60 )); then
+              echo "manager: drain budget spent (${SECONDS}s of ${DRAIN_BUDGET_SEC}s); deferring #$NEXT to next cron tick"
+              break
+            fi
+            if (( PIPELINE_AGENT_TIMEOUT_SEC > REMAINING )); then
+              PIPELINE_AGENT_TIMEOUT_SEC=$REMAINING
+            fi
+            export PIPELINE_AGENT_TIMEOUT_SEC
             # Attempt = rework counter (reviewer-driven); Strikes = dispatch-failure
             # counter (manager.sh non-zero exit). Logged together so the timeout
             # value reads correctly -- it scales with strikes, not attempts.
