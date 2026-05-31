@@ -371,7 +371,7 @@ export const ScreenCandidateRequestSchema = z.object({
         }
         return val;
       },
-      z.string().url().optional()
+      z.string().url().nullable().optional()
     ),
     hackerrankScore: z.number().min(0).max(100).nullable().optional(),
     notInterested: z.boolean().optional(),

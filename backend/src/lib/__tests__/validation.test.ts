@@ -917,4 +917,50 @@ describe('ScreenCandidateRequestSchema', () => {
     });
     expect(result.success).toBe(true);
   });
+
+  it('accepts null hackerrankUrl so the field is optional/clearable', () => {
+    // The screening modal always sends `hackerrankUrl: hackerrankUrl || null`,
+    // so an empty field arrives as null. The schema must accept null, otherwise
+    // a recruiter cannot save the form without entering a HackerRank URL.
+    const result = validate(ScreenCandidateRequestSchema, {
+      candidateId: 'cand-123',
+      updatedValues: { hackerrankUrl: null },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts null hackerrankScore so the field is optional/clearable', () => {
+    const result = validate(ScreenCandidateRequestSchema, {
+      candidateId: 'cand-123',
+      updatedValues: { hackerrankScore: null },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts both hackerrank fields null together (typical empty screening save)', () => {
+    const result = validate(ScreenCandidateRequestSchema, {
+      candidateId: 'cand-123',
+      updatedValues: { hackerrankUrl: null, hackerrankScore: null },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('still rejects a non-URL hackerrankUrl', () => {
+    const result = validate(ScreenCandidateRequestSchema, {
+      candidateId: 'cand-123',
+      updatedValues: { hackerrankUrl: 'not a url at all' },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('still auto-corrects a bare-domain hackerrankUrl', () => {
+    const result = validate(ScreenCandidateRequestSchema, {
+      candidateId: 'cand-123',
+      updatedValues: { hackerrankUrl: 'hackerrank.com/profile/alice' },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.updatedValues.hackerrankUrl).toBe('https://hackerrank.com/profile/alice');
+    }
+  });
 });
