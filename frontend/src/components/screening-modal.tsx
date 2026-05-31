@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { X, AlertCircle, Loader2, ChevronDown, ChevronUp, Lock, Upload, FileText, Trash2 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
-import type { CandidateSearchResult, ScreeningUpdatedValues, AdditionalFieldDefinition, ScreeningLockConflict } from '@/lib/api';
+import type { CandidateSearchResult, ScreeningUpdatedValues, AdditionalFieldDefinition, ScreeningLockConflict, ScreeningQuestion } from '@/lib/api';
 import { SubVendorInlineEditor, type SubVendorEditorState } from '@/components/sub-vendor-inline-editor';
 import { FormField, FormInput, FormSelect, FormTextarea } from '@/components/ui/form-field';
 import {
@@ -68,6 +68,12 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
 
   // Screening notes
   const [notes, setNotes] = useState('');
+
+  // AI-generated screening questions (ticket #191)
+  const [screeningQuestions, setScreeningQuestions] = useState<ScreeningQuestion[]>([]);
+  const [questionAnswers, setQuestionAnswers] = useState<Record<number, string>>({});
+  const [loadingQuestions, setLoadingQuestions] = useState(true);
+  const [questionsNotice, setQuestionsNotice] = useState('');
 
   // Custom/additional fields from requirement definitions
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, string>>({});
@@ -225,6 +231,32 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
         clearInterval(heartbeatRef.current);
       }
     };
+  }, [resolvedCandidateId]);
+
+  // Generate AI screening questions when the modal opens. Independent of the
+  // lock flow — failures degrade to a notice and never block screening.
+  useEffect(() => {
+    if (!resolvedCandidateId) return;
+    let cancelled = false;
+    setLoadingQuestions(true);
+    setQuestionsNotice('');
+    api.generateScreeningQuestions(resolvedCandidateId)
+      .then((res) => {
+        if (cancelled) return;
+        setScreeningQuestions(res.questions || []);
+        if (!res.generated || (res.questions || []).length === 0) {
+          setQuestionsNotice(res.notice || 'No screening questions are available.');
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setScreeningQuestions([]);
+        setQuestionsNotice('Could not generate screening questions at this time. You can still complete the screening.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingQuestions(false);
+      });
+    return () => { cancelled = true; };
   }, [resolvedCandidateId]);
 
   // Heartbeat: keep lock alive every 4 minutes
@@ -415,7 +447,17 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
         updatedValues.subVendorId = null;
       }
 
-      await api.screenCandidate(resolvedCandidateId, updatedValues, notes || undefined);
+      // Append captured screening Q&A into the notes so it's persisted on the
+      // CandidateScreenings record and surfaced in the screening history.
+      let finalNotes = notes;
+      if (screeningQuestions.length > 0) {
+        const qaBlock = screeningQuestions
+          .map((q, i) => `Q: ${q.question}\nA: ${(questionAnswers[i] || '').trim() || '(no answer)'}`)
+          .join('\n\n');
+        finalNotes = `${notes}\n\n--- Screening Questions ---\n${qaBlock}`;
+      }
+
+      await api.screenCandidate(resolvedCandidateId, updatedValues, finalNotes || undefined);
 
       // Upload pending attachments
       for (const attachment of pendingAttachments) {
@@ -507,7 +549,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
     lastWorkingDay, stillOnJob, onScreeningComplete,
     isShortlistFlow, additionalFields, customFieldValues,
     subVendorEnabled, subVendorData, initialSubVendorId,
-    pendingAttachments,
+    pendingAttachments, screeningQuestions, questionAnswers,
   ]);
 
   return (
@@ -1110,6 +1152,43 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                   </div>
                 </div>
               )}
+
+              {/* AI-generated Screening Questions */}
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                  Screening Questions
+                </h3>
+                {loadingQuestions ? (
+                  <div className="flex items-center py-3 text-sm text-gray-500">
+                    <Loader2 className="h-4 w-4 animate-spin text-primary-600 mr-2" />
+                    Generating screening questions...
+                  </div>
+                ) : screeningQuestions.length > 0 ? (
+                  <div className="space-y-3">
+                    {screeningQuestions.map((q, i) => (
+                      <FormField
+                        key={i}
+                        label={`${i + 1}. ${q.question}`}
+                        htmlFor={`sq_${i}`}
+                        hint={q.category}
+                      >
+                        <FormInput
+                          id={`sq_${i}`}
+                          value={questionAnswers[i] ?? ''}
+                          onChange={(e) =>
+                            setQuestionAnswers((prev) => ({ ...prev, [i]: e.target.value }))
+                          }
+                          placeholder="Candidate's answer"
+                        />
+                      </FormField>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    {questionsNotice || 'No screening questions are available.'}
+                  </p>
+                )}
+              </div>
 
               {/* Screening Notes */}
               <div>

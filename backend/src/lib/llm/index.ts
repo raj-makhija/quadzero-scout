@@ -8,9 +8,9 @@ import { OpenAIProvider } from './openai.js';
 import { OpenRouterProvider } from './openrouter.js';
 import { GeminiProvider } from './gemini.js';
 import { isRateLimitError } from './base.js';
-import { LLMResumeOutputSchema, LLMJDOutputSchema } from '../../types/index.js';
+import { LLMResumeOutputSchema, LLMJDOutputSchema, ScreeningQuestionsSchema } from '../../types/index.js';
 import { normalizeSeniorityArray } from '../seniorityNormalizer.js';
-import type { LLMResumeOutput, LLMJDOutput } from '../../types/index.js';
+import type { LLMResumeOutput, LLMJDOutput, ScreeningQuestion } from '../../types/index.js';
 import { convertToLpa, type RateUnit } from '../ctcConversion.js';
 import { getActivePrompt } from '../dynamodb.js';
 
@@ -165,10 +165,25 @@ Rules:
 const promptCache = new Map<string, { content: string; version: number | null; fetchedAt: number }>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
+const FALLBACK_SCREENING_QUESTIONS_PROMPT = `You are an expert technical recruiter. Given a candidate's profile summary, generate screening questions that a recruiter can ask the candidate during a screening call to validate their skills and experience.
+
+You MUST respond with valid JSON: an array of question objects matching this exact schema:
+[
+  { "question": "string - the screening question text", "category": "string - optional short category, e.g. 'Technical', 'Experience', 'Behavioral'" }
+]
+
+Rules:
+1. Generate between 3 and 10 questions (never fewer than 3, never more than 10)
+2. Tailor questions to the candidate's primary skills, roles, and experience level
+3. Mix technical depth questions with experience-validation and behavioral questions
+4. Each question must be concise, specific, and answerable in a phone screen
+5. ONLY output the JSON array, no additional text or wrapping object`;
+
 const FALLBACK_PROMPTS: Record<string, string> = {
   resume_parser: FALLBACK_RESUME_PARSER_PROMPT,
   jd_parser: FALLBACK_JD_PARSER_PROMPT,
   resume_formatter: FALLBACK_RESUME_FORMATTER_PROMPT,
+  screening_questions: FALLBACK_SCREENING_QUESTIONS_PROMPT,
 };
 
 async function getPromptContent(promptKey: string): Promise<{ content: string; version: number | null }> {
@@ -270,6 +285,50 @@ export async function parseResume(resumeText: string, supplementaryText?: string
   const confidence = filledFields / totalFields;
 
   return { output, confidence, promptVersion };
+}
+
+/**
+ * Generate AI screening questions for a candidate from a structured profile
+ * summary. Returns a validated list of 3–10 questions. Throws if the LLM
+ * returns an unparseable response or fewer than 3 questions (callers are
+ * expected to handle this gracefully by surfacing a notice). Responses with
+ * more than 10 questions are clamped to 10.
+ */
+export async function generateScreeningQuestions(candidateSummary: string): Promise<ScreeningQuestion[]> {
+  const provider = getLLMProvider();
+  const { content: systemPrompt } = await getPromptContent('screening_questions');
+
+  const messages: LLMMessage[] = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: `Candidate profile:\n\n${candidateSummary}` },
+  ];
+
+  const response = await withProviderFallback(provider, (p) =>
+    p.completeWithRetry(messages, {
+      temperature: 0.3,
+      maxTokens: 1024,
+      responseFormat: 'json',
+    }, config.llm.maxRetries)
+  );
+
+  const parsed = provider.parseJsonResponse<unknown>(response.content);
+  // The LLM may return a bare array or wrap it in { questions: [...] }.
+  const rawArray = Array.isArray(parsed)
+    ? parsed
+    : (parsed as { questions?: unknown })?.questions;
+
+  const validated = ScreeningQuestionsSchema.safeParse(rawArray);
+  if (!validated.success) {
+    throw new Error(`Invalid screening questions structure: ${validated.error.message}`);
+  }
+
+  // Enforce the 3–10 count constraint: clamp the upper bound, reject under-range.
+  const clamped = validated.data.slice(0, 10);
+  if (clamped.length < 3) {
+    throw new Error(`LLM returned ${clamped.length} screening question(s); expected at least 3`);
+  }
+
+  return clamped;
 }
 
 export async function parseJobDescription(jdText: string, jobTitle?: string): Promise<{

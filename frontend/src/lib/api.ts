@@ -682,6 +682,13 @@ class ApiClient {
     });
   }
 
+  async generateScreeningQuestions(candidateId: string) {
+    return this.request<ScreeningQuestionsResponse>('/recruiter/screening-questions', {
+      method: 'POST',
+      body: JSON.stringify({ candidateId }),
+    });
+  }
+
   async getScreeningHistory(candidateId: string) {
     return this.request<ScreeningHistoryResponse>(`/recruiter/screening-history/${candidateId}`);
   }
@@ -1693,6 +1700,17 @@ export interface ScreenCandidateResponse {
   screenedAt: string;
   fieldsUpdated: string[];
   notInterested?: boolean;
+}
+
+export interface ScreeningQuestion {
+  question: string;
+  category?: string;
+}
+
+export interface ScreeningQuestionsResponse {
+  questions: ScreeningQuestion[];
+  generated: boolean;
+  notice?: string;
 }
 
 export interface ScreeningProfileData {

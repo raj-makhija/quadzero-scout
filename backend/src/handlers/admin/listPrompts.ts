@@ -3,9 +3,14 @@ import { success, error, ErrorCodes } from '../../lib/response.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { getAllPromptKeys, getActivePrompt } from '../../lib/dynamodb.js';
 
+// Prompt keys the app manages via fallbacks. These always appear in the admin
+// list even before an admin has saved a DB version, so they can be created.
+const MANAGED_PROMPT_KEYS = ['resume_parser', 'jd_parser', 'resume_formatter', 'screening_questions'];
+
 async function handleRequest(_event: AuthenticatedEvent): Promise<APIGatewayProxyResultV2> {
   try {
-    const promptKeys = await getAllPromptKeys();
+    const scannedKeys = await getAllPromptKeys();
+    const promptKeys = Array.from(new Set([...MANAGED_PROMPT_KEYS, ...scannedKeys]));
 
     // Get active version for each key
     const prompts = await Promise.all(
