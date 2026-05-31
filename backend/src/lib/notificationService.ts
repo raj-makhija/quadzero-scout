@@ -1,22 +1,8 @@
 import { getCandidateById, getAllActiveRequirements, getUserById } from './dynamodb.js';
-import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, FUZZY_MATCH_WEIGHT, MUST_HAVE_SECONDARY_WEIGHT, parseSearchLocations, isEngagementModelCompatible } from './matchScoring.js';
-import { normalizeSkill, normalizeSkills, coreSkillSatisfiedBy } from './skillNormalizer.js';
-import { isCandidateWithinBudget } from './ctcConversion.js';
+import { matchAndRankCandidates } from './candidateMatching.js';
 import { sendNewProfilesNotificationEmail, type MatchedProfile } from './emailService.js';
 import { config } from './config.js';
 import type { CandidateItem, RequirementItem } from '../types/index.js';
-
-/** Normalize a synonym map: lowercase keys and values. Returns undefined if input is null/undefined. */
-function normalizeSynonymMap(
-  synonyms: Record<string, string[]> | null | undefined
-): Record<string, string[]> | undefined {
-  if (!synonyms) return undefined;
-  const result: Record<string, string[]> = {};
-  for (const [key, values] of Object.entries(synonyms)) {
-    result[normalizeSkill(key)] = normalizeSkills(values);
-  }
-  return result;
-}
 
 /**
  * For a list of candidate IDs, runs matching against all active requirements
@@ -55,64 +41,31 @@ export async function notifyMatchingRecruiters(candidateIds: string[]): Promise<
 
   for (const req of notifiableRequirements) {
     const criteria = req.parsed_criteria;
-    const normalizedMustHave = normalizeSkills(criteria.mustHaveSkills || []);
-    const normalizedGoodToHave = normalizeSkills(criteria.goodToHaveSkills || []);
-    const searchLocations = parseSearchLocations(criteria.location ?? undefined);
 
-    // Normalize synonym maps (may be null for older requirements)
-    const reqSynonyms = normalizeSynonymMap(criteria.skillSynonyms);
+    const scored = matchAndRankCandidates(
+      candidates,
+      {
+        coreSkill: criteria.coreSkill,
+        mustHaveSkills: criteria.mustHaveSkills,
+        goodToHaveSkills: criteria.goodToHaveSkills,
+        minExperience: criteria.minExperience,
+        maxExperience: criteria.maxExperience,
+        seniority: criteria.seniority,
+        availability: criteria.availability,
+        location: criteria.location,
+        roles: criteria.roles,
+        maxBudgetLpa: req.budget_max_lpa,
+        engagementModel: req.engagement_model || criteria.engagementModel,
+        skillSynonyms: criteria.skillSynonyms,
+      },
+      { notifyInclusion: true }
+    );
 
-    const matchedProfiles: MatchedProfile[] = [];
-    for (const candidate of candidates) {
-      if (!coreSkillSatisfiedBy(criteria.coreSkill, candidate.primary_skills)) continue;
-
-      const candSynonyms = normalizeSynonymMap(candidate.skill_synonyms);
-
-      const { score, details } = calculateMatchScore(
-        candidate,
-        normalizedMustHave,
-        normalizedGoodToHave,
-        criteria.minExperience ?? undefined,
-        criteria.maxExperience ?? undefined,
-        criteria.seniority?.length ? criteria.seniority : undefined,
-        req.budget_max_lpa ?? undefined,
-        searchLocations,
-        criteria.availability,
-        reqSynonyms,
-        candSynonyms,
-        criteria.roles
-      );
-
-      // Apply minimum must-have effective match ratio filter
-      if (normalizedMustHave.length > 0) {
-        const effectiveRatio = (
-          details.mustHaveMatched.length
-          + (details.mustHaveFuzzy?.length || 0) * FUZZY_MATCH_WEIGHT
-          + (details.mustHaveSecondary?.length || 0) * MUST_HAVE_SECONDARY_WEIGHT
-        ) / normalizedMustHave.length;
-        if (effectiveRatio < MIN_MUST_HAVE_MATCH_RATIO) continue;
-      }
-
-      const budgetFit = isCandidateWithinBudget(candidate.expected_ctc, req.budget_max_lpa);
-
-      // CTC is a soft indicator — over-budget candidates still match
-      // for notification purposes (recruiter can negotiate).
-
-      // Hard filter: engagement model must be compatible
-      const reqEngagementModel = req.engagement_model || criteria.engagementModel;
-      if (reqEngagementModel && reqEngagementModel !== 'either') {
-        const candidateModel = candidate.engagement_model || 'either';
-        if (!isEngagementModelCompatible(reqEngagementModel, candidateModel)) continue;
-      }
-
-      if (score > 0 || budgetFit) {
-        matchedProfiles.push({
-          candidateId: candidate.candidate_id,
-          fullName: candidate.full_name,
-          primarySkills: candidate.primary_skills,
-        });
-      }
-    }
+    const matchedProfiles: MatchedProfile[] = scored.map(({ candidate }) => ({
+      candidateId: candidate.candidate_id,
+      fullName: candidate.full_name,
+      primarySkills: candidate.primary_skills,
+    }));
 
     if (matchedProfiles.length > 0) {
       requirementMatches.set(req.requirement_id, { requirement: req, matchedProfiles });
