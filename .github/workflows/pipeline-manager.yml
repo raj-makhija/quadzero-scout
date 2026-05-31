@@ -166,6 +166,7 @@ jobs:
             git reset --hard --quiet || true
             git clean -fd --quiet || true
             git checkout --quiet develop || true
+            rm -f "${PIPELINE_INVOCATION_SENTINEL:-/tmp/pipeline-last-invoked-ticket}"
 
             if scripts/manager.sh "$NEXT"; then
               # Successful advancement. Clear any prior strikes (no-op
@@ -187,7 +188,12 @@ jobs:
                 break
               fi
               echo "manager: #$NEXT advancement failed (exit $RC); striking"
-              scripts/strike-ticket.sh "$NEXT" "manager.sh exit $RC at $(date -u +%Y-%m-%dT%H:%M:%SZ); see workflow run ${GH_RUN_ID}" || true
+              STRIKE_RC=0
+              scripts/strike-ticket.sh "$NEXT" "manager.sh exit $RC at $(date -u +%Y-%m-%dT%H:%M:%SZ); see workflow run ${GH_RUN_ID}" --expected-invocation-ticket "$NEXT" || STRIKE_RC=$?
+              if [[ $STRIKE_RC -ne 0 ]]; then
+                echo "manager: strike guard fired for #$NEXT (invocation banner named a different ticket); aborting drain" >&2
+                exit $STRIKE_RC
+              fi
               STRUCK_THIS_DRAIN="${STRUCK_THIS_DRAIN:+$STRUCK_THIS_DRAIN|}${NEXT}"
             fi
             sleep 3
