@@ -118,6 +118,7 @@ PROMPT
 PIPELINE_AGENT_MODEL="${PIPELINE_PR_REVIEWER_MODEL:-claude-haiku-4-5-20251001}"
 export PIPELINE_AGENT_MODEL
 
+printf '%s\n' "$TICKET" > "${PIPELINE_INVOCATION_SENTINEL:-/tmp/pipeline-last-invoked-ticket}"
 echo "==> invoking real pr-reviewer agent (claude, model=$PIPELINE_AGENT_MODEL) for #$TICKET PR #$PR" >&2
 
 RESPONSE_FILE="$(mktemp -t pr-reviewer.XXXXXX)"

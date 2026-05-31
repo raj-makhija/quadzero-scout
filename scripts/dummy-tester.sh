@@ -106,6 +106,7 @@ End your response with the literal line:
 TEST_PLAN_POSTED
 PROMPT
 )"
+      printf '%s\n' "$TICKET" > "${PIPELINE_INVOCATION_SENTINEL:-/tmp/pipeline-last-invoked-ticket}"
       echo "==> invoking real tester agent (claude) for #$TICKET write" >&2
       echo "$PROMPT" | "$SCRIPT_DIR/_agent-claude.sh" - >/dev/null
     fi
@@ -255,6 +256,7 @@ developer can address them on the next rework attempt.
 PROMPT
 )"
 
+    printf '%s\n' "$TICKET" > "${PIPELINE_INVOCATION_SENTINEL:-/tmp/pipeline-last-invoked-ticket}"
     echo "==> invoking real tester agent (claude) for #$TICKET validate" >&2
 
     RESPONSE_FILE="$(mktemp -t tester.XXXXXX)"
