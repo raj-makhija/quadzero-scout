@@ -21,14 +21,46 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=_pipeline-lib.sh
 source "$SCRIPT_DIR/_pipeline-lib.sh"
 
+# Parse optional --expected-invocation-ticket flag out of positional args.
+EXPECTED_ITER_TICKET=""
+POSITIONAL=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --expected-invocation-ticket)
+      EXPECTED_ITER_TICKET="$2"
+      shift 2
+      ;;
+    *)
+      POSITIONAL+=("$1")
+      shift
+      ;;
+  esac
+done
+set -- "${POSITIONAL[@]+"${POSITIONAL[@]}"}"
+
 if [[ $# -lt 1 ]]; then
-  echo "usage: $0 <ticket> [reason]" >&2
+  echo "usage: $0 <ticket> [reason] [--expected-invocation-ticket N]" >&2
   exit 0
 fi
 
 TICKET="$1"
 REASON="${2:-(no reason provided)}"
 MAX_STRIKES="${PIPELINE_MAX_STRIKES:-3}"
+
+# Mismatch guard: agent scripts write their ticket number to PIPELINE_INVOCATION_SENTINEL
+# just before emitting the "==> invoking real ..." banner. If that banner ticket differs
+# from the iteration ticket we were given, abort to prevent misattribution.
+if [[ -n "$EXPECTED_ITER_TICKET" ]]; then
+  SENTINEL="${PIPELINE_INVOCATION_SENTINEL:-/tmp/pipeline-last-invoked-ticket}"
+  BANNER_TICKET=""
+  if [[ -f "$SENTINEL" ]]; then
+    BANNER_TICKET="$(tr -d '[:space:]' < "$SENTINEL" 2>/dev/null || true)"
+  fi
+  if [[ -n "$BANNER_TICKET" && "$BANNER_TICKET" != "$EXPECTED_ITER_TICKET" ]]; then
+    echo "strike-ticket: MISMATCH -- iteration ticket #$EXPECTED_ITER_TICKET but invocation banner names ticket #$BANNER_TICKET; aborting strike to prevent misattribution" >&2
+    exit 1
+  fi
+fi
 
 command -v gh >/dev/null || { echo "strike-ticket: gh not found; skipping" >&2; exit 0; }
 

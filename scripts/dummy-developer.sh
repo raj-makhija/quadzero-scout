@@ -177,6 +177,7 @@ PROMPT
     model="${PIPELINE_DEVELOPER_MODEL:-claude-sonnet-4-6}"
   fi
 
+  printf '%s\n' "$ticket" > "${PIPELINE_INVOCATION_SENTINEL:-/tmp/pipeline-last-invoked-ticket}"
   echo "==> invoking real developer agent (claude, model=$model) for #$ticket attempt $attempt" >&2
   echo "$prompt" | PIPELINE_AGENT_MODEL="$model" "$SCRIPT_DIR/_agent-claude.sh" - >/dev/null
 
