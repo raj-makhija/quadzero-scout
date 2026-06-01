@@ -6,6 +6,8 @@ import {
   AvailabilityEnum,
   UserRoleEnum,
   LLMProviderEnum,
+  GetAttachmentUploadUrlRequestSchema,
+  SaveAttachmentRequestSchema,
 } from '../index.js';
 
 // ---------------------------------------------------------------------------
@@ -258,5 +260,47 @@ describe('Enum schemas', () => {
 
   it('LLMProviderEnum rejects invalid providers', () => {
     expect(LLMProviderEnum.safeParse('mistral').success).toBe(false);
+  });
+});
+
+describe('Attachment request schemas', () => {
+  // Candidate IDs are minted as `cand_<uuid>` (saveProfile.ts), so the
+  // attachment schemas must accept that prefixed form — not a bare UUID.
+  const candidateId = 'cand_8d4f2a1b-3c2e-4f1a-9b8d-7e6a5c4b3d2e';
+  const attachmentId = '8d4f2a1b-3c2e-4f1a-9b8d-7e6a5c4b3d2e';
+
+  it('GetAttachmentUploadUrlRequestSchema accepts a cand_-prefixed candidateId', () => {
+    const result = GetAttachmentUploadUrlRequestSchema.safeParse({
+      candidateId,
+      fileName: 'salary-slip.pdf',
+      contentType: 'application/pdf',
+      fileSize: 12345,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('SaveAttachmentRequestSchema accepts a cand_-prefixed candidateId', () => {
+    const result = SaveAttachmentRequestSchema.safeParse({
+      candidateId,
+      attachmentId,
+      s3Key: `candidate-attachments/${candidateId}/${attachmentId}-salary-slip.pdf`,
+      fileName: 'salary-slip.pdf',
+      contentType: 'application/pdf',
+      fileSize: 12345,
+      tag: 'Salary Slip',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('SaveAttachmentRequestSchema still requires a real UUID attachmentId', () => {
+    const result = SaveAttachmentRequestSchema.safeParse({
+      candidateId,
+      attachmentId: '8d4f2a1b', // truncated — must be rejected
+      s3Key: 'candidate-attachments/x/y.pdf',
+      fileName: 'salary-slip.pdf',
+      contentType: 'application/pdf',
+      fileSize: 12345,
+    });
+    expect(result.success).toBe(false);
   });
 });

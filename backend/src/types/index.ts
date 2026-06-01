@@ -1193,7 +1193,9 @@ export const AttachmentContentTypeEnum = z.enum([
 export type AttachmentContentType = z.infer<typeof AttachmentContentTypeEnum>;
 
 export const GetAttachmentUploadUrlRequestSchema = z.object({
-  candidateId: z.string().uuid(),
+  // Candidate IDs are `cand_<uuid>` (not bare UUIDs), matching the validation
+  // used by ScreenCandidateRequestSchema. `.uuid()` here rejected every real id.
+  candidateId: z.string().min(1),
   fileName: z.string().min(1).max(255),
   contentType: AttachmentContentTypeEnum,
   fileSize: z.number().int().min(1).max(10_485_760),
@@ -1201,7 +1203,7 @@ export const GetAttachmentUploadUrlRequestSchema = z.object({
 export type GetAttachmentUploadUrlRequest = z.infer<typeof GetAttachmentUploadUrlRequestSchema>;
 
 export const SaveAttachmentRequestSchema = z.object({
-  candidateId: z.string().uuid(),
+  candidateId: z.string().min(1),
   attachmentId: z.string().uuid(),
   s3Key: z.string().min(1),
   fileName: z.string().min(1).max(255),
