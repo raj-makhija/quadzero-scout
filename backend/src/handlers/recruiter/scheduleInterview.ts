@@ -5,6 +5,7 @@ import { getShortlistEntry, updateShortlistPipelineStage } from '../../lib/dynam
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
 import { getEffectiveStage, createPipelineActivity, transitionPipelineStage } from '../../lib/pipelineService.js';
+import { safeGenerateTask, safeResolveTask, buildRecordInterviewFeedbackTask, loadTaskContext, compositeEntityRef } from '../../lib/recruiterTasks.js';
 
 async function handleRequest(
   event: AuthenticatedEvent
@@ -78,6 +79,25 @@ async function handleRequest(
     } else {
       await updateShortlistPipelineStage(requirementId, candidateId, currentStage, event.auth.userId, extraFields);
     }
+
+    // Scheduling resolves the "schedule interview" task and queues the
+    // "record interview feedback" task due one hour after the interview.
+    await safeResolveTask({
+      entityRef: compositeEntityRef(requirementId, candidateId),
+      type: 'schedule_interview',
+      completedBy: event.auth.userId,
+    });
+    const taskContext = await loadTaskContext(requirementId, candidateId);
+    await safeGenerateTask(
+      buildRecordInterviewFeedbackTask({
+        ownerId: event.auth.userId,
+        requirementId,
+        candidateId,
+        context: taskContext,
+        now: new Date(),
+        scheduledAt,
+      })
+    );
 
     logAuditEvent(event.auth, event, {
       action: 'PIPELINE_INTERVIEW_SCHEDULED',

@@ -4,6 +4,7 @@ import { validate, formatZodErrors, ShortlistCandidateRequestSchema } from '../.
 import { getRequirementById, getCandidateById, getShortlistEntry, saveShortlist, updateShortlistStatus } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
+import { safeGenerateTask, buildSubmitToClientTask } from '../../lib/recruiterTasks.js';
 import type { ShortlistItem } from '../../types/index.js';
 
 async function handleRequest(
@@ -91,6 +92,20 @@ async function handleRequest(
           metadata: { requirementId, candidateId, candidateName: candidate.full_name, previousStatus: 'not_suitable' },
         });
 
+        await safeGenerateTask(
+          buildSubmitToClientTask({
+            ownerId: event.auth.userId,
+            requirementId,
+            candidateId,
+            context: {
+              candidate_name: candidate.full_name,
+              requirement_title: requirement.job_title,
+              client_name: requirement.client_name,
+            },
+            now: new Date(),
+          })
+        );
+
         const result: Record<string, unknown> = { success: true };
         if (candidate.not_interested) {
           result.warning = 'NOT_INTERESTED';
@@ -127,6 +142,20 @@ async function handleRequest(
       entityId: `${requirementId}:${candidateId}`,
       metadata: { requirementId, candidateId, candidateName: candidate.full_name },
     });
+
+    await safeGenerateTask(
+      buildSubmitToClientTask({
+        ownerId: event.auth.userId,
+        requirementId,
+        candidateId,
+        context: {
+          candidate_name: candidate.full_name,
+          requirement_title: requirement.job_title,
+          client_name: requirement.client_name,
+        },
+        now: new Date(),
+      })
+    );
 
     const result: Record<string, unknown> = { success: true };
     if (candidate.not_interested) {

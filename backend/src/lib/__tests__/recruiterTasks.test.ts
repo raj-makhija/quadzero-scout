@@ -1,0 +1,371 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import {
+  TASK_PRIORITY,
+  POOL_OWNER,
+  compositeEntityRef,
+  resolveSnoozeUntil,
+  ttlEpochFrom,
+  isTaskVisible,
+  sortTasks,
+  isExpirable,
+  buildSubmitToClientTask,
+  buildFollowUpClientTask,
+  buildScheduleInterviewTask,
+  buildRecordInterviewFeedbackTask,
+  buildSendOfferTask,
+  buildStageTransitionTask,
+  buildSweepTasks,
+  buildTaskItem,
+  createTaskIfAbsent,
+  resolveTaskByEntity,
+  listActiveTasksForRecruiter,
+  snoozeTaskById,
+  completeTaskById,
+  expireStaleTasks,
+  __setDocClientForTests,
+  type RecruiterTask,
+  type TaskSpec,
+} from '../recruiterTasks.js';
+
+const NOW = new Date('2026-06-01T00:00:00.000Z');
+
+const PIPELINE_ARGS = {
+  ownerId: 'rec-1',
+  requirementId: 'r1',
+  candidateId: 'c1',
+  context: { candidate_name: 'Asha', requirement_title: 'Backend Dev', client_name: 'Acme' },
+  now: NOW,
+};
+
+function hoursBetween(a: string, b: Date): number {
+  return (new Date(a).getTime() - b.getTime()) / 3_600_000;
+}
+
+function makeTask(overrides: Partial<RecruiterTask>): RecruiterTask {
+  return {
+    owner_id: 'rec-1',
+    task_id: 't',
+    type: 'submit_to_client',
+    priority: 2,
+    status: 'active',
+    entity_ref: 'REQ#r1#CAND#c1',
+    context: {},
+    action_url: '/x',
+    due_date: NOW.toISOString(),
+    generated_at: NOW.toISOString(),
+    snoozed_until: null,
+    snooze_count: 0,
+    completed_at: null,
+    completed_by: null,
+    ...overrides,
+  };
+}
+
+// ─── Pure helpers ─────────────────────────────────────────────────────────---
+
+describe('compositeEntityRef', () => {
+  it('combines requirement and candidate', () => {
+    expect(compositeEntityRef('r1', 'c1')).toBe('REQ#r1#CAND#c1');
+  });
+  it('handles requirement-only and candidate-only refs', () => {
+    expect(compositeEntityRef('r1')).toBe('REQ#r1');
+    expect(compositeEntityRef(undefined, 'c1')).toBe('CAND#c1');
+  });
+});
+
+describe('resolveSnoozeUntil', () => {
+  it('resolves fixed presets', () => {
+    expect(hoursBetween(resolveSnoozeUntil('1h', NOW), NOW)).toBe(1);
+    expect(hoursBetween(resolveSnoozeUntil('4h', NOW), NOW)).toBe(4);
+    expect(hoursBetween(resolveSnoozeUntil('tomorrow', NOW), NOW)).toBe(24);
+    expect(hoursBetween(resolveSnoozeUntil('next_week', NOW), NOW)).toBe(24 * 7);
+  });
+  it('uses a future custom date as-is', () => {
+    const future = '2026-06-10T00:00:00.000Z';
+    expect(resolveSnoozeUntil('custom', NOW, future)).toBe(future);
+  });
+  it('snaps a past custom date to now', () => {
+    expect(resolveSnoozeUntil('custom', NOW, '2026-05-01T00:00:00.000Z')).toBe(NOW.toISOString());
+  });
+});
+
+describe('ttlEpochFrom', () => {
+  it('is 30 days after the instant, in epoch seconds', () => {
+    expect(ttlEpochFrom(NOW.toISOString())).toBe(Math.floor((NOW.getTime() + 30 * 86_400_000) / 1000));
+  });
+});
+
+describe('isTaskVisible', () => {
+  it('hides completed/expired tasks', () => {
+    expect(isTaskVisible(makeTask({ status: 'completed' }), NOW)).toBe(false);
+    expect(isTaskVisible(makeTask({ status: 'expired' }), NOW)).toBe(false);
+  });
+  it('hides tasks snoozed into the future, shows once snooze passes', () => {
+    expect(isTaskVisible(makeTask({ snoozed_until: '2026-06-02T00:00:00.000Z' }), NOW)).toBe(false);
+    expect(isTaskVisible(makeTask({ snoozed_until: '2026-05-31T00:00:00.000Z' }), NOW)).toBe(true);
+  });
+});
+
+describe('sortTasks', () => {
+  it('orders by priority then most-overdue first', () => {
+    const a = makeTask({ task_id: 'a', priority: 2, due_date: '2026-06-05T00:00:00Z' });
+    const b = makeTask({ task_id: 'b', priority: 1, due_date: '2026-06-10T00:00:00Z' });
+    const c = makeTask({ task_id: 'c', priority: 2, due_date: '2026-06-01T00:00:00Z' });
+    expect(sortTasks([a, b, c]).map((t) => t.task_id)).toEqual(['b', 'c', 'a']);
+  });
+});
+
+describe('isExpirable', () => {
+  it('is true only for active tasks overdue beyond the grace window', () => {
+    expect(isExpirable(makeTask({ due_date: '2026-05-01T00:00:00Z' }), NOW)).toBe(true); // >14d overdue
+    expect(isExpirable(makeTask({ due_date: '2026-05-29T00:00:00Z' }), NOW)).toBe(false); // 3d overdue
+    expect(isExpirable(makeTask({ status: 'completed', due_date: '2026-05-01T00:00:00Z' }), NOW)).toBe(false);
+  });
+});
+
+// ─── Event-driven builders ─────────────────────────────────────────────────--
+
+describe('event-driven task builders', () => {
+  it('submit_to_client: P2, due +24h', () => {
+    const t = buildSubmitToClientTask(PIPELINE_ARGS);
+    expect(t.type).toBe('submit_to_client');
+    expect(t.priority).toBe(2);
+    expect(hoursBetween(t.due_date, NOW)).toBe(24);
+  });
+
+  it('follow_up_client: P2, due +5 days', () => {
+    const t = buildFollowUpClientTask(PIPELINE_ARGS);
+    expect(t.priority).toBe(2);
+    expect(hoursBetween(t.due_date, NOW)).toBe(24 * 5);
+  });
+
+  it('schedule_interview: only positive feedback, P2, due +24h', () => {
+    expect(buildScheduleInterviewTask({ ...PIPELINE_ARGS, rating: 'neutral' })).toBeNull();
+    expect(buildScheduleInterviewTask({ ...PIPELINE_ARGS, rating: 'negative' })).toBeNull();
+    const t = buildScheduleInterviewTask({ ...PIPELINE_ARGS, rating: 'positive' })!;
+    expect(t.type).toBe('schedule_interview');
+    expect(t.priority).toBe(2);
+    expect(hoursBetween(t.due_date, NOW)).toBe(24);
+  });
+
+  it('record_interview_feedback: P1, due interview + 1h', () => {
+    const scheduledAt = '2026-06-03T10:00:00.000Z';
+    const t = buildRecordInterviewFeedbackTask({ ...PIPELINE_ARGS, scheduledAt });
+    expect(t.priority).toBe(1);
+    expect(new Date(t.due_date).toISOString()).toBe('2026-06-03T11:00:00.000Z');
+  });
+
+  it('send_offer: only proceed decision, P2, due +48h', () => {
+    expect(buildSendOfferTask({ ...PIPELINE_ARGS, decision: 'reject' })).toBeNull();
+    expect(buildSendOfferTask({ ...PIPELINE_ARGS, decision: 'hold' })).toBeNull();
+    const t = buildSendOfferTask({ ...PIPELINE_ARGS, decision: 'proceed' })!;
+    expect(t.priority).toBe(2);
+    expect(hoursBetween(t.due_date, NOW)).toBe(48);
+  });
+
+  it('stage transitions: offered/offer_accepted/joined generate tasks, others do not', () => {
+    const offered = buildStageTransitionTask({ ...PIPELINE_ARGS, stage: 'offered' })!;
+    expect(offered.type).toBe('follow_up_offer');
+    expect(offered.priority).toBe(2);
+    expect(hoursBetween(offered.due_date, NOW)).toBe(24 * 3);
+
+    const accepted = buildStageTransitionTask({ ...PIPELINE_ARGS, stage: 'offer_accepted' })!;
+    expect(accepted.type).toBe('confirm_joining');
+    expect(accepted.priority).toBe(3);
+    expect(hoursBetween(accepted.due_date, NOW)).toBe(24 * 2);
+
+    const joined = buildStageTransitionTask({ ...PIPELINE_ARGS, stage: 'joined' })!;
+    expect(joined.type).toBe('post_placement_checkin');
+    expect(joined.priority).toBe(3);
+    expect(hoursBetween(joined.due_date, NOW)).toBe(24 * 21);
+
+    for (const stage of ['rejected_by_client', 'on_hold', 'candidate_withdrawn', 'client_reviewed']) {
+      expect(buildStageTransitionTask({ ...PIPELINE_ARGS, stage })).toBeNull();
+    }
+  });
+});
+
+// ─── Scheduled sweep ─────────────────────────────────────────────────────────
+
+describe('buildSweepTasks', () => {
+  it('produces a POOL task for each of the six conditions', () => {
+    const specs = buildSweepTasks({
+      now: NOW,
+      newMatches: [{ requirementId: 'r1', candidateId: 'c1', matchScore: 82 }],
+      expiredScreenings: [{ requirementId: 'r2', candidateId: 'c2' }],
+      staleRequirements: [{ requirementId: 'r3' }],
+      filledRequirements: [{ requirementId: 'r4' }],
+      lowConfidenceImports: [{ candidateId: 'c5', confidence: 0.4 }],
+      ingestedResumes: [{ candidateId: 'c6' }],
+    });
+    const types = specs.map((s) => s.type).sort();
+    expect(types).toEqual(
+      ['close_requirement', 'rescreen_candidate', 'review_bulk_import', 'review_ingested_resume', 'screen_candidate', 'source_candidates'].sort()
+    );
+    expect(specs.every((s) => s.owner_id === POOL_OWNER)).toBe(true);
+  });
+
+  it('drops matches below the 70% threshold', () => {
+    const specs = buildSweepTasks({ now: NOW, newMatches: [{ requirementId: 'r1', candidateId: 'c1', matchScore: 65 }] });
+    expect(specs).toHaveLength(0);
+  });
+
+  it('uses the fixed pool-task priorities', () => {
+    expect(TASK_PRIORITY.screen_candidate).toBe(3);
+    expect(TASK_PRIORITY.review_ingested_resume).toBe(3);
+    expect(TASK_PRIORITY.source_candidates).toBe(4);
+    expect(TASK_PRIORITY.close_requirement).toBe(4);
+    expect(TASK_PRIORITY.review_bulk_import).toBe(4);
+  });
+});
+
+// ─── DynamoDB operations (mocked client) ──────────────────────────────────────
+
+interface MockState {
+  entityItems: RecruiterTask[];
+  ownerItems: Record<string, RecruiterTask[]>;
+  scanItems: RecruiterTask[];
+  puts: unknown[];
+  updates: Array<Record<string, unknown>>;
+}
+
+function installMock(state: Partial<MockState>): MockState {
+  const full: MockState = {
+    entityItems: [],
+    ownerItems: {},
+    scanItems: [],
+    puts: [],
+    updates: [],
+    ...state,
+  };
+  const send = vi.fn(async (cmd: { constructor: { name: string }; input: Record<string, any> }) => {
+    const name = cmd.constructor.name;
+    if (name === 'QueryCommand') {
+      if (cmd.input.IndexName === 'entity-ref-index') return { Items: full.entityItems };
+      const owner = cmd.input.ExpressionAttributeValues[':o'];
+      return { Items: full.ownerItems[owner] || [] };
+    }
+    if (name === 'ScanCommand') return { Items: full.scanItems };
+    if (name === 'PutCommand') {
+      full.puts.push(cmd.input.Item);
+      return {};
+    }
+    if (name === 'UpdateCommand') {
+      full.updates.push(cmd.input);
+      return {};
+    }
+    return {};
+  });
+  __setDocClientForTests({ send });
+  return full;
+}
+
+const SPEC: TaskSpec = {
+  owner_id: 'rec-1',
+  type: 'submit_to_client',
+  priority: 2,
+  entity_ref: 'REQ#r1#CAND#c1',
+  context: {},
+  action_url: '/x',
+  due_date: NOW.toISOString(),
+};
+
+describe('createTaskIfAbsent (idempotency)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('writes a new task when none active for entity_ref + type', async () => {
+    const state = installMock({ entityItems: [] });
+    const item = await createTaskIfAbsent(SPEC, NOW);
+    expect(item).not.toBeNull();
+    expect(state.puts).toHaveLength(1);
+  });
+
+  it('is a no-op when an active task already exists', async () => {
+    const state = installMock({ entityItems: [makeTask({})] });
+    const item = await createTaskIfAbsent(SPEC, NOW);
+    expect(item).toBeNull();
+    expect(state.puts).toHaveLength(0);
+  });
+});
+
+describe('resolveTaskByEntity (auto-complete)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('marks the matching active task completed with completed_by + TTL', async () => {
+    const state = installMock({ entityItems: [makeTask({ owner_id: 'rec-1', task_id: 't9' })] });
+    const count = await resolveTaskByEntity({ entityRef: 'REQ#r1#CAND#c1', type: 'submit_to_client', completedBy: 'rec-2' }, NOW);
+    expect(count).toBe(1);
+    const upd = state.updates[0];
+    expect(upd.ExpressionAttributeValues[':c']).toBe('completed');
+    expect(upd.ExpressionAttributeValues[':cb']).toBe('rec-2');
+    expect(upd.ExpressionAttributeValues[':ttl']).toBe(ttlEpochFrom(NOW.toISOString()));
+  });
+});
+
+describe('listActiveTasksForRecruiter', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('merges owned + pool tasks, drops snoozed, and sorts', async () => {
+    installMock({
+      ownerItems: {
+        'rec-1': [
+          makeTask({ task_id: 'owned-p2', priority: 2, due_date: '2026-06-05T00:00:00Z' }),
+          makeTask({ task_id: 'snoozed', priority: 1, snoozed_until: '2026-06-02T00:00:00Z' }),
+        ],
+        POOL: [makeTask({ task_id: 'pool-p1', owner_id: POOL_OWNER, priority: 1, due_date: '2026-06-09T00:00:00Z' })],
+      },
+    });
+    const tasks = await listActiveTasksForRecruiter('rec-1', NOW);
+    expect(tasks.map((t) => t.task_id)).toEqual(['pool-p1', 'owned-p2']);
+  });
+});
+
+describe('snoozeTaskById', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('sets snoozed_until and increments snooze_count unconditionally', async () => {
+    const state = installMock({});
+    const until = await snoozeTaskById({ ownerId: 'rec-1', taskId: 't', preset: '1h' }, NOW);
+    expect(hoursBetween(until, NOW)).toBe(1);
+    const upd = state.updates[0];
+    expect(upd.UpdateExpression).toContain('ADD snooze_count :one');
+    expect(upd.ExpressionAttributeValues[':one']).toBe(1);
+  });
+});
+
+describe('completeTaskById', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('marks completed with a 30-day TTL', async () => {
+    const state = installMock({});
+    await completeTaskById({ ownerId: 'rec-1', taskId: 't', completedBy: 'rec-1' }, NOW);
+    expect(state.updates[0].ExpressionAttributeValues[':ttl']).toBe(ttlEpochFrom(NOW.toISOString()));
+  });
+});
+
+describe('expireStaleTasks', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('expires only tasks overdue beyond the grace window, applying a TTL', async () => {
+    const state = installMock({
+      scanItems: [
+        makeTask({ task_id: 'old', due_date: '2026-05-01T00:00:00Z' }),
+        makeTask({ task_id: 'recent', due_date: '2026-05-30T00:00:00Z' }),
+      ],
+    });
+    const count = await expireStaleTasks(NOW);
+    expect(count).toBe(1);
+    expect(state.updates).toHaveLength(1);
+    expect(state.updates[0].ExpressionAttributeValues[':e']).toBe('expired');
+    expect(state.updates[0].ExpressionAttributeValues[':ttl']).toBe(ttlEpochFrom(NOW.toISOString()));
+  });
+});
+
+describe('buildTaskItem', () => {
+  it('produces an active task with zero snooze_count and a sortable id', () => {
+    const item = buildTaskItem(SPEC, NOW);
+    expect(item.status).toBe('active');
+    expect(item.snooze_count).toBe(0);
+    expect(item.task_id.startsWith(NOW.toISOString())).toBe(true);
+  });
+});

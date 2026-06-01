@@ -1009,6 +1009,25 @@ class ApiClient {
     }
     return data.data;
   }
+
+  // ─── Recruiter Task Queue (ticket #153) ────────────────────────────────────
+  async getTasks() {
+    return this.request<{ tasks: RecruiterTask[] }>('/recruiter/tasks');
+  }
+
+  async snoozeTask(taskId: string, preset: SnoozePreset, opts?: { customDate?: string; pool?: boolean }) {
+    return this.request<{ snoozed: boolean; snoozedUntil: string }>(
+      `/recruiter/tasks/${taskId}/snooze`,
+      { method: 'POST', body: JSON.stringify({ preset, ...opts }) }
+    );
+  }
+
+  async completeTask(taskId: string, opts?: { pool?: boolean }) {
+    return this.request<{ completed: boolean }>(
+      `/recruiter/tasks/${taskId}/complete`,
+      { method: 'POST', body: JSON.stringify(opts ?? {}) }
+    );
+  }
 }
 
 export const api = new ApiClient(API_URL);
@@ -2110,4 +2129,31 @@ export interface MatchDebugResponse {
     availabilityMatch: string;
     roleMatch?: string;
   };
+}
+
+// ─── Recruiter Task Queue (ticket #153) ──────────────────────────────────────
+export type TaskPriority = 1 | 2 | 3 | 4;
+export type SnoozePreset = '1h' | '4h' | 'tomorrow' | 'next_week' | 'custom';
+
+export interface TaskContext {
+  candidate_name?: string;
+  requirement_title?: string;
+  client_name?: string;
+  match_score?: number;
+  [key: string]: unknown;
+}
+
+export interface RecruiterTask {
+  owner_id: string;
+  task_id: string;
+  type: string;
+  priority: TaskPriority;
+  status: string;
+  entity_ref: string;
+  context: TaskContext;
+  action_url: string;
+  due_date: string;
+  generated_at: string;
+  snoozed_until: string | null;
+  snooze_count: number;
 }

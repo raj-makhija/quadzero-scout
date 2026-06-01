@@ -6,6 +6,7 @@ import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
 import { getEffectiveStage, createPipelineActivity, transitionPipelineStage } from '../../lib/pipelineService.js';
 import { updateShortlistPipelineStage } from '../../lib/dynamodb.js';
+import { safeGenerateTask, safeResolveTask, buildSendOfferTask, loadTaskContext, compositeEntityRef } from '../../lib/recruiterTasks.js';
 
 async function handleRequest(
   event: AuthenticatedEvent
@@ -77,6 +78,25 @@ async function handleRequest(
         last_activity_at: now,
       });
     }
+
+    // Recording feedback resolves the "record interview feedback" task and,
+    // on a proceed decision, queues the "send offer" task.
+    await safeResolveTask({
+      entityRef: compositeEntityRef(requirementId, candidateId),
+      type: 'record_interview_feedback',
+      completedBy: event.auth.userId,
+    });
+    const taskContext = await loadTaskContext(requirementId, candidateId);
+    await safeGenerateTask(
+      buildSendOfferTask({
+        ownerId: event.auth.userId,
+        requirementId,
+        candidateId,
+        context: taskContext,
+        now: new Date(),
+        decision,
+      })
+    );
 
     logAuditEvent(event.auth, event, {
       action: 'PIPELINE_INTERVIEW_FEEDBACK',

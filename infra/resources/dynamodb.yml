@@ -505,6 +505,46 @@ Resources:
         - Key: Project
           Value: quadzero-scout
 
+  # RecruiterTasks Table (ticket #153 — intelligent task queue)
+  RecruiterTasksTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: ${self:custom.recruiterTasksTable}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: owner_id
+          AttributeType: S
+        - AttributeName: task_id
+          AttributeType: S
+        - AttributeName: entity_ref
+          AttributeType: S
+        - AttributeName: type
+          AttributeType: S
+      KeySchema:
+        - AttributeName: owner_id
+          KeyType: HASH
+        - AttributeName: task_id
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: entity-ref-index
+          KeySchema:
+            - AttributeName: entity_ref
+              KeyType: HASH
+            - AttributeName: type
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Project
+          Value: quadzero-scout
+
 Outputs:
   TalentProfilesTableArn:
     Description: TalentProfiles table ARN
@@ -601,3 +641,9 @@ Outputs:
     Value: !GetAtt CandidateAttachmentsTable.Arn
     Export:
       Name: ${self:provider.stage}-CandidateAttachmentsTableArn
+
+  RecruiterTasksTableArn:
+    Description: RecruiterTasks table ARN
+    Value: !GetAtt RecruiterTasksTable.Arn
+    Export:
+      Name: ${self:provider.stage}-RecruiterTasksTableArn

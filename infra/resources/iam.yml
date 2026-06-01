@@ -36,6 +36,8 @@ dynamoDbPolicy:
     - !Sub '${SubVendorsTable.Arn}/index/*'
     - !GetAtt PipelineActivityTable.Arn
     - !GetAtt CandidateAttachmentsTable.Arn
+    - !GetAtt RecruiterTasksTable.Arn
+    - !Sub '${RecruiterTasksTable.Arn}/index/*'
 
 # S3 Policy
 s3Policy:
