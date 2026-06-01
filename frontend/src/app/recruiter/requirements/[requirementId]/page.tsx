@@ -63,6 +63,7 @@ interface EditFormData {
   isRateGstInclusive: boolean;
   jdText: string;
   jobTitle: string;
+  coreSkill: string;
   mustHaveSkills: string[];
   goodToHaveSkills: string[];
   roles: string[];
@@ -136,6 +137,7 @@ export default function RequirementDetailPage() {
     isRateGstInclusive: false,
     jdText: '',
     jobTitle: '',
+    coreSkill: '',
     mustHaveSkills: [],
     goodToHaveSkills: [],
     roles: [],
@@ -162,6 +164,7 @@ export default function RequirementDetailPage() {
       isRateGstInclusive: requirement.isRateGstInclusive ?? false,
       jdText: requirement.jdText || '',
       jobTitle: requirement.jobTitle || '',
+      coreSkill: requirement.parsedCriteria.coreSkill || '',
       mustHaveSkills: requirement.parsedCriteria.mustHaveSkills || [],
       goodToHaveSkills: requirement.parsedCriteria.goodToHaveSkills || [],
       roles: requirement.parsedCriteria.roles || [],
@@ -218,6 +221,7 @@ export default function RequirementDetailPage() {
       // Build updated parsedCriteria from edit form and check for changes
       const newParsedCriteria: ParsedCriteria = {
         ...requirement.parsedCriteria,
+        coreSkill: editForm.coreSkill.trim() || null,
         mustHaveSkills: editForm.mustHaveSkills,
         goodToHaveSkills: editForm.goodToHaveSkills,
         roles: editForm.roles,
@@ -676,6 +680,21 @@ export default function RequirementDetailPage() {
                         <h3 className="font-medium text-gray-900 dark:text-gray-100">Search Criteria</h3>
                       </button>
                       {criteriaExpanded && (
+                        <>
+                        <div className="mb-4">
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Core Skill</label>
+                          <input
+                            type="text"
+                            value={editForm.coreSkill}
+                            onChange={(e) => setEditForm(f => ({ ...f, coreSkill: e.target.value }))}
+                            className="input w-full"
+                            maxLength={200}
+                            placeholder="e.g., React, Java, Blue Yonder"
+                          />
+                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            Primary pre-filter for search and match. Leave blank to evaluate candidates on must-have skills alone.
+                          </p>
+                        </div>
                         <CriteriaEditor
                           mustHaveSkills={editForm.mustHaveSkills}
                           goodToHaveSkills={editForm.goodToHaveSkills}
@@ -694,6 +713,7 @@ export default function RequirementDetailPage() {
                             }
                           }}
                         />
+                        </>
                       )}
                     </div>
 
