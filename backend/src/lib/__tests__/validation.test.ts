@@ -345,6 +345,34 @@ describe('SaveProfileRequestSchema', () => {
       expect(result.success).toBe(true);
     }
   });
+
+  // The LLM resume parser returns `hackerrankUrl: null` when no HackerRank URL is
+  // found in the resume (the common case), and the candidate review page forwards
+  // that value to saveProfile. The schema must accept null, otherwise every
+  // candidate without a HackerRank URL is blocked from saving their profile.
+  it('accepts null hackerrankUrl so the field stays optional on candidate upload', () => {
+    const result = validate(SaveProfileRequestSchema, {
+      profile: { ...validProfile, hackerrankUrl: null },
+      resumeS3Key: 'resumes/2024/01/abc.pdf',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts null hackerrankScore so the field stays optional on candidate upload', () => {
+    const result = validate(SaveProfileRequestSchema, {
+      profile: { ...validProfile, hackerrankScore: null },
+      resumeS3Key: 'resumes/2024/01/abc.pdf',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('still rejects a non-URL hackerrankUrl on candidate upload', () => {
+    const result = validate(SaveProfileRequestSchema, {
+      profile: { ...validProfile, hackerrankUrl: 'not a url at all' },
+      resumeS3Key: 'resumes/2024/01/abc.pdf',
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('ParseJdRequestSchema', () => {
