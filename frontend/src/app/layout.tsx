@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google';
 import { Providers } from '@/components/Providers';
 import { EnvironmentBanner } from '@/components/EnvironmentBanner';
 import { Toaster } from '@/components/ui/toaster';
+import { TaskQueueWidget } from '@/components/task-queue-widget';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'] });
@@ -63,6 +64,7 @@ export default function RootLayout({
             {children}
           </div>
           <Toaster />
+          <TaskQueueWidget />
         </Providers>
       </body>
     </html>

@@ -8,6 +8,7 @@ import { getEffectiveStage, transitionPipelineStage, createPipelineActivity } fr
 import { sendCandidateSubmissionEmail, getFormattedResumeUrl } from '../../lib/emailService.js';
 import { getUserById } from '../../lib/dynamodb.js';
 import { convertQuotedRate } from '../../lib/rateConversion.js';
+import { safeGenerateTask, safeResolveTask, buildFollowUpClientTask, compositeEntityRef } from '../../lib/recruiterTasks.js';
 
 async function handleRequest(
   event: AuthenticatedEvent
@@ -132,6 +133,26 @@ async function handleRequest(
         subject: `Candidate Profile: ${candidate.full_name}`,
       });
     }
+
+    const taskContext = {
+      candidate_name: candidate.full_name,
+      requirement_title: requirement.job_title,
+      client_name: requirement.client_name,
+    };
+    await safeResolveTask({
+      entityRef: compositeEntityRef(requirementId, candidateId),
+      type: 'submit_to_client',
+      completedBy: event.auth.userId,
+    });
+    await safeGenerateTask(
+      buildFollowUpClientTask({
+        ownerId: event.auth.userId,
+        requirementId,
+        candidateId,
+        context: taskContext,
+        now: new Date(),
+      })
+    );
 
     logAuditEvent(event.auth, event, {
       action: 'PIPELINE_SUBMIT_TO_CLIENT',

@@ -5,6 +5,7 @@ import { getShortlistEntry } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
 import { getEffectiveStage, isValidTransition, transitionPipelineStage } from '../../lib/pipelineService.js';
+import { safeGenerateTask, safeResolveTask, buildStageTransitionTask, loadTaskContext, compositeEntityRef, STAGE_RESOLVES } from '../../lib/recruiterTasks.js';
 import type { PipelineStage } from '../../types/index.js';
 
 async function handleRequest(
@@ -68,6 +69,29 @@ async function handleRequest(
     await transitionPipelineStage(
       requirementId, candidateId, currentStage, stage as PipelineStage,
       event.auth.userId, reason, extraFields
+    );
+
+    // Resolve the prior task this stage fulfils, then queue the next task
+    // (offered → follow up on offer, offer_accepted → confirm joining,
+    // joined → post-placement check-in). Other stages generate nothing.
+    const priorType = STAGE_RESOLVES[stage];
+    if (priorType) {
+      await safeResolveTask({
+        entityRef: compositeEntityRef(requirementId, candidateId),
+        type: priorType,
+        completedBy: event.auth.userId,
+      });
+    }
+    const taskContext = await loadTaskContext(requirementId, candidateId);
+    await safeGenerateTask(
+      buildStageTransitionTask({
+        ownerId: event.auth.userId,
+        requirementId,
+        candidateId,
+        context: taskContext,
+        now: new Date(),
+        stage,
+      })
     );
 
     logAuditEvent(event.auth, event, {

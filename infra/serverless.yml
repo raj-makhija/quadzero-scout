@@ -56,6 +56,7 @@ provider:
     DYNAMODB_TABLE_SUB_VENDORS: ${self:custom.subVendorsTable}
     DYNAMODB_TABLE_PIPELINE_ACTIVITY: ${self:custom.pipelineActivityTable}
     DYNAMODB_TABLE_CANDIDATE_ATTACHMENTS: ${self:custom.candidateAttachmentsTable}
+    DYNAMODB_TABLE_RECRUITER_TASKS: ${self:custom.recruiterTasksTable}
     GRAPH_TENANT_ID: ${ssm:/quadzero-scout/${self:provider.stage}/GRAPH_TENANT_ID, env:GRAPH_TENANT_ID, ''}
     GRAPH_CLIENT_ID: ${ssm:/quadzero-scout/${self:provider.stage}/GRAPH_CLIENT_ID, env:GRAPH_CLIENT_ID, ''}
     GRAPH_CLIENT_SECRET: ${ssm:/quadzero-scout/${self:provider.stage}/GRAPH_CLIENT_SECRET, env:GRAPH_CLIENT_SECRET, ''}
@@ -119,6 +120,7 @@ custom:
   subVendorsTable: SubVendors-${self:provider.stage}
   pipelineActivityTable: PipelineActivity-${self:provider.stage}
   candidateAttachmentsTable: CandidateAttachments-${self:provider.stage}
+  recruiterTasksTable: RecruiterTasks-${self:provider.stage}
 
   dotenv:
     include:
@@ -556,6 +558,32 @@ functions:
       - schedule:
           rate: rate(3 minutes)
           enabled: true
+
+  # Recruiter Task Queue (ticket #153)
+  # Scheduled sweep worker — generates time/condition-based POOL tasks.
+  taskGeneratorWorker:
+    handler: src/handlers/worker/taskGeneratorWorker.handler
+    timeout: 120
+    memorySize: 512
+    events:
+      - schedule:
+          rate: rate(30 minutes)
+          enabled: true
+
+  # Task queue HTTP endpoints (single router Lambda to stay under CFN limits)
+  recruiterTasks:
+    handler: src/handlers/recruiter/tasksRouter.handler
+    timeout: 30
+    events:
+      - httpApi:
+          path: /recruiter/tasks
+          method: GET
+      - httpApi:
+          path: /recruiter/tasks/{taskId}/snooze
+          method: POST
+      - httpApi:
+          path: /recruiter/tasks/{taskId}/complete
+          method: POST
 
   # Pricing Endpoints
   recruiterCalculatePricing:
