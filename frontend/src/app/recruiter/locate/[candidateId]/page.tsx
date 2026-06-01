@@ -162,13 +162,30 @@ export default function CandidateProfilePage() {
   );
 
   const handleScreeningComplete = useCallback(
-    async (screenedCandidateId: string) => {
+    async (screenedCandidateId: string, updatedValues?: { notInterested?: boolean }) => {
       setShowScreeningModal(false);
       // Update profile screening date optimistically
       const now = new Date().toISOString();
       setProfile((prev) =>
-        prev ? { ...prev, lastUpdated: now, lastScreenedAt: now } : prev
+        prev
+          ? { ...prev, lastUpdated: now, lastScreenedAt: now, notInterested: updatedValues?.notInterested ?? prev.notInterested }
+          : prev
       );
+      // Patch the locate list's sessionStorage so back-navigation shows the fresh badge
+      // without requiring a full page reload.
+      try {
+        const raw = sessionStorage.getItem('scout_recruiter_locate');
+        if (raw) {
+          const stored = JSON.parse(raw);
+          const patch = (item: { candidateId: string; lastScreenedAt?: string; notInterested?: boolean }) =>
+            item.candidateId === screenedCandidateId
+              ? { ...item, lastScreenedAt: now, notInterested: updatedValues?.notInterested ?? item.notInterested }
+              : item;
+          if (Array.isArray(stored.filteredResults)) stored.filteredResults = stored.filteredResults.map(patch);
+          if (Array.isArray(stored.nameResults)) stored.nameResults = stored.nameResults.map(patch);
+          sessionStorage.setItem('scout_recruiter_locate', JSON.stringify(stored));
+        }
+      } catch { /* sessionStorage may be unavailable */ }
       // Refresh attachments — screening may have uploaded new documents
       setAttachmentsLoading(true);
       api.listAttachments(candidateId).then((res) => {
