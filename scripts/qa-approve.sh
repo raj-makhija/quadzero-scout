@@ -1,22 +1,23 @@
 #!/usr/bin/env bash
-# qa-approve.sh -- mark a ticket as QA-approved, queueing it for the next
-# nightly cherry-pick to main.
+# qa-approve.sh -- approve the ticket currently in QA: squash-merge its
+# branch to develop (the back-merge) and mark it qa-approved.
 #
 # Usage:
 #   scripts/qa-approve.sh <ticket>
 #
-# Under the cherry-pick release model:
-# - This script does NOT touch main, develop, or any tag. It only sets
-#   status:qa-approved on the ticket.
-# - The nightly pipeline-nightly-release workflow does the actual work
-#   of cherry-picking the ticket's merge commit from develop onto main.
-# - If the cherry-pick succeeds, the ticket gets status:released.
-# - If it conflicts, the ticket gets status:prod-release-blocked and
-#   retries automatically on the next nightly batch.
+# Branch-isolated model: the ticket's branch was deployed to QA
+# (status:in-qa) and validated by a human. Approving it:
+#   1. Squash-merges the PR to develop (`Closes #N`), deleting the branch.
+#   2. Sets Pipeline Status=merged-to-develop + status:qa-approved.
 #
-# This is intentionally trivial: approval is a label fact, and the
-# actual release decision is made (and re-made) at batch time so the
-# ordering with other in-flight approvals is always correct.
+# develop now carries only approved work; the next dev ticket forks from it,
+# and tonight's develop->main mirror (pipeline-nightly-release) ships it.
+# Setting qa-approved (no longer in-qa) RELEASES the single-tenant QA lock so
+# the next ticket can pipeline:qa-deploy.
+#
+# Refuses unless the ticket is currently status:in-qa -- you can only approve
+# what has actually been QA-validated. Single-tenancy guarantees develop has
+# not moved since qa-deploy, so the squash-merge is clean.
 
 set -euo pipefail
 
@@ -31,30 +32,41 @@ fi
 
 TICKET="$1"
 
-command -v gh >/dev/null || { echo "error: gh not found" >&2; exit 127; }
+command -v gh  >/dev/null || { echo "error: gh not found"  >&2; exit 127; }
+command -v git >/dev/null || { echo "error: git not found" >&2; exit 127; }
 
 pl_load_config
+pl_require_clean_tree
 
-# Defensive sanity check: refuse to approve a ticket whose PR isn't merged
-# yet. Without a merge commit on develop, the nightly batch would have
-# nothing to cherry-pick and the ticket would stay stuck forever.
-PR="$("$SCRIPT_DIR/get-field.sh" "$TICKET" "PR Number" 2>/dev/null || true)"
-if [[ -z "$PR" ]]; then
-  PR="$(gh issue view "$TICKET" --json closedByPullRequestsReferences \
-    -q '.closedByPullRequestsReferences[0].number // empty' 2>/dev/null || true)"
-fi
-if [[ -z "$PR" ]]; then
-  echo "error: ticket #$TICKET has no associated PR; cannot approve" >&2
+# Guard: only the ticket currently in QA can be approved.
+LABELS="$(gh issue view "$TICKET" --json labels -q '.labels[].name' 2>/dev/null || true)"
+if ! echo "$LABELS" | grep -qx "status:in-qa"; then
+  echo "error: #$TICKET is not status:in-qa; run pipeline:qa-deploy and validate it first" >&2
   exit 1
 fi
 
-MERGE_SHA="$(gh pr view "$PR" --json mergeCommit -q '.mergeCommit.oid // empty' 2>/dev/null || true)"
-if [[ -z "$MERGE_SHA" ]]; then
-  echo "error: PR #$PR has no merge commit yet; cannot approve" >&2
+PR="$(pl_pr_for_ticket "$TICKET")"
+if [[ -z "$PR" ]]; then
+  echo "error: ticket #$TICKET has no open PR; cannot approve" >&2
   exit 1
 fi
+BRANCH="$(gh pr view "$PR" --json headRefName -q '.headRefName' 2>/dev/null || true)"
 
-echo "==> marking #$TICKET (PR #$PR, merge $MERGE_SHA) as qa-approved" >&2
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+git fetch origin --quiet
+
+echo "==> squash-merging PR #$PR to develop" >&2
+CUR="$(git branch --show-current)"
+if [[ "$CUR" != "develop" ]]; then
+  git checkout develop >&2 2>/dev/null || git checkout -B develop origin/develop >&2
+fi
+git pull origin develop --ff-only --quiet >&2 || true
+gh pr merge "$PR" --squash --delete-branch >&2
+git pull origin develop --quiet >&2
+[[ -n "$BRANCH" ]] && git branch -D "$BRANCH" 2>/dev/null >&2 || true
+
+"$SCRIPT_DIR/set-field.sh" "$TICKET" "Pipeline Status" merged-to-develop
 "$SCRIPT_DIR/set-status.sh" "$TICKET" qa-approved
 
-echo "qa-approve complete: #$TICKET queued for next nightly cherry-pick" >&2
+echo "qa-approve complete: #$TICKET squash-merged to develop; QA lock released" >&2

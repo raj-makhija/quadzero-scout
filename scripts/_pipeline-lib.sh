@@ -158,3 +158,74 @@ pl_set_status() {
   done <<< "$labels"
   gh issue edit "$issue" --add-label "$new_status" 2>/dev/null >&2 || true
 }
+
+# Resolve the PR number for a ticket. Prefers the "PR Number" project field
+# (set by the autonomous open-pr.sh); falls back to an OPEN pull request the
+# issue links via "Closes #N" (covers the manual -cowork route, which does
+# not populate the field). Prints the PR number, or empty if none found.
+pl_pr_for_ticket() {
+  local ticket="$1" libdir pr
+  libdir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  pr="$("$libdir/get-field.sh" "$ticket" "PR Number" 2>/dev/null || true)"
+  if [[ -z "$pr" ]]; then
+    pr="$(gh issue view "$ticket" --json closedByPullRequestsReferences \
+      -q '[.closedByPullRequestsReferences[] | select(.state == "OPEN") | .number][0] // empty' \
+      2>/dev/null || true)"
+  fi
+  printf '%s' "$pr"
+}
+
+# Build the serverless package prerequisites on a fresh Linux runner and
+# deploy the backend to the given stage (dev|qa|prod). Reads AWS creds from
+# the environment (the workflow sets them). Callers gate PIPELINE_SKIP_DEPLOY
+# themselves -- this always deploys when invoked.
+#
+# The infra/src copy, node_modules symlink, and chromium-layer build all
+# exist because infra/layers and infra/src are gitignored (built from npm /
+# a local junction to backend/src) and serverless-esbuild needs real files
+# at those paths to package the handlers. See the inline notes in the
+# original qa-deploy.sh history for the full rationale.
+#
+# Usage: pl_deploy_stage <stage>
+pl_deploy_stage() {
+  local stage="$1"
+  local root
+  root="$(_pl_repo_root)" || return 1
+  cd "$root" || return 1
+
+  echo "==> verifying AWS credentials" >&2
+  local aws_out
+  if ! aws_out="$(aws sts get-caller-identity --output text 2>&1)"; then
+    echo "error: aws sts get-caller-identity failed: $aws_out" >&2
+    return 1
+  fi
+  echo "    aws sts OK: $aws_out" >&2
+
+  echo "==> installing infra/ deps" >&2
+  (cd infra/ && npm ci --silent)
+  if [[ ! -e infra/src ]]; then
+    echo "==> copying backend/src -> infra/src (real files for serverless-esbuild)" >&2
+    cp -r backend/src infra/src
+  fi
+  echo "==> installing backend/ deps" >&2
+  (cd backend/ && npm ci --silent)
+  if [[ ! -e infra/src/node_modules ]]; then
+    echo "==> linking infra/src/node_modules -> backend/node_modules" >&2
+    ln -s ../../backend/node_modules infra/src/node_modules
+  fi
+  if [[ ! -d infra/layers/chromium/nodejs/node_modules/@sparticuz/chromium ]]; then
+    local chromium_ver
+    chromium_ver="$(jq -r '.dependencies."@sparticuz/chromium" // .devDependencies."@sparticuz/chromium" // empty' backend/package.json)"
+    if [[ -z "$chromium_ver" ]]; then
+      echo "error: @sparticuz/chromium not declared in backend/package.json" >&2
+      return 1
+    fi
+    echo "==> building chromium Lambda layer (@sparticuz/chromium $chromium_ver, ~80MB)" >&2
+    mkdir -p infra/layers/chromium/nodejs
+    (cd infra/layers/chromium/nodejs && \
+      npm init -y >/dev/null && \
+      npm install --silent --no-audit --no-fund "@sparticuz/chromium@$chromium_ver")
+  fi
+  echo "==> deploying backend to $stage (npx serverless deploy --stage $stage)" >&2
+  (cd infra/ && npx serverless deploy --stage "$stage")
+}

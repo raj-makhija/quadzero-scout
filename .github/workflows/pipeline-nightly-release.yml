@@ -1,17 +1,17 @@
-# Pipeline Nightly Release -- batch all qa-approved tickets to prod via cherry-pick.
+# Pipeline Nightly Release -- mirror develop -> main and ship to prod.
 #
 # Fires at 01:00 IST (19:30 UTC the previous day) every day. Calls
-# scripts/prod-release.sh, which finds all status:qa-approved (and
-# status:prod-release-blocked) tickets, cherry-picks each one's merge
-# commit from develop onto main in develop merge order, and ships the
-# whole batch as a single GitHub Release.
+# scripts/prod-release.sh, which merges origin/develop into main, deploys
+# the backend to prod, pushes main (Amplify ships the frontend), flips
+# every status:qa-approved ticket to status:released, and cuts a single
+# dated GitHub Release. In the branch-isolated model develop contains only
+# qa-approved work, so this is a straight mirror -- no cherry-pick.
 #
-# The script is its own no-op detector: if there are no eligible
-# tickets, or none cherry-pick cleanly, it exits 0 with a log message
-# and no main-side change.
+# The script is its own no-op detector: if develop has no commits beyond
+# main, it exits 0 with a log message and no main-side change.
 #
-# Manual `pipeline:prod-release` label remains available as breakglass
-# for hotfixes; this nightly job is the normal path.
+# Manual `pipeline:prod-release` label remains available as break-glass to
+# run the mirror immediately; this nightly job is the normal path.
 
 name: Pipeline Nightly Release
 

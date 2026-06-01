@@ -4,13 +4,16 @@
 # Despite the "dummy-" prefix (kept for stable manager.sh references),
 # this dispatches to a real Claude Code reviewer when
 # PIPELINE_PR_REVIEWER_AGENT=claude is set. Otherwise it falls back to
-# the original dummy that auto-approves and delegates to merge-pr.sh --
-# useful for plumbing tests without burning tokens.
+# the original dummy that auto-approves to awaiting-qa -- useful for
+# plumbing tests without burning tokens.
 #
 # Real reviewer outcomes:
-#   APPROVE         -> comment the review on the issue, then invoke
-#                     merge-pr.sh (which still owns staleness logic and
-#                     can re-route to rework on overlap).
+#   APPROVE         -> comment the review on the issue, set Pipeline
+#                     Status=awaiting-qa and status:ready-for-qa. The
+#                     branch + PR are left INTACT (not merged): the merge
+#                     to develop happens later, at pipeline:qa-approve.
+#                     This is the dev-phase terminal -- the manager stops
+#                     and the ticket waits for a human pipeline:qa-deploy.
 #   REQUEST_CHANGES -> comment the review on the issue + the PR, close
 #                     the PR with --delete-branch, clear PR Number and
 #                     Base SHA, set Pipeline Status=rework. Manager will
@@ -54,8 +57,10 @@ fi
 
 # ---------------------------------------------------------------- dummy path
 if [[ "$USE_REAL_AGENT" != "true" ]]; then
-  gh issue comment "$TICKET" --body "[dummy pr-reviewer] Review approved (conventions, style, security -- all dummy-checked). Invoking merge-pr.sh (handles staleness + merge-or-rework)." >&2
-  "$SCRIPT_DIR/merge-pr.sh" "$TICKET" "$PR"
+  gh issue comment "$TICKET" --body "[dummy pr-reviewer] Review approved (conventions, style, security -- all dummy-checked). Branch + PR left intact for QA; NOT merging to develop (the merge happens at pipeline:qa-approve)." >&2
+  "$SCRIPT_DIR/set-field.sh" "$TICKET" "Pipeline Status" awaiting-qa
+  "$SCRIPT_DIR/set-status.sh" "$TICKET" ready-for-qa
+  echo "pr-reviewer -> awaiting-qa on #$TICKET (PR #$PR left open for QA)" >&2
   exit 0
 fi
 
@@ -154,8 +159,10 @@ case "$VERDICT" in
 
 $REVIEW_BODY
 
-Invoking merge-pr.sh (handles staleness + merge-or-rework)." >&2
-    "$SCRIPT_DIR/merge-pr.sh" "$TICKET" "$PR"
+Branch + PR left intact for QA. The change is NOT merged to develop now: \`pipeline:qa-deploy\` merges develop in, re-runs the tests, and deploys it to QA; \`pipeline:qa-approve\` performs the merge to develop." >&2
+    "$SCRIPT_DIR/set-field.sh" "$TICKET" "Pipeline Status" awaiting-qa
+    "$SCRIPT_DIR/set-status.sh" "$TICKET" ready-for-qa
+    echo "pr-reviewer -> awaiting-qa on #$TICKET (PR #$PR left open for QA)" >&2
     ;;
 
   REQUEST_CHANGES)
@@ -170,7 +177,7 @@ $REVIEW_BODY
 
 Closing PR and routing to rework." >&2
 
-    # Same cleanup pattern as merge-pr.sh's stale path.
+    # Cleanup pattern: drop the failed attempt's PR + branch and reroute.
     CUR="$(git branch --show-current)"
     if [[ "$CUR" == "$HEAD_BRANCH" ]]; then
       git checkout develop >&2

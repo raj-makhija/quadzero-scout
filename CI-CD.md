@@ -27,33 +27,53 @@ new
   -> validation-pending (tester validates the diff vs the plan)
   -> pr-pending         (developer opens a PR)
   -> pr-review-pending  (pr-reviewer reviews the PR)
-  -> merged-to-develop  TERMINAL: change is on develop
+  -> awaiting-qa        TERMINAL (dev phase): branch built + reviewed,
+                        NOT merged to develop; waiting for a human
+                        pipeline:qa-deploy
 ```
+
+**Branch-isolated QA model.** The dev phase builds and reviews a branch but
+does **not** merge it to `develop`. `develop` is an "approved-only" trunk:
+work lands on it only when a human approves it out of QA. QA holds exactly
+**one** ticket at a time, deployed from its branch. See §5.7 for the full
+QA/prod model.
 
 Branch points:
 
 ```
   validation-pending  --tester FAIL-->  rework  -> dev-pending  (Attempt+1)
   pr-review-pending   --reviewer REQUEST_CHANGES-->  rework  -> dev-pending
-  pr-review-pending   --merge-pr.sh stale-->  rework  (overlap with develop)
+  awaiting-qa         --qa-deploy conflict/red tests-->  rework  (Attempt+1)
+  awaiting-qa         --qa-approve-->  merged-to-develop (squash-merge)
   any-state           --3-strike (Attempt > MAX_ATTEMPTS)-->  needs-human
   developer agent     --AWS/LLM cost change-->  cost-review-pending
 ```
 
-`needs-human` and `cost-review-pending` are terminal-blocked-on-human;
-they're excluded from the actionable queue until a human resolves them.
+`awaiting-qa`, `merged-to-develop`, `needs-human`, and `cost-review-pending`
+are excluded from the actionable queue: `awaiting-qa` waits for a human
+qa-deploy, `merged-to-develop` is the post-approve terminal, and the other
+two block on a human.
 
-Beyond `develop`, promotion is **human-driven** by design:
+Beyond `develop`, promotion is **human-driven** by design (QA holds one
+ticket at a time; see §5.7):
 
-- `scripts/qa-deploy.sh <sha>` -> deploy a develop-reachable SHA to QA (frontend via Amplify auto-deploy from qa-branch push, backend via npx serverless deploy --stage qa)
-- `scripts/qa-approve.sh <ticket>` -> human verdict after QA testing;
-  marks the ticket `status:qa-approved`, queueing it for the next nightly
-  cherry-pick onto `main`
-- `scripts/qa-reject.sh <sha> <reason> [ticket]` -> bounces back; reopens issue, routes to rework. Ticket inferred from commit message if omitted
-- `scripts/prod-release.sh` -> nightly batch: cherry-picks every
-  `status:qa-approved` ticket from develop onto main in develop merge
-  order. Per-ticket: clean cherry-pick → ships; conflict → marks
-  `status:prod-release-blocked` and retries next nightly
+- `scripts/qa-deploy.sh <ticket>` -> single-tenant hard stop, merge develop
+  into the ticket's branch, regression-test, then point `qa` at it (frontend
+  via Amplify auto-deploy from the qa-branch push, backend via
+  `npx serverless deploy --stage qa`). A merge conflict or red suite leaves
+  QA untouched and routes the ticket to rework.
+- `scripts/qa-approve.sh <ticket>` -> human verdict after QA testing:
+  squash-merges the ticket's PR to `develop` and marks it
+  `status:qa-approved`. Releases the single-tenant QA lock.
+- `scripts/qa-reject.sh <ticket> <reason>` -> resets `qa` back to `develop`
+  and routes the ticket to rework (attempt-capped), with the reason fed to
+  the developer.
+- `scripts/prod-release.sh` -> nightly: mirrors `develop` onto `main`
+  (`develop` is approved-only, so this is a straight merge, no cherry-pick),
+  deploys prod, and flips every `status:qa-approved` ticket to
+  `status:released`.
+- `scripts/back-merge-main.sh` -> after a hotfix, merges `main` into
+  `develop` and forces a re-QA of any ticket then in QA.
 
 ---
 
@@ -109,7 +129,8 @@ bare `PIPELINE_AGENT_MODEL` at the workflow level is ignored.
 `.github/workflows/pipeline-manager.yml` is the single workflow.
 It runs `manager.sh` in a drain loop bounded by 25 iterations and
 30 minutes. One Actions run can take a fresh ticket from `new` to
-`merged-to-develop`.
+`awaiting-qa` (the dev-phase terminal; the branch is reviewed but not yet
+merged to develop).
 
 Triggers (in priority order):
 
@@ -142,8 +163,8 @@ Project: "Quadzero Scout Pipeline" under `raj-makhija`. Custom fields:
 | Pipeline Status | single-select | The state-machine state. Drives the manager router. Named `Pipeline Status` (NOT `Status`) because Projects v2 reserves the bare name `Status` for its built-in field |
 | Agent | single-select | Which agent should pick up the ticket next. Mostly cosmetic; manager dispatches based on Pipeline Status |
 | Attempt | number | Rework counter. Manager increments on each rework dispatch; escalates to needs-human when > `PIPELINE_MAX_ATTEMPTS` (default 3) |
-| Base SHA | text | Develop tip the dev branch was created from. Used for staleness detection in `merge-pr.sh` |
-| PR Number | text | Set by `open-pr.sh`, cleared on rework |
+| Base SHA | text | Develop tip the dev branch was created from. Used by the tester/developer agents to diff the change (`git diff <Base SHA>..HEAD`) |
+| PR Number | text | Set by `open-pr.sh`, cleared on rework. QA scripts resolve the PR from this field, falling back to the issue's open linked PR (`pl_pr_for_ticket`) |
 
 Pipeline Status options:
 - `new` (or unset; treated equivalently)
@@ -153,7 +174,8 @@ Pipeline Status options:
 - `pr-pending`
 - `pr-review-pending`
 - `rework`
-- `merged-to-develop` (terminal)
+- `awaiting-qa` (dev-phase terminal: branch built + reviewed, not merged; awaiting human qa-deploy)
+- `merged-to-develop` (terminal: set at qa-approve when the branch is squash-merged to develop)
 - `needs-human` (terminal-blocked)
 - `cost-review-pending` (terminal-blocked)
 
@@ -260,8 +282,11 @@ What happens next, autonomously:
 5. Manager dispatches tester (`validate` mode): checks out the branch,
    reads diff, posts `[tester:validation-report]` with per-item table
    ending in `VERDICT: PASS` or `VERDICT: FAIL`
-6. **PASS path**: developer opens PR, reviewer reviews, `merge-pr.sh`
-   squash-merges to develop. Issue auto-closes.
+6. **PASS path**: developer opens PR, reviewer reviews and APPROVEs.
+   Pipeline Status -> `awaiting-qa` (status:ready-for-qa); the branch +
+   PR are left intact, NOT merged to develop. The ticket now waits for a
+   human `pipeline:qa-deploy`; the merge to develop happens later at
+   `pipeline:qa-approve`.
 7. **FAIL path**: dev branch deleted, Pipeline Status -> `rework`,
    Attempt incremented. Developer rework mode runs on a fresh
    `attempt-K+1` branch, reads the FAIL feedback in comments, retries.
@@ -346,26 +371,30 @@ done
 ### 5.3 Promotion to QA / prod (human-in-the-loop)
 
 ```bash
-# After a ticket merges to develop, deploy its merge SHA to QA
-scripts/qa-deploy.sh <SHA>
+# A reviewed ticket sits at awaiting-qa (status:ready-for-qa) with its
+# branch intact, NOT merged to develop. Deploy that one ticket to QA:
+scripts/qa-deploy.sh <TICKET>
+# Single-tenant: refused if another ticket already holds status:in-qa.
+# Merges develop into the branch, runs the regression suite, then points
+# qa at it. A conflict or red suite leaves QA untouched and reworks the
+# ticket.
 
 # Human tests in QA. If acceptable:
 scripts/qa-approve.sh <TICKET>
-# This sets status:qa-approved on the ticket. The actual ship to
-# main happens in the next nightly cherry-pick batch (01:00 IST).
+# Squash-merges the ticket's PR to develop and sets status:qa-approved.
+# Releases the QA lock. It ships to prod at the next nightly mirror.
 
-# If QA finds issues:
-scripts/qa-reject.sh <SHA> "describe what's wrong"
-# This routes the ticket back to rework so the dev agent can fix.
+# If QA finds issues (write the reason as a normal comment first):
+scripts/qa-reject.sh <TICKET> "describe what's wrong"
+# Resets qa back to develop and routes the ticket to rework.
 
-# Run the nightly batch immediately (no args; finds approved tickets itself)
+# Run the develop->main prod mirror immediately (no args)
 scripts/prod-release.sh
 ```
 
-Each ticket's prod release is its own decision: the nightly batch
-cherry-picks every `status:qa-approved` ticket from develop onto main
-independently. Tickets that conflict get marked `status:prod-release-blocked`
-and retry next nightly. See §5.7 for details.
+QA is single-tenant: one ticket is validated at a time, and `develop`
+accumulates only approved work. Prod is a straight mirror of `develop`
+onto `main`. See §5.7 for details.
 
 ### 5.4 Diagnostics & recovery
 
@@ -404,25 +433,23 @@ can be re-fired later.
 
 | Label | What happens | Param needed |
 |---|---|---|
-| `pipeline:qa-deploy` | Deploy ticket's merge SHA to QA (Amplify auto-deploys frontend; serverless deploys backend) | none — SHA inferred |
-| `pipeline:qa-approve` | Mark ticket `status:qa-approved`; queue for next nightly cherry-pick onto main | none |
-| `pipeline:qa-reject` | Re-open ticket, route to rework with reason | reason — read from latest non-bracket comment |
-| `pipeline:prod-release` | Breakglass: cherry-pick the ticket onto main immediately (bypasses nightly batch) | none |
+| `pipeline:qa-deploy` | Deploy this one ticket's branch to QA: single-tenant hard stop, merge develop in, regression-test, then push qa (Amplify frontend; serverless backend). Conflict/red tests → rework | none — ticket |
+| `pipeline:qa-approve` | Squash-merge the ticket's branch to develop; set `status:qa-approved`; release the QA lock | none |
+| `pipeline:qa-reject` | Reset qa back to develop, re-open ticket, route to rework with reason | reason — read from latest non-bracket comment |
+| `pipeline:prod-release` | Break-glass: run the develop→main mirror immediately (ships everything qa-approved on develop; bypasses the nightly window) | none |
 | `pipeline:approve-cost` | Unblock cost-review-pending ticket; post `[cost-approved]` marker; route back to dev-pending | none |
 | `pipeline:reject-cost` | Reject cost change; park at needs-human | reason — from latest comment |
 | `pipeline:retry` | Reset to rework, Attempt=1, clear Base SHA + PR Number | none |
 | `pipeline:park` | Halt processing; set Pipeline Status=needs-human | none |
 | `pipeline:show-status` | Bot replies with current Pipeline Status / Agent / Attempt / Base SHA / PR Number | none |
 
-**Precondition for `pipeline:prod-release`**: the ticket must be in
-`status:qa-approved` or `status:prod-release-blocked` for the release
-to actually happen. `prod-release.sh` builds its candidate set from
-those two status labels and ignores everything else. If you label a
-`status:ready-for-qa` ticket with `pipeline:prod-release`, the route
-command will succeed and the runner will execute the script — but the
-ticket simply won't be in the candidate set, so nothing ships and no
-error surfaces. Run `scripts/set-status.sh <N> qa-approved` first if
-you're bypassing the normal qa-deploy → qa-approve sequence.
+**`pipeline:prod-release` is not per-ticket**: in the branch-isolated
+model `develop` contains only qa-approved work, so a prod release is a
+straight mirror of `develop` onto `main`. The label is break-glass —
+it runs that mirror immediately on whatever is currently approved on
+`develop`, regardless of which ticket you put it on. To ship a single
+ticket to prod, `pipeline:qa-approve` it (which merges it to develop);
+it then rides the next nightly mirror (or a break-glass mirror).
 
 **Why labels rather than slash commands**: GitHub's label picker is a
 dropdown with predefined options — no typo risk on the command name.
@@ -444,10 +471,10 @@ asks you to write one first.
 labels persist forever once created):
 
 ```bash
-gh label create "pipeline:qa-deploy"     --color "0E8A16" --description "Trigger: deploy ticket's merge SHA to QA"
-gh label create "pipeline:qa-approve"    --color "0E8A16" --description "Trigger: mark ticket qa-approved; queue for next nightly cherry-pick"
-gh label create "pipeline:qa-reject"     --color "B60205" --description "Trigger: reject; route to rework. Add a comment with reason first"
-gh label create "pipeline:prod-release"  --color "5319E7" --description "Trigger: release merge SHA to main"
+gh label create "pipeline:qa-deploy"     --color "0E8A16" --description "Trigger: deploy this ticket's branch to QA (single-tenant; merges develop in + regression-tests)"
+gh label create "pipeline:qa-approve"    --color "0E8A16" --description "Trigger: squash-merge ticket to develop; release QA lock"
+gh label create "pipeline:qa-reject"     --color "B60205" --description "Trigger: reset qa to develop; route to rework. Add a comment with reason first"
+gh label create "pipeline:prod-release"  --color "5319E7" --description "Trigger: run the develop->main prod mirror now"
 gh label create "pipeline:approve-cost"  --color "0E8A16" --description "Trigger: unblock cost-review-pending ticket"
 gh label create "pipeline:reject-cost"   --color "B60205" --description "Trigger: reject cost change; park at needs-human. Add comment with reason"
 gh label create "pipeline:retry"         --color "FBCA04" --description "Trigger: reset ticket to rework, Attempt=1"
@@ -476,105 +503,82 @@ get a queue view for any state.
 
 | Label | Meaning | Set by |
 |---|---|---|
-| `status:in-progress` | Autonomous pipeline is working on this ticket (any state from tests-pending through pr-review-pending or rework) | `manager.sh` priming, `merge-pr.sh` stale rework, `qa-reject.sh`, `pipeline:approve-cost`, `pipeline:retry` |
-| `status:ready-for-qa` | Merged to develop, waiting for `pipeline:qa-deploy` | `merge-pr.sh` clean merge |
-| `status:in-qa` | Deployed to QA, waiting on a human verdict (qa-approve or qa-reject) | `pipeline:qa-deploy` success |
-| `status:qa-approved` | QA passed, queued for the next nightly cherry-pick onto main at 01:00 IST | `pipeline:qa-approve` success |
-| `status:prod-release-blocked` | QA approved, but the most recent nightly cherry-pick onto main failed due to conflicts. Retries automatically each nightly until either it cherry-picks clean or the dependency is resolved | `prod-release.sh` on cherry-pick conflict |
-| `status:released` | Successfully cherry-picked onto main and shipped to prod | `prod-release.sh` after successful cherry-pick |
+| `status:in-progress` | Autonomous pipeline is working on this ticket (any state from tests-pending through pr-review-pending or rework) | `manager.sh` priming, `qa-deploy.sh`/`qa-reject.sh` rework, `pipeline:approve-cost`, `pipeline:retry` |
+| `status:ready-for-qa` | Dev phase done: branch built + reviewed, **not** merged to develop, waiting for `pipeline:qa-deploy` (Pipeline Status `awaiting-qa`) | pr-reviewer APPROVE, hotfix re-QA guard |
+| `status:in-qa` | The one ticket currently deployed to QA, waiting on a human verdict (qa-approve or qa-reject). This label is the single-tenant QA lock | `pipeline:qa-deploy` success |
+| `status:qa-approved` | Squash-merged to develop; ships to prod at the next nightly develop→main mirror (01:00 IST) | `pipeline:qa-approve` success |
+| `status:prod-release-blocked` | **Legacy** — the cherry-pick prod model could conflict and set this. The mirror model doesn't produce it; kept only for historical tickets | (no longer set) |
+| `status:released` | develop was mirrored to main and shipped to prod | `prod-release.sh` after the mirror |
 | `status:needs-human` | Blocked: 3-strike rework escalation, cost-rejected, or manually parked | `manager.sh` 3-strike, `pipeline:park`, `pipeline:reject-cost` |
 
 A ticket carries exactly one `status:*` label at a time; the helper
 `scripts/set-status.sh <ticket> <new-status>` removes the previous one
-when adding the new one. The mutex behavior is what lets
-`status:prod-release-blocked` cleanly transition back to
-`status:released` on a subsequent successful cherry-pick.
+when adding the new one. The mutex behavior is what lets a ticket move
+cleanly through `ready-for-qa → in-qa → qa-approved → released` (and back
+to `in-progress` on a qa-reject) without ever holding two status labels.
 
 **One-time label setup** (seven labels — run once when bootstrapping):
 
 ```bash
 gh label create "status:in-progress"           --color "1D76DB" --description "Autonomous pipeline is working on this ticket"
-gh label create "status:ready-for-qa"          --color "FBCA04" --description "Merged to develop; awaiting pipeline:qa-deploy"
-gh label create "status:in-qa"                 --color "FBCA04" --description "Deployed to QA; awaiting human verdict"
-gh label create "status:qa-approved"           --color "0E8A16" --description "QA passed; queued for nightly cherry-pick at 01:00 IST"
-gh label create "status:prod-release-blocked"  --color "B60205" --description "QA approved but cherry-pick onto main is blocked by conflicts; retries nightly"
+gh label create "status:ready-for-qa"          --color "FBCA04" --description "Branch reviewed, not merged; awaiting pipeline:qa-deploy"
+gh label create "status:in-qa"                 --color "FBCA04" --description "Deployed to QA (single-tenant lock); awaiting human verdict"
+gh label create "status:qa-approved"           --color "0E8A16" --description "Squash-merged to develop; ships at next nightly develop->main mirror"
+gh label create "status:prod-release-blocked"  --color "B60205" --description "Legacy (cherry-pick model); no longer set by the mirror model"
 gh label create "status:released"              --color "5319E7" --description "Released to prod"
 gh label create "status:needs-human"           --color "B60205" --description "Blocked; needs human attention"
 ```
 
-### 5.7 Nightly batched prod release (cherry-pick model)
+### 5.7 Nightly prod release (develop → main mirror)
 
 A scheduled workflow (`.github/workflows/pipeline-nightly-release.yml`)
 runs every day at **01:00 IST** (`30 19 * * *` UTC). It calls
-`scripts/prod-release.sh` with no arguments. The script:
+`scripts/prod-release.sh` with no arguments. Because `develop` is an
+**approved-only** trunk — work lands on it only at `pipeline:qa-approve` —
+shipping to prod is a straight mirror of `develop` onto `main`, not a
+cherry-pick. The script:
 
-1. Lists all tickets labeled `status:qa-approved` or
-   `status:prod-release-blocked` (and not yet `status:released`).
-2. Resolves each ticket to the merge SHA of its PR on develop.
-3. Sorts that set in **develop merge order, oldest first**, so
-   independent commits get applied in the same sequence they entered
-   the integration branch (minimizes conflicts).
-4. Checks out a fresh `release/YYYY-MM-DD-HHMM` branch off current main.
-5. For each ticket, runs `git cherry-pick <merge-sha>`:
-   - **Clean** → applied to release branch; ticket recorded as released.
-   - **Empty** (commit's diff is already in main, e.g. previously
-     cherry-picked) → skipped via `git cherry-pick --skip`; ticket
-     recorded as released.
-   - **Conflict** → `git cherry-pick --abort`; conflict files
-     captured; ticket recorded as blocked. The script keeps going
-     and tries the next ticket (other tickets may apply clean).
-6. If at least one ticket cherry-picked successfully:
-   fast-forward main → release branch → push → deploy backend → create
-   GitHub Release → comment release URL on every released ticket and
-   set their status to `status:released`.
-7. For every blocked ticket: post an explanatory comment naming the
-   conflict files and set status to `status:prod-release-blocked`.
-8. If nothing cherry-picked, exit cleanly with no main-side change.
+1. No-ops if `develop` has no commits beyond `main`.
+2. Checks out `main` and `git merge origin/develop --no-edit`. This is a
+   merge (not a reset) so an un-back-merged hotfix on `main` is preserved.
+3. Deploys the backend via `serverless deploy --stage prod` **before**
+   pushing, to avoid a version-skew window.
+4. Pushes `main` (Amplify auto-deploys the frontend).
+5. Flips every `status:qa-approved` ticket to `status:released`, comments
+   the release URL, and cuts a single dated GitHub Release.
 
-**Why cherry-pick instead of fast-forward?** With a linear "advance
-frontier" model, approving a later ticket implicitly approved every
-unapproved ticket sitting underneath it on develop. Cherry-pick decouples
-tickets so each ships only when explicitly approved.
+**Why a mirror instead of cherry-pick?** The branch-isolated QA model
+already guarantees that every commit on `develop` was individually QA'd
+and approved (one ticket at a time, in order). There is no partial set to
+reconcile, so the per-ticket cherry-pick engine — and its
+`prod-release-blocked` conflict state — is gone. Approving a ticket
+(`pipeline:qa-approve`) is a one-way door: it merges to `develop` and ships
+at the next mirror. To hold work back from prod, don't approve it; to roll
+back a shipped change, revert it on `develop`.
 
-**Manual `pipeline:prod-release` is kept as breakglass** for hotfixes —
-adding the label to a ticket releases it immediately rather than waiting
-for the nightly window.
+**Manual `pipeline:prod-release`** is break-glass: it runs the same mirror
+immediately rather than waiting for the nightly window. It is not
+per-ticket — it ships whatever is currently approved on `develop`.
 
-**Hold a ticket out of nightly batches**: don't `pipeline:qa-approve` it.
-A `status:in-qa` ticket sits there indefinitely without being touched by
-the nightly job.
+**Hold a ticket out of prod**: keep it in QA (don't `pipeline:qa-approve`).
+A `status:in-qa` ticket is never merged to `develop`, so it can't reach
+`main`.
 
-**The trade-off** of the cherry-pick model: if ticket A's code genuinely
-depends on ticket B's code (B introduces a function, A calls it), and
-you approve A but not B, A's cherry-pick onto main will conflict.
-The pipeline detects this and marks A as `prod-release-blocked` rather
-than silently shipping B. To unblock: approve B too, revert B from
-develop, or refactor A. See §8.8.
+**Hotfix interaction**: a hotfix lands on `main` out-of-band and must be
+back-merged with `scripts/back-merge-main.sh`, which also forces a re-QA of
+any ticket then in QA (see §Hotfixes in CLAUDE.md). The mirror's `git merge`
+(step 2) preserves a hotfix commit that hasn't been back-merged yet.
 
 **Manual trigger**: the nightly release workflow has `workflow_dispatch`,
 so you can run it on-demand via `gh workflow run pipeline-nightly-release.yml`
 (no `--ref` flag needed — the workflow checks out develop internally).
 
-**Multi-PR tickets**: the script resolves ALL PRs that close a ticket
-(via `closedByPullRequestsReferences` + the PR Number project field),
-not just the first. Each PR is cherry-picked independently in develop
-merge order. A ticket is marked `released` only if ALL of its PRs
-apply cleanly; if ANY PR conflicts, the ticket is `prod-release-blocked`.
-One-PR-per-ticket is still recommended to keep cherry-picks atomic.
-
-**Deploy ordering**: `prod-release.sh` deploys the backend via
-`serverless deploy --stage prod` BEFORE pushing main to origin.
-This ensures the new API is live before Amplify auto-deploys the
-new frontend, avoiding a version-skew window where the frontend
-references endpoints or fields the backend doesn't serve yet.
-
 ### 5.8 Release notes (built per-ticket)
 
 Every prod release that ships at least one ticket creates a GitHub
 Release in the **Releases** tab. Notes are built **manually from the
-ticket list** rather than via `gh release create --generate-notes`,
-because the cherry-pick model breaks the "PRs in commit range" mapping
-that auto-generated notes rely on.
+qa-approved ticket list** rather than via `gh release create
+--generate-notes`, so the release lists exactly the tickets that shipped.
 
 - **Tag**: `release-YYYY-MM-DD-HHMM` UTC (always unique, supports
   multiple releases per day)
@@ -695,8 +699,8 @@ silently drifting away from the code that's actually running in prod:
 
    The scribe is **best-effort**: any failure (claude timeout, parse
    error, ticket-create failure) is logged on the source ticket but
-   does NOT block QA approval — the frontier has already advanced by
-   the time scribe runs.
+   does NOT block QA approval — the squash-merge to develop has already
+   happened by the time scribe runs.
 
 **Recursion safety**: when the scribe runs on a docs follow-up ticket
 itself, the diff is markdown-only and claude returns `NO_DOCS_NEEDED`
@@ -892,29 +896,33 @@ because local fetch caches haven't pruned. Run `git fetch --prune`.
 
 ### 7.9 `prod-release.sh` switches working tree mid-run
 
-The script starts on develop (to resolve merge SHAs) but does
-`git checkout main` before cherry-picking. After the checkout,
-`SCRIPT_DIR` (resolved via `dirname "$0"`) points to main's working
-tree. Any script that exists on develop but not on main will fail
-with "file not found" when called via `"$SCRIPT_DIR/..."`. This bit
-us with `set-status.sh` (added on develop, not yet on main).
+The script starts on develop but does `git checkout main` before merging
+develop into it. After the checkout, `SCRIPT_DIR` (resolved via
+`dirname "$0"`) points to main's working tree. Any script that exists on
+develop but not on main will fail with "file not found" when called via
+`"$SCRIPT_DIR/..."`. This bit us with `set-status.sh` (added on develop,
+not yet on main).
 
 Rule: call shared helpers through functions sourced from
 `_pipeline-lib.sh` (e.g. `pl_set_status`) rather than via
 `"$SCRIPT_DIR/<script>"`. Sourced functions are already in memory
 and don't depend on the filesystem after source time.
 
-### 7.10 CI merge gate (compensates for GitHub Free)
+### 7.10 Test gates (compensates for GitHub Free)
 
 GitHub Free doesn't enforce required status checks on protected
-branches. To compensate, `merge-pr.sh` runs `gh pr checks` before
-merging and blocks if any check has failed. If checks are only
-pending (slow CI), the script warns and proceeds — the tester's
-npm-test gate (§8.11) has already verified tests pass.
+branches, so the pipeline runs its own test gates rather than relying
+on PR checks:
 
-On CI failure, `merge-pr.sh` exits non-zero without merging. The
-strike system (§8.10) handles retries: if CI keeps failing across
-consecutive pipeline ticks, the ticket escalates to `needs-human`.
+- **Tester validate** runs `npm test` in `backend/` and `frontend/`
+  before the static review (§8.11); a red suite routes to rework.
+- **`qa-deploy.sh`** re-runs the same regression suite after merging
+  `develop` into the ticket's branch; a red suite (or a merge conflict)
+  leaves QA untouched and routes the ticket to rework.
+
+Because the branch is not merged to `develop` until a human approves it
+out of QA (`pipeline:qa-approve`), there is no autonomous merge gate to
+compensate for — the human QA verdict is the gate.
 
 Set `PIPELINE_SKIP_CI_CHECK=1` in the workflow env to bypass (e.g.
 for repos without CI configured).
@@ -984,12 +992,13 @@ the drain loop will overwrite it per iteration. To raise the floor
 globally, edit the `600 *` literal in `pipeline-manager.yml`'s drain
 step.
 
-### 8.4 Stale base merge
+### 8.4 Stale base handling
 
-`merge-pr.sh` checks if any files in the PR diff also changed on
-develop since Base SHA. If yes, it closes the PR and routes to
-rework so the developer rebranches from current develop. Automatic;
-no human intervention needed.
+Staleness against `develop` is handled at qa-deploy time, not at a
+develop merge: `qa-deploy.sh` merges `develop` into the ticket's branch
+and re-runs the regression suite. If that merge conflicts (develop moved
+into the same files), the ticket is routed to rework so the developer
+re-implements fresh from develop HEAD. Automatic; no human intervention.
 
 ### 8.5 3-strike escalation
 
@@ -1019,45 +1028,19 @@ The bash sandbox's view of the Windows-mounted `.git` can corrupt:
 the bash sandbox.** Do all git work from Git Bash on Windows where
 the .git state is healthy.
 
-### 8.8 Cherry-pick conflict at nightly batch
+### 8.8 Prod release conflict (legacy — no longer occurs)
 
-Symptom: a ticket has `status:prod-release-blocked` and a comment from
-`[/prod-release] BLOCKED at nightly batch ...` listing conflict files.
+The old cherry-pick prod model could mark a ticket
+`status:prod-release-blocked` when its merge commit conflicted applying
+to main. The branch-isolated model (§5.7) ships prod as a straight
+`develop`→`main` mirror of approved-only work, so this state is no longer
+produced. If you see a historical `status:prod-release-blocked` ticket,
+just re-run it through the current QA flow (`pipeline:qa-deploy` →
+`pipeline:qa-approve`); the next nightly mirror ships it with the rest of
+`develop`.
 
-What happened: at the most recent nightly run, `prod-release.sh` tried
-to cherry-pick this ticket's merge commit onto main, and `git
-cherry-pick` reported a conflict in one or more files. The script
-aborted that pick (no main-side change), recorded the ticket as blocked,
-and moved on to the next candidate. The ticket will be retried
-automatically each nightly until it succeeds or you intervene.
-
-Diagnose: open the ticket. The comment lists conflict files. The
-likely cause is one of:
-
-- An earlier ticket sitting underneath this one on develop hasn't been
-  approved yet and isn't in main. This ticket's diff was written on
-  top of that earlier change, so applying it cleanly to main requires
-  the earlier change too.
-- A change was merged directly to main (e.g. a hotfix) that touches
-  the same files this ticket modifies.
-- This ticket genuinely conflicts with another approved ticket
-  in the same batch (rare; both typically apply, but conflicting line
-  edits in the same hunks won't).
-
-Unblock options:
-
-| Option | When | How |
-|---|---|---|
-| Approve the dependency | The blocking ticket is in `status:in-qa` and you'd ship it anyway | Test it, label `pipeline:qa-approve`. Both ship together at next nightly. |
-| Revert the dependency from develop | The blocking ticket needs more work and shouldn't ship yet | `git revert <merge-sha-of-dependency>`, push to develop, set the dependency back to `status:in-progress`. The blocked ticket will then cherry-pick clean. |
-| Refactor this ticket | The dependency is structural and can be removed | Add `pipeline:retry` label to send the ticket back through dev. The agent gets the conflict context in its prompt and can refactor. |
-| Manual cherry-pick + push to main | Edge case; you understand the conflict and resolve it locally | `git checkout main; git cherry-pick <sha>; <resolve>; git cherry-pick --continue; git push`. Then manually set `status:released` on the ticket. |
-
-Edge case: a ticket that was successfully cherry-picked then later
-qa-rejected. The cherry-pick is on main; reverting requires a manual
-`git revert` on main and a follow-up redeploy. There's no automatic
-flow for this — qa-reject is intended for tickets still in QA, not
-already-shipped ones.
+To roll back an already-shipped change, `git revert` it on `develop`; the
+revert ships to main at the next mirror.
 
 ### 8.9 Ticket missing a `type:*` label
 
@@ -1273,14 +1256,14 @@ scripts/
   create-branch.sh            # branch + Base SHA write (idempotent)
   check-staleness.sh          # PR staleness detector
   open-pr.sh                  # PR opener
-  merge-pr.sh                 # squash-merge or rework on overlap
   dummy-tester.sh             # tester agent (dummy-prefix is legacy)
   dummy-developer.sh          # developer agent
-  dummy-pr-reviewer.sh        # pr-reviewer agent
-  qa-deploy.sh                # human: deploy develop tip to QA
-  qa-approve.sh               # human: mark ticket qa-approved (queues for nightly)
-  qa-reject.sh                # human: bounce back to rework
-  prod-release.sh             # nightly: cherry-pick all qa-approved tickets to main
+  dummy-pr-reviewer.sh        # pr-reviewer agent (APPROVE -> awaiting-qa, no merge)
+  qa-deploy.sh                # human: deploy one ticket's branch to QA (single-tenant)
+  qa-approve.sh               # human: squash-merge ticket to develop; release QA lock
+  qa-reject.sh                # human: reset qa to develop; rework
+  prod-release.sh             # nightly: mirror develop -> main
+  back-merge-main.sh          # after hotfix: main -> develop + re-QA guard
   setup-pipeline.sh           # bootstrap orchestrator
 .pipeline-config.json         # opaque GraphQL IDs
 CLAUDE.md                     # project-wide standards (auto-loaded by claude)

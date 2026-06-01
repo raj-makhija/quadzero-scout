@@ -65,8 +65,9 @@ case "${STATUS:-new}" in
     ;;
 
   rework)
-    # merge-pr.sh cleared Base SHA + PR Number; we increment Attempt and
-    # hand to developer's rework mode. 3-strike -> needs-human escalation.
+    # The routing that set rework (tester/reviewer fail, or qa-deploy /
+    # qa-reject) already cleared Base SHA + PR Number; we increment Attempt
+    # and hand to developer's rework mode. 3-strike -> needs-human.
     ATTEMPT="$("$SCRIPT_DIR/get-field.sh" "$TICKET" "Attempt" || echo 0)"
     : "${ATTEMPT:=0}"
     ATTEMPT=$((ATTEMPT + 1))
@@ -81,7 +82,7 @@ case "${STATUS:-new}" in
     "$SCRIPT_DIR/dummy-developer.sh" "$TICKET" rework
     ;;
 
-  merged-to-develop|needs-human|cost-review-pending)
+  awaiting-qa|merged-to-develop|needs-human|cost-review-pending)
     echo "manager: #$TICKET in terminal/blocked state '$STATUS'; no action" >&2
     ;;
 

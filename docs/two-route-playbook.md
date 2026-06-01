@@ -113,23 +113,25 @@ Commits must follow Conventional Commits (commitlint runs on every
 commit from Windows). Husky is not bypassed for human commits — only
 the runner skips hooks. Do not include `Co-Authored-By` lines.
 
-### 5.3 PR + merge
+### 5.3 PR — open for review, do NOT merge
 
-Open the PR against `develop` like any other. Merge it manually
-(`gh pr merge --squash --delete-branch <PR>`).
+Open the PR against `develop` with `Closes #<N>` in the body, and get it
+reviewed. **Do not merge it.** In the branch-isolated model the branch is
+*not* merged to `develop` during the dev phase — `develop` is approved-only.
+The merge happens later, at `pipeline:qa-approve`.
 
-The pipeline's `merge-pr.sh` does two things you bypass:
-1. Staleness check (Base SHA vs. current develop tip).
-2. Setting `status:ready-for-qa` on the ticket post-merge.
-
-For (1): rebase or merge `origin/develop` into your branch before
-merging if the PR has been open long enough that develop has moved.
-For (2): set the label yourself after merge.
+Once the PR is reviewed and you're ready for QA, leave the branch + PR
+intact and mark the ticket ready-for-QA:
 
 ```bash
-gh issue close <N>  # auto-closes via "Closes #N" in the PR body usually
 scripts/set-status.sh <N> ready-for-qa
+# If the ticket is on the pipeline project, also set the field:
+scripts/set-field.sh <N> "Pipeline Status" awaiting-qa
 ```
+
+`pipeline:qa-deploy` resolves your branch from the open PR (no `PR Number`
+field needed — it falls back to the issue's open linked PR), so the
+`-cowork` branch name works as-is.
 
 ### 5.4 Post a rationale comment (optional but recommended)
 
@@ -145,21 +147,25 @@ mid-flight.
 
 ### 5.5 Re-enter the post-merge flow
 
-The QA → prod half of the pipeline is route-agnostic. Once
-`status:ready-for-qa` is on the ticket:
+The QA → prod half of the pipeline is route-agnostic, and **QA is
+single-tenant** — only one ticket (auto or cowork) can be in QA at a time.
+Once `status:ready-for-qa` is on the ticket:
 
 ```
-pipeline:qa-deploy   →  deploys to QA (Amplify + serverless)
-pipeline:qa-approve  →  marks status:qa-approved + runs scribe
-pipeline:qa-reject   →  routes back to rework (only useful if the
-                        ticket still has auto-pipeline; for pure
-                        Cowork tickets, just re-open and iterate)
+pipeline:qa-deploy   →  refused if another ticket holds status:in-qa;
+                        else merges develop into your branch, runs the
+                        regression suite, and deploys it to QA
+pipeline:qa-approve  →  squash-merges your branch to develop, sets
+                        status:qa-approved, runs scribe, releases the lock
+pipeline:qa-reject   →  resets qa to develop and routes the ticket to
+                        rework (auto tickets re-run the developer agent;
+                        for pure Cowork tickets, re-open and iterate)
 ```
 
-Nightly `prod-release.sh` cherry-picks every `status:qa-approved`
-ticket onto main regardless of which route produced the merge. The
-release notes builder iterates the ticket list, not commit metadata,
-so manual merges show up correctly.
+Nightly `prod-release.sh` mirrors `develop` onto `main` (develop is
+approved-only, so it ships every approved ticket regardless of route).
+The release notes builder iterates the qa-approved ticket list, so manual
+tickets show up correctly.
 
 ---
 
@@ -270,18 +276,19 @@ listed paths. If "None", scribe exits cleanly with no follow-up.
 
 ## 8. Re-entering the post-merge flow (cheat sheet)
 
-Regardless of route, once a change is merged to `develop`:
+Regardless of route, once a change is built + reviewed (branch intact,
+NOT yet merged to `develop`):
 
 ```
-status:ready-for-qa     ← set by merge-pr.sh (auto) or manually (Cowork §5.3)
-   │ pipeline:qa-deploy
-   ▼
-status:in-qa            ← Amplify + serverless deploy completed
+status:ready-for-qa     ← set by pr-reviewer APPROVE (auto) or manually (Cowork §5.3)
+   │ pipeline:qa-deploy  (single-tenant: refused if another ticket is in-qa;
+   ▼                      merges develop into the branch + runs regression tests)
+status:in-qa            ← Amplify + serverless deploy completed (QA lock held)
    │
-   ├── pipeline:qa-approve   →  status:qa-approved   →  nightly cherry-pick →  status:released
-   │                                                                       OR  status:prod-release-blocked (retries nightly)
+   ├── pipeline:qa-approve   →  squash-merge to develop  →  status:qa-approved
+   │                            →  nightly develop→main mirror  →  status:released
    │
-   └── pipeline:qa-reject    →  reopens; only useful if ticket still has auto-pipeline
+   └── pipeline:qa-reject    →  resets qa to develop; routes to rework
                                 (Cowork tickets: just reopen and iterate manually)
 ```
 
@@ -334,7 +341,7 @@ non-issue, but a `gh workflow run` triggered too fast can race).
 | Ticket needs design discussion | File with `type:*` only (no `auto-pipeline`) |
 | Pause autonomous mid-flight | `pipeline:park` |
 | Resume after pause | `pipeline:retry` |
-| Cowork merge → enter QA flow | `scripts/set-status.sh <N> ready-for-qa` then `pipeline:qa-deploy` |
+| Cowork dev done → enter QA flow | Open PR (don't merge), `scripts/set-status.sh <N> ready-for-qa`, then `pipeline:qa-deploy` |
 | Hand off Cowork-written code to autonomous validate/PR/merge | Push to `<type>/ticket-N-attempt-1`, set `Pipeline Status=validation-pending`, add `auto-pipeline`, run workflow |
 | Want scribe to track docs drift | Post `[developer:rationale]` on ticket before `pipeline:qa-approve` |
 | Skip scribe entirely | Don't `pipeline:qa-approve`; merge to main via manual cherry-pick (rare) |
