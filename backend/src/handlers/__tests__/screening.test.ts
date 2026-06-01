@@ -187,6 +187,8 @@ describe('screenCandidate handler', () => {
     expect(result.statusCode).toBe(200);
     expect(body.data.fieldsUpdated).toEqual([]);
     expect(mockSaveScreening).toHaveBeenCalledOnce();
+    // last_screened_at must always be written, even when no profile fields changed
+    expect(mockUpdateCandidateProfileFields).toHaveBeenCalledOnce();
   });
 
   it('should merge customFields with existing candidate custom_fields', async () => {
