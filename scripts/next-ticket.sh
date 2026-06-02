@@ -37,7 +37,9 @@ OWNER="${OWNER_REPO%/*}"
 REPO="${OWNER_REPO#*/}"
 
 # States the pipeline should NOT pick up (terminal or blocked on human).
-EXCLUDE_STATES='["merged-to-develop","needs-human","cost-review-pending"]'
+# awaiting-qa is the dev-phase terminal: the branch is built + reviewed and
+# is waiting for a human pipeline:qa-deploy, not for any agent.
+EXCLUDE_STATES='["awaiting-qa","merged-to-develop","needs-human","cost-review-pending"]'
 
 RESP="$(gh api graphql \
   -f query='

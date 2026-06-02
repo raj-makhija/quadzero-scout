@@ -49,8 +49,8 @@ Four rules that must not be violated when working a ticket manually:
 
 1. **Do not add the `auto-pipeline` label.** That label is the autonomous pipeline's opt-in. A ticket without it is invisible to the pipeline; a ticket with it (in a non-terminal Pipeline Status) will be picked up by cron within 5 min — racing whatever you're doing.
 2. **Use a `-cowork` branch suffix.** Name branches `<type>/ticket-<N>-cowork` (e.g. `feature/ticket-87-cowork`). This prevents collision with autonomous attempt branches (`<type>/ticket-<N>-attempt-<K>`).
-3. **Post a `[developer:rationale]` comment before merging.** The scribe agent reads this comment post-QA to decide whether to file a follow-up docs ticket. See the playbook §7 for the exact shape. If you skip it, scribe falls back to merge-diff-only analysis and may miss intent.
-4. **Set `status:ready-for-qa` after merging.** The autonomous merge path sets this label automatically; manual merges don't, so run `scripts/set-status.sh <N> ready-for-qa` after squash-merging the PR. Without it, the QA flow doesn't activate.
+3. **Post a `[developer:rationale]` comment before `pipeline:qa-approve`.** The scribe agent reads this comment post-QA to decide whether to file a follow-up docs ticket. See the playbook §7 for the exact shape. If you skip it, scribe falls back to merge-diff-only analysis and may miss intent.
+4. **Do NOT merge to develop; mark `status:ready-for-qa` with the branch intact.** In the branch-isolated model `develop` is approved-only — the branch is merged to develop later, at `pipeline:qa-approve`. After your PR is reviewed, run `scripts/set-status.sh <N> ready-for-qa` (and, if the ticket is on the project, `scripts/set-field.sh <N> "Pipeline Status" awaiting-qa`). Then `pipeline:qa-deploy`. QA is single-tenant — only one ticket can be in QA at a time.
 
 ### Working from a ticket number
 
@@ -62,8 +62,8 @@ When the user says "let's work on ticket #N":
 4. Branch as `<type>/ticket-<N>-cowork` from `develop`.
 5. Implement and test (per Coding Principle 4); commit with conventional commits.
 6. Post `[developer:rationale]` on the issue.
-7. Open the PR targeting `develop` with `Closes #<N>` in the body.
-8. After CI passes and the PR is squash-merged, run `scripts/set-status.sh <N> ready-for-qa` to feed the post-merge flow.
+7. Open the PR targeting `develop` with `Closes #<N>` in the body. Get it reviewed but **do not merge it** — the merge to develop happens at `pipeline:qa-approve`.
+8. After review, run `scripts/set-status.sh <N> ready-for-qa` (branch + PR left intact), then `pipeline:qa-deploy` to put it on QA. `pipeline:qa-approve` squash-merges it to develop; `pipeline:qa-reject` resets QA and reworks it.
 
 ## Git Workflow
 
@@ -77,7 +77,7 @@ When the user says "let's work on ticket #N":
 
 ### Hotfixes
 - For urgent production issues, branch from `main` as `hotfix/<description>`.
-- Open a PR to `main`, then immediately back-merge `main` into `develop`.
+- Open a PR to `main`. After squash-merging it, immediately run `scripts/back-merge-main.sh`, which merges `main` into `develop` **and** forces a re-QA of any ticket then in QA (a hotfix moves `develop`, which invalidates an in-flight QA ticket — it was tested against the pre-hotfix develop). Don't hand-merge `main`→`develop` without this guard.
 
 ### Commits
 - Follow Conventional Commits. The full type list and when to use each is in `quadzero-scout/CONTRIBUTING.md` §Commit Types — that file is the single source of truth for commit conventions.
@@ -121,17 +121,17 @@ The project is a monorepo at `quadzero-scout/` with `backend/`, `frontend/`, and
 
 Promotion is now ticket-driven, not branch-driven. See `quadzero-scout/CI-CD.md` §5.5.
 
-**Per-ticket** (a single ticket merged to develop should ship to QA, then prod): use the label-driven path on the ticket itself.
+**Per-ticket, branch-isolated** (QA validates one ticket at a time; `develop` is approved-only). Use the label-driven path on the ticket itself. See `quadzero-scout/CI-CD.md` §5.7.
 
-- `pipeline:qa-deploy` → deploys the ticket's merge SHA to QA (frontend via Amplify auto-deploy; backend via `serverless deploy --stage qa` on the runner).
-- `pipeline:qa-approve` → marks `status:qa-approved`; cherry-picked to main at the next nightly window (01:00 IST).
-- `pipeline:prod-release` → break-glass: cherry-picks immediately rather than waiting for the nightly batch.
+- `pipeline:qa-deploy` → single-tenant hard stop (refused if another ticket holds `status:in-qa`); merges `develop` into the ticket's branch, runs the regression suite, then points `qa` at it (frontend via Amplify; backend via `serverless deploy --stage qa`). A conflict or red suite leaves QA untouched and reworks the ticket.
+- `pipeline:qa-approve` → squash-merges the ticket's branch to `develop`, marks `status:qa-approved`, releases the QA lock. Ships at the next nightly mirror.
+- `pipeline:prod-release` → break-glass: runs the `develop`→`main` mirror immediately rather than waiting for the nightly window.
 
 This path tracks ticket lifecycle via `status:*` labels and feeds the scribe agent and release notes correctly. **Prefer it.**
 
-**Bulk QA refresh** (push the current state of develop to QA regardless of per-ticket approval — e.g. a developer wants to test the integrated state of develop): merge `develop` into `qa`, push to origin (Amplify auto-deploys frontend), and run `npx serverless deploy --stage qa` from `quadzero-scout/infra/`. Then return to `develop`. This bypasses per-ticket status tracking, so use it only when explicitly asked to refresh the whole QA environment.
+**Do not push develop straight to qa.** QA is a single ticket's branch at a time, not the integrated `develop`. Pushing all of `develop` to `qa` is exactly the leak this model removed — promote one ticket via `pipeline:qa-deploy`.
 
-**Do not bulk-promote to prod.** Main only ships per-ticket via the nightly cherry-pick of `status:qa-approved` tickets (see CI-CD.md §5.7). A direct merge from `qa` to `main` would ship every commit on qa regardless of approval state, which is what the cherry-pick model exists to prevent. For an urgent direct-to-prod fix, follow Git Workflow → Hotfixes above (branch `hotfix/<description>` from `main`, PR to `main`, back-merge `main` into `develop`).
+**Do not bulk-promote to prod.** Prod ships only via the nightly `develop`→`main` mirror (`scripts/prod-release.sh`) or the break-glass `pipeline:prod-release`, both of which ship whatever is qa-approved on `develop`. For an urgent direct-to-prod fix, follow Git Workflow → Hotfixes below (branch `hotfix/<description>` from `main`, PR to `main`, then `scripts/back-merge-main.sh`).
 
 ## Context Loading at Conversation Start
 - At the beginning of every new conversation or discussion, **always read the `/docs` folder** before doing any work.
@@ -175,18 +175,18 @@ This path tracks ticket lifecycle via `status:*` labels and feeds the scribe age
 - For changes to existing features: update affected tests to reflect new behavior; add tests for any new branches.
 - A change is not "done" until its relevant tests are green locally.
 
-## Cherry-Pick & Hotfix Guardrails
+## QA & Hotfix Guardrails
 
-The nightly cherry-pick model (CI-CD.md §5.7) ships tickets independently. This creates failure modes that don't exist in a linear merge model. Keep these in mind when merging to develop and when resolving prod-release-blocked tickets.
+The branch-isolated model (CI-CD.md §5.7) serializes QA — one ticket at a time — and makes `develop` an approved-only trunk mirrored to `main`. That removes the cherry-pick dependency failures of the old model, but introduces its own rules.
 
-### Cross-PR dependency awareness
-If ticket A adds code that ticket B imports, approving B without A will fail at nightly cherry-pick (B's diff references symbols that don't exist on main). Before qa-approving a ticket, check whether its diff depends on other tickets not yet on main. The pipeline detects this at cherry-pick time and marks B as `status:prod-release-blocked`, but catching it earlier avoids a wasted nightly cycle.
+### QA is single-tenant
+Only one ticket can hold `status:in-qa`. `pipeline:qa-deploy` on a second ticket is refused until the first is approved or rejected. Don't expect to validate two tickets in QA simultaneously; drain one before deploying the next.
 
-### Back-merge immediately after hotfix
-After squash-merging a hotfix PR to main, merge main back into develop in the same session. A stale develop diverges from main, and the next nightly cherry-pick may conflict on files the hotfix touched. The longer the gap, the harder the resolution.
+### qa-approve is a one-way door to prod
+Approving a ticket squash-merges it to `develop`, and the next nightly mirror ships everything on `develop` to `main`. There is no "approved for dev but held from prod" state. To hold work back, keep it in QA (don't approve). To roll back a shipped change, revert it on `develop` (it ships out at the next mirror).
 
-### Verify target branch dependencies before manual cherry-picks
-When manually cherry-picking a ticket's merge commit onto main (to resolve a prod-release-blocked ticket), first confirm that every file the commit imports or references already exists on main. If the commit depends on code from another ticket, that ticket must land on main first — either by approving it through the normal flow or by cherry-picking it manually in the correct order.
+### Back-merge after hotfix via the guard
+After squash-merging a hotfix PR to `main`, run `scripts/back-merge-main.sh` (not a hand-merge). It merges `main`→`develop` and, if a ticket is in QA, resets `qa` to develop and sends that ticket back to `awaiting-qa` so the human re-runs `pipeline:qa-deploy` (re-merging the hotfixed develop into the branch and re-testing).
 
 ### Test mock completeness
 When `dynamodb.ts` (or any heavily-mocked module) gains a new export, add a matching mock entry in `recruiter.test.ts` (and any other test files that mock that module). Vitest's auto-mock won't cover new exports, and the error (`No "X" export is defined on the mock`) only surfaces at test runtime, not at type-check time.

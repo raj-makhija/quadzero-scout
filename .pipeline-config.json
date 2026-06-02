@@ -81,6 +81,7 @@
         "validation-pending": "91d5d0f5",
         "pr-pending": "bc8792a0",
         "pr-review-pending": "e69c5d81",
+        "awaiting-qa": "7a7e39fe",
         "merged-to-develop": "66e36641",
         "rework": "e0801734",
         "needs-human": "78d62f1f",

@@ -47,7 +47,6 @@ and runs discover-ids to write `.pipeline-config.json` at the repo root.
 | `create-branch.sh` | `<ticket> <slug>` — branch from `develop` HEAD using `<type>/ticket-<N>-<slug>`. Pushes to origin. Records Base SHA on the ticket. |
 | `check-staleness.sh` | `<pr> <base-sha>` — file-overlap check. Exit 0 clean, exit 1 stale. |
 | `open-pr.sh` | `<ticket> <branch> <title>` — opens PR targeting `develop`, writes PR number to ticket. |
-| `merge-pr.sh` | `<ticket> <pr>` — staleness check; clean → squash-merge + `merged-to-develop`; stale → close PR + `rework`. |
 
 ### Phase 3 — manager + dummy agents
 
@@ -56,7 +55,7 @@ and runs discover-ids to write `.pipeline-config.json` at the repo root.
 | `manager.sh` | `[<ticket>]` — advance one ticket by one state transition. |
 | `dummy-tester.sh` | `<ticket> write\|validate` — simulated tester. |
 | `dummy-developer.sh` | `<ticket> implement\|open_pr\|rework` — simulated developer, does real git work. |
-| `dummy-pr-reviewer.sh` | `<ticket>` — simulated reviewer; delegates to `merge-pr.sh`. |
+| `dummy-pr-reviewer.sh` | `<ticket>` — simulated reviewer; on APPROVE leaves the branch + PR intact and sets `awaiting-qa` (status:ready-for-qa). |
 
 When dispatched to real Claude (`PIPELINE_*_AGENT=claude`), each agent
 runs on a different model picked for its workload — Sonnet for the
@@ -69,10 +68,11 @@ PR reviewer and scribe. See the `PIPELINE_*_MODEL` rows in
 
 | Script | Purpose |
 |---|---|
-| `qa-deploy.sh` | `<sha>` — checkout qa, fast-forward merge SHA, push (Amplify), `serverless deploy --stage qa`. |
-| `qa-approve.sh` | `<sha>` — advance the `frontier` tag to SHA (refuses to move backward unless `PIPELINE_FORCE=1`). |
-| `qa-reject.sh` | `<sha> <reason> [ticket]` — reopen ticket, clear Base SHA + PR Number, set `rework`. Infers ticket from commit if not given. |
-| `prod-release.sh` | `[<sha>]` — safety-check target is at-or-before `frontier`, merge to main, push, `serverless deploy --stage prod`. Defaults to `frontier` if no SHA. |
+| `qa-deploy.sh` | `<ticket>` — single-tenant hard stop; merge develop into the ticket's branch; regression `npm test`; point `qa` at it, push (Amplify), `serverless deploy --stage qa`; `status:in-qa`. Conflict/red tests → rework, qa untouched. |
+| `qa-approve.sh` | `<ticket>` — squash-merge the ticket's PR to develop; `merged-to-develop` + `status:qa-approved`; releases the QA lock. |
+| `qa-reject.sh` | `<ticket> <reason>` — reset `qa` to develop + redeploy; close PR, clear Base SHA + PR Number, set `rework`. |
+| `prod-release.sh` | (no args) — mirror `develop` onto `main` (straight merge; develop is approved-only), `serverless deploy --stage prod`, push, flip `qa-approved` → `released`, cut a GitHub Release. |
+| `back-merge-main.sh` | (no args) — after a hotfix, merge `main` into `develop`; if a ticket is in QA, reset `qa` to develop and send it back to `awaiting-qa` for re-QA. |
 
 ### Shared
 
