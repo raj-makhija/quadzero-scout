@@ -10,6 +10,13 @@ provider:
   memorySize: 512
   timeout: 30
   architecture: arm64
+  # Disable per-function Lambda Version resources (~82 of them). This app
+  # uses no aliases / provisioned concurrency / canary, and rolls back via
+  # git revert + redeploy, so versions are pure overhead. Dropping them keeps
+  # the template under the 500-resource CloudFormation limit, which removes
+  # the need for serverless-plugin-split-stacks (whose function-grouping
+  # created a root<->nested circular dependency with the HTTP API routes).
+  versionFunctions: false
 
   stackTags:
     Project: quadzero-scout
@@ -147,21 +154,17 @@ custom:
     platform: node
     concurrency: 10
 
-  # Ticket #209: bypass CloudFormation 500-resource limit by splitting the
-  # generated template into nested stacks. perGroupFunction puts each Lambda
-  # and its child resources into its own nested stack. Tables/S3 buckets in
-  # the top-level resources: block stay in the root stack.
-  splitStacks:
-    perFunction: false
-    perType: false
-    perGroupFunction: true
-    nestedStackCount: 10
+  # Ticket #209 added serverless-plugin-split-stacks to bypass the 500-resource
+  # CloudFormation limit, but its function-grouping put Lambda functions in
+  # nested stacks while the HTTP API routes/integrations stayed in root,
+  # creating a circular dependency. With versionFunctions:false (above) the
+  # template drops to ~445 resources — under the 500 limit — so split-stacks
+  # is no longer needed and has been removed (single root stack, no cycle).
 
 plugins:
   - serverless-dotenv-plugin
   - serverless-esbuild
   - serverless-offline
-  - serverless-plugin-split-stacks
 
 package:
   individually: true
