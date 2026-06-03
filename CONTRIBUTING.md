@@ -30,14 +30,14 @@
 ## Branch Strategy
 
 ```
-feature/xxx ──PR──→ develop ──ticket-driven──→ qa ──cherry-pick──→ main
-bugfix/xxx  ──PR──→ develop ──ticket-driven──→ qa ──cherry-pick──→ main
+feature/xxx ──PR──→ develop ──ticket-driven──→ qa ──nightly mirror──→ main
+bugfix/xxx  ──PR──→ develop ──ticket-driven──→ qa ──nightly mirror──→ main
 hotfix/xxx  ──PR──→ main (back-merge to develop)
 ```
 
-- `develop`: Active development. All feature/bugfix PRs target this branch.
-- `qa`: Staging. Promoted **per-ticket** via the `pipeline:qa-deploy` label or `scripts/qa-deploy.sh <SHA>`. Not auto-merged on a schedule.
-- `main`: Production. Per-ticket cherry-pick of `status:qa-approved` tickets at the nightly window (01:00 IST / 19:30 UTC). See `CI-CD.md` §5.7.
+- `develop`: Approved-only trunk. Work lands here only at `pipeline:qa-approve`. All feature/bugfix PRs target this branch.
+- `qa`: Staging. Deployed **per-ticket** (single-tenant) via `pipeline:qa-deploy`. One ticket in QA at a time.
+- `main`: Production. Nightly straight mirror of `develop` → `main` at 01:00 IST (`30 19 * * *` UTC). Because `develop` is approved-only there is no cherry-pick. See `CI-CD.md` §5.7.
 
 ## Branch Naming
 
@@ -83,9 +83,9 @@ All checks must pass before merging.
 |----------|-------|-----------------|--------------------------------------------------|
 | develop  | dev   | Amplify (auto)  | Manual (`npx serverless deploy --stage dev`)     |
 | qa       | qa    | Amplify (auto)  | Label-triggered (`pipeline:qa-deploy`)           |
-| main     | prod  | Amplify (auto)  | Nightly cherry-pick (`status:qa-approved` only)  |
+| main     | prod  | Amplify (auto)  | Nightly mirror of `develop` → `main` (approved-only; no cherry-pick)  |
 
-Frontend deploys automatically via AWS Amplify on any branch push. Backend deploys to qa via the `pipeline:qa-deploy` label (per ticket) or `scripts/qa-deploy.sh <SHA>`. Backend deploys to prod via the nightly cherry-pick batch in `pipeline-nightly-release.yml`. See `CI-CD.md` §5 for the full promotion model.
+Frontend deploys automatically via AWS Amplify on any branch push. Backend deploys to qa via the `pipeline:qa-deploy` label (per ticket). Backend deploys to prod via the nightly `develop` → `main` mirror in `pipeline-nightly-release.yml` (01:00 IST). See `CI-CD.md` §5 for the full promotion model.
 
 ## Commit Messages
 

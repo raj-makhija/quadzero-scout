@@ -33,8 +33,12 @@ AI-powered talent matching platform for IT professionals and recruiters.
 ### 1. Install Dependencies
 
 ```bash
+# Infra (required for serverless deploy and serverless offline)
+cd infra
+npm install
+
 # Backend
-cd backend
+cd ../backend
 npm install
 
 # Frontend
@@ -67,6 +71,8 @@ NEXTAUTH_SECRET=generate-with-openssl-rand-base64-32
 cd infra
 serverless deploy --stage dev
 ```
+
+> **Note**: a fresh checkout also needs `cp -r backend/src infra/src` before `serverless deploy`, and the `@sparticuz/chromium` Lambda layer installed under `infra/layers/`. The pipeline's `pl_deploy` helper does this automatically; for a manual first deploy see [CI-CD.md §7.11](CI-CD.md#711-deploy-build-chain-infra-deps--src-copy--chromium-layer).
 
 ### 4. Run Locally
 
@@ -158,13 +164,35 @@ cd frontend && npm run lint
 ## Deployment
 
 ```bash
-# Deploy to staging
+# Deploy to dev
 cd infra
-serverless deploy --stage staging
+serverless deploy --stage dev
+
+# Deploy to QA
+serverless deploy --stage qa
 
 # Deploy to production
 serverless deploy --stage prod
 ```
+
+See [CI-CD.md §5.3](CI-CD.md#53-promotion-to-qa--prod-human-in-the-loop) for the full ticket-driven QA → prod promotion model. Backend deploys to prod via a nightly mirror of `develop` → `main` at **01:00 IST** (`30 19 * * *` UTC) — see [CI-CD.md §5.7](CI-CD.md#57-nightly-prod-release-develop--main-mirror). To trigger prod immediately (break-glass), add the `pipeline:qa-approve` then `pipeline:prod-release` label on the ticket — see [CI-CD.md §5.5](CI-CD.md#55-web-only-operation-via-labels-no-cli) for the full label reference.
+
+## Pipeline Operations (ticket lifecycle)
+
+Every ticket goes through an autonomous CI/CD pipeline when labeled `auto-pipeline`. A web-only operator can drive the full lifecycle from the GitHub Issues UI using `pipeline:*` labels — no CLI needed:
+
+| Stage | Action |
+|-------|--------|
+| File a ticket | New Issue → apply `auto-pipeline` + a `type:*` label |
+| Track progress | Add `pipeline:show-status` to any ticket |
+| Deploy to QA | Add `pipeline:qa-deploy` (single-tenant; refuses if another ticket is in QA) |
+| Approve QA | Add `pipeline:qa-approve` (squash-merges to `develop`; ships at next nightly mirror) |
+| Reject QA | Write a reason comment, then add `pipeline:qa-reject` |
+| Break-glass prod | Add `pipeline:prod-release` (runs the develop → main mirror immediately) |
+
+Prod ships nightly at **01:00 IST** (`30 19 * * *` UTC) via a straight mirror of `develop` → `main`. Only `status:qa-approved` work is on `develop`, so no cherry-pick is needed.
+
+See [CI-CD.md](CI-CD.md) for the full pipeline reference, including all label definitions (§5.5), status label meanings (§5.6), the nightly release details (§5.7), and the two-route playbook for manual vs autonomous work.
 
 ## License
 

@@ -60,7 +60,10 @@ export default function RootLayout({
       <body className={inter.className}>
         <Providers>
           <EnvironmentBanner />
-          <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
+          <div
+            className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors"
+            style={{ paddingBottom: 'var(--task-widget-clearance, 0px)' }}
+          >
             {children}
           </div>
           <Toaster />
