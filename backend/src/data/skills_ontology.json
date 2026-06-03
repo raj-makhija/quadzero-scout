@@ -286,6 +286,9 @@
     "sap erp": "sap",
     "sap hana": "sap_hana",
     "sap s/4hana": "sap_hana",
+    "oracle pl/sql": "oracle pl/sql",
+    "oracle, pl/sql": "oracle pl/sql",
+
     "oracle erp": "oracle_erp",
     "oracle financials": "oracle_erp",
     "servicenow": "servicenow",
@@ -378,7 +381,7 @@
       "golang", "rust", "ruby", "rails", "php", "laravel"
     ],
     "sql_databases": [
-      "postgresql", "mysql", "mariadb"
+      "postgresql", "mysql", "mariadb", "oracle pl/sql"
     ],
     "nosql_databases": [
       "mongodb", "cassandra", "dynamodb"
@@ -504,7 +507,7 @@
   "synonymGroups": {
     "frontend_frameworks": ["react", "vue", "angular", "svelte"],
     "backend_frameworks": ["expressjs", "django", "flask", "spring_boot", "rails"],
-    "sql_databases": ["postgresql", "mysql", "mariadb"],
+    "sql_databases": ["postgresql", "mysql", "mariadb", "oracle pl/sql"],
     "nosql_databases": ["mongodb", "dynamodb", "cassandra"],
     "cloud_providers": ["aws", "azure", "google_cloud"],
     "container_orchestration": ["kubernetes", "docker_swarm", "aws_ecs"],

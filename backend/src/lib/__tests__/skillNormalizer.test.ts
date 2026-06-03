@@ -483,6 +483,72 @@ describe('calculateSkillMatch()', () => {
 });
 
 // ---------------------------------------------------------------------------
+// TC-ORACLE-001 through TC-ORACLE-009: Oracle PL/SQL normalization and matching
+// ---------------------------------------------------------------------------
+
+describe('Oracle PL/SQL normalization', () => {
+  // TC-ORACLE-001
+  it('normalizes "Oracle PL/SQL" to "oracle pl/sql"', () => {
+    expect(normalizeSkill('Oracle PL/SQL')).toBe('oracle pl/sql');
+  });
+
+  // TC-ORACLE-002
+  it('normalizes "oracle, pl/sql" to "oracle pl/sql"', () => {
+    expect(normalizeSkill('oracle, pl/sql')).toBe('oracle pl/sql');
+  });
+
+  // TC-ORACLE-003
+  it('"Oracle PL/SQL" and "oracle, pl/sql" normalize to the same canonical form', () => {
+    expect(normalizeSkill('Oracle PL/SQL')).toBe(normalizeSkill('oracle, pl/sql'));
+  });
+
+  // TC-ORACLE-004: candidate has "Oracle PL/SQL", requirement is "oracle, pl/sql"
+  it('candidate "Oracle PL/SQL" exactly matches requirement "oracle, pl/sql"', () => {
+    const result = calculateSkillMatch(['Oracle PL/SQL'], ['oracle, pl/sql']);
+    expect(result.exactMatched).toContain('oracle pl/sql');
+    expect(result.missing).toEqual([]);
+  });
+
+  // TC-ORACLE-005: reverse direction
+  it('candidate "oracle, pl/sql" exactly matches requirement "Oracle PL/SQL"', () => {
+    const result = calculateSkillMatch(['oracle, pl/sql'], ['Oracle PL/SQL']);
+    expect(result.exactMatched).toContain('oracle pl/sql');
+    expect(result.missing).toEqual([]);
+  });
+
+  // TC-ORACLE-006: partial match — standalone "pl/sql" fuzzy-matches requirement "Oracle PL/SQL"
+  it('"pl/sql" fuzzy-matches requirement "Oracle PL/SQL" via token containment', () => {
+    const result = calculateSkillMatch(['pl/sql'], ['Oracle PL/SQL'], true);
+    expect(result.fuzzyMatched).toContain('oracle pl/sql');
+    expect(result.missing).toEqual([]);
+  });
+
+  // TC-ORACLE-007: partial match — standalone "oracle" fuzzy-matches requirement "Oracle PL/SQL"
+  it('"oracle" fuzzy-matches requirement "Oracle PL/SQL" via token containment', () => {
+    const result = calculateSkillMatch(['oracle'], ['Oracle PL/SQL'], true);
+    expect(result.fuzzyMatched).toContain('oracle pl/sql');
+    expect(result.missing).toEqual([]);
+  });
+
+  // TC-ORACLE-008: other slash skills are unaffected
+  it('"HTML/CSS" is not collapsed by oracle comma/slash handling', () => {
+    expect(normalizeSkill('HTML/CSS')).toBe('html/css');
+  });
+
+  it('"C/C++" is not affected', () => {
+    expect(normalizeSkill('C/C++')).toBe('c/c++');
+  });
+
+  // TC-ORACLE-009: a comma-only artifact does not produce a spurious match
+  it('a comma-only skill string does not match "Oracle PL/SQL"', () => {
+    const result = calculateSkillMatch([','], ['Oracle PL/SQL'], true);
+    expect(result.exactMatched).toEqual([]);
+    expect(result.fuzzyMatched).toEqual([]);
+    expect(result.missing).toContain('oracle pl/sql');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Fuzzy matching (token containment + synonym)
 // ---------------------------------------------------------------------------
 
