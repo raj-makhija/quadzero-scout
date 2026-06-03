@@ -127,6 +127,12 @@ describe('TaskQueueWidget', () => {
     await waitFor(() => expect(mockCompleteTask).toHaveBeenCalledWith('t1', { pool: true }));
   });
 
+  it('widget wrapper has task-widget-position class for BottomNav clearance on mobile', async () => {
+    const { container } = render(<TaskQueueWidget />);
+    await screen.findByText('Submit to client');
+    expect(container.querySelector('.task-widget-position')).not.toBeNull();
+  });
+
   it('renders nothing for non-recruiters', async () => {
     const { useSession } = await import('next-auth/react');
     (useSession as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce({

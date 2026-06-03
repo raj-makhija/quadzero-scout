@@ -223,7 +223,7 @@ export function TaskQueueWidget() {
   const visible = expanded ? tasks : tasks.slice(0, COLLAPSED_COUNT);
 
   return (
-    <div className="fixed bottom-4 right-4 z-40 w-80 max-w-[calc(100vw-2rem)]">
+    <div className="fixed task-widget-position right-4 z-40 w-80 max-w-[calc(100vw-2rem)]">
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 shadow-xl">
         <button
           type="button"

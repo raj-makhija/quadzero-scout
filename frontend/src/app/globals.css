@@ -139,6 +139,16 @@
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
+/* Task queue widget — on mobile, lift above the BottomNav (h-16 = 4rem) including safe-area */
+.task-widget-position {
+  bottom: 1rem;
+}
+@media (max-width: 767px) {
+  .task-widget-position {
+    bottom: calc(4rem + 1rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
