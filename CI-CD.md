@@ -15,6 +15,73 @@ see `docs/two-route-playbook.md`.
 
 ---
 
+## Table of Contents
+
+- [1. Overview](#1-overview)
+- [2. Architecture](#2-architecture)
+  - [2.1 The four agents](#21-the-four-agents)
+  - [2.1.1 Model tiering](#211-model-tiering)
+  - [2.2 GitHub Actions workflow](#22-github-actions-workflow)
+  - [2.3 GitHub Project (Projects v2)](#23-github-project-projects-v2)
+  - [2.4 Labels](#24-labels)
+  - [2.5 Configuration file](#25-configuration-file)
+- [3. Authentication](#3-authentication)
+  - [3.1 PIPELINE_TOKEN (GitHub PAT)](#31-pipeline_token-github-pat)
+  - [3.2 CLAUDE_CODE_OAUTH_TOKEN](#32-claude_code_oauth_token)
+  - [3.3 Default branch](#33-default-branch)
+- [4. Daily workflow — filing a ticket](#4-daily-workflow--filing-a-ticket)
+- [5. CLI reference](#5-cli-reference)
+  - [5.1 Filing & monitoring](#51-filing--monitoring)
+  - [5.2 Manual state surgery](#52-manual-state-surgery)
+  - [5.3 Promotion to QA / prod (human-in-the-loop)](#53-promotion-to-qa--prod-human-in-the-loop)
+  - [5.4 Diagnostics & recovery](#54-diagnostics--recovery)
+  - [5.5 Web-only operation via labels (no CLI)](#55-web-only-operation-via-labels-no-cli)
+  - [5.6 Status labels (where is each ticket in the lifecycle?)](#56-status-labels-where-is-each-ticket-in-the-lifecycle)
+  - [5.7 Nightly prod release (develop → main mirror)](#57-nightly-prod-release-develop--main-mirror)
+  - [5.8 Release notes (built per-ticket)](#58-release-notes-built-per-ticket)
+  - [5.9 Documentation drift prevention (rationale + scribe)](#59-documentation-drift-prevention-rationale--scribe)
+- [6. Setup (bootstrapping)](#6-setup-bootstrapping)
+  - [6.1 Project & labels](#61-project--labels)
+  - [6.2 Custom fields](#62-custom-fields)
+  - [6.3 Discover IDs](#63-discover-ids)
+  - [6.4 Tokens](#64-tokens)
+  - [6.5 Default branch](#65-default-branch)
+  - [6.6 Issue templates](#66-issue-templates)
+  - [6.7 Frontier tag retirement (one-time migration)](#67-frontier-tag-retirement-one-time-migration)
+  - [6.8 AWS IAM deployer & GitHub Actions permissions](#68-aws-iam-deployer--github-actions-permissions)
+- [7. Known quirks & workarounds](#7-known-quirks--workarounds)
+  - [7.1 GitHub `Project.items` API can return empty](#71-github-projectitems-api-can-return-empty)
+  - [7.2 MSYS path mangling on Git Bash (Windows)](#72-msys-path-mangling-on-git-bash-windows)
+  - [7.3 `Edit` tool truncates YAML/scripts at this mount path](#73-edit-tool-truncates-yamlscripts-at-this-mount-path)
+  - [7.4 `issues.labeled` fires per label](#74-issueslabeled-fires-per-label)
+  - [7.5 Husky hooks on Windows](#75-husky-hooks-on-windows)
+  - [7.6 Race: `issues.opened` fires before project-add automation](#76-race-issuesopened-fires-before-project-add-automation)
+  - [7.7 `frontend/tsconfig.tsbuildinfo` flicker](#77-frontendtsconfigtsbuildinfo-flicker)
+  - [7.8 Stale local tracking after runner deletes remote branches](#78-stale-local-tracking-after-runner-deletes-remote-branches)
+  - [7.9 `prod-release.sh` switches working tree mid-run](#79-prod-releasesh-switches-working-tree-mid-run)
+  - [7.10 Test gates (compensates for GitHub Free)](#710-test-gates-compensates-for-github-free)
+  - [7.11 Deploy build chain: infra/ deps + src copy + chromium layer](#711-deploy-build-chain-infra-deps--src-copy--chromium-layer)
+  - [7.12 Windows: `core.filemode=false` + new scripts need `+x`](#712-windows-corefilemodefalse--new-scripts-need-x)
+- [8. Failure modes & recovery](#8-failure-modes--recovery)
+  - [8.1 Doomed 1-second runs](#81-doomed-1-second-runs)
+  - [8.2 Stuck ticket at `dev-pending`/`validation-pending`](#82-stuck-ticket-at-dev-pendingvalidation-pending)
+  - [8.3 Agent timed out (600s base, auto-scaled per strike)](#83-agent-timed-out-600s-base-auto-scaled-per-strike)
+  - [8.4 Stale base handling](#84-stale-base-handling)
+  - [8.5 3-strike escalation](#85-3-strike-escalation)
+  - [8.6 Cost gate](#86-cost-gate)
+  - [8.7 Local index corruption (Linux mount)](#87-local-index-corruption-linux-mount)
+  - [8.8 Prod release conflict (legacy — no longer occurs)](#88-prod-release-conflict-legacy--no-longer-occurs)
+  - [8.9 Ticket missing a `type:*` label](#89-ticket-missing-a-type-label)
+  - [8.10 Strike system: per-ticket failure isolation](#810-strike-system-per-ticket-failure-isolation)
+  - [8.11 Tester real-test gate (validate mode)](#811-tester-real-test-gate-validate-mode)
+- [9. Empirical performance & cost](#9-empirical-performance--cost)
+- [10. Tickets shipped autonomously (reference)](#10-tickets-shipped-autonomously-reference)
+- [11. Open follow-ups](#11-open-follow-ups)
+- [12. Files quick reference](#12-files-quick-reference)
+- [13. When to update this doc](#13-when-to-update-this-doc)
+
+---
+
 ## 1. Overview
 
 A ticket labeled `auto-pipeline` gets driven autonomously through this
@@ -791,6 +858,29 @@ the new model — no manual replay needed. The legacy `release-bootstrap`
 tag (used by the deprecated `--generate-notes` path) is harmless if
 left in place.
 
+### 6.8 AWS IAM deployer & GitHub Actions permissions
+
+**IAM user** — create a dedicated `github-actions-deployer` IAM user
+(not a role — Actions OIDC is unsupported here) with a policy derived
+from `infra/github-actions-deployer-policy.json`. The policy grants the
+minimum permissions for `serverless deploy`: Lambda, IAM PassRole,
+CloudFormation, S3, DynamoDB, API Gateway, and CloudWatch Logs.
+
+Store the credentials as repo secrets (Settings → Secrets and variables
+→ Actions → New repository secret):
+
+| Secret | Value |
+|---|---|
+| `AWS_ACCESS_KEY_ID` | IAM user access key |
+| `AWS_SECRET_ACCESS_KEY` | IAM user secret key |
+| `AWS_REGION` | Optional; defaults to `ap-south-1` |
+
+**GitHub repo setting** — in Settings → Actions → General, enable
+**"Allow GitHub Actions to create and approve pull requests"**. The
+pipeline's `open-pr.sh` step uses the `PIPELINE_TOKEN` to open PRs and
+post review approvals. Without this setting, the PR-open step fails with
+a 403 even though the PAT has `repo` scope.
+
 ---
 
 ## 7. Known quirks & workarounds
@@ -926,6 +1016,53 @@ compensate for — the human QA verdict is the gate.
 
 Set `PIPELINE_SKIP_CI_CHECK=1` in the workflow env to bypass (e.g.
 for repos without CI configured).
+
+### 7.11 Deploy build chain: infra/ deps + src copy + chromium layer
+
+The `serverless deploy` chain (run by `qa-deploy.sh`, `prod-release.sh`,
+and the local quick-start) requires three steps that are easy to miss:
+
+1. **`npm ci` in `infra/`** — serverless plugins live here, not in
+   `backend/`. Running `npm ci` only in `backend/` leaves the deploy
+   failing with missing plugin errors.
+
+2. **`cp -r backend/src infra/src`** — `serverless-esbuild` resolves
+   source files from the `infra/src` path configured in `serverless.yml`.
+   The source of truth lives in `backend/src/`, so this copy is required
+   before every deploy. (`_pipeline-lib.sh::pl_deploy` handles it
+   automatically; manual deploys need it too if running from scratch.)
+
+3. **`@sparticuz/chromium` Lambda layer** — the resume-formatting handler
+   depends on a headless Chromium binary packaged as a Lambda layer at
+   `infra/layers/chromium/`. The layer is not checked in (too large);
+   `pl_deploy` installs it via npm if absent. A fresh checkout needs the
+   layer built before the first deploy.
+
+The `_pipeline-lib.sh::pl_deploy` function handles all three
+automatically. For local one-shot deploys, `serverless deploy --stage
+dev` from `infra/` will fail unless you've already run `npm ci` in
+`infra/` and copied `backend/src`. See the Quick Start in README.md.
+
+### 7.12 Windows: `core.filemode=false` + new scripts need `+x`
+
+On Windows, Git sets `core.filemode=false` globally, which means new
+executable scripts (`.sh` files) added on Windows lose their `+x` bit.
+The Actions runner sees them as non-executable and the pipeline fails
+with "Permission denied".
+
+Fix: after adding any new `.sh` file from a Windows machine, run:
+
+```bash
+git update-index --chmod=+x scripts/<new-script>.sh
+git commit --amend --no-edit
+```
+
+This updates the mode in the index without touching file content.
+The Actions runner (Linux) then sees the correct `+x` mode.
+
+Note: this affects only the index bit, not the local file. The file
+stays unexecutable on Windows, which is fine — all scripts run on the
+Linux Actions runner.
 
 ---
 
@@ -1186,11 +1323,16 @@ handles. See `git log origin/develop --oneline` for the full list.
 | 53 | Add header comment to README.md | First real developer agent walk |
 | 59 | Add italicised tagline below README title | First real pr-reviewer agent walk |
 | 61 | Add Commit Messages section to CONTRIBUTING.md | First real tester agent walk; full real-3-agent E2E |
+| 63 | Add Requirements section to README | Multi-criteria ordering constraint |
 | 65 | Add Status section to README | Tight constraint ticket; agents nailed it |
 | 67 | Add Status section (contradictory criteria) | Demonstrated tester spec-arbitration emergence |
 | 69 | Add TODO marker (FAIL-path injection) | Verified FAIL -> rework -> attempt-2 -> merge |
 | 71 | Pipeline housekeeping smoke line | Verified `issues.opened` race fix |
 | 73 | **Add Last Working Day to candidate screening** | **First real production feature: 3 files, backend + frontend + DynamoDB schema** |
+| 76 | Collapse Internal Rates and Analysis sections in PricingPanel | UI-only: section collapse; no API changes |
+| 78 | Rename Internal Rates to Minimum Rates (3-column grid) | UI label rename + layout change |
+| 80 | Rename Recommended Quoted Rate to Recommended Rate | UI label rename; no data-model impact |
+| 82 | Normalize location to city-only at ingestion | Backend + data-model change: city parsed from full address at save time |
 
 ---
 
