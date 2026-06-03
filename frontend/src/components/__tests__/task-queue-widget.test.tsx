@@ -136,4 +136,27 @@ describe('TaskQueueWidget', () => {
     const { container } = render(<TaskQueueWidget />);
     expect(container).toBeEmptyDOMElement();
   });
+
+  it('anchors with task-widget-position so it clears the mobile BottomNav', async () => {
+    const { container } = render(<TaskQueueWidget />);
+    await screen.findByText('Submit to client');
+    const widget = container.querySelector('.task-widget-position');
+    expect(widget).not.toBeNull();
+  });
+
+  it('reserves page-bottom clearance so the widget never floats over page actions', async () => {
+    render(<TaskQueueWidget />);
+    await screen.findByText('Submit to client');
+    expect(document.documentElement.style.getPropertyValue('--task-widget-clearance')).not.toBe('');
+  });
+
+  it('removes the clearance reservation for non-recruiters', async () => {
+    const { useSession } = await import('next-auth/react');
+    (useSession as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+      data: { user: { id: 'u', role: 'candidate' } },
+      status: 'authenticated',
+    });
+    render(<TaskQueueWidget />);
+    expect(document.documentElement.style.getPropertyValue('--task-widget-clearance')).toBe('');
+  });
 });

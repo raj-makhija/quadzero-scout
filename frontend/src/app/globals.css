@@ -139,6 +139,19 @@
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
+/* TaskQueueWidget bottom anchor. Default 1rem (matches the original bottom-4).
+   On mobile (< md, where BottomNav is visible) lift it above the 4rem nav bar
+   plus a 1rem gap and any notch safe-area inset. */
+.task-widget-position {
+  bottom: 1rem;
+}
+
+@media (max-width: 767px) {
+  .task-widget-position {
+    bottom: calc(4rem + 1rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import {
@@ -170,9 +170,35 @@ export function TaskQueueWidget() {
   const [tasks, setTasks] = useState<RecruiterTask[]>([]);
   const [expanded, setExpanded] = useState(false);
   const [open, setOpen] = useState(true);
+  const widgetRef = useRef<HTMLDivElement>(null);
 
   const role = (session?.user as { role?: string } | undefined)?.role;
   const isRecruiter = status === 'authenticated' && role === 'recruiter';
+
+  // Reserve page-bottom space equal to the widget's footprint so a page's own
+  // bottom content (e.g. "Save & Search" action bars) never sits underneath the
+  // fixed widget. The root layout wrapper consumes --task-widget-clearance as
+  // padding-bottom. Measured (not static) because the widget's height varies
+  // with task count and the collapsed/expanded state.
+  useEffect(() => {
+    const root = document.documentElement;
+    const el = widgetRef.current;
+    if (!el) {
+      root.style.removeProperty('--task-widget-clearance');
+      return;
+    }
+    const update = () => {
+      root.style.setProperty('--task-widget-clearance', `${el.offsetHeight + 32}px`);
+    };
+    update();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty('--task-widget-clearance');
+    };
+  }, [isRecruiter, open, expanded, tasks.length]);
 
   const load = useCallback(async () => {
     try {
@@ -223,7 +249,7 @@ export function TaskQueueWidget() {
   const visible = expanded ? tasks : tasks.slice(0, COLLAPSED_COUNT);
 
   return (
-    <div className="fixed bottom-4 right-4 z-40 w-80 max-w-[calc(100vw-2rem)]">
+    <div ref={widgetRef} className="task-widget-position fixed right-4 z-40 w-80 max-w-[calc(100vw-2rem)]">
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 shadow-xl">
         <button
           type="button"
