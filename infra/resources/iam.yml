@@ -52,6 +52,18 @@ s3Policy:
     - !Sub '${ResumesBucket.Arn}/*'
     - !GetAtt ResumesBucket.Arn
 
+# Backup Bucket S3 Policy (ticket #167 — nightly backup + restore)
+backupS3Policy:
+  Effect: Allow
+  Action:
+    - s3:GetObject
+    - s3:PutObject
+    - s3:DeleteObject
+    - s3:ListBucket
+  Resource:
+    - !Sub '${BackupsBucket.Arn}/*'
+    - !GetAtt BackupsBucket.Arn
+
 # Lambda Invoke Policy (for async worker invocation)
 lambdaInvokePolicy:
   Effect: Allow
@@ -61,6 +73,7 @@ lambdaInvokePolicy:
     - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-formatResumeWorker'
     - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-bulkImportWorker'
     - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-notifyWorker'
+    - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-restoreWorker'
 
 # SES Policy (for sending notification emails)
 sesPolicy:

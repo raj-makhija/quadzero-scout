@@ -588,6 +588,22 @@ class ApiClient {
     });
   }
 
+  // Backup & Restore endpoints (ticket #167)
+  async listBackups() {
+    return this.request<{ snapshots: BackupSnapshot[] }>('/admin/backups');
+  }
+
+  async initiateRestore(snapshotId: string) {
+    return this.request<{ jobId: string; snapshotId: string }>('/admin/backups/restore', {
+      method: 'POST',
+      body: JSON.stringify({ snapshotId }),
+    });
+  }
+
+  async getRestoreStatus(jobId: string) {
+    return this.request<RestoreJobStatus>(`/admin/backups/restore/${jobId}`);
+  }
+
   // Pricing endpoints
   async calculatePricing(input: PricingInput) {
     return this.request<PricingOutput>('/recruiter/pricing/calculate', {
@@ -1245,6 +1261,29 @@ export interface BulkImportStatus {
   createdAt: string;
   updatedAt: string;
   files: BulkImportFileStatus[];
+}
+
+// Backup & Restore types (ticket #167)
+export interface BackupSnapshot {
+  snapshotId: string;
+  status: 'complete' | 'failed';
+  startedAt: string;
+  completedAt: string;
+  tableCount: number;
+  itemCount: number;
+  s3ObjectCount: number;
+}
+
+export interface RestoreJobStatus {
+  jobId: string;
+  snapshotId: string;
+  status: 'in_progress' | 'complete' | 'failed';
+  startedAt: string;
+  updatedAt: string;
+  tablesRestored: number;
+  itemsRestored: number;
+  s3ObjectsRestored: number;
+  error?: string;
 }
 
 // Requirement types

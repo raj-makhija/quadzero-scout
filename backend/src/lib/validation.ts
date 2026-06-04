@@ -127,6 +127,11 @@ export const BulkImportResumeRequestSchema = z.object({
   batchId: z.string().min(1).max(100),
 });
 
+// Restore Request Validation (ticket #167)
+export const RestoreRequestSchema = z.object({
+  snapshotId: z.string().min(1).max(100),
+});
+
 // Save Requirement Request Validation
 export const SaveRequirementRequestSchema = z.object({
   clientName: z.string().min(1).max(200),
