@@ -895,7 +895,23 @@ export default function RequirementDetailPage() {
             </div>
 
             {/* Check Candidate Match */}
-            <CheckCandidateMatch requirementId={requirementId} onShortlisted={fetchCandidates} additionalFields={requirement.additionalFields} />
+            <CheckCandidateMatch
+              requirementId={requirementId}
+              requirementContext={{
+                requirementId: requirement.requirementId,
+                clientName: requirement.clientName,
+                jobTitle: requirement.jobTitle,
+                engagementModel: requirement.engagementModel,
+                contractDurationMonths: requirement.contractDurationMonths,
+                paymentTermsDays: requirement.paymentTermsDays,
+                budgetMinLpa: requirement.budgetMinLpa,
+                budgetMaxLpa: requirement.budgetMaxLpa,
+                isRateGstInclusive: requirement.isRateGstInclusive,
+              }}
+              isInternalRecruiter={isInternal}
+              onShortlisted={fetchCandidates}
+              additionalFields={requirement.additionalFields}
+            />
 
             {/* Contributing Recruiters */}
             {requirement.contributingRecruiters && requirement.contributingRecruiters.length > 1 && (
