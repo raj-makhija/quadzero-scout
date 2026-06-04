@@ -13,8 +13,16 @@ import {
   UserPlus,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
-import type { MatchDebugResponse, MatchDebugFilterResult, CandidateNameSearchResult, AdditionalFieldDefinition, CandidateSearchResult, RequirementSummary } from '@/lib/api';
+import type { MatchDebugResponse, MatchDebugFilterResult, CandidateNameSearchResult, AdditionalFieldDefinition, CandidateSearchResult, RequirementSummary, PricingOutput } from '@/lib/api';
 import { ScreeningModal, isScreeningExpired, getScreeningStatus } from '@/components/screening-modal';
+import { PricingPanel } from '@/components/PricingPanel';
+
+interface RequirementPricingContext {
+  contractDurationMonths?: number;
+  paymentTermsDays?: number;
+  engagementModel?: string;
+  isRateGstInclusive?: boolean;
+}
 
 // ─── Candidate Search Variant ─────────────────────────────────────────────────
 
@@ -22,9 +30,10 @@ interface CheckCandidateProps {
   requirementId: string;
   onShortlisted?: () => void;
   additionalFields?: AdditionalFieldDefinition[];
+  requirementContext?: RequirementPricingContext;
 }
 
-export function CheckCandidateMatch({ requirementId, onShortlisted, additionalFields }: CheckCandidateProps) {
+export function CheckCandidateMatch({ requirementId, onShortlisted, additionalFields, requirementContext }: CheckCandidateProps) {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<CandidateNameSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -148,6 +157,8 @@ export function CheckCandidateMatch({ requirementId, onShortlisted, additionalFi
           onShortlisted={onShortlisted}
           additionalFields={additionalFields}
           onCandidateUpdated={setSelectedCandidate}
+          requirementContext={requirementContext}
+          candidateExpectedCtcLpa={debugResult.candidate.expectedCtc}
         />
       )}
     </div>
@@ -300,6 +311,13 @@ export function CheckRequirementMatch({ candidateId, candidateName, candidateScr
           candidate={candidateForShortlist}
           additionalFields={selectedRequirement.additionalFields}
           onCandidateUpdated={setCandidateForShortlist}
+          requirementContext={{
+            contractDurationMonths: selectedRequirement.contractDurationMonths,
+            paymentTermsDays: selectedRequirement.paymentTermsDays,
+            engagementModel: selectedRequirement.engagementModel,
+            isRateGstInclusive: selectedRequirement.isRateGstInclusive,
+          }}
+          candidateExpectedCtcLpa={debugResult.candidate.expectedCtc}
         />
       )}
     </div>
@@ -314,12 +332,16 @@ function ShortlistAction({
   onShortlisted,
   additionalFields,
   onCandidateUpdated,
+  requirementContext,
+  candidateExpectedCtcLpa,
 }: {
   requirementId: string;
   candidate: CandidateNameSearchResult;
   onShortlisted?: () => void;
   additionalFields?: AdditionalFieldDefinition[];
   onCandidateUpdated: (updated: CandidateNameSearchResult) => void;
+  requirementContext?: RequirementPricingContext;
+  candidateExpectedCtcLpa?: number;
 }) {
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
@@ -327,6 +349,7 @@ function ShortlistAction({
   const [success, setSuccess] = useState(false);
   const [confirmNotInterested, setConfirmNotInterested] = useState(false);
   const [showScreeningModal, setShowScreeningModal] = useState(false);
+  const [pricingResult, setPricingResult] = useState<PricingOutput | null>(null);
 
   const screeningStatus = getScreeningStatus(candidate.lastScreenedAt, candidate.notInterested);
   const screeningExpired = isScreeningExpired(candidate.lastScreenedAt);
@@ -345,7 +368,19 @@ function ShortlistAction({
     setLoading(true);
     setError('');
     try {
-      await api.shortlistCandidate(requirementId, candidate.candidateId, notes || undefined);
+      await api.shortlistCandidate(
+        requirementId,
+        candidate.candidateId,
+        notes || undefined,
+        pricingResult ? {
+          proposedRateHourly: pricingResult.finalQuotedHourly,
+          proposedRateMonthly: pricingResult.finalQuotedMonthly,
+          proposedRateAnnual: pricingResult.finalQuotedAnnual,
+          internalRateHourly: pricingResult.minimumBillingHourly,
+          internalRateMonthly: pricingResult.minimumBillingMonthly,
+          internalRateAnnual: pricingResult.minimumBillingAnnual,
+        } : undefined
+      );
       setSuccess(true);
       onShortlisted?.();
     } catch (err) {
@@ -427,6 +462,19 @@ function ShortlistAction({
             </div>
           ) : (
             <>
+              {/* Pricing Calculator */}
+              {requirementContext && (
+                <div className="border-t border-gray-200 dark:border-gray-700 pt-3">
+                  <PricingPanel
+                    candidateExpectedCtcLpa={candidateExpectedCtcLpa}
+                    candidateCurrentCtcLpa={undefined}
+                    candidateExperienceYears={candidate.totalExperience}
+                    onPricingCalculated={setPricingResult}
+                    requirementContext={requirementContext}
+                  />
+                </div>
+              )}
+
               {/* Notes */}
               <textarea
                 value={notes}
