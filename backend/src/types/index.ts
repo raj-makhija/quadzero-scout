@@ -1414,7 +1414,8 @@ export type AuditAction =
   | 'PIPELINE_INTERVIEW_FEEDBACK'
   | 'PIPELINE_STAGE_UPDATE'
   | 'PIPELINE_NOTE_ADDED'
-  | 'PIPELINE_UPDATE_QUOTED_RATE';
+  | 'PIPELINE_UPDATE_QUOTED_RATE'
+  | 'RESTORE_INITIATE';
 
 export type AuditEntityType =
   | 'session'
@@ -1426,7 +1427,8 @@ export type AuditEntityType =
   | 'user'
   | 'config'
   | 'sub_vendor'
-  | 'pipeline';
+  | 'pipeline'
+  | 'backup';
 
 export interface AuditLogItem {
   pk: string;

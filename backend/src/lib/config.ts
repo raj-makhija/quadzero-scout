@@ -24,6 +24,7 @@ interface Config {
   };
   s3: {
     resumesBucket: string;
+    backupsBucket: string;
     presignedUrlExpiry: number;
   };
   auth: {
@@ -33,6 +34,7 @@ interface Config {
     formatResumeWorkerName: string;
     bulkImportWorkerName: string;
     notifyWorkerName: string;
+    restoreWorkerName: string;
   };
   email: {
     senderEmail: string;
@@ -92,6 +94,7 @@ export const config: Config = {
   },
   s3: {
     resumesBucket: getEnvVar('S3_BUCKET_RESUMES', 'quadzero-scout-resumes-dev'),
+    backupsBucket: getEnvVar('S3_BUCKET_BACKUPS', 'quadzero-scout-backups-dev'),
     presignedUrlExpiry: 300, // 5 minutes
   },
   auth: {
@@ -101,6 +104,7 @@ export const config: Config = {
     formatResumeWorkerName: getEnvVar('FORMAT_RESUME_WORKER_NAME', ''),
     bulkImportWorkerName: getEnvVar('BULK_IMPORT_WORKER_NAME', ''),
     notifyWorkerName: getEnvVar('NOTIFY_WORKER_NAME', ''),
+    restoreWorkerName: getEnvVar('RESTORE_WORKER_NAME', ''),
   },
   email: {
     senderEmail: getEnvVar('SES_SENDER_EMAIL', ''),

@@ -35,6 +35,8 @@ provider:
     DYNAMODB_TABLE_SAVED_SEARCHES: ${self:custom.savedSearchesTable}
     DYNAMODB_TABLE_PROMPTS: ${self:custom.promptsTable}
     S3_BUCKET_RESUMES: ${self:custom.resumesBucket}
+    S3_BUCKET_BACKUPS: ${self:custom.backupsBucket}
+    RESTORE_WORKER_NAME: ${self:service}-${self:provider.stage}-restoreWorker
     LLM_PROVIDER: ${ssm:/quadzero-scout/${self:provider.stage}/LLM_PROVIDER, env:LLM_PROVIDER, 'claude'}
     ANTHROPIC_API_KEY: ${ssm:/quadzero-scout/${self:provider.stage}/ANTHROPIC_API_KEY, env:ANTHROPIC_API_KEY, ''}
     OPENAI_API_KEY: ${ssm:/quadzero-scout/${self:provider.stage}/OPENAI_API_KEY, env:OPENAI_API_KEY, ''}
@@ -89,6 +91,7 @@ provider:
       statements:
         - ${file(resources/iam.yml):dynamoDbPolicy}
         - ${file(resources/iam.yml):s3Policy}
+        - ${file(resources/iam.yml):backupS3Policy}
         - ${file(resources/iam.yml):lambdaInvokePolicy}
         - ${file(resources/iam.yml):ssmPolicy}
         - ${file(resources/iam.yml):sesPolicy}
@@ -115,6 +118,7 @@ custom:
   savedSearchesTable: SavedSearches-${self:provider.stage}
   promptsTable: Prompts-${self:provider.stage}
   resumesBucket: quadzero-scout-resumes-${self:provider.stage}
+  backupsBucket: quadzero-scout-backups-${self:provider.stage}
   bulkImportBatchesTable: BulkImportBatches-${self:provider.stage}
   requirementsTable: Requirements-${self:provider.stage}
   pricingConfigTable: PricingConfig-${self:provider.stage}
@@ -552,6 +556,23 @@ functions:
     timeout: 60
     memorySize: 512
 
+  # Nightly Backup Worker (ticket #167) — scheduled, no HTTP events.
+  # cron(30 20 * * ? *) UTC = 02:00 IST daily.
+  backupWorker:
+    handler: src/handlers/worker/backupWorker.handler
+    timeout: 900
+    memorySize: 1024
+    events:
+      - schedule:
+          rate: cron(30 20 * * ? *)
+          enabled: true
+
+  # Restore Worker (ticket #167) — async, admin-triggered, no HTTP events.
+  restoreWorker:
+    handler: src/handlers/worker/restoreWorker.handler
+    timeout: 900
+    memorySize: 1024
+
   # Email Ingest Worker (scheduled, no HTTP events)
   emailIngestWorker:
     handler: src/handlers/worker/emailIngestWorker.handler
@@ -848,6 +869,28 @@ functions:
     events:
       - httpApi:
           path: /admin/recruiters/list
+          method: GET
+
+  # Admin Backup & Restore Endpoints (ticket #167)
+  adminListBackups:
+    handler: src/handlers/admin/listBackups.handler
+    events:
+      - httpApi:
+          path: /admin/backups
+          method: GET
+
+  adminInitiateRestore:
+    handler: src/handlers/admin/initiateRestore.handler
+    events:
+      - httpApi:
+          path: /admin/backups/restore
+          method: POST
+
+  adminRestoreStatus:
+    handler: src/handlers/admin/restoreStatus.handler
+    events:
+      - httpApi:
+          path: /admin/backups/restore/{jobId}
           method: GET
 
 resources:
