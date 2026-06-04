@@ -15,16 +15,33 @@ import {
 import { api, ApiError } from '@/lib/api';
 import type { MatchDebugResponse, MatchDebugFilterResult, CandidateNameSearchResult, AdditionalFieldDefinition, CandidateSearchResult, RequirementSummary } from '@/lib/api';
 import { ScreeningModal, isScreeningExpired, getScreeningStatus } from '@/components/screening-modal';
+import { ShortlistModal } from '@/components/shortlist-modal';
+
+// Shape the shared ShortlistModal needs to drive pricing + shortlist. Mirrors the
+// requirement context the Search Candidate flow (search/page.tsx) builds.
+export interface RequirementPricingContext {
+  requirementId: string;
+  clientName: string;
+  jobTitle?: string;
+  engagementModel: string;
+  contractDurationMonths?: number;
+  paymentTermsDays?: number;
+  budgetMinLpa?: number;
+  budgetMaxLpa?: number;
+  isRateGstInclusive?: boolean;
+}
 
 // ─── Candidate Search Variant ─────────────────────────────────────────────────
 
 interface CheckCandidateProps {
   requirementId: string;
+  requirementContext: RequirementPricingContext;
+  isInternalRecruiter?: boolean;
   onShortlisted?: () => void;
   additionalFields?: AdditionalFieldDefinition[];
 }
 
-export function CheckCandidateMatch({ requirementId, onShortlisted, additionalFields }: CheckCandidateProps) {
+export function CheckCandidateMatch({ requirementId, requirementContext, isInternalRecruiter, onShortlisted, additionalFields }: CheckCandidateProps) {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<CandidateNameSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -143,8 +160,10 @@ export function CheckCandidateMatch({ requirementId, onShortlisted, additionalFi
       {/* Shortlist Action */}
       {debugResult && selectedCandidate && (
         <ShortlistAction
-          requirementId={requirementId}
           candidate={selectedCandidate}
+          matchData={debugResult}
+          requirementContext={requirementContext}
+          isInternalRecruiter={isInternalRecruiter}
           onShortlisted={onShortlisted}
           additionalFields={additionalFields}
           onCandidateUpdated={setSelectedCandidate}
@@ -159,6 +178,7 @@ export function CheckCandidateMatch({ requirementId, onShortlisted, additionalFi
 interface CheckRequirementProps {
   candidateId: string;
   candidateName: string;
+  isInternalRecruiter?: boolean;
   candidateScreening?: {
     lastScreenedAt?: string;
     notInterested?: boolean;
@@ -166,7 +186,7 @@ interface CheckRequirementProps {
   };
 }
 
-export function CheckRequirementMatch({ candidateId, candidateName, candidateScreening }: CheckRequirementProps) {
+export function CheckRequirementMatch({ candidateId, candidateName, isInternalRecruiter, candidateScreening }: CheckRequirementProps) {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<RequirementSummary[]>([]);
   const [searching, setSearching] = useState(false);
@@ -296,8 +316,20 @@ export function CheckRequirementMatch({ candidateId, candidateName, candidateScr
 
       {debugResult && selectedRequirement && candidateForShortlist && (
         <ShortlistAction
-          requirementId={selectedRequirement.requirementId}
           candidate={candidateForShortlist}
+          matchData={debugResult}
+          requirementContext={{
+            requirementId: selectedRequirement.requirementId,
+            clientName: selectedRequirement.clientName,
+            jobTitle: selectedRequirement.jobTitle,
+            engagementModel: selectedRequirement.engagementModel,
+            contractDurationMonths: selectedRequirement.contractDurationMonths,
+            paymentTermsDays: selectedRequirement.paymentTermsDays,
+            budgetMinLpa: selectedRequirement.budgetMinLpa,
+            budgetMaxLpa: selectedRequirement.budgetMaxLpa,
+            isRateGstInclusive: selectedRequirement.isRateGstInclusive,
+          }}
+          isInternalRecruiter={isInternalRecruiter}
           additionalFields={selectedRequirement.additionalFields}
           onCandidateUpdated={setCandidateForShortlist}
         />
@@ -308,28 +340,79 @@ export function CheckRequirementMatch({ candidateId, candidateName, candidateScr
 
 // ─── Shortlist Action ─────────────────────────────────────────────────────────
 
+// Adapt the lightweight name-search candidate + match-debug result into the rich
+// CandidateSearchResult that the shared ShortlistModal/ScreeningModal expect.
+function toCandidateSearchResult(
+  candidate: CandidateNameSearchResult,
+  matchData: MatchDebugResponse,
+): CandidateSearchResult {
+  const md = matchData.matchDetails;
+  return {
+    candidateId: candidate.candidateId,
+    fullName: candidate.fullName,
+    location: candidate.location ?? matchData.candidate.location,
+    primarySkills: matchData.candidate.primarySkills,
+    totalExperience: matchData.candidate.totalExperience,
+    seniority: matchData.candidate.seniority,
+    availability: matchData.candidate.availability,
+    engagementModel: matchData.candidate.engagementModel,
+    currentCtc: matchData.candidate.currentCtc,
+    expectedCtc: matchData.candidate.expectedCtc,
+    matchScore: matchData.score,
+    matchDetails: {
+      mustHaveMatched: md.mustHaveMatched,
+      mustHaveRelated: md.mustHaveRelated,
+      mustHaveMissing: md.mustHaveMissing,
+      goodToHaveMatched: md.goodToHaveMatched,
+      goodToHaveRelated: md.goodToHaveRelated,
+      experienceMatch: md.experienceMatch as 'full' | 'partial' | 'none',
+      seniorityMatch: md.seniorityMatch,
+      ctcMatch: md.ctcMatch,
+      locationMatch: md.locationMatch as 'full' | 'partial' | 'none',
+      availabilityMatch: md.availabilityMatch as 'full' | 'partial' | 'none',
+      roleMatch: md.roleMatch as 'full' | 'partial' | 'none' | undefined,
+    },
+    lastUpdated: candidate.lastUpdated,
+    lastScreenedAt: candidate.lastScreenedAt,
+    notInterested: candidate.notInterested,
+    notInterestedAt: candidate.notInterestedAt,
+  };
+}
+
 function ShortlistAction({
-  requirementId,
   candidate,
+  matchData,
+  requirementContext,
+  isInternalRecruiter,
   onShortlisted,
   additionalFields,
   onCandidateUpdated,
 }: {
-  requirementId: string;
   candidate: CandidateNameSearchResult;
+  matchData: MatchDebugResponse;
+  requirementContext: RequirementPricingContext;
+  isInternalRecruiter?: boolean;
   onShortlisted?: () => void;
   additionalFields?: AdditionalFieldDefinition[];
   onCandidateUpdated: (updated: CandidateNameSearchResult) => void;
 }) {
-  const [notes, setNotes] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  const [confirmNotInterested, setConfirmNotInterested] = useState(false);
   const [showScreeningModal, setShowScreeningModal] = useState(false);
+  const [showShortlistModal, setShowShortlistModal] = useState(false);
 
   const screeningStatus = getScreeningStatus(candidate.lastScreenedAt, candidate.notInterested);
-  const screeningExpired = isScreeningExpired(candidate.lastScreenedAt);
+
+  // Smart routing mirrors the Search Candidate flow (search/page.tsx handleShortlistClick):
+  // screening valid + CTC available → Shortlist Modal directly; otherwise screen first.
+  const handleShortlistClick = () => {
+    const screeningValid = !isScreeningExpired(candidate.lastScreenedAt);
+    const ctcAvailable = matchData.candidate.expectedCtc != null;
+    if (screeningValid && ctcAvailable) {
+      setShowShortlistModal(true);
+    } else {
+      setShowScreeningModal(true);
+    }
+  };
 
   const handleScreeningComplete = useCallback((_candidateId: string, updatedValues?: Partial<CandidateSearchResult>) => {
     setShowScreeningModal(false);
@@ -339,30 +422,15 @@ function ShortlistAction({
       notInterested: updatedValues?.notInterested ?? candidate.notInterested,
       notInterestedAt: updatedValues?.notInterestedAt ?? candidate.notInterestedAt,
     });
+    // After screening completes in the shortlist flow, open the Shortlist Modal — same as Search.
+    setShowShortlistModal(true);
   }, [candidate, onCandidateUpdated]);
 
-  const handleShortlist = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      await api.shortlistCandidate(requirementId, candidate.candidateId, notes || undefined);
-      setSuccess(true);
-      onShortlisted?.();
-    } catch (err) {
-      if (err instanceof ApiError) {
-        if (err.code === 'VALIDATION_ERROR' && err.message.includes('already shortlisted')) {
-          setSuccess(true);
-          onShortlisted?.();
-          return;
-        }
-        setError(err.message);
-      } else {
-        setError('Failed to shortlist candidate. Please try again.');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
+  const handleShortlisted = useCallback(() => {
+    setShowShortlistModal(false);
+    setSuccess(true);
+    onShortlisted?.();
+  }, [onShortlisted]);
 
   if (success) {
     return (
@@ -383,82 +451,14 @@ function ShortlistAction({
         <span className={`badge text-xs ${screeningStatus.className}`}>{screeningStatus.label}</span>
       </div>
 
-      {/* Error */}
-      {error && (
-        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-2">
-          <AlertTriangle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
-          <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
-        </div>
-      )}
-
-      {/* Screening expired */}
-      {screeningExpired ? (
-        <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-          <p className="text-sm text-amber-700 dark:text-amber-300">
-            Screening is required before this candidate can be shortlisted.
-            {candidate.lastScreenedAt
-              ? ' The previous screening has expired (>15 days).'
-              : ' This candidate has not been screened yet.'}
-          </p>
-          <button
-            onClick={() => setShowScreeningModal(true)}
-            className="inline-block mt-2 text-sm font-medium text-primary-600 dark:text-primary-400 hover:underline"
-          >
-            Screen Candidate &rarr;
-          </button>
-        </div>
-      ) : (
-        <>
-          {/* Not interested warning */}
-          {candidate.notInterested && !confirmNotInterested ? (
-            <div className="space-y-2">
-              <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-2">
-                <AlertTriangle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
-                <p className="text-sm text-red-700 dark:text-red-300">
-                  This candidate is marked as Not Interested.
-                </p>
-              </div>
-              <button
-                onClick={() => setConfirmNotInterested(true)}
-                className="w-full btn btn-outline border-amber-500 text-amber-700 hover:bg-amber-50 dark:border-amber-400 dark:text-amber-300 dark:hover:bg-amber-900/20 text-sm"
-              >
-                Shortlist Anyway?
-              </button>
-            </div>
-          ) : (
-            <>
-              {/* Notes */}
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Shortlist notes (optional)..."
-                className="input w-full text-sm"
-                rows={2}
-                maxLength={1000}
-              />
-
-              {/* Shortlist button */}
-              <button
-                onClick={handleShortlist}
-                disabled={loading}
-                className="btn-primary w-full flex items-center justify-center gap-2 text-sm"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Shortlisting...
-                  </>
-                ) : (
-                  <>
-                    <UserPlus className="h-4 w-4" />
-                    Shortlist Candidate
-                  </>
-                )}
-              </button>
-            </>
-          )}
-        </>
-      )}
+      {/* Shortlist button — routes through the shared Screening/Shortlist modals */}
+      <button
+        onClick={handleShortlistClick}
+        className="btn-primary w-full flex items-center justify-center gap-2 text-sm"
+      >
+        <UserPlus className="h-4 w-4" />
+        Shortlist Candidate
+      </button>
 
       {showScreeningModal && (
         <ScreeningModal
@@ -468,6 +468,18 @@ function ShortlistAction({
           onScreeningComplete={handleScreeningComplete}
           isShortlistFlow={true}
           additionalFields={additionalFields}
+        />
+      )}
+
+      {showShortlistModal && (
+        <ShortlistModal
+          candidate={toCandidateSearchResult(candidate, matchData)}
+          requirementContext={requirementContext}
+          searchCriteria={{}}
+          isInternalRecruiter={isInternalRecruiter}
+          onClose={() => setShowShortlistModal(false)}
+          onShortlisted={handleShortlisted}
+          onRescreen={() => { setShowShortlistModal(false); setShowScreeningModal(true); }}
         />
       )}
     </div>
