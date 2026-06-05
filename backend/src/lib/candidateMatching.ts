@@ -6,7 +6,7 @@ import {
   parseSearchLocations,
   isEngagementModelCompatible,
 } from './matchScoring.js';
-import { normalizeSkill, normalizeSkills, coreSkillSatisfiedBy } from './skillNormalizer.js';
+import { normalizeSkill, normalizeSkills, coreSkillSatisfiedBy, disciplinesIncompatible } from './skillNormalizer.js';
 import { isCandidateWithinBudget } from './ctcConversion.js';
 import type { CandidateItem } from '../types/index.js';
 import type { MatchDetails } from './matchScoring.js';
@@ -111,6 +111,9 @@ export function matchAndRankCandidates(
       ) / normalizedMustHave.length;
       if (effectiveRatio < MIN_MUST_HAVE_MATCH_RATIO) continue;
     }
+
+    // Hard filter: discipline gate
+    if (disciplinesIncompatible(criteria.roles ?? [], candidate.roles ?? [])) continue;
 
     // Hard filter: engagement model compatibility
     const engagementModel = criteria.engagementModel;

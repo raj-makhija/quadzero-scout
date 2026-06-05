@@ -8,6 +8,7 @@ import {
   calculateSkillMatch,
   getRoleCategory,
   calculateRoleMatch,
+  disciplinesIncompatible,
   isCoreSkill,
   expandStackAbbreviation,
   coreSkillSatisfiedBy,
@@ -745,6 +746,86 @@ describe('calculateRoleMatch()', () => {
       ['SRE'],
       ['DevOps Engineer']
     )).toBe('full');
+  });
+});
+
+describe('disciplinesIncompatible()', () => {
+  // One unambiguous representative title per role category (each classifies to
+  // exactly one category via getRoleCategory).
+  const TITLE: Record<string, string> = {
+    development: 'Software Engineer',
+    testing: 'QA Engineer',
+    devops: 'DevOps Engineer',
+    data: 'Data Scientist',
+    management: 'Project Manager',
+    design: 'UX Designer',
+    support: 'IT Support',
+    security: 'Security Analyst',
+    consulting: 'ERP Consultant',
+  };
+
+  // The full curated matrix from ticket #282 (14 unordered pairs).
+  const GATED_PAIRS: [string, string][] = [
+    ['development', 'testing'],
+    ['development', 'support'],
+    ['development', 'design'],
+    ['development', 'consulting'],
+    ['testing', 'data'],
+    ['testing', 'support'],
+    ['testing', 'consulting'],
+    ['testing', 'design'],
+    ['data', 'support'],
+    ['data', 'design'],
+    ['devops', 'design'],
+    ['security', 'design'],
+    ['support', 'design'],
+    ['consulting', 'design'],
+  ];
+
+  // Cross-category pairs that must NOT gate (deliberate carve-outs in the ticket).
+  const NOT_GATED_PAIRS: [string, string][] = [
+    ['development', 'devops'],
+    ['development', 'data'],
+    ['development', 'security'],
+    ['testing', 'security'],
+    ['support', 'devops'],
+    ['testing', 'devops'],
+    ['devops', 'consulting'],
+    ['support', 'consulting'],
+    ['management', 'development'],
+    ['management', 'testing'],
+    ['management', 'design'],
+    ['management', 'data'],
+  ];
+
+  it.each(GATED_PAIRS)('gates %s ⇎ %s in both directions', (a, b) => {
+    expect(disciplinesIncompatible([TITLE[a]], [TITLE[b]])).toBe(true);
+    expect(disciplinesIncompatible([TITLE[b]], [TITLE[a]])).toBe(true);
+  });
+
+  it.each(NOT_GATED_PAIRS)('does not gate %s ⇎ %s in either direction', (a, b) => {
+    expect(disciplinesIncompatible([TITLE[a]], [TITLE[b]])).toBe(false);
+    expect(disciplinesIncompatible([TITLE[b]], [TITLE[a]])).toBe(false);
+  });
+
+  it('returns false when candidate has no roles', () => {
+    expect(disciplinesIncompatible(['Software Engineer'], [])).toBe(false);
+  });
+
+  it('returns false when requirement has no roles', () => {
+    expect(disciplinesIncompatible([], ['QA Engineer'])).toBe(false);
+  });
+
+  it('returns false when candidate roles are unclassifiable', () => {
+    expect(disciplinesIncompatible(['Software Engineer'], ['Chief Happiness Officer'])).toBe(false);
+  });
+
+  it('returns false when candidate spans both sides of a gated pair (SDET → dev+testing)', () => {
+    expect(disciplinesIncompatible(['Software Engineer'], ['QA Engineer', 'Backend Developer'])).toBe(false);
+  });
+
+  it('returns false when categories match (both development)', () => {
+    expect(disciplinesIncompatible(['Backend Developer'], ['Software Engineer'])).toBe(false);
   });
 });
 

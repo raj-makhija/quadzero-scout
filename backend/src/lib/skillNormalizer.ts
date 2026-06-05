@@ -320,3 +320,64 @@ export function calculateRoleMatch(
 
   return 'none';
 }
+
+// Curated matrix of role-category pairs that are genuinely distinct tracks AND a
+// real false-positive source, so they warrant a hard exclusion. Every other
+// cross-category mismatch is left to scoring (the soft role-score penalty).
+// Deliberately NOT gated: the engineering family (development/devops/data/security
+// cross over constantly), taxonomy-shared pairs (testing↔security, support↔devops,
+// data↔consulting, security↔consulting), and all `management` pairs. See ticket #282.
+// `design` is the isolated discipline — gated against everything except management.
+// Stored as unordered "a|b" keys (sorted) so lookup is direction-independent.
+const INCOMPATIBLE_DISCIPLINE_PAIRS = new Set(
+  (
+    [
+      ['development', 'testing'],
+      ['development', 'support'],
+      ['development', 'design'],
+      ['development', 'consulting'],
+      ['testing', 'data'],
+      ['testing', 'support'],
+      ['testing', 'consulting'],
+      ['testing', 'design'],
+      ['data', 'support'],
+      ['data', 'design'],
+      ['devops', 'design'],
+      ['security', 'design'],
+      ['support', 'design'],
+      ['consulting', 'design'],
+    ] as const
+  ).map(([a, b]) => [a, b].sort().join('|'))
+);
+
+/**
+ * Returns true when the candidate's discipline is explicitly incompatible with
+ * the search/requirement discipline. Only fires when calculateRoleMatch returns
+ * 'none' AND the category pair is in the curated matrix; returns false for
+ * unclassified roles or pairs not in the matrix.
+ */
+export function disciplinesIncompatible(
+  searchRoles: string[],
+  candidateRoles: string[]
+): boolean {
+  if (calculateRoleMatch(candidateRoles, searchRoles) !== 'none') return false;
+
+  const candidateCategories: string[] = [];
+  for (const role of candidateRoles) {
+    const cat = getRoleCategory(role);
+    if (cat) candidateCategories.push(cat);
+  }
+  const searchCategories: string[] = [];
+  for (const role of searchRoles) {
+    const cat = getRoleCategory(role);
+    if (cat) searchCategories.push(cat);
+  }
+
+  for (const ccat of candidateCategories) {
+    for (const scat of searchCategories) {
+      if (INCOMPATIBLE_DISCIPLINE_PAIRS.has([ccat, scat].sort().join('|'))) return true;
+    }
+  }
+
+  return false;
+}

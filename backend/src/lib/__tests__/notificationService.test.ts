@@ -44,6 +44,7 @@ vi.mock('../skillNormalizer.js', async (importOriginal) => {
     normalizeSkill: (skill: string) => skill.toLowerCase(),
     normalizeSkills: (skills: string[]) => skills.map((s: string) => s.toLowerCase()),
     coreSkillSatisfiedBy: actual.coreSkillSatisfiedBy,
+    disciplinesIncompatible: actual.disciplinesIncompatible,
   };
 });
 
