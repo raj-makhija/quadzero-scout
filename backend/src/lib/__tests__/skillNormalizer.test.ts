@@ -8,6 +8,7 @@ import {
   calculateSkillMatch,
   getRoleCategory,
   calculateRoleMatch,
+  disciplinesIncompatible,
   isCoreSkill,
   expandStackAbbreviation,
   coreSkillSatisfiedBy,
@@ -745,6 +746,45 @@ describe('calculateRoleMatch()', () => {
       ['SRE'],
       ['DevOps Engineer']
     )).toBe('full');
+  });
+});
+
+describe('disciplinesIncompatible()', () => {
+  it('returns true when tester candidate matches development requirement', () => {
+    expect(disciplinesIncompatible(['Software Engineer'], ['QA Engineer'])).toBe(true);
+  });
+
+  it('returns true when developer candidate matches testing requirement (symmetric)', () => {
+    expect(disciplinesIncompatible(['QA Engineer'], ['Software Engineer'])).toBe(true);
+  });
+
+  it('is unordered: both argument orders return true for the same pair', () => {
+    expect(disciplinesIncompatible(['Software Engineer'], ['SDET'])).toBe(true);
+    expect(disciplinesIncompatible(['SDET'], ['Software Engineer'])).toBe(true);
+  });
+
+  it('returns false when candidate has no roles', () => {
+    expect(disciplinesIncompatible(['Software Engineer'], [])).toBe(false);
+  });
+
+  it('returns false when requirement has no roles', () => {
+    expect(disciplinesIncompatible([], ['QA Engineer'])).toBe(false);
+  });
+
+  it('returns false when candidate roles are unclassifiable', () => {
+    expect(disciplinesIncompatible(['Software Engineer'], ['Chief Happiness Officer'])).toBe(false);
+  });
+
+  it('returns false for cross-category pair not in the matrix (data vs development)', () => {
+    expect(disciplinesIncompatible(['Software Engineer'], ['Data Scientist'])).toBe(false);
+  });
+
+  it('returns false when candidate spans both testing and development', () => {
+    expect(disciplinesIncompatible(['Software Engineer'], ['QA Engineer', 'Backend Developer'])).toBe(false);
+  });
+
+  it('returns false when categories match (both development)', () => {
+    expect(disciplinesIncompatible(['Backend Developer'], ['Software Engineer'])).toBe(false);
   });
 });
 

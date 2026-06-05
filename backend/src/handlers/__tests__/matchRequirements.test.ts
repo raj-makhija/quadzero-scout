@@ -14,7 +14,7 @@ import { getCandidateById, getAllActiveRequirements } from '../../lib/dynamodb.j
 // Fixtures
 // ---------------------------------------------------------------------------
 
-function makeCandidate(primarySkills: string[]) {
+function makeCandidate(primarySkills: string[], roles = ['Developer']) {
   return {
     candidate_id: 'cand_test',
     user_id: 'user_1',
@@ -27,7 +27,7 @@ function makeCandidate(primarySkills: string[]) {
     seniority: 'senior',
     availability: 'immediate',
     industries: [],
-    roles: ['Developer'],
+    roles,
     experience_bucket: '3-5',
     resume_s3_key: 'resumes/2024/01/test.pdf',
     created_at: '2024-01-01T00:00:00Z',
@@ -35,7 +35,7 @@ function makeCandidate(primarySkills: string[]) {
   };
 }
 
-function makeRequirement(coreSkill: string | null, id = 'req_1') {
+function makeRequirement(coreSkill: string | null, id = 'req_1', roles: string[] = []) {
   return {
     requirement_id: id,
     client_name: 'TechCorp',
@@ -57,7 +57,7 @@ function makeRequirement(coreSkill: string | null, id = 'req_1') {
       availability: [],
       engagementModel: null,
       skillSynonyms: null,
-      roles: [],
+      roles,
     },
   };
 }
@@ -147,6 +147,82 @@ describe('matchRequirements handler — MERN stack coreSkill gate', () => {
     );
     (getAllActiveRequirements as ReturnType<typeof vi.fn>).mockResolvedValue([
       makeRequirement(null),
+    ]);
+
+    const response = await handler(makeEvent('cand_test'));
+    const body = JSON.parse((response as { body: string }).body);
+
+    expect(body.data.matches).toHaveLength(1);
+  });
+});
+
+describe('matchRequirements handler — discipline gate', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('excludes a tester candidate from a development requirement', async () => {
+    (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeCandidate(['java', 'selenium'], ['QA Engineer'])
+    );
+    (getAllActiveRequirements as ReturnType<typeof vi.fn>).mockResolvedValue([
+      makeRequirement(null, 'req_dev', ['Software Engineer']),
+    ]);
+
+    const response = await handler(makeEvent('cand_test'));
+    const body = JSON.parse((response as { body: string }).body);
+
+    expect(body.data.matches).toHaveLength(0);
+  });
+
+  it('excludes a developer candidate from a testing requirement (symmetric)', async () => {
+    (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeCandidate(['java', 'spring'], ['Software Engineer'])
+    );
+    (getAllActiveRequirements as ReturnType<typeof vi.fn>).mockResolvedValue([
+      makeRequirement(null, 'req_test', ['QA Engineer']),
+    ]);
+
+    const response = await handler(makeEvent('cand_test'));
+    const body = JSON.parse((response as { body: string }).body);
+
+    expect(body.data.matches).toHaveLength(0);
+  });
+
+  it('does not exclude a candidate with no roles', async () => {
+    (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeCandidate(['java'], [])
+    );
+    (getAllActiveRequirements as ReturnType<typeof vi.fn>).mockResolvedValue([
+      makeRequirement(null, 'req_dev', ['Software Engineer']),
+    ]);
+
+    const response = await handler(makeEvent('cand_test'));
+    const body = JSON.parse((response as { body: string }).body);
+
+    expect(body.data.matches).toHaveLength(1);
+  });
+
+  it('does not exclude when requirement has no roles', async () => {
+    (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeCandidate(['selenium'], ['QA Engineer'])
+    );
+    (getAllActiveRequirements as ReturnType<typeof vi.fn>).mockResolvedValue([
+      makeRequirement(null, 'req_1', []),
+    ]);
+
+    const response = await handler(makeEvent('cand_test'));
+    const body = JSON.parse((response as { body: string }).body);
+
+    expect(body.data.matches).toHaveLength(1);
+  });
+
+  it('does not exclude for a cross-category pair not in the matrix (data vs development)', async () => {
+    (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeCandidate(['python'], ['Data Scientist'])
+    );
+    (getAllActiveRequirements as ReturnType<typeof vi.fn>).mockResolvedValue([
+      makeRequirement(null, 'req_dev', ['Software Engineer']),
     ]);
 
     const response = await handler(makeEvent('cand_test'));
