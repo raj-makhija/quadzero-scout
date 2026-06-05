@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import { Header } from '@/components/Header';
@@ -9,21 +8,6 @@ import { RecruiterHome } from '@/components/RecruiterHome';
 export default function Home() {
   const { data: session, status } = useSession();
   const userRole = (session?.user as { role?: string })?.role;
-
-  // Debug: fetch raw session from the API to diagnose role issues
-  const [debugSession, setDebugSession] = useState<Record<string, unknown> | null>(null);
-  useEffect(() => {
-    if (status === 'authenticated') {
-      fetch('/api/auth/session')
-        .then((r) => r.json())
-        .then((data) => {
-          console.log('[HomePage] raw /api/auth/session:', JSON.stringify(data, null, 2));
-          console.log('[HomePage] useSession role:', userRole, '| raw role:', data?.user?.role);
-          setDebugSession(data);
-        })
-        .catch(() => {});
-    }
-  }, [status, userRole]);
 
   // Show recruiter home for any authenticated non-candidate user.
   // This covers role='recruiter', role='admin', and even role=undefined
