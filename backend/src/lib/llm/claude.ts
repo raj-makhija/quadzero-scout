@@ -24,7 +24,7 @@ export class ClaudeProvider extends BaseLLMProvider {
       }));
 
     const response = await this.client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: options?.maxTokens || 4096,
       temperature: options?.temperature || 0,
       system: systemMessage?.content || '',
