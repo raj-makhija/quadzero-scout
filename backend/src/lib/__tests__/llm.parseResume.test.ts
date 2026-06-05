@@ -137,3 +137,68 @@ describe('parseResume() — token-budget retry behavior', () => {
     expect(capturedSystemContent).toMatch(/php/i);
   });
 });
+
+// ---------------------------------------------------------------------------
+// ticket #281 — synonyms must be requested by the prompt and survive parsing
+// ---------------------------------------------------------------------------
+
+const RESUME_JSON_WITH_SYNONYMS = JSON.stringify({
+  fullName: 'Jane Doe',
+  email: 'jane@example.com',
+  primarySkills: ['react', 'typescript'],
+  primarySkillYears: { react: 4, typescript: 4 },
+  secondarySkills: ['aws'],
+  totalExperience: 5,
+  seniority: 'senior',
+  roles: ['Frontend Engineer'],
+  education: [{ degree: 'BS', institution: 'MIT', year: 2018 }],
+  summary: 'Experienced engineer.',
+  skillSynonyms: { react: ['reactjs', 'react.js'], typescript: ['ts'] },
+});
+
+describe('parseResume() — skillSynonyms (#281)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('preserves the skillSynonyms map returned by the LLM end-to-end', async () => {
+    stubProvider.handler = async () => ({ content: RESUME_JSON_WITH_SYNONYMS });
+
+    const { output } = await parseResume('resume text');
+
+    expect(output.skillSynonyms).toEqual({
+      react: ['reactjs', 'react.js'],
+      typescript: ['ts'],
+    });
+  });
+
+  it('resume parser system prompt instructs the model to emit skillSynonyms', async () => {
+    let capturedSystemContent = '';
+    stubProvider.handler = async (messages) => {
+      capturedSystemContent = messages.find((m) => m.role === 'system')?.content ?? '';
+      return { content: RESUME_JSON_WITH_SYNONYMS };
+    };
+
+    await parseResume('resume text');
+
+    expect(capturedSystemContent).toContain('skillSynonyms');
+  });
+
+  it('preserves skillSynonyms when the 16384-token retry path fires', async () => {
+    const handler = vi.fn(async (_msgs: LLMMessage[], options?: LLMOptions): Promise<LLMResponse> => {
+      if (options?.maxTokens === 8192) {
+        return { content: '{"fullName": "Jane Doe", "skillSyn' }; // truncated
+      }
+      return { content: RESUME_JSON_WITH_SYNONYMS };
+    });
+    stubProvider.handler = handler;
+
+    const { output } = await parseResume('resume text');
+
+    expect(handler).toHaveBeenCalledTimes(2);
+    expect(output.skillSynonyms).toEqual({
+      react: ['reactjs', 'react.js'],
+      typescript: ['ts'],
+    });
+  });
+});

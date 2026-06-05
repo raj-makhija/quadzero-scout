@@ -249,3 +249,54 @@ describe('parseJobDescription() — token-budget retry behavior', () => {
     expect(capturedSystemContent).toMatch(/php/i);
   });
 });
+
+// ---------------------------------------------------------------------------
+// ticket #281 — synonyms must be requested by the prompt and survive parsing
+// ---------------------------------------------------------------------------
+
+describe('parseJobDescription() — skillSynonyms (#281)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('preserves the skillSynonyms map returned by the LLM end-to-end', async () => {
+    stubProvider.handler = async () => ({ content: VALID_JD_JSON });
+
+    const { output } = await parseJobDescription('Senior React developer');
+
+    expect(output.skillSynonyms).toEqual({
+      react: ['reactjs', 'react.js'],
+      typescript: ['ts'],
+    });
+  });
+
+  it('JD parser system prompt instructs the model to emit skillSynonyms', async () => {
+    let capturedSystemContent = '';
+    stubProvider.handler = async (messages) => {
+      capturedSystemContent = messages.find((m) => m.role === 'system')?.content ?? '';
+      return { content: VALID_JD_JSON };
+    };
+
+    await parseJobDescription('JD text');
+
+    expect(capturedSystemContent).toContain('skillSynonyms');
+  });
+
+  it('preserves skillSynonyms when the 16384-token retry path fires', async () => {
+    const handler = vi.fn(async (_msgs: LLMMessage[], options?: LLMOptions): Promise<LLMResponse> => {
+      if (options?.maxTokens === 8192) {
+        return { content: '{"mustHaveSkills": ["react"], "skillSyn' }; // truncated
+      }
+      return { content: VALID_JD_JSON };
+    });
+    stubProvider.handler = handler;
+
+    const { output } = await parseJobDescription('Complex JD');
+
+    expect(handler).toHaveBeenCalledTimes(2);
+    expect(output.skillSynonyms).toEqual({
+      react: ['reactjs', 'react.js'],
+      typescript: ['ts'],
+    });
+  });
+});

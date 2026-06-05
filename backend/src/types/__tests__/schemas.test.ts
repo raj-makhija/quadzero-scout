@@ -167,6 +167,51 @@ describe('LLMResumeOutputSchema', () => {
     });
     expect(result.success).toBe(true);
   });
+
+  // ticket #281 — synonym map must survive schema validation, not get coerced to null
+  it('preserves a non-empty skillSynonyms map returned by the LLM', () => {
+    const result = LLMResumeOutputSchema.safeParse({
+      fullName: 'Jane',
+      primarySkills: ['react'],
+      primarySkillYears: { react: 4 },
+      totalExperience: 4,
+      seniority: 'senior',
+      skillSynonyms: { react: ['reactjs', 'react.js'] },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.skillSynonyms).toEqual({ react: ['reactjs', 'react.js'] });
+    }
+  });
+
+  it('preserves an empty skillSynonyms map ({}) rather than treating it as falsy', () => {
+    const result = LLMResumeOutputSchema.safeParse({
+      fullName: 'Jane',
+      primarySkills: ['react'],
+      primarySkillYears: { react: 4 },
+      totalExperience: 4,
+      seniority: 'senior',
+      skillSynonyms: {},
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.skillSynonyms).toEqual({});
+    }
+  });
+
+  it('defaults skillSynonyms to null when the field is absent', () => {
+    const result = LLMResumeOutputSchema.safeParse({
+      fullName: 'Jane',
+      primarySkills: ['react'],
+      primarySkillYears: { react: 4 },
+      totalExperience: 4,
+      seniority: 'senior',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.skillSynonyms).toBeNull();
+    }
+  });
 });
 
 describe('LLMJDOutputSchema', () => {
@@ -213,6 +258,54 @@ describe('LLMJDOutputSchema', () => {
       expect(result.data.industries).toEqual([]);      // default
       expect(result.data.roles).toEqual([]);           // default
       expect(result.data.availability).toEqual([]);    // default
+    }
+  });
+
+  // ticket #281 — synonym map must survive schema validation, not get coerced to null
+  it('preserves a non-empty skillSynonyms map returned by the LLM', () => {
+    const result = LLMJDOutputSchema.safeParse({
+      mustHaveSkills: ['react'],
+      goodToHaveSkills: [],
+      minExperience: 3,
+      maxExperience: null,
+      seniority: ['senior'],
+      location: null,
+      skillSynonyms: { react: ['reactjs', 'react.js'] },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.skillSynonyms).toEqual({ react: ['reactjs', 'react.js'] });
+    }
+  });
+
+  it('preserves an empty skillSynonyms map ({}) rather than treating it as falsy', () => {
+    const result = LLMJDOutputSchema.safeParse({
+      mustHaveSkills: ['react'],
+      goodToHaveSkills: [],
+      minExperience: 3,
+      maxExperience: null,
+      seniority: ['senior'],
+      location: null,
+      skillSynonyms: {},
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.skillSynonyms).toEqual({});
+    }
+  });
+
+  it('defaults skillSynonyms to null when the field is absent', () => {
+    const result = LLMJDOutputSchema.safeParse({
+      mustHaveSkills: ['react'],
+      goodToHaveSkills: [],
+      minExperience: 3,
+      maxExperience: null,
+      seniority: ['senior'],
+      location: null,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.skillSynonyms).toBeNull();
     }
   });
 });

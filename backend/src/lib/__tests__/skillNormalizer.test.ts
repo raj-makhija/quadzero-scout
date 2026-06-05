@@ -644,6 +644,46 @@ describe('calculateSkillMatch() — fuzzy matching', () => {
     expect(result.exactMatched).toEqual(['react']);
     expect(result.fuzzyMatched).toEqual([]);
   });
+
+  // Edge case E (ticket #281) — when the candidate lists a synonym of a required
+  // skill but not the skill itself, the synonym map must produce a fuzzy match.
+  // This exercises the production matching path that is dead while synonyms are null.
+  it('matches a required skill via the candidate synonym map when the skill itself is absent', () => {
+    const candidateSkills = ['client relationship'];
+    const requiredSkills = ['client engagement'];
+    const candidateSynonyms = { 'client relationship': ['client engagement', 'crm'] };
+
+    const result = calculateSkillMatch(
+      candidateSkills,
+      requiredSkills,
+      true, // exactOnly — only exact + synonym/token paths allowed
+      undefined,
+      candidateSynonyms
+    );
+
+    // No exact match (candidate does not list "client engagement" directly)…
+    expect(result.exactMatched).toEqual([]);
+    // …but the synonym map bridges the gap.
+    expect(result.fuzzyMatched).toContain('client engagement');
+    expect(result.missing).toEqual([]);
+  });
+
+  it('matches a required skill via the requirement synonym map when the candidate uses a variant', () => {
+    const candidateSkills = ['delivery governance'];
+    const requiredSkills = ['delivery management'];
+    const requiredSynonyms = { 'delivery management': ['delivery governance', 'service delivery management'] };
+
+    const result = calculateSkillMatch(
+      candidateSkills,
+      requiredSkills,
+      true,
+      requiredSynonyms
+    );
+
+    expect(result.exactMatched).toEqual([]);
+    expect(result.fuzzyMatched).toContain('delivery management');
+    expect(result.missing).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------
