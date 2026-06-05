@@ -34,6 +34,7 @@ vi.mock('../skillNormalizer.js', async (importOriginal) => {
     normalizeSkill: (s: string) => s.toLowerCase(),
     normalizeSkills: (ss: string[]) => ss.map((s: string) => s.toLowerCase()),
     coreSkillSatisfiedBy: actual.coreSkillSatisfiedBy,
+    disciplinesIncompatible: actual.disciplinesIncompatible,
   };
 });
 
@@ -284,6 +285,114 @@ describe('matchAndRankCandidates', () => {
 
     expect(result).toHaveLength(0);
     expect(mockCalculateMatchScore).not.toHaveBeenCalled();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Discipline gate
+  // ---------------------------------------------------------------------------
+
+  it('excludes a tester candidate from a development requirement', () => {
+    const testerCandidate: CandidateItem = {
+      ...baseCandidate,
+      candidate_id: 'cand_tester',
+      roles: ['QA Engineer'],
+    };
+    mockCalculateMatchScore.mockReturnValue({ score: 70, details: goodDetails });
+
+    const result = matchAndRankCandidates(
+      [testerCandidate],
+      { mustHaveSkills: [], roles: ['Software Engineer'] }
+    );
+
+    expect(result).toHaveLength(0);
+  });
+
+  it('excludes a developer candidate from a testing requirement (symmetric)', () => {
+    const devCandidate: CandidateItem = {
+      ...baseCandidate,
+      candidate_id: 'cand_dev',
+      roles: ['Software Engineer'],
+    };
+    mockCalculateMatchScore.mockReturnValue({ score: 70, details: goodDetails });
+
+    const result = matchAndRankCandidates(
+      [devCandidate],
+      { mustHaveSkills: [], roles: ['QA Engineer'] }
+    );
+
+    expect(result).toHaveLength(0);
+  });
+
+  it('does not exclude a candidate with no roles', () => {
+    const noRolesCandidate: CandidateItem = { ...baseCandidate, roles: [] };
+    mockCalculateMatchScore.mockReturnValue({ score: 70, details: goodDetails });
+
+    const result = matchAndRankCandidates(
+      [noRolesCandidate],
+      { mustHaveSkills: [], roles: ['Software Engineer'] }
+    );
+
+    expect(result).toHaveLength(1);
+  });
+
+  it('does not exclude a candidate with unclassifiable roles', () => {
+    const unknownRoleCandidate: CandidateItem = {
+      ...baseCandidate,
+      roles: ['Chief Happiness Officer'],
+    };
+    mockCalculateMatchScore.mockReturnValue({ score: 70, details: goodDetails });
+
+    const result = matchAndRankCandidates(
+      [unknownRoleCandidate],
+      { mustHaveSkills: [], roles: ['Software Engineer'] }
+    );
+
+    expect(result).toHaveLength(1);
+  });
+
+  it('does not exclude for a cross-category pair not in the matrix (data vs development)', () => {
+    const dataCandidate: CandidateItem = {
+      ...baseCandidate,
+      roles: ['Data Scientist'],
+    };
+    mockCalculateMatchScore.mockReturnValue({ score: 70, details: goodDetails });
+
+    const result = matchAndRankCandidates(
+      [dataCandidate],
+      { mustHaveSkills: [], roles: ['Software Engineer'] }
+    );
+
+    expect(result).toHaveLength(1);
+  });
+
+  it('does not exclude a candidate whose roles span both testing and development', () => {
+    const hybridCandidate: CandidateItem = {
+      ...baseCandidate,
+      roles: ['QA Engineer', 'Backend Developer'],
+    };
+    mockCalculateMatchScore.mockReturnValue({ score: 70, details: goodDetails });
+
+    const result = matchAndRankCandidates(
+      [hybridCandidate],
+      { mustHaveSkills: [], roles: ['Software Engineer'] }
+    );
+
+    expect(result).toHaveLength(1);
+  });
+
+  it('does not fire discipline gate when requirement has no roles', () => {
+    const testerCandidate: CandidateItem = {
+      ...baseCandidate,
+      roles: ['QA Engineer'],
+    };
+    mockCalculateMatchScore.mockReturnValue({ score: 70, details: goodDetails });
+
+    const result = matchAndRankCandidates(
+      [testerCandidate],
+      { mustHaveSkills: [], roles: [] }
+    );
+
+    expect(result).toHaveLength(1);
   });
 
   // ---------------------------------------------------------------------------

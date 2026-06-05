@@ -320,3 +320,42 @@ export function calculateRoleMatch(
 
   return 'none';
 }
+
+// Unordered pairs of role categories that are explicitly incompatible.
+// Only the curated pairs below trigger hard exclusion; all other cross-category
+// mismatches are left to scoring.
+const INCOMPATIBLE_DISCIPLINE_PAIRS = new Set([
+  'development|testing',
+]);
+
+/**
+ * Returns true when the candidate's discipline is explicitly incompatible with
+ * the search/requirement discipline. Only fires when calculateRoleMatch returns
+ * 'none' AND the category pair is in the curated matrix; returns false for
+ * unclassified roles or pairs not in the matrix.
+ */
+export function disciplinesIncompatible(
+  searchRoles: string[],
+  candidateRoles: string[]
+): boolean {
+  if (calculateRoleMatch(candidateRoles, searchRoles) !== 'none') return false;
+
+  const candidateCategories: string[] = [];
+  for (const role of candidateRoles) {
+    const cat = getRoleCategory(role);
+    if (cat) candidateCategories.push(cat);
+  }
+  const searchCategories: string[] = [];
+  for (const role of searchRoles) {
+    const cat = getRoleCategory(role);
+    if (cat) searchCategories.push(cat);
+  }
+
+  for (const ccat of candidateCategories) {
+    for (const scat of searchCategories) {
+      if (INCOMPATIBLE_DISCIPLINE_PAIRS.has([ccat, scat].sort().join('|'))) return true;
+    }
+  }
+
+  return false;
+}

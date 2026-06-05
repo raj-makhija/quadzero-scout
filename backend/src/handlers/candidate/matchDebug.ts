@@ -2,7 +2,7 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, MatchDebugRequestSchema } from '../../lib/validation.js';
 import { getCandidateById, getRequirementById } from '../../lib/dynamodb.js';
-import { normalizeSkill, normalizeSkills, coreSkillMatchResult } from '../../lib/skillNormalizer.js';
+import { normalizeSkill, normalizeSkills, coreSkillMatchResult, disciplinesIncompatible } from '../../lib/skillNormalizer.js';
 import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, FUZZY_MATCH_WEIGHT, MUST_HAVE_SECONDARY_WEIGHT, parseSearchLocations, isEngagementModelCompatible } from '../../lib/matchScoring.js';
 import { isCandidateWithinBudget } from '../../lib/ctcConversion.js';
 
@@ -107,6 +107,9 @@ export async function handler(
       engagementPassed = isEngagementModelCompatible(reqEngagementModel, candidateModel);
     }
 
+    // --- Filter 4: Discipline gate ---
+    const disciplineExcluded = disciplinesIncompatible(criteria.roles || [], candidate.roles || []);
+
     // --- Budget (soft, but report it) ---
     const budgetFit = isCandidateWithinBudget(candidate.expected_ctc, requirement.budget_max_lpa);
 
@@ -115,6 +118,7 @@ export async function handler(
     if (!coreSkillPassed) excludedBy.push('coreSkill');
     if (!mustHaveRatioPassed) excludedBy.push('mustHaveRatio');
     if (!engagementPassed) excludedBy.push('engagementModel');
+    if (disciplineExcluded) excludedBy.push('discipline');
 
     return success({
       candidate: {
@@ -176,6 +180,11 @@ export async function handler(
           passed: engagementPassed,
           reqModel: reqEngagementModel || 'not specified',
           candidateModel,
+        },
+        discipline: {
+          passed: !disciplineExcluded,
+          candidateRoles: candidate.roles || [],
+          requirementRoles: criteria.roles || [],
         },
         budgetFit: {
           passed: budgetFit,
