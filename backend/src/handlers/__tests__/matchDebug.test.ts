@@ -13,7 +13,7 @@ import { getCandidateById, getRequirementById } from '../../lib/dynamodb.js';
 // Fixtures
 // ---------------------------------------------------------------------------
 
-function makeCandidate(primarySkills: string[]) {
+function makeCandidate(primarySkills: string[], roles = ['Developer']) {
   return {
     candidate_id: 'cand_test',
     user_id: 'user_1',
@@ -26,7 +26,7 @@ function makeCandidate(primarySkills: string[]) {
     seniority: 'senior',
     availability: 'immediate',
     industries: [],
-    roles: ['Developer'],
+    roles,
     experience_bucket: '3-5',
     resume_s3_key: 'resumes/2024/01/test.pdf',
     created_at: '2024-01-01T00:00:00Z',
@@ -34,7 +34,7 @@ function makeCandidate(primarySkills: string[]) {
   };
 }
 
-function makeRequirement(coreSkill: string | null) {
+function makeRequirement(coreSkill: string | null, roles: string[] = []) {
   return {
     requirement_id: 'req_1',
     client_name: 'TechCorp',
@@ -56,7 +56,7 @@ function makeRequirement(coreSkill: string | null) {
       availability: [],
       engagementModel: null,
       skillSynonyms: null,
-      roles: [],
+      roles,
     },
   };
 }
@@ -183,5 +183,57 @@ describe('matchDebug handler — role-qualified compound coreSkill filter', () =
     expect(body.data.filters.coreSkill.passed).toBe(false);
     expect(body.data.excludedBy).toContain('coreSkill');
     expect(body.data.wouldBeExcluded).toBe(true);
+  });
+});
+
+describe('matchDebug handler — discipline filter reporting', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('reports discipline exclusion and wouldBeExcluded=true when tester meets development requirement', async () => {
+    (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeCandidate(['java', 'selenium'], ['QA Engineer'])
+    );
+    (getRequirementById as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeRequirement(null, ['Software Engineer'])
+    );
+
+    const response = await handler(makeEvent('cand_test', 'req_1'));
+    const body = JSON.parse((response as { body: string }).body);
+
+    expect(body.data.filters.discipline.passed).toBe(false);
+    expect(body.data.excludedBy).toContain('discipline');
+    expect(body.data.wouldBeExcluded).toBe(true);
+  });
+
+  it('does not report discipline exclusion when candidate has no roles', async () => {
+    (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeCandidate(['java'], [])
+    );
+    (getRequirementById as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeRequirement(null, ['Software Engineer'])
+    );
+
+    const response = await handler(makeEvent('cand_test', 'req_1'));
+    const body = JSON.parse((response as { body: string }).body);
+
+    expect(body.data.filters.discipline.passed).toBe(true);
+    expect(body.data.excludedBy).not.toContain('discipline');
+  });
+
+  it('does not report discipline exclusion for a pair not in the matrix (data vs development)', async () => {
+    (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeCandidate(['python'], ['Data Scientist'])
+    );
+    (getRequirementById as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeRequirement(null, ['Software Engineer'])
+    );
+
+    const response = await handler(makeEvent('cand_test', 'req_1'));
+    const body = JSON.parse((response as { body: string }).body);
+
+    expect(body.data.filters.discipline.passed).toBe(true);
+    expect(body.data.excludedBy).not.toContain('discipline');
   });
 });
