@@ -214,8 +214,15 @@ export function calculateMaxResourceBudgetLpa(
   budgetMaxLpa: number,
   paymentTermsDays: number,
   isRateGstInclusive: boolean,
-  config: PricingConfig
+  config: PricingConfig,
+  engagementModel?: string
 ): number | undefined {
+  // For full-time regular hires there is no contribution margin or working
+  // capital discount — the client budget is the candidate's max CTC directly.
+  if (engagementModel === 'full_time_regular') {
+    return budgetMaxLpa > 0 ? budgetMaxLpa : undefined;
+  }
+
   const gstRate = config.gstRatePct ?? 0.18;
   const effectiveBudgetLpa = isRateGstInclusive
     ? budgetMaxLpa / (1 + gstRate)

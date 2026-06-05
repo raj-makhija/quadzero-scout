@@ -54,7 +54,8 @@ async function handleRequest(
             item.budget_max_lpa,
             item.payment_terms_days ?? 0,
             item.is_rate_gst_inclusive ?? false,
-            pricingConfig
+            pricingConfig,
+            item.engagement_model
           )
         : undefined,
     }));
