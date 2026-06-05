@@ -940,4 +940,44 @@ describe('calculateMaxResourceBudgetLpa()', () => {
     const with30days = calculateMaxResourceBudgetLpa(20, 30, false, DEFAULT_CONFIG);
     expect(result!).toBeGreaterThan(with30days!);
   });
+
+  // TC-MAXBUDGET-005 — full_time_regular: returns budgetMaxLpa directly
+  it('returns budgetMaxLpa directly for full_time_regular (no margin deduction)', () => {
+    const result = calculateMaxResourceBudgetLpa(20, 30, false, DEFAULT_CONFIG, 'full_time_regular');
+    expect(result).toBe(20);
+  });
+
+  // TC-MAXBUDGET-006 — full_time_regular with GST-inclusive flag: still returns raw budgetMaxLpa
+  it('returns raw budgetMaxLpa for full_time_regular even when isRateGstInclusive is true', () => {
+    const result = calculateMaxResourceBudgetLpa(20, 30, true, DEFAULT_CONFIG, 'full_time_regular');
+    expect(result).toBe(20);
+  });
+
+  // TC-MAXBUDGET-007 — full_time_regular with zero budget: returns undefined
+  it('returns undefined for full_time_regular when budgetMaxLpa is zero', () => {
+    const result = calculateMaxResourceBudgetLpa(0, 30, false, DEFAULT_CONFIG, 'full_time_regular');
+    expect(result).toBeUndefined();
+  });
+
+  // TC-MAXBUDGET-008 — undefined engagement model: falls back to margin calculation
+  it('uses margin-based calculation when engagementModel is undefined', () => {
+    const withMargin = calculateMaxResourceBudgetLpa(20, 30, false, DEFAULT_CONFIG, undefined);
+    const withFtr = calculateMaxResourceBudgetLpa(20, 30, false, DEFAULT_CONFIG, 'full_time_regular');
+    // margin-based result is lower than raw budget
+    expect(withMargin!).toBeLessThan(withFtr!);
+    expect(withMargin).toBeCloseTo(16.2, 1);
+  });
+
+  // TC-MAXBUDGET-009 — full_time_contract: still uses margin-based calculation
+  it('uses margin-based calculation for full_time_contract', () => {
+    const result = calculateMaxResourceBudgetLpa(20, 30, false, DEFAULT_CONFIG, 'full_time_contract');
+    expect(result).toBeCloseTo(16.2, 1);
+  });
+
+  // TC-MAXBUDGET-010 — full_time_regular returns higher value than margin path (same budget)
+  it('full_time_regular max budget exceeds margin-based max budget for the same input', () => {
+    const ftr = calculateMaxResourceBudgetLpa(20, 90, false, DEFAULT_CONFIG, 'full_time_regular');
+    const contract = calculateMaxResourceBudgetLpa(20, 90, false, DEFAULT_CONFIG, 'full_time_contract');
+    expect(ftr!).toBeGreaterThan(contract!);
+  });
 });
