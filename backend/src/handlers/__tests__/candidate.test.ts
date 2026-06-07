@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 
 // ---------------------------------------------------------------------------
@@ -79,7 +79,10 @@ vi.mock('../../lib/config.js', () => ({
 }));
 
 vi.mock('../../lib/skillNormalizer.js', () => ({
-  normalizeSkills: vi.fn((skills: string[]) => skills),
+  // Lowercasing stand-in for the real ontology normalizer — enough to assert
+  // that saveProfile routes synonym keys/values through normalization (#281).
+  normalizeSkill: vi.fn((skill: string) => skill.toLowerCase()),
+  normalizeSkills: vi.fn((skills: string[]) => skills.map((s) => s.toLowerCase())),
   normalizeSkillYears: vi.fn((years: Record<string, number>) => years),
 }));
 
@@ -88,7 +91,7 @@ import { handler as uploadUrlHandler } from '../candidate/uploadUrl.js';
 import { handler as analyzeHandler } from '../candidate/analyze.js';
 import { handler as saveProfileHandler } from '../candidate/saveProfile.js';
 import { handler as getProfileHandler } from '../candidate/getProfile.js';
-import { getCandidateById } from '../../lib/dynamodb.js';
+import { getCandidateById, saveCandidateProfile, getCandidateByEmail } from '../../lib/dynamodb.js';
 import { extractTextFromResume } from '../../lib/textract.js';
 import { parseResume } from '../../lib/llm/index.js';
 
@@ -401,6 +404,86 @@ describe('POST /candidate/save-profile', () => {
     const event = makeEvent({ body: 'not json' });
     const result = await saveProfileHandler(event);
     expect(result.statusCode).toBe(400);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /candidate/save-profile — skillSynonyms persistence (ticket #281)
+// ---------------------------------------------------------------------------
+
+describe('POST /candidate/save-profile — skillSynonyms (#281)', () => {
+  const baseProfile = {
+    fullName: 'John Doe',
+    email: 'john@example.com',
+    primarySkills: ['react'],
+    primarySkillYears: { react: 4 },
+    totalExperience: 6,
+    seniority: 'senior',
+    availability: 'immediate',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Force the DynamoDB write path (setup.ts sets IS_OFFLINE=true, which skips it).
+    process.env.IS_OFFLINE = 'false';
+    vi.mocked(getCandidateByEmail).mockResolvedValue(null);
+  });
+
+  afterEach(() => {
+    process.env.IS_OFFLINE = 'true';
+  });
+
+  it('persists a non-empty skill_synonyms map when skillSynonyms is provided', async () => {
+    const event = makeEvent({
+      body: JSON.stringify({
+        profile: { ...baseProfile, skillSynonyms: { react: ['reactjs', 'react.js'] } },
+        resumeS3Key: 'resumes/2024/01/abc.pdf',
+      }),
+    });
+    const result = await saveProfileHandler(event);
+
+    expect(result.statusCode).toBe(200);
+    expect(saveCandidateProfile).toHaveBeenCalledOnce();
+    const savedItem = vi.mocked(saveCandidateProfile).mock.calls[0][0];
+    expect(savedItem.skill_synonyms).toEqual({ react: ['reactjs', 'react.js'] });
+  });
+
+  // Edge case C — synonym keys (and values) go through normalization before write.
+  it('normalizes mixed-case synonym keys before persisting', async () => {
+    const event = makeEvent({
+      body: JSON.stringify({
+        profile: { ...baseProfile, skillSynonyms: { React: ['ReactJS'] } },
+        resumeS3Key: 'resumes/2024/01/abc.pdf',
+      }),
+    });
+    const result = await saveProfileHandler(event);
+
+    expect(result.statusCode).toBe(200);
+    const savedItem = vi.mocked(saveCandidateProfile).mock.calls[0][0];
+    // Key normalized from "React" → "react"; value normalized from "ReactJS" → "reactjs".
+    expect(savedItem.skill_synonyms).toEqual({ react: ['reactjs'] });
+    expect(savedItem.skill_synonyms).not.toHaveProperty('React');
+  });
+
+  // Edge case B — re-save without synonyms must preserve the stored map.
+  it('preserves existing skill_synonyms on re-save when skillSynonyms is omitted', async () => {
+    vi.mocked(getCandidateByEmail).mockResolvedValue({
+      candidate_id: 'cand_existing',
+      email: 'john@example.com',
+      skill_synonyms: { react: ['reactjs'] },
+    } as never);
+
+    const event = makeEvent({
+      body: JSON.stringify({
+        profile: { ...baseProfile },
+        resumeS3Key: 'resumes/2024/01/abc.pdf',
+      }),
+    });
+    const result = await saveProfileHandler(event);
+
+    expect(result.statusCode).toBe(200);
+    const savedItem = vi.mocked(saveCandidateProfile).mock.calls[0][0];
+    expect(savedItem.skill_synonyms).toEqual({ react: ['reactjs'] });
   });
 });
 

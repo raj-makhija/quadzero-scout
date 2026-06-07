@@ -153,4 +153,23 @@ describe('saveRequirement handler', () => {
     const savedItem = mockSaveRequirement.mock.calls[0][0];
     expect(savedItem.parsed_criteria.location).toBeNull();
   });
+
+  // ticket #281 — JD synonyms must survive into the persisted parsed_criteria
+  it('TC-SAVEREQ-281: persists a non-empty skillSynonyms map under parsed_criteria', async () => {
+    const bodyWithSynonyms = {
+      ...validBody,
+      parsedCriteria: {
+        ...validBody.parsedCriteria,
+        skillSynonyms: { react: ['reactjs', 'react.js'], typescript: ['ts'] },
+      },
+    };
+    const event = makeEvent(bodyWithSynonyms, 'rec_creator');
+    await handler(event as never);
+
+    const savedItem = mockSaveRequirement.mock.calls[0][0];
+    expect(savedItem.parsed_criteria.skillSynonyms).toEqual({
+      react: ['reactjs', 'react.js'],
+      typescript: ['ts'],
+    });
+  });
 });
