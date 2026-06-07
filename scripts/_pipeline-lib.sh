@@ -140,6 +140,27 @@ pl_slug_from_title() {
     | head -c 50
 }
 
+# Return 0 if the commit message on stdin contains at least one
+# Co-Authored-By trailer line, 1 otherwise. Used to gate the strip step so
+# it is a true no-op (no amend, no force-push, no hash change) when the
+# message has none -- the gate must key on presence, NOT on whether
+# stripping would change the text, so trailing-blank-only messages are
+# left untouched.
+pl_has_coauthors() {
+  grep -qiE '^[[:space:]]*co-authored-by:'
+}
+
+# Read a commit message on stdin, print it with every Co-Authored-By trailer
+# line removed and any resulting trailing blank lines trimmed.
+#
+# Policy: ALL Co-Authored-By lines are stripped regardless of email. In this
+# automated pipeline none represent meaningful human co-authorship (CLAUDE.md
+# instructs agents not to add them); they leak into squash commits anyway.
+pl_strip_coauthors() {
+  grep -viE '^[[:space:]]*co-authored-by:' \
+    | awk 'NF{last=NR} {a[NR]=$0} END{for(i=1;i<=last;i++) print a[i]}'
+}
+
 # Transition a ticket's status:* label to a new value. Removes any existing
 # status:* label, then adds status:<new-status>. Idempotent.
 #
