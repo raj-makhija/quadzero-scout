@@ -666,6 +666,27 @@ The formatter prompt instructs the LLM to output Technical Skills as a Markdown 
 
 The active provider is configured via the `LLM_PROVIDER` environment variable.
 
+**LLM Prompts Management:**
+
+Prompts used by the LLM are managed via a two-source design:
+
+- **Fallback (in-code):** `FALLBACK_*_PROMPT` constants defined in `backend/src/lib/llm/index.ts` — the canonical defaults used when no live DB prompt exists.
+- **Live (DB):** Active prompt versions stored in the `Prompts-*` DynamoDB table, editable via Admin UI (`Admin > Prompts`).
+
+`getPromptContent()` always prefers the DB prompt over the in-code fallback; the fallback is only served when no DB row exists for that prompt key.
+
+**Sync requirement:** Whenever a `FALLBACK_*_PROMPT` constant is modified, `seedPrompts.ts` must be re-run against the target environment (dev/qa/prod), or a new version created via the Admin UI (`Admin > Prompts > Create New Version`). Skipping this step causes the live DynamoDB prompt to silently diverge from the code-side fallback — the LLM follows the stale DB prompt with no obvious error, breaking expected behavior.
+
+**Auto-migration:** The seed script checks whether the active DB prompt contains the `skillSynonyms` marker. If the marker is absent, the script publishes a new active version with the updated content and deactivates the previous one automatically.
+
+**Operational command:**
+```
+DYNAMODB_TABLE_PROMPTS=Prompts-prod npx ts-node scripts/seedPrompts.ts
+```
+Required env vars: `DYNAMODB_TABLE_PROMPTS` and `AWS_*` credentials (`AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`) set per environment.
+
+**Root cause example — ticket #281:** The live DB prompts lacked the `skillSynonyms` instruction while the fallback prompts in `lib/llm/index.ts` had it. Because `getPromptContent()` always prefers the DB prompt, the LLM never returned synonym data, causing `skillSynonyms`/`skill_synonyms` to be null on all records. The fix added auto-migration logic to `seedPrompts.ts` to detect and upgrade stale prompts, but this divergence class can recur whenever `FALLBACK_*_PROMPT` constants are updated without re-seeding.
+
 **Rate-Limit Handling and Provider Fallback:**
 
 The Gemini provider implements in-provider exponential backoff on rate-limit errors (HTTP 429 / `Resource exhausted`): up to 3 retries with delays of 2s, 8s, 32s plus jitter. If retries are exhausted, the `withProviderFallback()` orchestrator in `lib/llm/index.ts` re-runs the call against the provider configured in `LLM_FALLBACK_PROVIDER` (e.g., set to `claude` or `openrouter` when primary is `gemini`). Fallback only triggers on rate-limit errors — other failures propagate untouched. The fallback applies to `parseResume()`, `parseJobDescription()`, `formatResume()`, and `compareRequirements()`.
