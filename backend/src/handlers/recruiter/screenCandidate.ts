@@ -4,6 +4,7 @@ import { validate, formatZodErrors, ScreenCandidateRequestSchema } from '../../l
 import { getCandidateById, saveScreening, updateCandidateProfileFields, getUserById, getSubVendorById } from '../../lib/dynamodb.js';
 import { getExperienceBucket } from '../../lib/dynamodb.js';
 import { recalcShortlistRatesForCandidate } from '../../lib/recalcShortlistRates.js';
+import { safeResolveScreeningTasks } from '../../lib/recruiterTasks.js';
 import { normalizeSkills } from '../../lib/skillNormalizer.js';
 import { calculateNegotiableCtc } from '../../lib/ctcConversion.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
@@ -219,6 +220,10 @@ async function handleRequest(
       const newExperienceYears = (dbFields['total_experience'] as number | undefined) ?? (candidate.total_experience as number);
       await recalcShortlistRatesForCandidate(candidateId, newCtcLpa, newExperienceYears);
     }
+
+    // Screening this candidate clears any open screen/rescreen tasks for them, so
+    // the recruiter's task queue reflects the completed work without a manual step.
+    await safeResolveScreeningTasks({ candidateId, completedBy: event.auth.userId });
 
     return success({
       candidateId,
