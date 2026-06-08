@@ -4,6 +4,7 @@ import { validate, formatZodErrors, UpdateCandidateCustomFieldsRequestSchema } f
 import { getCandidateById, updateCandidateCustomFields as updateInDb } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
+import { updateCacheForCandidates } from '../../lib/matchCacheService.js';
 
 async function handleRequest(
   event: AuthenticatedEvent
@@ -38,6 +39,14 @@ async function handleRequest(
 
     const merged = { ...(candidate.custom_fields || {}), ...customFields };
     await updateInDb(candidateId, merged);
+
+    // Re-score the candidate into each active requirement's cache with the new
+    // field values. Non-fatal — a cache failure must not fail the edit.
+    try {
+      await updateCacheForCandidates([{ ...candidate, custom_fields: merged }]);
+    } catch (cacheErr) {
+      console.error('Failed to update match-cache after custom-field update:', cacheErr);
+    }
 
     logAuditEvent(event.auth, event, {
       action: 'CANDIDATE_SCREEN',
