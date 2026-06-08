@@ -211,9 +211,16 @@ Triggers (in priority order):
    triggers missed
 
 Concurrency: `group: pipeline-manager`, `cancel-in-progress: false`.
-Concurrent triggers serialize rather than cancel, so adding 2 labels
-to a new ticket produces 2 sequential runs (the first walks the ticket;
-the second drains 0 iterations).
+A label guard step at the top of the drain short-circuits `issues.labeled`
+events whose label is not `auto-pipeline` or a numeric `pipeline:struck-N`
+label (`pipeline:struck-1`, `pipeline:struck-2`, etc., used for auto-retry).
+Only those two categories proceed past the guard; every other label add
+(e.g. `type:feature`, `status:*`, `priority:critical`) exits immediately
+without running the drain loop. Adding 2 labels to a new ticket still
+produces 2 serialized runs, but only the `auto-pipeline` label event does
+real work — the other exits at the guard in under a second.
+`schedule`, `workflow_dispatch`, and `repository_dispatch` triggers are
+unaffected by the guard and always run the full drain.
 
 `issues.opened` was intentionally removed -- it fired before the
 auto-add-to-project automation completed, producing a doomed 1-second
@@ -450,6 +457,9 @@ scripts/qa-deploy.sh <TICKET>
 scripts/qa-approve.sh <TICKET>
 # Squash-merges the ticket's PR to develop and sets status:qa-approved.
 # Releases the QA lock. It ships to prod at the next nightly mirror.
+# Automatically strips all Co-Authored-By trailers from the squash commit
+# (strip-all policy: all trailers removed regardless of email or origin);
+# gated on actual trailer presence -- no-op for commits without trailers.
 
 # If QA finds issues (write the reason as a normal comment first):
 scripts/qa-reject.sh <TICKET> "describe what's wrong"
@@ -576,7 +586,7 @@ get a queue view for any state.
 | `status:qa-approved` | Squash-merged to develop; ships to prod at the next nightly develop→main mirror (01:00 IST) | `pipeline:qa-approve` success |
 | `status:prod-release-blocked` | **Legacy** — the cherry-pick prod model could conflict and set this. The mirror model doesn't produce it; kept only for historical tickets | (no longer set) |
 | `status:released` | develop was mirrored to main and shipped to prod | `prod-release.sh` after the mirror |
-| `status:needs-human` | Blocked: 3-strike rework escalation, cost-rejected, or manually parked | `manager.sh` 3-strike, `pipeline:park`, `pipeline:reject-cost` |
+| `status:needs-human` | Blocked: 3-strike rework escalation, cost-rejected, cost-escalated, or manually parked | `manager.sh` 3-strike, `pipeline:park`, `pipeline:reject-cost`, developer-agent cost escalation (`cost-review-pending`) |
 
 A ticket carries exactly one `status:*` label at a time; the helper
 `scripts/set-status.sh <ticket> <new-status>` removes the previous one
@@ -935,22 +945,38 @@ and backticks in the content.
 ### 7.4 `issues.labeled` fires per label
 
 Each label add is a separate event. A `gh issue create --label "a,b"`
-produces two `issues.labeled` events. The concurrency group serializes
-the resulting runs, so the second drains 0 iterations -- harmless but
-visible in the run list.
+produces two `issues.labeled` events. Without a guard, the concurrency
+group serializes them into two runs (the first walks the ticket; the
+second drains 0 iterations) — wasteful on multi-label ticket creates.
 
-To eliminate: add a step-level `if:` guard to short-circuit non-
-auto-pipeline label triggers:
+**Implemented** (ticket #146). A label guard step at the top of the drain
+sets `LABEL_GUARD_SKIP=true` in `$GITHUB_ENV` for any `issues.labeled`
+event whose label is not `auto-pipeline` and does not match
+`pipeline:struck-[0-9]+`. Every subsequent step is conditioned on
+`if: env.LABEL_GUARD_SKIP != 'true'`, so only `auto-pipeline` and numeric
+`pipeline:struck-N` labels (`pipeline:struck-1`, `pipeline:struck-2`, etc.,
+for auto-retry) produce a full drain run. All other label events exit at
+the guard step in under a second. `schedule`, `workflow_dispatch`, and
+`repository_dispatch` triggers are not `issues` events and pass through
+the guard unconditionally.
 
 ```yaml
-- name: Skip non-auto-pipeline label events
-  if: github.event_name == 'issues' && github.event.label.name != 'auto-pipeline'
+- name: Label guard -- short-circuit non-pipeline label triggers
   run: |
-    echo "Skipping: triggered by label '${{ github.event.label.name }}'"
-    exit 0
+    if [[ "${{ github.event_name }}" == "issues" ]]; then
+      LABEL="${{ github.event.label.name }}"
+      if [[ "$LABEL" != "auto-pipeline" && ! "$LABEL" =~ ^pipeline:struck-[0-9]+$ ]]; then
+        echo "Skipping: triggered by label '$LABEL'; only 'auto-pipeline' and 'pipeline:struck-*' drive the pipeline."
+        echo "LABEL_GUARD_SKIP=true" >> "$GITHUB_ENV"
+      fi
+    fi
 ```
 
-Not currently implemented.
+Note: `pipeline:struck-out` (the terminal "parked" label set after max
+strikes) does **not** pass through — only the numeric variants
+`pipeline:struck-1`, `pipeline:struck-2`, etc. do. A `struck-out` ticket
+is already parked at `needs-human`; re-triggering the drain on that label
+add would be incorrect.
 
 ### 7.5 Husky hooks on Windows
 
@@ -1340,14 +1366,8 @@ handles. See `git log origin/develop --oneline` for the full list.
 
 Tracked but not blocking. Pick up when convenient.
 
-- **Label-filter step guard**: short-circuit non-auto-pipeline label
-  triggers to eliminate the duplicate-run pattern on multi-label
-  ticket creates.
 - **`next-ticket.sh` pagination**: currently `first: 100`. Active
   project, plenty of headroom; revisit if it ever caps out.
-- **Strip `Co-Authored-By` post-merge**: squash-merges sometimes pull
-  in CoAuth from the dev's commits despite agent-prompt instructions
-  to omit. Could add a `merge-pr.sh` post-step to filter.
 - **3-strike escalation organic test**: every contradictory-spec
   ticket ends up resolved by tester arbitration, so we've never
   organically forced 3 strikes. The escalation code is small and
