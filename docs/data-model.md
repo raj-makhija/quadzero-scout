@@ -1650,7 +1650,70 @@ For looking up sub-vendors by normalized name (duplicate prevention).
 
 ---
 
-### 14. PipelineActivity
+### 14. RequirementLlmRerank
+
+Stores LLM tie-break re-rank results for a requirement's top-N candidates. Written by `rerankTopN`; read back via primary key only — no GSIs, no secondary access patterns.
+
+**Table Configuration:**
+- Table Name: `RequirementLlmRerank-{stage}`
+- Billing Mode: PAY_PER_REQUEST (On-Demand)
+
+**Primary Key:**
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| requirement_id | String (S) | Partition Key — requirement being re-ranked (no sort key) |
+
+**Attributes:**
+
+| Attribute | Type | Required | Description |
+|-----------|------|----------|-------------|
+| requirement_id | String | Yes | Requirement ID (PK) |
+| entries | List\<Map\> | Yes | Re-rank results — each entry has shape `{candidate_id: String, llmScore: Number, rationale: String}` |
+| top_n_hash | String | Yes | Freshness key computed from the top-N candidate list; echoed from `rerankTopN` input; callers use it to detect staleness |
+| model | String | Yes | LLM model name that produced this result (e.g., `gemini-2.0-flash`) |
+| prompt_version | Number \| null | Yes | Active `candidate_reranker` prompt version at compute time; `null` when only the in-code fallback prompt was used |
+| computed_at | String | Yes | ISO 8601 timestamp when the re-rank was computed |
+
+**Example Item:**
+```json
+{
+  "requirement_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "entries": [
+    {
+      "candidate_id": "cand_x1y2z3w4-a5b6-7890-cdef-gh1234567890",
+      "llmScore": 88,
+      "rationale": "Strong React and TypeScript depth; 4 years of client-facing project delivery matches the requirement's seniority signal."
+    },
+    {
+      "candidate_id": "cand_a1b2c3d4-e5f6-7890-abcd-ef9876543210",
+      "llmScore": 74,
+      "rationale": "Solid React skills but limited TypeScript experience; no prior client-facing delivery role."
+    },
+    {
+      "candidate_id": "cand_f1e2d3c4-b5a6-7890-abcd-ef1234567890",
+      "llmScore": 61,
+      "rationale": "Broad frontend background but core skills skew Vue/Angular; React is listed as secondary only."
+    }
+  ],
+  "top_n_hash": "sha256:abc123def456",
+  "model": "gemini-2.0-flash",
+  "prompt_version": 3,
+  "computed_at": "2026-06-01T10:00:00Z"
+}
+```
+
+**Global Secondary Indexes:** None — this is a store-only table accessed exclusively by primary key.
+
+**Access Patterns:**
+
+| Operation | Access Pattern | Index |
+|-----------|---------------|-------|
+| Get re-rank result for a requirement | GetItem by requirement_id | Primary |
+| Store / overwrite re-rank result | PutItem by requirement_id | Primary |
+
+---
+
+### 15. PipelineActivity
 
 Stores activity log entries for the post-shortlisting candidate pipeline. Each activity records a discrete event (stage change, feedback, interview, note, etc.) against a requirement-candidate pair.
 

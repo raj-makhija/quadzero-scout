@@ -695,6 +695,16 @@ The Gemini provider implements in-provider exponential backoff on rate-limit err
 
 `extractTextFromResume()` first tries `pdf-parse` (embedded text layer). If it returns fewer than 50 characters — typical for scanned/image-only PDFs — it falls back to AWS Textract's async `StartDocumentTextDetection` API using the document's S3 reference (supports multi-page PDFs). The Lambda polls `GetDocumentTextDetection` every 2 seconds for up to 60 seconds. Required IAM actions: `textract:StartDocumentTextDetection`, `textract:GetDocumentTextDetection` (granted via `textractPolicy` in `infra/resources/iam.yml`). Cost: ~$0.0015 per page, billed only for fallback invocations.
 
+**LLM Reranking Service:**
+
+`rerankTopN` in `backend/src/lib/llm/index.ts` computes tie-break scores for a requirement's top-N candidate list in a single batched LLM call — rather than one call per candidate — keeping cost proportional to N while providing per-candidate scored rationales.
+
+- **Prompt key:** `candidate_reranker`, registered in `FALLBACK_PROMPTS` in `llm/index.ts`. The JD and structured criteria ride as the system-prompt prefix (prompt-cacheable across calls for the same requirement); the candidate profiles are injected as the per-call user-turn delta.
+- **Return type:** `RerankTopNOutput` — fields: `entries` (array of `{candidate_id, llmScore, rationale}`), `model`, `promptVersion` (`number | null`), and `topNHash` (the caller-supplied freshness key, echoed back verbatim).
+- **Storage:** Results are written to the `RequirementLlmRerank` table via `putLlmRerank` in `dynamodb.ts`. One item per requirement; a new call overwrites the previous result.
+- **Rate-limit fallback:** `withProviderFallback` in `llm/index.ts` re-runs the call against `LLM_FALLBACK_PROVIDER` if and only if the primary provider returns a rate-limit error (HTTP 429 / resource-exhausted). Other errors propagate untouched.
+- **Not yet wired into search:** `rerankTopN` is store-and-compute only. No search or shortlist handler calls it yet; integration into the search ranking flow is tracked in a follow-up ticket.
+
 ### Data Layer
 
 | Component | Technology | Responsibility |
