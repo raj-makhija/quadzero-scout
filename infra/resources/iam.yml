@@ -39,6 +39,7 @@ dynamoDbPolicy:
     - !GetAtt RecruiterTasksTable.Arn
     - !Sub '${RecruiterTasksTable.Arn}/index/*'
     - !GetAtt RequirementMatchCacheTable.Arn
+    - !GetAtt RequirementLlmRerankTable.Arn
 
 # S3 Policy
 s3Policy:

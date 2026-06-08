@@ -13,6 +13,9 @@ const mockGetScreeningLock = vi.fn().mockResolvedValue(null);
 const mockGetUserById = vi.fn().mockResolvedValue({ id: 'recruiter_1', name: 'Test Recruiter', email: 'recruiter@quadzero.com' });
 
 vi.mock('../../lib/dynamodb.js', () => ({
+  getLlmRerank: vi.fn().mockResolvedValue(null),
+  putLlmRerank: vi.fn().mockResolvedValue(undefined),
+  deleteLlmRerank: vi.fn().mockResolvedValue(undefined),
   acquireScreeningLock: (...args: unknown[]) => mockAcquireScreeningLock(...args),
   releaseScreeningLock: (...args: unknown[]) => mockReleaseScreeningLock(...args),
   releaseScreeningLockByToken: (...args: unknown[]) => mockReleaseScreeningLockByToken(...args),

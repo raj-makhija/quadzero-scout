@@ -13,6 +13,9 @@ const mockPutMatchCache = vi.fn();
 const mockDeleteMatchCache = vi.fn();
 
 vi.mock('../dynamodb.js', () => ({
+  getLlmRerank: vi.fn().mockResolvedValue(null),
+  putLlmRerank: vi.fn().mockResolvedValue(undefined),
+  deleteLlmRerank: vi.fn().mockResolvedValue(undefined),
   getAllActiveRequirements: (...a: unknown[]) => mockGetAllActiveRequirements(...a),
   getAllActiveCandidates: (...a: unknown[]) => mockGetAllActiveCandidates(...a),
   getMatchCache: (...a: unknown[]) => mockGetMatchCache(...a),
