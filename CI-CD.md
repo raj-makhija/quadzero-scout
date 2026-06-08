@@ -579,7 +579,7 @@ get a queue view for any state.
 | `status:qa-approved` | Squash-merged to develop; ships to prod at the next nightly develop→main mirror (01:00 IST) | `pipeline:qa-approve` success |
 | `status:prod-release-blocked` | **Legacy** — the cherry-pick prod model could conflict and set this. The mirror model doesn't produce it; kept only for historical tickets | (no longer set) |
 | `status:released` | develop was mirrored to main and shipped to prod | `prod-release.sh` after the mirror |
-| `status:needs-human` | Blocked: 3-strike rework escalation, cost-rejected, or manually parked | `manager.sh` 3-strike, `pipeline:park`, `pipeline:reject-cost` |
+| `status:needs-human` | Blocked: 3-strike rework escalation, cost-rejected, cost-escalated, or manually parked | `manager.sh` 3-strike, `pipeline:park`, `pipeline:reject-cost`, developer-agent cost escalation (`cost-review-pending`) |
 
 A ticket carries exactly one `status:*` label at a time; the helper
 `scripts/set-status.sh <ticket> <new-status>` removes the previous one
