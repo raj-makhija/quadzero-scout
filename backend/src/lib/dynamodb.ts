@@ -2,6 +2,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
   GetCommand,
+  BatchGetCommand,
   PutCommand,
   QueryCommand,
   ScanCommand,
@@ -42,6 +43,28 @@ export async function getCandidateById(candidateId: string): Promise<CandidateIt
     })
   );
   return (result.Item as CandidateItem) || null;
+}
+
+// Resolve a list of candidate ids to their full profile rows via BatchGet.
+// Used by the cache-served search read path to fetch only the requested page
+// (~20 ids) instead of scanning the whole TalentProfiles table. Order of the
+// returned items is not guaranteed; callers re-order by their own ranking.
+export async function getCandidatesByIds(candidateIds: string[]): Promise<CandidateItem[]> {
+  if (candidateIds.length === 0) return [];
+  const tableName = config.dynamodb.talentProfilesTable;
+  const results: CandidateItem[] = [];
+  // BatchGet accepts at most 100 keys per request.
+  for (let i = 0; i < candidateIds.length; i += 100) {
+    let keys = candidateIds.slice(i, i + 100).map((id) => ({ candidate_id: id }));
+    while (keys.length > 0) {
+      const result = await docClient.send(
+        new BatchGetCommand({ RequestItems: { [tableName]: { Keys: keys } } })
+      );
+      results.push(...((result.Responses?.[tableName] as CandidateItem[]) || []));
+      keys = (result.UnprocessedKeys?.[tableName]?.Keys as { candidate_id: string }[]) || [];
+    }
+  }
+  return results;
 }
 
 export async function getCandidateByEmail(email: string): Promise<CandidateItem | null> {
