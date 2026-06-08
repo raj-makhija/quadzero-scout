@@ -255,6 +255,83 @@ the Function URL, allowing the LLM parsing up to 60 seconds.
      │                │                │                │                │
 ```
 
+### Recruiter Candidate Search Flow
+
+When a recruiter triggers a candidate search (via the requirement detail page or the ad-hoc search UI), the `POST /recruiter/search` handler routes the request through one of two paths depending on whether a `requirementId` is present and whether a warm cache exists for it.
+
+**Live overlays — always fresh, regardless of path:**
+On every request, `getPlacedCandidateIds()` fetches the set of placed candidates (`pipeline_stage = 'joined'`) and `getShortlistsForRequirement()` fetches the current shortlist and not-suitable status for the requirement. These are never read from the cache so that exclusions and statuses are always accurate even when the ranked list itself is served from cache.
+
+**Warm-cache path (requirement-bound, cache hit):**
+When `requirementId` is provided and `getMatchCache(requirementId)` returns a ranked list, the handler:
+1. Sorts the cached `RankedMatchEntry[]` by `rank` ascending (= match score descending).
+2. Applies live overlays (placed-candidate exclusion, not-suitable filtering) to the id-list *before* fetching candidate details so that `totalMatches` and pagination counts stay correct without loading the full corpus.
+3. Slices the filtered id-list to the requested page and fetches only those rows via `getCandidatesByIds` (DynamoDB `BatchGet`).
+4. Re-runs `matchAndRankCandidates` on the page (≤ `pageSize` candidates) to regenerate `matchDetails`; the score used for ordering and display still comes from the cache.
+
+**Ad-hoc path (no `requirementId`) and cold-cache fallback:**
+When `requirementId` is absent, or when `getMatchCache` returns `null` (cache has not been built yet or was invalidated), the handler falls back to a full live scan: `searchCandidates()` performs a DynamoDB scan with filter expressions, and `matchAndRankCandidates` scores and ranks the entire result set in memory before slicing the page.
+
+**Sorting modes and their scope:**
+- `matchScore` (default): preserves the cache rank order for the full ranked list; on the live-scan path the scorer determines the order directly.
+- `lastUpdated` and `experience`: valid only on the resolved page — after the page is fetched via `BatchGet` (cache path) or sliced from the in-memory result (live-scan path), these modes re-sort the page candidates only. They do **not** re-order the full ranked list in the cache.
+
+**Removed symbols:**
+The previous implementation kept a module-level `Map` inside `search.ts` as an in-memory LRU. All three associated symbols — `searchCache`, `SEARCH_CACHE_TTL`, and `_clearSearchCache` — were removed when the `RequirementMatchCache` DynamoDB table replaced them (ticket #234 / #235). The DynamoDB-backed cache is maintained on candidate and requirement writes so the ranked list is always fresh when the handler reads it.
+
+```
+Warm-cache path (requirementId present, cache hit)
+──────────────────────────────────────────────────
+
+Recruiter  Frontend   Lambda (search)       DynamoDB
+    │          │              │                  │
+    │ Search   │              │                  │
+    │─────────>│              │                  │
+    │          │ POST /search │                  │
+    │          │─────────────>│                  │
+    │          │              │ getPlacedCandidateIds()
+    │          │              │─────────────────>│
+    │          │              │<─────────────────│
+    │          │              │ getShortlistsForRequirement()
+    │          │              │─────────────────>│
+    │          │              │<─────────────────│
+    │          │              │ getMatchCache(reqId)
+    │          │              │─────────────────>│
+    │          │              │  ranked id-list  │
+    │          │              │<─────────────────│
+    │          │              │                  │
+    │          │              │ apply live overlays to id-list
+    │          │              │ slice page, getCandidatesByIds()
+    │          │              │─────────────────>│ (BatchGet)
+    │          │              │<─────────────────│
+    │          │              │                  │
+    │          │              │ re-score page for matchDetails
+    │          │<─────────────│                  │
+    │<─────────│              │                  │
+
+
+Ad-hoc path (no requirementId) or cold-cache fallback (cache miss)
+──────────────────────────────────────────────────────────────────
+
+Recruiter  Frontend   Lambda (search)       DynamoDB
+    │          │              │                  │
+    │          │ POST /search │                  │
+    │          │─────────────>│                  │
+    │          │              │ getPlacedCandidateIds()
+    │          │              │─────────────────>│
+    │          │              │<─────────────────│
+    │          │              │ getMatchCache → null (or no requirementId)
+    │          │              │                  │
+    │          │              │ searchCandidates() (DynamoDB scan + filters)
+    │          │              │─────────────────>│
+    │          │              │<─────────────────│
+    │          │              │                  │
+    │          │              │ matchAndRankCandidates() (full in-memory score)
+    │          │              │ apply live overlays, slice page
+    │          │<─────────────│                  │
+    │<─────────│              │                  │
+```
+
 ### Requirement Matching & Shortlisting Flow
 
 ```
