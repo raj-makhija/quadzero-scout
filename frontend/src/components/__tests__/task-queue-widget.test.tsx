@@ -7,6 +7,7 @@ import {
   isOverdue,
   dueLabel,
   COLLAPSED_COUNT,
+  TASK_REFRESH_EVENT,
 } from '../task-queue-widget';
 import type { RecruiterTask } from '@/lib/api';
 
@@ -120,11 +121,29 @@ describe('TaskQueueWidget', () => {
     expect(screen.queryByText('Submit to client')).not.toBeInTheDocument();
   });
 
-  it('completes a task with the pool flag for POOL tasks', async () => {
-    mockGetTasks.mockResolvedValue({ tasks: [task({ owner_id: 'POOL', type: 'screen_candidate' })] });
+  it('completes a task with the pool flag for non-screening POOL tasks', async () => {
+    mockGetTasks.mockResolvedValue({ tasks: [task({ owner_id: 'POOL', type: 'source_candidates' })] });
     render(<TaskQueueWidget />);
     fireEvent.click(await screen.findByText('Done'));
     await waitFor(() => expect(mockCompleteTask).toHaveBeenCalledWith('t1', { pool: true }));
+  });
+
+  it('hides the Done button for screening tasks (they auto-resolve on screen)', async () => {
+    mockGetTasks.mockResolvedValue({ tasks: [task({ owner_id: 'POOL', type: 'screen_candidate' })] });
+    render(<TaskQueueWidget />);
+    expect(await screen.findByText('Screen matching candidate')).toBeInTheDocument();
+    expect(screen.queryByText('Done')).not.toBeInTheDocument();
+    // Do It / Snooze remain available.
+    expect(screen.getByText('Do It')).toBeInTheDocument();
+    expect(screen.getByText('Snooze')).toBeInTheDocument();
+  });
+
+  it('reloads the task list on the refresh event (e.g. after a screening)', async () => {
+    render(<TaskQueueWidget />);
+    await screen.findByText('Submit to client');
+    expect(mockGetTasks).toHaveBeenCalledTimes(1);
+    fireEvent(window, new Event(TASK_REFRESH_EVENT));
+    await waitFor(() => expect(mockGetTasks).toHaveBeenCalledTimes(2));
   });
 
   it('renders nothing for non-recruiters', async () => {
