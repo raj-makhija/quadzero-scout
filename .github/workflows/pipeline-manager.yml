@@ -2,14 +2,13 @@
 #
 # Triggers:
 #   - cron every 5 min (safety net for missed events)
-#   - issues.labeled                    (only fires on auto-pipeline label, see if-filter)
+#   - issues.labeled                    (all label events; guard step exits early for non-pipeline labels)
 #   - repository_dispatch [pipeline-tick] (fired by human-driven scripts)
 #   - workflow_dispatch                 (manual trigger, optional ticket override)
 #
-# The drain job has an if-filter so the issues.labeled trigger ONLY acts on
-# the auto-pipeline label specifically. Other label adds (status:*,
-# pipeline:*, type:*) made by our own scripts do NOT retrigger the manager.
-# Schedule, workflow_dispatch, repository_dispatch always proceed.
+# A label guard step at the top of drain short-circuits any issues.labeled
+# event whose label is not 'auto-pipeline' or 'pipeline:struck-*'.
+# Schedule, workflow_dispatch, repository_dispatch always proceed past the guard.
 #
 # Auth:
 #   - PIPELINE_TOKEN: classic PAT (repo + workflow + project) for gh ops
@@ -41,24 +40,22 @@ permissions:
 
 jobs:
   drain:
-    # Skip when triggered by an issues event for a label other than the two we
-    # care about: auto-pipeline (initial opt-in) and pipeline:struck-* (auto-
-    # retry after a strike, so the workflow's own strike scaling can drive the
-    # next attempt without needing cron or /retry). All other event types
-    # proceed unconditionally. Explicit per-event check avoids null access on
-    # github.event.label for non-issues events.
-    if: |
-      github.event_name == 'schedule' ||
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'repository_dispatch' ||
-      (github.event_name == 'issues' &&
-       (github.event.label.name == 'auto-pipeline' ||
-        startsWith(github.event.label.name, 'pipeline:struck-')))
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
+      - name: Label guard -- short-circuit non-pipeline label triggers
+        run: |
+          if [[ "${{ github.event_name }}" == "issues" ]]; then
+            LABEL="${{ github.event.label.name }}"
+            if [[ "$LABEL" != "auto-pipeline" && ! "$LABEL" =~ ^pipeline:struck-[0-9]+$ ]]; then
+              echo "Skipping: triggered by label '$LABEL'; only 'auto-pipeline' and 'pipeline:struck-*' drive the pipeline."
+              echo "LABEL_GUARD_SKIP=true" >> "$GITHUB_ENV"
+            fi
+          fi
+
       - name: Checkout develop (with PAT so later pushes work)
+        if: env.LABEL_GUARD_SKIP != 'true'
         uses: actions/checkout@v6
         with:
           ref: develop
@@ -66,14 +63,17 @@ jobs:
           token: ${{ secrets.PIPELINE_TOKEN }}
 
       - name: Configure git identity for any pipeline commits
+        if: env.LABEL_GUARD_SKIP != 'true'
         run: |
           git config user.name  "quadzero-pipeline[bot]"
           git config user.email "pipeline-bot@users.noreply.github.com"
 
       - name: Disable husky hooks (lint/commitlint) for unattended runs
+        if: env.LABEL_GUARD_SKIP != 'true'
         run: git config core.hooksPath /dev/null
 
       - name: Verify gh + jq
+        if: env.LABEL_GUARD_SKIP != 'true'
         env:
           GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
         run: |
@@ -82,16 +82,19 @@ jobs:
           gh auth status
 
       - name: Install Claude Code CLI
+        if: env.LABEL_GUARD_SKIP != 'true'
         run: |
           npm install -g @anthropic-ai/claude-code
           claude --version
 
       - name: Validate ticket types (flag tickets missing type:* before drain)
+        if: env.LABEL_GUARD_SKIP != 'true'
         env:
           GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
         run: scripts/validate-ticket-types.sh
 
       - name: Drain the queue
+        if: env.LABEL_GUARD_SKIP != 'true'
         env:
           GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

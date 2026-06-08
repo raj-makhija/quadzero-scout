@@ -70,7 +70,7 @@ export async function handler(
     // --- Filter 1: CoreSkill pre-filter ---
     const rawCoreSkill = criteria.coreSkill || null;
     const normalizedCoreSkill = rawCoreSkill ? normalizeSkill(rawCoreSkill) : null;
-    const coreSkillResult = coreSkillMatchResult(rawCoreSkill, candidatePrimaryRaw);
+    const coreSkillResult = coreSkillMatchResult(rawCoreSkill, candidatePrimaryRaw, reqSynonyms, candSynonyms);
     const coreSkillPassed = coreSkillResult.passed;
 
     // --- Run scoring (even if filters would reject, for diagnostic purposes) ---
