@@ -5,6 +5,7 @@ import { validate, formatZodErrors, SaveRequirementRequestSchema } from '../../l
 import { saveRequirement } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
+import { rebuildCacheForRequirement } from '../../lib/matchCacheService.js';
 import type { RequirementItem, LLMJDOutput } from '../../types/index.js';
 import { slugifyFieldKey } from '../../lib/slugify.js';
 import { normalizeLocation } from '../../lib/locationNormalizer.js';
@@ -74,6 +75,16 @@ async function handleRequest(
     };
 
     await saveRequirement(item);
+
+    // Build the match-cache from a full active-candidate scan for newly active
+    // requirements. Non-fatal — cache failure must not fail the create.
+    if (item.status === 'active') {
+      try {
+        await rebuildCacheForRequirement(item);
+      } catch (cacheErr) {
+        console.error('Failed to build match-cache for new requirement:', cacheErr);
+      }
+    }
 
     logAuditEvent(event.auth, event, {
       action: 'REQUIREMENT_CREATE',

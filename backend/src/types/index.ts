@@ -821,6 +821,22 @@ export interface ShortlistItem {
   quoted_rate_gst_inclusive?: boolean;
 }
 
+// ─── Requirement Match Cache Types ──────────────────────────────────────────
+
+// One ranked candidate within a requirement's pre-computed match list.
+export interface RankedMatchEntry {
+  candidate_id: string;
+  rank: number;
+  score: number;
+}
+
+// One item per requirement: the full ranked list of candidate matches.
+export interface RequirementMatchCacheItem {
+  requirement_id: string;
+  ranked: RankedMatchEntry[];
+  updated_at: string;
+}
+
 // ─── Pipeline Activity Types ────────────────────────────────────────────────
 
 export const PipelineActivityTypeEnum = z.enum([

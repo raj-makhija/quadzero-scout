@@ -5,6 +5,8 @@ import { getRequirementById, updateRequirementCriteria } from '../../lib/dynamod
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { normalizeLocation } from '../../lib/locationNormalizer.js';
 import { logAuditEvent } from '../../lib/audit.js';
+import { rebuildCacheForRequirement } from '../../lib/matchCacheService.js';
+import type { LLMJDOutput } from '../../types/index.js';
 
 async function handleRequest(
   event: AuthenticatedEvent
@@ -59,6 +61,20 @@ async function handleRequest(
       data.maxBudgetLpa,
       now
     );
+
+    // Rebuild the requirement's cache from scratch against the new criteria.
+    // Non-fatal — cache failure must not fail the criteria update.
+    if (existing.status === 'active') {
+      try {
+        await rebuildCacheForRequirement({
+          ...existing,
+          parsed_criteria: normalizedCriteria as LLMJDOutput,
+          budget_max_lpa: data.maxBudgetLpa ?? existing.budget_max_lpa,
+        });
+      } catch (cacheErr) {
+        console.error('Failed to rebuild match-cache after criteria update:', cacheErr);
+      }
+    }
 
     logAuditEvent(event.auth, event, {
       action: 'REQUIREMENT_UPDATE_CRITERIA',

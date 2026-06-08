@@ -91,6 +91,10 @@ vi.mock('../../lib/dynamodb.js', () => ({
   getShortlistsForRequirement: vi.fn().mockResolvedValue([]),
   getPlacedCandidateIds: vi.fn().mockResolvedValue(new Set()),
   putAuditLog: vi.fn().mockResolvedValue(undefined),
+  getMatchCache: vi.fn().mockResolvedValue(null),
+  putMatchCache: vi.fn().mockResolvedValue(undefined),
+  deleteMatchCache: vi.fn().mockResolvedValue(undefined),
+  getAllActiveCandidates: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('../../lib/llm/index.js', () => ({
