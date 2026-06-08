@@ -16,6 +16,7 @@ import {
   generateHeadline,
 } from '@/lib/utils';
 import ScreeningHistoryPanel from '@/components/screening-history-panel';
+import { TASK_REFRESH_EVENT } from '@/components/task-queue-widget';
 
 interface ScreeningModalProps {
   candidate?: CandidateSearchResult;
@@ -458,6 +459,12 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
       }
 
       await api.screenCandidate(resolvedCandidateId, updatedValues, finalNotes || undefined);
+
+      // The screening just auto-resolved this candidate's screen/rescreen tasks
+      // server-side; tell the task queue widget to reload so they drop off now.
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event(TASK_REFRESH_EVENT));
+      }
 
       // Upload pending attachments
       for (const attachment of pendingAttachments) {

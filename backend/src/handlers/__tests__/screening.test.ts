@@ -61,6 +61,16 @@ vi.mock('../../lib/skillNormalizer.js', () => ({
   normalizeSkills: vi.fn((skills: string[]) => skills.map(s => s.toLowerCase())),
 }));
 
+const mockSafeResolveScreeningTasks = vi.fn().mockResolvedValue(undefined);
+
+vi.mock('../../lib/recruiterTasks.js', async () => {
+  const actual = await vi.importActual('../../lib/recruiterTasks.js') as Record<string, unknown>;
+  return {
+    ...actual,
+    safeResolveScreeningTasks: (...args: unknown[]) => mockSafeResolveScreeningTasks(...args),
+  };
+});
+
 vi.mock('../../lib/auth.js', () => ({
   withAuth: (_roles: string[], handler: Function) => handler,
 }));
@@ -142,6 +152,11 @@ describe('screenCandidate handler', () => {
     expect(body.data.fieldsUpdated).toContain('availability');
     expect(mockSaveScreening).toHaveBeenCalledOnce();
     expect(mockUpdateCandidateProfileFields).toHaveBeenCalledOnce();
+    // Screening clears the candidate's open screen/rescreen tasks.
+    expect(mockSafeResolveScreeningTasks).toHaveBeenCalledWith({
+      candidateId: 'cand_1',
+      completedBy: 'recruiter_1',
+    });
   });
 
   it('should return 404 if candidate not found', async () => {
