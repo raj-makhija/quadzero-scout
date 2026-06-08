@@ -1346,6 +1346,38 @@ export async function getAllActiveRequirements(): Promise<RequirementItem[]> {
   return allItems;
 }
 
+export async function getAllActiveCandidates(): Promise<CandidateItem[]> {
+  const PAGE_SIZE = 100;
+  const MAX_ITEMS = 10000;
+  const allItems: CandidateItem[] = [];
+  let currentKey: Record<string, unknown> | undefined;
+
+  do {
+    const params: {
+      TableName: string;
+      FilterExpression: string;
+      ExpressionAttributeValues: Record<string, unknown>;
+      Limit: number;
+      ExclusiveStartKey?: Record<string, unknown>;
+    } = {
+      TableName: config.dynamodb.talentProfilesTable,
+      FilterExpression: 'is_active = :active',
+      ExpressionAttributeValues: { ':active': true },
+      Limit: PAGE_SIZE,
+    };
+
+    if (currentKey) {
+      params.ExclusiveStartKey = currentKey;
+    }
+
+    const result = await docClient.send(new ScanCommand(params));
+    allItems.push(...((result.Items || []) as CandidateItem[]));
+    currentKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (currentKey && allItems.length < MAX_ITEMS);
+
+  return allItems;
+}
+
 // ─── Shortlist Operations ───────────────────────────────────────────────────
 
 export async function saveShortlist(item: ShortlistItem): Promise<void> {
