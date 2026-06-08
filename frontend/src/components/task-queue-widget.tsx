@@ -9,7 +9,6 @@ import {
   Clock,
   ChevronUp,
   ChevronDown,
-  Check,
   X,
 } from 'lucide-react';
 import { api, type RecruiterTask, type SnoozePreset } from '@/lib/api';
@@ -68,12 +67,10 @@ function TaskCard({
   task,
   onDoIt,
   onSnooze,
-  onComplete,
 }: {
   task: RecruiterTask;
   onDoIt: (task: RecruiterTask) => void;
   onSnooze: (task: RecruiterTask, preset: SnoozePreset, customDate?: string) => void;
-  onComplete: (task: RecruiterTask) => void;
 }) {
   const [snoozeOpen, setSnoozeOpen] = useState(false);
   const [customDate, setCustomDate] = useState('');
@@ -102,13 +99,6 @@ function TaskCard({
           className="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700"
         >
           Do It
-        </button>
-        <button
-          type="button"
-          onClick={() => onComplete(task)}
-          className="inline-flex items-center gap-1 rounded border border-gray-300 dark:border-gray-600 px-2 py-1 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
-        >
-          <Check className="h-3 w-3" /> Done
         </button>
         <div className="relative">
           <button
@@ -234,16 +224,6 @@ export function TaskQueueWidget() {
     }
   };
 
-  const handleComplete = async (task: RecruiterTask) => {
-    removeLocal(task.task_id); // optimistic
-    try {
-      await api.completeTask(task.task_id, { pool: isPool(task) });
-    } catch {
-      toast({ variant: 'error', title: 'Could not complete task' });
-      load();
-    }
-  };
-
   if (!isRecruiter) return null;
 
   const visible = expanded ? tasks : tasks.slice(0, COLLAPSED_COUNT);
@@ -279,7 +259,6 @@ export function TaskQueueWidget() {
                     task={task}
                     onDoIt={handleDoIt}
                     onSnooze={handleSnooze}
-                    onComplete={handleComplete}
                   />
                 ))}
                 {tasks.length > COLLAPSED_COUNT && (

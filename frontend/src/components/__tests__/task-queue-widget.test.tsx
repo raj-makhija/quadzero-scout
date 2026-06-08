@@ -25,12 +25,10 @@ vi.mock('next/navigation', () => ({
 
 const mockGetTasks = vi.fn();
 const mockSnoozeTask = vi.fn();
-const mockCompleteTask = vi.fn();
 vi.mock('@/lib/api', () => ({
   api: {
     getTasks: (...a: unknown[]) => mockGetTasks(...a),
     snoozeTask: (...a: unknown[]) => mockSnoozeTask(...a),
-    completeTask: (...a: unknown[]) => mockCompleteTask(...a),
   },
 }));
 
@@ -81,7 +79,6 @@ describe('TaskQueueWidget', () => {
     vi.clearAllMocks();
     mockGetTasks.mockResolvedValue({ tasks: [task({})] });
     mockSnoozeTask.mockResolvedValue({ snoozed: true, snoozedUntil: 'x' });
-    mockCompleteTask.mockResolvedValue({ completed: true });
   });
 
   it('loads and renders tasks with type label and context', async () => {
@@ -118,13 +115,6 @@ describe('TaskQueueWidget', () => {
     fireEvent.click(screen.getByText('1 hour'));
     await waitFor(() => expect(mockSnoozeTask).toHaveBeenCalledWith('t1', '1h', { customDate: undefined, pool: false }));
     expect(screen.queryByText('Submit to client')).not.toBeInTheDocument();
-  });
-
-  it('completes a task with the pool flag for POOL tasks', async () => {
-    mockGetTasks.mockResolvedValue({ tasks: [task({ owner_id: 'POOL', type: 'screen_candidate' })] });
-    render(<TaskQueueWidget />);
-    fireEvent.click(await screen.findByText('Done'));
-    await waitFor(() => expect(mockCompleteTask).toHaveBeenCalledWith('t1', { pool: true }));
   });
 
   it('renders nothing for non-recruiters', async () => {
