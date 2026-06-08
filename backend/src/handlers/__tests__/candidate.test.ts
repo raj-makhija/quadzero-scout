@@ -53,6 +53,9 @@ vi.mock('../../lib/llm/index.js', () => ({
 }));
 
 vi.mock('../../lib/dynamodb.js', () => ({
+  getLlmRerank: vi.fn().mockResolvedValue(null),
+  putLlmRerank: vi.fn().mockResolvedValue(undefined),
+  deleteLlmRerank: vi.fn().mockResolvedValue(undefined),
   saveCandidateProfile: vi.fn().mockResolvedValue(undefined),
   getCandidateById: vi.fn(),
   getCandidateByEmail: vi.fn().mockResolvedValue(null),

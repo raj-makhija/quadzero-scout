@@ -24,6 +24,9 @@ const mockGetExperienceBucket = vi.fn((years: number) => {
 });
 
 vi.mock('../../lib/dynamodb.js', () => ({
+  getLlmRerank: vi.fn().mockResolvedValue(null),
+  putLlmRerank: vi.fn().mockResolvedValue(undefined),
+  deleteLlmRerank: vi.fn().mockResolvedValue(undefined),
   getCandidateById: (...args: unknown[]) => mockGetCandidateById(...args),
   saveScreening: (...args: unknown[]) => mockSaveScreening(...args),
   updateCandidateProfileFields: (...args: unknown[]) => mockUpdateCandidateProfileFields(...args),

@@ -8,6 +8,9 @@ import { withAuth, withOptionalAuth, type AuthenticatedEvent, type OptionalAuthE
 // ---------------------------------------------------------------------------
 
 vi.mock('../dynamodb.js', () => ({
+  getLlmRerank: vi.fn().mockResolvedValue(null),
+  putLlmRerank: vi.fn().mockResolvedValue(undefined),
+  deleteLlmRerank: vi.fn().mockResolvedValue(undefined),
   getUserById: vi.fn(),
   getUserByEmail: vi.fn(),
   getActiveSessionSettings: vi.fn().mockResolvedValue({ sessionTimeoutSeconds: 86400 }),

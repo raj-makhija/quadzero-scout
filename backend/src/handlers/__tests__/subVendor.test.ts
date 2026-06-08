@@ -22,6 +22,9 @@ const mockGetExperienceBucket = vi.fn((years: number) => {
 const mockGetCandidateById = vi.fn().mockResolvedValue(null);
 
 vi.mock('../../lib/dynamodb.js', () => ({
+  getLlmRerank: vi.fn().mockResolvedValue(null),
+  putLlmRerank: vi.fn().mockResolvedValue(undefined),
+  deleteLlmRerank: vi.fn().mockResolvedValue(undefined),
   saveSubVendor: (...args: unknown[]) => mockSaveSubVendor(...args),
   getSubVendorByName: (...args: unknown[]) => mockGetSubVendorByName(...args),
   getSubVendorById: (...args: unknown[]) => mockGetSubVendorById(...args),

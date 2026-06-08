@@ -837,6 +837,34 @@ export interface RequirementMatchCacheItem {
   updated_at: string;
 }
 
+// One LLM-reranked candidate within a requirement's top-N tie-break list.
+export interface LlmRerankEntry {
+  candidate_id: string;
+  llmScore: number;
+  rationale: string;
+}
+
+// One item per requirement: the LLM tie-break re-rank of its top-N candidates.
+// Stored separately from RequirementMatchCacheItem (ticket #238) — a per-entry
+// rationale across all candidates would blow the 400KB single-item limit.
+export interface RequirementLlmRerankItem {
+  requirement_id: string;
+  entries: LlmRerankEntry[];
+  top_n_hash: string;
+  model: string;
+  prompt_version: number | null;
+  computed_at: string;
+}
+
+// Shape the candidate_reranker LLM call must return: one entry per candidate.
+export const LlmRerankOutputSchema = z.array(
+  z.object({
+    candidate_id: z.string(),
+    llmScore: z.number(),
+    rationale: z.string(),
+  })
+);
+
 // ─── Pipeline Activity Types ────────────────────────────────────────────────
 
 export const PipelineActivityTypeEnum = z.enum([
