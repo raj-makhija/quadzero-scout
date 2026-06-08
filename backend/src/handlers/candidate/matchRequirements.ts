@@ -61,18 +61,19 @@ export async function handler(
     for (const req of requirements) {
       const criteria = req.parsed_criteria;
 
-      // Core skill pre-filter: skip if candidate doesn't satisfy the coreSkill (handles stack abbreviations)
-      if (!coreSkillSatisfiedBy(criteria.coreSkill, candidate.primary_skills)) {
+      // Normalize synonyms from parsed criteria (may be null for older requirements)
+      const reqSynonyms = normalizeSynonymMap(criteria.skillSynonyms);
+      const candSynonyms = normalizeSynonymMap(candidate.skill_synonyms);
+
+      // Core skill pre-filter: skip if candidate doesn't satisfy the coreSkill
+      // (handles stack abbreviations and compound multi-token coreSkills; synonym-aware)
+      if (!coreSkillSatisfiedBy(criteria.coreSkill, candidate.primary_skills, reqSynonyms, candSynonyms)) {
         continue;
       }
 
       const normalizedMustHave = normalizeSkills(criteria.mustHaveSkills || []);
       const normalizedGoodToHave = normalizeSkills(criteria.goodToHaveSkills || []);
       const searchLocations = parseSearchLocations(criteria.location ?? undefined);
-
-      // Normalize synonyms from parsed criteria (may be null for older requirements)
-      const reqSynonyms = normalizeSynonymMap(criteria.skillSynonyms);
-      const candSynonyms = normalizeSynonymMap(candidate.skill_synonyms);
 
       const { score, details } = calculateMatchScore(
         candidate,

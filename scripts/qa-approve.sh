@@ -64,6 +64,19 @@ fi
 git pull origin develop --ff-only --quiet >&2 || true
 gh pr merge "$PR" --squash --delete-branch >&2
 git pull origin develop --quiet >&2
+
+# Strip any Co-Authored-By trailers that leaked into the squash commit.
+# Gated on actual presence (not on whether the text would change) so this is
+# a true no-op -- no amend, no force-push, no new hash -- when the commit has
+# none. Single-tenant QA guarantees develop has not moved, so the
+# force-with-lease push is safe.
+if git log -1 --format='%B' | pl_has_coauthors; then
+  echo "==> stripping Co-Authored-By trailers from squash commit" >&2
+  STRIPPED_MSG="$(git log -1 --format='%B' | pl_strip_coauthors)"
+  git commit --amend -m "$STRIPPED_MSG" --quiet >&2
+  git push origin develop --force-with-lease --quiet >&2
+fi
+
 [[ -n "$BRANCH" ]] && git branch -D "$BRANCH" 2>/dev/null >&2 || true
 
 "$SCRIPT_DIR/set-field.sh" "$TICKET" "Pipeline Status" merged-to-develop

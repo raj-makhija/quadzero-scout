@@ -657,32 +657,35 @@ Content-Type: application/json
 - `requirementId`: Required, non-empty string
 
 **Response (200 OK):**
+
+The example below shows a **discipline gate rejection**: a test automation engineer (testing discipline) matched against a Java Lead requirement (development discipline). All skill filters pass — the candidate is excluded solely because `testing ↔ development` is in the incompatible-pair matrix.
+
 ```json
 {
   "success": true,
   "data": {
     "candidate": {
-      "candidateId": "cand_...",
-      "fullName": "John Doe",
-      "primarySkills": ["java", "spring boot"],
-      "normalizedPrimary": ["java", "spring boot"],
-      "secondarySkills": ["docker"],
-      "normalizedSecondary": ["docker"],
-      "totalExperience": 8,
+      "candidateId": "cand_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "fullName": "Jane Smith",
+      "primarySkills": ["java", "selenium"],
+      "normalizedPrimary": ["java", "selenium"],
+      "secondarySkills": ["testng"],
+      "normalizedSecondary": ["testng"],
+      "totalExperience": 5,
       "seniority": "senior",
       "engagementModel": "full_time",
-      "expectedCtc": 25,
-      "availability": "1_month",
+      "expectedCtc": 20,
+      "availability": "immediate",
       "location": "Hyderabad"
     },
     "requirement": {
-      "requirementId": "...",
+      "requirementId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       "clientName": "Acme Corp",
       "jobTitle": "Java Lead",
       "coreSkill": "java",
       "normalizedCoreSkill": "java",
-      "mustHaveSkills": ["java", "spring boot"],
-      "normalizedMustHave": ["java", "spring boot"],
+      "mustHaveSkills": ["java"],
+      "normalizedMustHave": ["java"],
       "goodToHaveSkills": ["kubernetes"],
       "normalizedGoodToHave": ["kubernetes"],
       "engagementModel": "full_time_regular",
@@ -701,7 +704,7 @@ Content-Type: application/json
         "passed": true,
         "ratio": 1.0,
         "threshold": 0.4,
-        "matched": ["java", "spring boot"],
+        "matched": ["java"],
         "fuzzy": [],
         "related": [],
         "missing": []
@@ -711,16 +714,21 @@ Content-Type: application/json
         "reqModel": "full_time_regular",
         "candidateModel": "full_time"
       },
+      "discipline": {
+        "passed": false,
+        "candidateRoles": ["qa engineer", "automation tester"],
+        "requirementRoles": ["java developer", "java lead"]
+      },
       "budgetFit": {
         "passed": true,
-        "detail": "candidate expectedCtc=25, requirement budgetMaxLpa=40"
+        "detail": "candidate expectedCtc=20, requirement budgetMaxLpa=40"
       }
     },
-    "wouldBeExcluded": false,
-    "excludedBy": [],
-    "score": 85,
+    "wouldBeExcluded": true,
+    "excludedBy": ["discipline"],
+    "score": 62,
     "matchDetails": {
-      "mustHaveMatched": ["java", "spring boot"],
+      "mustHaveMatched": ["java"],
       "mustHaveFuzzy": [],
       "mustHaveRelated": [],
       "mustHaveMissing": [],
@@ -732,7 +740,7 @@ Content-Type: application/json
       "ctcMatch": true,
       "locationMatch": "full",
       "availabilityMatch": "full",
-      "roleMatch": "full"
+      "roleMatch": "none"
     }
   }
 }
@@ -742,7 +750,29 @@ Content-Type: application/json
 - No authentication required
 - Runs the candidate through ALL filters and scoring even if a filter would normally exclude the pair — this ensures the full diagnostic is always returned
 - `wouldBeExcluded` is `true` if any hard filter failed; `excludedBy` lists which filter(s) rejected the pair
-- Hard filters evaluated: `coreSkill` (exact match in primary skills), `mustHaveRatio` (≥40% effective matches = exact + fuzzy × 0.85), `engagementModel` (compatibility check)
+- Hard filters evaluated: `coreSkill` (exact match in primary skills), `mustHaveRatio` (≥40% effective matches = exact + fuzzy × 0.85), `engagementModel` (compatibility check), `discipline` (incompatible-pair matrix gate)
+- **Discipline gate:** Hard-excludes candidates whose role discipline is incompatible with the requirement's. Only fires when both the candidate and requirement classify to distinct disciplines that appear as a pair in the curated 14-pair matrix below. Does NOT fire for unclassified roles (no recognised category), pairs absent from the matrix, or candidates whose roles span both sides of a gated pair.
+- **Incompatible discipline pairs (14 total):**
+  | Discipline A  | Discipline B  |
+  |---------------|---------------|
+  | development   | testing       |
+  | development   | support       |
+  | development   | design        |
+  | development   | consulting    |
+  | testing       | data          |
+  | testing       | support       |
+  | testing       | consulting    |
+  | testing       | design        |
+  | data          | support       |
+  | data          | design        |
+  | devops        | design        |
+  | security      | design        |
+  | support       | design        |
+  | consulting    | design        |
+- **Deliberate carve-outs (NOT gated):**
+  - *Engineering family cross-overs* — `development ↔ devops`, `development ↔ data`, `development ↔ security` are intentionally not in the matrix; these disciplines share enough overlap that cross-hiring is valid.
+  - *Taxonomy-shared pairs* — `testing ↔ security`, `support ↔ devops`, `data ↔ consulting`, `security ↔ consulting` are not gated for the same reason.
+  - *All `management` cross-pairs* — management roles are deliberately excluded from the matrix entirely; managers are not gated against any discipline.
 - Fuzzy matching: skills match via token containment (all tokens of shorter skill appear in longer) or LLM-generated synonyms (stored in `skillSynonyms` on requirements and `skill_synonyms` on candidates)
 - `budgetFit` is a soft indicator (not a hard filter) — reported for informational purposes
 - Used by the Match Explainer UI on the requirement detail and locate profile pages
