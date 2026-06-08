@@ -545,6 +545,27 @@ Resources:
         - Key: Project
           Value: quadzero-scout
 
+  # RequirementMatchCache Table (ticket #233 — pre-computed match results)
+  # One item per requirement: the ranked list of { candidate_id, rank, score }.
+  RequirementMatchCacheTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: ${self:custom.requirementMatchCacheTable}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: requirement_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: requirement_id
+          KeyType: HASH
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Project
+          Value: quadzero-scout
+
 Outputs:
   TalentProfilesTableArn:
     Description: TalentProfiles table ARN
@@ -647,3 +668,9 @@ Outputs:
     Value: !GetAtt RecruiterTasksTable.Arn
     Export:
       Name: ${self:provider.stage}-RecruiterTasksTableArn
+
+  RequirementMatchCacheTableArn:
+    Description: RequirementMatchCache table ARN
+    Value: !GetAtt RequirementMatchCacheTable.Arn
+    Export:
+      Name: ${self:provider.stage}-RequirementMatchCacheTableArn

@@ -21,6 +21,7 @@ interface Config {
     pipelineActivityTable: string;
     candidateAttachmentsTable: string;
     recruiterTasksTable: string;
+    requirementMatchCacheTable: string;
   };
   s3: {
     resumesBucket: string;
@@ -89,6 +90,7 @@ export const config: Config = {
     pipelineActivityTable: getEnvVar('DYNAMODB_TABLE_PIPELINE_ACTIVITY', 'PipelineActivity-dev'),
     candidateAttachmentsTable: getEnvVar('DYNAMODB_TABLE_CANDIDATE_ATTACHMENTS', 'CandidateAttachments-dev'),
     recruiterTasksTable: getEnvVar('DYNAMODB_TABLE_RECRUITER_TASKS', 'RecruiterTasks-dev'),
+    requirementMatchCacheTable: getEnvVar('DYNAMODB_TABLE_REQUIREMENT_MATCH_CACHE', 'RequirementMatchCache-dev'),
   },
   s3: {
     resumesBucket: getEnvVar('S3_BUCKET_RESUMES', 'quadzero-scout-resumes-dev'),

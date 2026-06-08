@@ -9,7 +9,7 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { config } from './config.js';
-import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, StatusHistoryEntry, RequirementChangeEntry, PricingConfig, PricingConfigItem, SessionSettings, SessionSettingsItem, ShortlistItem, ClientItem, SubVendorItem, ScreeningItem, ScreeningLockItem, AuditLogItem, AuditLogEntry, PipelineActivityItem, AttachmentItem } from '../types/index.js';
+import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, StatusHistoryEntry, RequirementChangeEntry, PricingConfig, PricingConfigItem, SessionSettings, SessionSettingsItem, ShortlistItem, ClientItem, SubVendorItem, ScreeningItem, ScreeningLockItem, AuditLogItem, AuditLogEntry, PipelineActivityItem, AttachmentItem, RankedMatchEntry, RequirementMatchCacheItem } from '../types/index.js';
 import { DEFAULT_SESSION_TIMEOUT_SECONDS } from '../types/index.js';
 
 const client = new DynamoDBClient({ region: config.region });
@@ -2521,4 +2521,48 @@ export async function getAttachment(
     })
   );
   return (result.Item as AttachmentItem) || null;
+}
+
+// ─── Requirement Match Cache Operations ───────────────────────────────────────
+// One item per requirement holding its pre-computed ranked candidate list.
+// Store only — no wiring into search/ingest yet (see #233 / #234).
+
+export async function getMatchCache(requirementId: string): Promise<RankedMatchEntry[] | null> {
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: config.dynamodb.requirementMatchCacheTable,
+      Key: { requirement_id: requirementId },
+    })
+  );
+  const item = result.Item as RequirementMatchCacheItem | undefined;
+  return item ? item.ranked : null;
+}
+
+export async function putMatchCache(
+  requirementId: string,
+  rankedList: RankedMatchEntry[]
+): Promise<void> {
+  const item: RequirementMatchCacheItem = {
+    requirement_id: requirementId,
+    ranked: rankedList,
+    updated_at: new Date().toISOString(),
+  };
+  // PutCommand overwrites the whole item, so this replaces (not appends to) any
+  // existing ranked list for the requirement.
+  await docClient.send(
+    new PutCommand({
+      TableName: config.dynamodb.requirementMatchCacheTable,
+      Item: item,
+    })
+  );
+}
+
+export async function deleteMatchCache(requirementId: string): Promise<void> {
+  // DeleteItem is idempotent — deleting a non-existent key is a no-op.
+  await docClient.send(
+    new DeleteCommand({
+      TableName: config.dynamodb.requirementMatchCacheTable,
+      Key: { requirement_id: requirementId },
+    })
+  );
 }
