@@ -28,6 +28,7 @@ vi.mock('../candidateMatching.js', () => ({
 import {
   updateCacheForCandidates,
   rebuildCacheForRequirement,
+  rebuildAllMatchCaches,
   deleteMatchCache,
 } from '../matchCacheService.js';
 
@@ -192,6 +193,75 @@ describe('rebuildCacheForRequirement', () => {
     expect(mockGetMatchCache).not.toHaveBeenCalled();
     expect(mockPutMatchCache).toHaveBeenCalledWith('req_1', [
       { candidate_id: 'cand_1', rank: 1, score: 0.4 },
+    ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// rebuildAllMatchCaches (scheduled + manual full rebuild — ticket #236)
+// ---------------------------------------------------------------------------
+
+describe('rebuildAllMatchCaches', () => {
+  it('fetches candidates once and writes N caches for N active requirements', async () => {
+    mockGetAllActiveRequirements.mockResolvedValue([req('req_1'), req('req_2')]);
+    mockGetAllActiveCandidates.mockResolvedValue([cand('cand_1'), cand('cand_2')]);
+    mockMatchAndRank
+      .mockReturnValueOnce(scored([['cand_1', 0.9], ['cand_2', 0.5]]))
+      .mockReturnValueOnce(scored([['cand_2', 0.8]]));
+
+    await rebuildAllMatchCaches();
+
+    expect(mockGetAllActiveCandidates).toHaveBeenCalledOnce();
+    expect(mockPutMatchCache).toHaveBeenCalledTimes(2);
+    expect(mockPutMatchCache).toHaveBeenCalledWith('req_1', [
+      { candidate_id: 'cand_1', rank: 1, score: 0.9 },
+      { candidate_id: 'cand_2', rank: 2, score: 0.5 },
+    ]);
+    expect(mockPutMatchCache).toHaveBeenCalledWith('req_2', [
+      { candidate_id: 'cand_2', rank: 1, score: 0.8 },
+    ]);
+  });
+
+  it('exits early (no candidate scan, no cache writes) when there are no active requirements', async () => {
+    mockGetAllActiveRequirements.mockResolvedValue([]);
+
+    await rebuildAllMatchCaches();
+
+    expect(mockGetAllActiveCandidates).not.toHaveBeenCalled();
+    expect(mockPutMatchCache).not.toHaveBeenCalled();
+  });
+
+  it('writes empty cache for every requirement when no candidates match', async () => {
+    mockGetAllActiveRequirements.mockResolvedValue([req('req_1'), req('req_2')]);
+    mockGetAllActiveCandidates.mockResolvedValue([cand('cand_1')]);
+    mockMatchAndRank.mockReturnValue([]);
+
+    await rebuildAllMatchCaches();
+
+    expect(mockPutMatchCache).toHaveBeenCalledTimes(2);
+    expect(mockPutMatchCache).toHaveBeenCalledWith('req_1', []);
+    expect(mockPutMatchCache).toHaveBeenCalledWith('req_2', []);
+  });
+
+  it('never reads getMatchCache (no read-modify-write)', async () => {
+    mockGetAllActiveRequirements.mockResolvedValue([req('req_1')]);
+    mockGetAllActiveCandidates.mockResolvedValue([cand('cand_1')]);
+    mockMatchAndRank.mockReturnValue(scored([['cand_1', 0.7]]));
+
+    await rebuildAllMatchCaches();
+
+    expect(mockGetMatchCache).not.toHaveBeenCalled();
+  });
+
+  it('writes rank 1 with the exact scorer output for a single-req single-candidate fixture', async () => {
+    mockGetAllActiveRequirements.mockResolvedValue([req('req_1')]);
+    mockGetAllActiveCandidates.mockResolvedValue([cand('cand_1')]);
+    mockMatchAndRank.mockReturnValue(scored([['cand_1', 0.42]]));
+
+    await rebuildAllMatchCaches();
+
+    expect(mockPutMatchCache).toHaveBeenCalledWith('req_1', [
+      { candidate_id: 'cand_1', rank: 1, score: 0.42 },
     ]);
   });
 });

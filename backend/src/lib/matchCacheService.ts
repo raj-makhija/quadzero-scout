@@ -120,3 +120,31 @@ export async function rebuildCacheForRequirement(req: RequirementItem): Promise<
   }));
   await putMatchCache(req.requirement_id, ranked);
 }
+
+/**
+ * Full rebuild of every active-requirement cache in one pass.
+ *
+ * Candidates are fetched once and reused across all requirements. No existing
+ * cache entries are read — each write is authoritative. Exits early when there
+ * are no active requirements so the candidate scan is skipped entirely.
+ *
+ * Used by the nightly scheduled worker and the manual admin trigger (ticket #236).
+ */
+export async function rebuildAllMatchCaches(): Promise<void> {
+  const reqs = await getAllActiveRequirements();
+  if (reqs.length === 0) return;
+  const candidates = await getAllActiveCandidates();
+  await Promise.all(
+    reqs.map(async (req) => {
+      const scored = matchAndRankCandidates(candidates, criteriaForRequirement(req), {
+        notifyInclusion: true,
+      });
+      const ranked: RankedMatchEntry[] = scored.map((s, i) => ({
+        candidate_id: s.candidate.candidate_id,
+        rank: i + 1,
+        score: s.score,
+      }));
+      await putMatchCache(req.requirement_id, ranked);
+    })
+  );
+}

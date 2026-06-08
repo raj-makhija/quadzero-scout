@@ -554,6 +554,16 @@ functions:
     timeout: 60
     memorySize: 512
 
+  # Match-cache full rebuild worker (ticket #236) — nightly EventBridge schedule.
+  matchCacheRebuildWorker:
+    handler: src/handlers/worker/matchCacheRebuildWorker.handler
+    timeout: 120
+    memorySize: 512
+    events:
+      - schedule:
+          rate: rate(1 day)
+          enabled: true
+
   # Email Ingest Worker (scheduled, no HTTP events)
   emailIngestWorker:
     handler: src/handlers/worker/emailIngestWorker.handler
@@ -851,6 +861,16 @@ functions:
       - httpApi:
           path: /admin/recruiters/list
           method: GET
+
+  # Match-cache full rebuild — manual admin trigger (ticket #236).
+  adminRebuildMatchCache:
+    handler: src/handlers/admin/rebuildMatchCache.handler
+    timeout: 120
+    memorySize: 512
+    events:
+      - httpApi:
+          path: /admin/match-cache/rebuild
+          method: POST
 
 resources:
   - ${file(resources/dynamodb.yml)}
