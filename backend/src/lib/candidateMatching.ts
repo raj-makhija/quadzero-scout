@@ -79,7 +79,14 @@ export function matchAndRankCandidates(
   const reqSynonyms = normalizeSynonymMap(criteria.skillSynonyms);
 
   const candidatesToScore = criteria.coreSkill
-    ? candidates.filter((c) => coreSkillSatisfiedBy(criteria.coreSkill!, c.primary_skills))
+    ? candidates.filter((c) =>
+        coreSkillSatisfiedBy(
+          criteria.coreSkill!,
+          c.primary_skills,
+          reqSynonyms,
+          normalizeSynonymMap(c.skill_synonyms)
+        )
+      )
     : candidates;
 
   const results: ScoredCandidate[] = [];

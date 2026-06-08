@@ -108,6 +108,7 @@ MUST-DO STEPS
       \`gh issue comment ${ticket} --body "..."\`
    b. Set status:
       \`scripts/set-field.sh ${ticket} "Pipeline Status" cost-review-pending\`
+      \`scripts/set-status.sh ${ticket} needs-human\`
    c. Exit. The human can then add the \`pipeline:approve-cost\` label
       to the ticket to approve and unblock you on the next dispatch.
 5. Otherwise, implement the change. Stage with \`git add\`, commit with

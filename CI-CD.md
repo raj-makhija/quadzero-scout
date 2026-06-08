@@ -457,6 +457,9 @@ scripts/qa-deploy.sh <TICKET>
 scripts/qa-approve.sh <TICKET>
 # Squash-merges the ticket's PR to develop and sets status:qa-approved.
 # Releases the QA lock. It ships to prod at the next nightly mirror.
+# Automatically strips all Co-Authored-By trailers from the squash commit
+# (strip-all policy: all trailers removed regardless of email or origin);
+# gated on actual trailer presence -- no-op for commits without trailers.
 
 # If QA finds issues (write the reason as a normal comment first):
 scripts/qa-reject.sh <TICKET> "describe what's wrong"
@@ -583,7 +586,7 @@ get a queue view for any state.
 | `status:qa-approved` | Squash-merged to develop; ships to prod at the next nightly develop→main mirror (01:00 IST) | `pipeline:qa-approve` success |
 | `status:prod-release-blocked` | **Legacy** — the cherry-pick prod model could conflict and set this. The mirror model doesn't produce it; kept only for historical tickets | (no longer set) |
 | `status:released` | develop was mirrored to main and shipped to prod | `prod-release.sh` after the mirror |
-| `status:needs-human` | Blocked: 3-strike rework escalation, cost-rejected, or manually parked | `manager.sh` 3-strike, `pipeline:park`, `pipeline:reject-cost` |
+| `status:needs-human` | Blocked: 3-strike rework escalation, cost-rejected, cost-escalated, or manually parked | `manager.sh` 3-strike, `pipeline:park`, `pipeline:reject-cost`, developer-agent cost escalation (`cost-review-pending`) |
 
 A ticket carries exactly one `status:*` label at a time; the helper
 `scripts/set-status.sh <ticket> <new-status>` removes the previous one
@@ -1365,9 +1368,6 @@ Tracked but not blocking. Pick up when convenient.
 
 - **`next-ticket.sh` pagination**: currently `first: 100`. Active
   project, plenty of headroom; revisit if it ever caps out.
-- **Strip `Co-Authored-By` post-merge**: squash-merges sometimes pull
-  in CoAuth from the dev's commits despite agent-prompt instructions
-  to omit. Could add a `merge-pr.sh` post-step to filter.
 - **3-strike escalation organic test**: every contradictory-spec
   ticket ends up resolved by tester arbitration, so we've never
   organically forced 3 strikes. The escalation code is small and

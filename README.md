@@ -197,7 +197,3 @@ See [CI-CD.md](CI-CD.md) for the full pipeline reference, including all label de
 ## License
 
 Proprietary - All rights reserved.
-
-TODO: pipeline injection test
-
-# pipeline housekeeping smoke
