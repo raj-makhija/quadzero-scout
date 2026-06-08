@@ -47,6 +47,10 @@ async function handleRequest(event: AuthenticatedEvent): Promise<APIGatewayProxy
       return error(ErrorCodes.NOT_FOUND, 'Candidate not found', 404);
     }
 
+    if (candidate.last_screened_at) {
+      return success({ questions: [], generated: false });
+    }
+
     const summary = buildCandidateSummary(candidate);
 
     // No profile content to base questions on (e.g. profile without a parsed
