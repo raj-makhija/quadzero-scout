@@ -17,6 +17,9 @@ vi.mock('../config.js', () => ({
 }));
 
 vi.mock('../dynamodb.js', () => ({
+  getLlmRerank: vi.fn().mockResolvedValue(null),
+  putLlmRerank: vi.fn().mockResolvedValue(undefined),
+  deleteLlmRerank: vi.fn().mockResolvedValue(undefined),
   getActivePrompt: vi.fn().mockResolvedValue(null), // forces fallback prompt path
 }));
 

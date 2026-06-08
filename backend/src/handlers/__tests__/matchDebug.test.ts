@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 
 vi.mock('../../lib/dynamodb.js', () => ({
+  getLlmRerank: vi.fn().mockResolvedValue(null),
+  putLlmRerank: vi.fn().mockResolvedValue(undefined),
+  deleteLlmRerank: vi.fn().mockResolvedValue(undefined),
   getCandidateById: vi.fn(),
   getRequirementById: vi.fn(),
 }));

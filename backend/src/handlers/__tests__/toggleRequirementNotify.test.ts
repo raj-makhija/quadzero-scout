@@ -9,6 +9,9 @@ const mockGetRequirementById = vi.fn();
 const mockUpdateRequirementNotifyIds = vi.fn();
 
 vi.mock('../../lib/dynamodb.js', () => ({
+  getLlmRerank: vi.fn().mockResolvedValue(null),
+  putLlmRerank: vi.fn().mockResolvedValue(undefined),
+  deleteLlmRerank: vi.fn().mockResolvedValue(undefined),
   getRequirementById: (...args: unknown[]) => mockGetRequirementById(...args),
   updateRequirementNotifyIds: (...args: unknown[]) => mockUpdateRequirementNotifyIds(...args),
 }));

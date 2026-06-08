@@ -77,6 +77,9 @@ vi.mock('../skillNormalizer.js', () => ({
 const mockGetCandidateByEmail = vi.fn();
 const mockSaveCandidateProfile = vi.fn();
 vi.mock('../dynamodb.js', () => ({
+  getLlmRerank: vi.fn().mockResolvedValue(null),
+  putLlmRerank: vi.fn().mockResolvedValue(undefined),
+  deleteLlmRerank: vi.fn().mockResolvedValue(undefined),
   getCandidateByEmail: (...args: unknown[]) => mockGetCandidateByEmail(...args),
   saveCandidateProfile: (...args: unknown[]) => mockSaveCandidateProfile(...args),
   getExperienceBucket: (years: number) => (years <= 5 ? '3-5' : '6-10'),
