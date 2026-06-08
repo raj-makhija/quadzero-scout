@@ -1074,3 +1074,117 @@ describe('coreSkillMatchResult()', () => {
     expect(result.matchType).toBe('none');
   });
 });
+
+// ---------------------------------------------------------------------------
+// TC-ORACLE-010 through TC-ORACLE-024: compound coreSkill pre-filter
+// (multi-token, no-qualifier compounds; AND semantics; synonym-aware)
+// Regression fix for "Oracle PL/SQL finds only ~4 matches" (#283).
+// ---------------------------------------------------------------------------
+
+describe('coreSkill pre-filter — compound multi-token coreSkills', () => {
+  // TC-ORACLE-010: the core fix — separate oracle + pl/sql passes "Oracle PL/SQL"
+  it('passes "Oracle PL/SQL" when candidate has separate "oracle" and "pl/sql"', () => {
+    const result = coreSkillMatchResult('Oracle PL/SQL', ['oracle', 'pl/sql', 'json']);
+    expect(result.passed).toBe(true);
+    expect(result.matchType).toBe('token');
+  });
+
+  it('coreSkillSatisfiedBy passes "Oracle PL/SQL" for separate oracle + pl/sql (both directions use this)', () => {
+    expect(coreSkillSatisfiedBy('Oracle PL/SQL', ['oracle', 'pl/sql'])).toBe(true);
+  });
+
+  // TC-ORACLE-011: AND semantics — only oracle is NOT enough
+  it('does NOT pass "Oracle PL/SQL" when candidate has only "oracle"', () => {
+    expect(coreSkillSatisfiedBy('Oracle PL/SQL', ['oracle', 'java'])).toBe(false);
+  });
+
+  // TC-ORACLE-012: AND semantics — only pl/sql is NOT enough
+  it('does NOT pass "Oracle PL/SQL" when candidate has only "pl/sql"', () => {
+    expect(coreSkillSatisfiedBy('Oracle PL/SQL', ['pl/sql', 'java'])).toBe(false);
+  });
+
+  // TC-ORACLE-013: partial-failure negative confirms AND (not OR)
+  it('returns matchType "none" for "Oracle PL/SQL" when only one token is present', () => {
+    const result = coreSkillMatchResult('Oracle PL/SQL', ['oracle', 'java']);
+    expect(result.passed).toBe(false);
+    expect(result.matchType).toBe('none');
+  });
+
+  // TC-ORACLE-014: exact-match fast path still works for the combined single skill
+  it('passes "Oracle PL/SQL" via exact match when candidate holds the combined skill', () => {
+    const result = coreSkillMatchResult('Oracle PL/SQL', ['oracle pl/sql']);
+    expect(result.passed).toBe(true);
+    expect(result.matchType).toBe('exact');
+  });
+
+  // TC-ORACLE-015: case-insensitivity on the coreSkill side
+  it('is case-insensitive — "ORACLE PL/SQL" passes separate oracle + pl/sql', () => {
+    expect(coreSkillSatisfiedBy('ORACLE PL/SQL', ['oracle', 'pl/sql'])).toBe(true);
+    expect(coreSkillSatisfiedBy('oracle pl/sql', ['oracle', 'pl/sql'])).toBe(true);
+  });
+
+  // TC-ORACLE-016: empty candidate skills fail a multi-token coreSkill
+  it('fails "Oracle PL/SQL" for an empty candidate primary-skill set', () => {
+    expect(coreSkillSatisfiedBy('Oracle PL/SQL', [])).toBe(false);
+  });
+
+  // TC-ORACLE-017: the fix generalises beyond Oracle — "SAP FICO"
+  it('passes "SAP FICO" when candidate has separate "sap" and "fico"', () => {
+    expect(coreSkillSatisfiedBy('SAP FICO', ['sap', 'fico'])).toBe(true);
+  });
+
+  it('fails "SAP FICO" when candidate has only "sap"', () => {
+    expect(coreSkillSatisfiedBy('SAP FICO', ['sap'])).toBe(false);
+  });
+
+  // TC-ORACLE-018: token decomposition handles a sub-skill that is multi-word after
+  // normalization ("spring boot" → "spring_boot")
+  it('passes "Spring Boot Microservices" for candidate ["spring boot", "microservices"]', () => {
+    expect(coreSkillSatisfiedBy('Spring Boot Microservices', ['spring boot', 'microservices'])).toBe(true);
+  });
+
+  it('fails "Spring Boot Microservices" when "microservices" is missing', () => {
+    expect(coreSkillSatisfiedBy('Spring Boot Microservices', ['spring boot'])).toBe(false);
+  });
+
+  // TC-ORACLE-019: role-qualifier path unchanged — "AWS Architect" still passes via "aws" alone
+  it('still passes "AWS Architect" for a candidate with "aws" alone (qualifier path unchanged)', () => {
+    const result = coreSkillMatchResult('AWS Architect', ['aws', 'terraform']);
+    expect(result.passed).toBe(true);
+    expect(result.matchType).toBe('token');
+    expect(result.matchedToken).toBe('aws');
+  });
+
+  // TC-ORACLE-020: all-qualifier phrase still fails (empty tech-token set must not auto-pass)
+  it('fails an all-qualifier phrase "Senior Developer" (no tech tokens)', () => {
+    const result = coreSkillMatchResult('Senior Developer', ['react', 'nodejs']);
+    expect(result.passed).toBe(false);
+    expect(result.matchType).toBe('none');
+  });
+
+  // TC-ORACLE-021: stack abbreviations still require ALL components (unaffected)
+  it('still requires all MERN components (stack path unaffected)', () => {
+    expect(coreSkillSatisfiedBy('mern', ['mongodb', 'expressjs', 'react', 'nodejs'])).toBe(true);
+    expect(coreSkillSatisfiedBy('mern', ['mongodb', 'react', 'nodejs'])).toBe(false);
+  });
+
+  // TC-ORACLE-022: documented variant-spelling gap — candidate "plsql" (no slash) does NOT
+  // match "Oracle PL/SQL". This is expected; closing it is the embeddings ticket's job.
+  it('does NOT pass "Oracle PL/SQL" for candidate ["oracle", "plsql"] (variant-spelling gap)', () => {
+    expect(coreSkillSatisfiedBy('Oracle PL/SQL', ['oracle', 'plsql'])).toBe(false);
+  });
+
+  // TC-ORACLE-023: synonym-aware via the required side — a synonym bridges the variant gap
+  it('passes "Oracle PL/SQL" for ["oracle","plsql"] when a required synonym maps pl/sql→plsql', () => {
+    const requiredSynonyms = { 'pl/sql': ['plsql'] };
+    expect(coreSkillSatisfiedBy('Oracle PL/SQL', ['oracle', 'plsql'], requiredSynonyms)).toBe(true);
+    // …and remains a no-op when no synonym data is supplied (identical to the non-synonym path)
+    expect(coreSkillSatisfiedBy('Oracle PL/SQL', ['oracle', 'plsql'])).toBe(false);
+  });
+
+  // TC-ORACLE-024: synonym-aware via the candidate side
+  it('passes "Oracle PL/SQL" for ["oracle","plsql"] when a candidate synonym maps plsql→pl/sql', () => {
+    const candidateSynonyms = { plsql: ['pl/sql'] };
+    expect(coreSkillSatisfiedBy('Oracle PL/SQL', ['oracle', 'plsql'], undefined, candidateSynonyms)).toBe(true);
+  });
+});

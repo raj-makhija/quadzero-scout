@@ -227,43 +227,109 @@ export interface CoreSkillMatchResult {
 }
 
 /**
+ * Returns true when a required tech token is satisfied via either side's synonym map.
+ * No-op when both maps are empty/undefined (the production default until synonym data is
+ * populated). A skill counts as "held" if it is in the candidate's full-skill set or
+ * appears as a component word of one of the candidate's skills.
+ */
+function tokenSatisfiedBySynonym(
+  token: string,
+  candidateSet: Set<string>,
+  candidateWordTokens: Set<string>,
+  requiredSynonyms?: Record<string, string[]>,
+  candidateSynonyms?: Record<string, string[]>
+): boolean {
+  const candidateHolds = (skill: string): boolean => {
+    const n = normalizeSkill(skill);
+    return candidateSet.has(n) || candidateWordTokens.has(n);
+  };
+  // Required side: the token has known equivalents and the candidate holds one of them.
+  if (requiredSynonyms?.[token]?.some(candidateHolds)) return true;
+  // Candidate side: one of the candidate's skills lists this token as a synonym.
+  if (candidateSynonyms) {
+    for (const [skill, equivalents] of Object.entries(candidateSynonyms)) {
+      if (candidateHolds(skill) && equivalents.some((e) => normalizeSkill(e) === token)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
  * Returns a structured match result for the coreSkill filter.
  * matchType distinguishes how the candidate passed (or why they didn't):
  *   'skipped' — coreSkill is null/undefined, filter not applied
  *   'stack'   — known stack abbreviation (MERN/MEAN/PERN/LAMP), all components required
  *   'exact'   — normalized coreSkill found verbatim in candidate primary skills
- *   'token'   — compound coreSkill (e.g. "AWS Architect"): tech token matched after stripping role qualifiers
+ *   'token'   — compound coreSkill (e.g. "Oracle PL/SQL", "AWS Architect"): every tech token
+ *               (role qualifiers stripped) is present in the candidate's primary skills
  *   'none'    — candidate does not satisfy the coreSkill requirement
+ *
+ * The optional synonym maps make the token check synonym-aware. They are a no-op until the
+ * synonym data is populated (it is null in practice today) but activate automatically once
+ * synonyms exist on either side.
  */
 export function coreSkillMatchResult(
   coreSkill: string | null | undefined,
-  candidatePrimarySkills: string[]
+  candidatePrimarySkills: string[],
+  requiredSynonyms?: Record<string, string[]>,
+  candidateSynonyms?: Record<string, string[]>
 ): CoreSkillMatchResult {
   if (!coreSkill) return { passed: true, matchType: 'skipped' };
 
+  const normalizedCandidate = normalizeSkills(candidatePrimarySkills);
+  const candidateSet = new Set(normalizedCandidate);
+
   const components = expandStackAbbreviation(coreSkill);
   if (components) {
-    const candidateSet = new Set(normalizeSkills(candidatePrimarySkills));
     return { passed: components.every((c) => candidateSet.has(c)), matchType: 'stack' };
   }
 
   const normalizedCoreSkill = normalizeSkill(coreSkill);
-  const candidateSet = new Set(normalizeSkills(candidatePrimarySkills));
-
   if (candidateSet.has(normalizedCoreSkill)) {
     return { passed: true, matchType: 'exact' };
   }
 
-  // For compound coreSkills (e.g. "AWS Architect", "Salesforce Admin"), split the raw
-  // phrase into tokens BEFORE normalization (so ontology phrase mappings don't collapse
-  // multi-word compounds into a single token), strip role-qualifier words, then normalize
-  // each remaining technology token and check against the candidate set.
+  // Compound coreSkill (e.g. "Oracle PL/SQL", "AWS Architect", "Spring Boot Microservices").
+  // Split the RAW phrase into word tokens BEFORE normalization (ontology phrase mappings
+  // would otherwise collapse a multi-word compound into a single token), strip role-qualifier
+  // words, then require that EVERY remaining technology token is present in the candidate's
+  // primary skills (AND semantics). A candidate skill that is itself multi-word after
+  // normalization (e.g. "spring boot" → "spring_boot") contributes each of its component
+  // words, so a sub-skill spanning multiple words still satisfies the matching tokens.
   const rawTokens = coreSkill.toLowerCase().trim().split(/\s+/);
   const techRawTokens = rawTokens.filter((t) => !ROLE_QUALIFIER_WORDS.has(t));
-  if (techRawTokens.length > 0 && techRawTokens.length < rawTokens.length) {
-    const matchedRawToken = techRawTokens.find((t) => candidateSet.has(normalizeSkill(t)));
-    if (matchedRawToken) {
-      return { passed: true, matchType: 'token', matchedToken: normalizeSkill(matchedRawToken) };
+
+  if (techRawTokens.length > 0) {
+    // Component-word view of the candidate: split every normalized primary skill on
+    // whitespace AND underscore so combined forms ("spring_boot") expose their words.
+    const candidateWordTokens = new Set<string>();
+    for (const skill of normalizedCandidate) {
+      for (const word of skill.split(/[\s_]+/)) {
+        if (word.length > 0) candidateWordTokens.add(word);
+      }
+    }
+
+    const tokenPresent = (rawToken: string): boolean => {
+      const token = normalizeSkill(rawToken);
+      if (candidateSet.has(token)) return true;
+      // A token that is itself multi-word after normalization is satisfied only if ALL of
+      // its component words are present (e.g. "spring_boot" needs both "spring" and "boot").
+      const subWords = token.split(/[\s_]+/).filter((w) => w.length > 0);
+      if (subWords.length > 0 && subWords.every((w) => candidateWordTokens.has(w))) return true;
+      return tokenSatisfiedBySynonym(
+        token,
+        candidateSet,
+        candidateWordTokens,
+        requiredSynonyms,
+        candidateSynonyms
+      );
+    };
+
+    if (techRawTokens.every(tokenPresent)) {
+      const matchedToken = techRawTokens.map(normalizeSkill).join(' ');
+      return { passed: true, matchType: 'token', matchedToken };
     }
   }
 
@@ -273,15 +339,23 @@ export function coreSkillMatchResult(
 /**
  * Returns true if the candidate's primary skills satisfy the coreSkill requirement.
  * For known stack abbreviations (MERN/MEAN/PERN/LAMP), ALL component skills must be present.
- * For compound role-qualified coreSkills (e.g. "AWS Architect"), matches if the candidate
- * holds the core technology token (e.g. "aws"). Falls back to a normalized literal match.
+ * For compound coreSkills (e.g. "Oracle PL/SQL", "AWS Architect"), every technology token
+ * (role qualifiers stripped) must be present in the candidate's primary skills. Falls back
+ * to a normalized literal match. The optional synonym maps make the check synonym-aware.
  * Returns true if coreSkill is null/undefined (filter is skipped).
  */
 export function coreSkillSatisfiedBy(
   coreSkill: string | null | undefined,
-  candidatePrimarySkills: string[]
+  candidatePrimarySkills: string[],
+  requiredSynonyms?: Record<string, string[]>,
+  candidateSynonyms?: Record<string, string[]>
 ): boolean {
-  return coreSkillMatchResult(coreSkill, candidatePrimarySkills).passed;
+  return coreSkillMatchResult(
+    coreSkill,
+    candidatePrimarySkills,
+    requiredSynonyms,
+    candidateSynonyms
+  ).passed;
 }
 
 /**
