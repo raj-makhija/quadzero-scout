@@ -588,6 +588,17 @@ class ApiClient {
     });
   }
 
+  // Clone Prod Data endpoints (DEV/QA only — target derived server-side)
+  async startCloneProdData() {
+    return this.request<{ jobId: string }>('/admin/clone-data/start', {
+      method: 'POST',
+    });
+  }
+
+  async getCloneProdDataStatus(jobId: string) {
+    return this.request<CloneJobStatus>(`/admin/clone-data/status/${jobId}`);
+  }
+
   // Pricing endpoints
   async calculatePricing(input: PricingInput) {
     return this.request<PricingOutput>('/recruiter/pricing/calculate', {
@@ -1249,6 +1260,26 @@ export interface BulkImportStatus {
   createdAt: string;
   updatedAt: string;
   files: BulkImportFileStatus[];
+}
+
+// Clone Prod Data types (ticket #303)
+export interface CloneTableResult {
+  table: string;
+  scanned: number;
+  written: number;
+  failed: number;
+}
+
+export interface CloneJobStatus {
+  jobId: string;
+  status: 'processing' | 'completed' | 'partial' | 'error';
+  source: string;
+  target: string;
+  createdAt: string;
+  updatedAt: string;
+  tables: CloneTableResult[];
+  s3: { copied: number; failed: number };
+  error?: string;
 }
 
 // Requirement types

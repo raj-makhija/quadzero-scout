@@ -3,9 +3,11 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { api, PendingRecruiter, PromptSummary } from '@/lib/api';
-import { Users, FileText, Upload, Calculator, ClipboardList, BarChart3, ArrowRight } from 'lucide-react';
+import { getStage } from '@/lib/environment';
+import { Users, FileText, Upload, Calculator, ClipboardList, BarChart3, ArrowRight, DatabaseZap } from 'lucide-react';
 
 export default function AdminDashboardPage() {
+  const stage = getStage();
   const [pendingCount, setPendingCount] = useState<number | null>(null);
   const [promptCount, setPromptCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -105,6 +107,28 @@ export default function AdminDashboardPage() {
             <ArrowRight className="w-5 h-5 text-gray-400" />
           </div>
         </Link>
+
+        {/* Clone Prod Data Card — DEV/QA only, never on prod */}
+        {stage !== 'prod' && (
+          <Link href="/admin/clone-data" className="card p-6 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <div className="p-3 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg">
+                  <DatabaseZap className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+                </div>
+                <div className="ml-4">
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                    Clone Prod Data
+                  </h2>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Refresh this environment from production
+                  </p>
+                </div>
+              </div>
+              <ArrowRight className="w-5 h-5 text-gray-400" />
+            </div>
+          </Link>
+        )}
 
         {/* Pricing Configuration Card */}
         <Link href="/admin/pricing" className="card p-6 hover:shadow-md transition-shadow">

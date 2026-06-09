@@ -10,7 +10,7 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { config } from './config.js';
-import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, StatusHistoryEntry, RequirementChangeEntry, PricingConfig, PricingConfigItem, SessionSettings, SessionSettingsItem, ShortlistItem, ClientItem, SubVendorItem, ScreeningItem, ScreeningLockItem, AuditLogItem, AuditLogEntry, PipelineActivityItem, AttachmentItem, RankedMatchEntry, RequirementMatchCacheItem, RequirementLlmRerankItem } from '../types/index.js';
+import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, StatusHistoryEntry, RequirementChangeEntry, PricingConfig, PricingConfigItem, SessionSettings, SessionSettingsItem, ShortlistItem, ClientItem, SubVendorItem, ScreeningItem, ScreeningLockItem, AuditLogItem, AuditLogEntry, PipelineActivityItem, AttachmentItem, RankedMatchEntry, RequirementMatchCacheItem, RequirementLlmRerankItem, CloneJobItem } from '../types/index.js';
 import { DEFAULT_SESSION_TIMEOUT_SECONDS } from '../types/index.js';
 
 const client = new DynamoDBClient({ region: config.region });
@@ -547,6 +547,66 @@ export async function finalizeBulkImportBatch(batchId: string): Promise<void> {
         ':status': 'completed',
         ':now': new Date().toISOString(),
       },
+    })
+  );
+}
+
+// --- Clone Prod Data jobs (ticket #303) ---
+
+export async function createCloneJob(job: CloneJobItem): Promise<void> {
+  await docClient.send(
+    new PutCommand({
+      TableName: config.dynamodb.cloneJobsTable,
+      Item: job,
+    })
+  );
+}
+
+export async function getCloneJob(jobId: string): Promise<CloneJobItem | null> {
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: config.dynamodb.cloneJobsTable,
+      Key: { job_id: jobId },
+    })
+  );
+  return (result.Item as CloneJobItem) || null;
+}
+
+export async function updateCloneJob(
+  jobId: string,
+  fields: Partial<Pick<CloneJobItem, 'status' | 'tables' | 's3' | 'error'>>
+): Promise<void> {
+  const now = new Date().toISOString();
+  const setParts = ['updated_at = :now'];
+  const names: Record<string, string> = {};
+  const values: Record<string, unknown> = { ':now': now };
+
+  if (fields.status !== undefined) {
+    setParts.push('#status = :status');
+    names['#status'] = 'status';
+    values[':status'] = fields.status;
+  }
+  if (fields.tables !== undefined) {
+    setParts.push('tables = :tables');
+    values[':tables'] = fields.tables;
+  }
+  if (fields.s3 !== undefined) {
+    setParts.push('s3 = :s3');
+    values[':s3'] = fields.s3;
+  }
+  if (fields.error !== undefined) {
+    setParts.push('#error = :error');
+    names['#error'] = 'error';
+    values[':error'] = fields.error.substring(0, 500);
+  }
+
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.cloneJobsTable,
+      Key: { job_id: jobId },
+      UpdateExpression: `SET ${setParts.join(', ')}`,
+      ...(Object.keys(names).length > 0 && { ExpressionAttributeNames: names }),
+      ExpressionAttributeValues: values,
     })
   );
 }

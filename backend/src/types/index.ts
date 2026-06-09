@@ -434,6 +434,35 @@ export interface BulkImportBatchItem {
   ttl?: number;
 }
 
+// Clone Prod Data job (admin-triggered prod → dev/qa clone, ticket #303)
+export type CloneJobStatus = 'processing' | 'completed' | 'partial' | 'error';
+
+export interface CloneTableResult {
+  table: string;
+  scanned: number;
+  written: number;
+  failed: number;
+}
+
+export interface CloneS3Result {
+  copied: number;
+  failed: number;
+}
+
+export interface CloneJobItem {
+  job_id: string;
+  status: CloneJobStatus;
+  source: string; // always 'prod'
+  target: string; // current stage (dev|qa), never client-supplied
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  tables: CloneTableResult[];
+  s3: CloneS3Result;
+  error?: string;
+  ttl?: number;
+}
+
 // Prompt Item (stored in DynamoDB Prompts table)
 export interface PromptItem {
   prompt_key: string;
@@ -1458,6 +1487,7 @@ export type AuditAction =
   | 'PRICING_CONFIG_UPDATE'
   | 'PROMPT_UPDATE'
   | 'BULK_IMPORT_START'
+  | 'CLONE_DATA_START'
   | 'SESSION_SETTINGS_UPDATE'
   | 'SHORTLIST_MARK_NOT_SUITABLE'
   | 'SUB_VENDOR_CREATE'
