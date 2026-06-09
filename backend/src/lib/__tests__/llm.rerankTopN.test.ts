@@ -199,11 +199,36 @@ describe('rerankTopN() — batched compute', () => {
     ).rejects.toThrow();
   });
 
-  it('throws when the LLM omits a candidate rather than silently dropping it', async () => {
+  it('tolerates an omitted candidate by returning the entries the model did supply', async () => {
+    // A truncated/partial response must not fail the whole batch — otherwise the
+    // read path never persists a result and the UI hangs at "Refining order…".
     geminiStub.handler = async () => ({ content: validResponseFor(CANDIDATES.slice(0, 2)) });
+
+    const result = await rerankTopN({ jobDescription: 'Senior FE', candidates: CANDIDATES, topNHash: 'h1' });
+
+    expect(result.entries.map((e) => e.candidate_id)).toEqual(['cand_1', 'cand_2']);
+  });
+
+  it('drops a truncated/malformed entry but keeps the valid ones', async () => {
+    // Models a maxTokens-truncated response: the last entry lost its required
+    // fields (the production "[34].llmScore Required" failure).
+    const content = JSON.stringify([
+      { candidate_id: 'cand_1', llmScore: 90, rationale: 'Strong.' },
+      { candidate_id: 'cand_2', llmScore: 80, rationale: 'Good.' },
+      { candidate_id: 'cand_3' },
+    ]);
+    geminiStub.handler = async () => ({ content });
+
+    const result = await rerankTopN({ jobDescription: 'Senior FE', candidates: CANDIDATES, topNHash: 'h1' });
+
+    expect(result.entries.map((e) => e.candidate_id)).toEqual(['cand_1', 'cand_2']);
+  });
+
+  it('throws only when the response yields no usable entries at all', async () => {
+    geminiStub.handler = async () => ({ content: '[]' });
 
     await expect(
       rerankTopN({ jobDescription: 'Senior FE', candidates: CANDIDATES, topNHash: 'h1' })
-    ).rejects.toThrow(/omitted/);
+    ).rejects.toThrow(/no usable entries/);
   });
 });

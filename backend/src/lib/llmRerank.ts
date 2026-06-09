@@ -17,7 +17,9 @@ import type { CandidateItem, RequirementItem, CandidateSearchResult } from '../t
 // Size of the deterministic slice the LLM re-ranks. The freshness hash is taken
 // over this ordered id-set, so any page view of the same requirement gates on
 // the same key regardless of which page slice is displayed.
-export const RERANK_TOP_N = 50;
+// 25 keeps the batched LLM output (a score + rationale per candidate) within the
+// 4096-token response budget; 50 truncated the JSON and failed every rerank.
+export const RERANK_TOP_N = 25;
 
 /** Freshness key: sha256 over the ordered top-N candidate ids. */
 export function computeTopNHash(orderedIds: string[]): string {
