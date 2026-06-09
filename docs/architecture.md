@@ -736,6 +736,35 @@ The Gemini provider implements in-provider exponential backoff on rate-limit err
 | File Storage | S3 | Resume documents (original + formatted) |
 | Text Extraction | pdf-parse / mammoth | In-Lambda PDF and DOCX parsing |
 
+## Observability
+
+The LLM rerank pipeline emits CloudWatch metrics under the namespace **`QuadzeroScout/LlmRerank`** for visibility into cost (token usage), latency, cache hit rate, and error rate. Metrics are emitted via `backend/src/lib/cloudwatchMetrics.ts` using the `putLlmRerankMetric()` helper.
+
+**Required IAM permission:** `cloudwatch:PutMetricData` (on the Lambda execution role).
+
+### Metrics
+
+| Metric | Unit | Dimensions | Suggested Statistics | Description |
+|--------|------|------------|----------------------|-------------|
+| `LlmCallCount` | Count | Model, Provider | Sum | Number of LLM rerank calls initiated by the worker. Emitted once per successful invocation (after kill-switch and candidate checks pass). |
+| `InputTokens` | Count | Model, Provider | Sum, Average | Input token count per LLM rerank call. Sum over a period gives total token consumption. |
+| `OutputTokens` | Count | Model, Provider | Sum, Average | Output token count per LLM rerank call. |
+| `LlmLatencyMs` | Milliseconds | Model, Provider | p50, p95, Average | Wall-clock duration of the LLM call in milliseconds. Use p50/p95 to track latency added by the async rerank step. |
+| `FallbackCount` | Count | _(none)_ | Sum | Number of times the worker caught an error and fell back to deterministic ordering. A sustained non-zero value indicates LLM instability. |
+| `CacheHit` | Count | _(none)_ | Sum | Read-path cache hits: a fresh, hash-matching rerank result was found and served. |
+| `CacheMiss` | Count | _(none)_ | Sum | Read-path cache misses: no stored result or a stale/hash-mismatched entry triggered an async worker recompute. |
+| `KillSwitchDisabled` | Count | _(none)_ | Sum | Emitted when the worker is invoked but `LLM_RERANK_ENABLED=false`. A non-zero count confirms the kill switch is active. |
+
+### Derived Query
+
+**CacheHitRate:** `CacheHit / (CacheHit + CacheMiss) * 100`
+
+Percentage of read-path requests served from a fresh cached rerank result. Target >80% in steady state. This is a steady-state interpretation, not a hard alert threshold.
+
+### Dashboard
+
+The authoritative metric configuration (widget definitions, expression queries, suggested periods) is in `infra/cloudwatch-dashboard-llm-rerank.json`.
+
 ## Engagement Model Enums
 
 The platform has two distinct engagement model enums serving different purposes:
