@@ -335,6 +335,96 @@ Recruiter  Frontend   Lambda (search)       DynamoDB
     │<─────────│              │                  │
 ```
 
+### Search Flow: LLM Tie-Break Rerank Overlay
+
+The **LLM tie-break rerank overlay** is an *optional, asynchronous* layer that sits directly on top of the deterministic match-cache result produced by the **Recruiter Candidate Search Flow** above. The two read as sequential layers: the deterministic scorer ranks first and its result is **always** returned to the recruiter immediately; the LLM overlay then re-orders the displayed page in the background only if it is enabled and a fresh re-rank is available. The overlay **never blocks the response** — a cold, pending, disabled, or failed re-rank all degrade gracefully to the plain deterministic order.
+
+This overlay is implemented by `applyLlmRerankOverlay()` (`backend/src/lib/llmRerank.ts`) on the requirement-bound `matchScore` read path, the `llmRerankWorker` Lambda, and the polling logic in the recruiter search page (`frontend/src/app/recruiter/search/page.tsx`). It applies **only** when a `requirementId` is present and the sort is `matchScore`.
+
+```
+LLM Tie-Break Rerank Overlay (requirementId present, sort = matchScore)
+───────────────────────────────────────────────────────────────────────
+
+Recruiter   Frontend          Lambda (search)        DynamoDB         llmRerankWorker
+    │           │                    │                   │                   │
+    │ Search    │                    │                   │                   │
+    │──────────>│  POST /search      │                   │                   │
+    │           │───────────────────>│                   │                   │
+    │           │                    │ 1. deterministic top-N from match-cache
+    │           │                    │    (RERANK_TOP_N = 25, globally ordered)
+    │           │                    │──────────────────>│                   │
+    │           │                    │<──────────────────│                   │
+    │           │                    │ 2. freshness gate: compute top_n_hash, │
+    │           │                    │    getLlmRerank(reqId); compare        │
+    │           │                    │    top_n_hash · model · prompt_version │
+    │           │                    │──────────────────>│                   │
+    │           │                    │<──────────────────│                   │
+    │           │       ┌────────────┴────────────┐      │                   │
+    │           │       │ 3a. HIT (all 3 match):  │      │                   │
+    │           │       │   reorder page by       │      │                   │
+    │           │       │   llmScore, attach      │      │                   │
+    │           │       │   rationale; ranked=true│      │                   │
+    │           │       ├─────────────────────────┤      │                   │
+    │           │       │ 3b. MISS (stale/cold):  │      │                   │
+    │           │       │   claim + fire-and-forget──────────────────────────>│ invoke
+    │           │       │   pending=true          │      │   rerankTopN()    │ (async)
+    │           │       └────────────┬────────────┘      │<──────────────────│ putLlmRerank()
+    │           │  results +         │                   │  RequirementLlm-  │ (writes
+    │           │  llmRerank{ranked, │                   │  RerankItem record│  reordered
+    │           │  pending}          │                   │                   │  list +
+    │           │<───────────────────│                   │                   │  rationale)
+    │ 4. render deterministic page   │                   │                   │
+    │    IMMEDIATELY (badge reflects │                   │                   │
+    │<───── ranked / pending state)  │                   │                   │
+    │           │                    │                   │                   │
+    │           │ 5. while pending: poll POST /search every 4000 ms          │
+    │           │    (max 10 attempts) in the background ───────────────────>│
+    │           │                    │                   │ (worker has landed)│
+    │           │<───────────────────│ ranked=true, reordered page + rationale│
+    │ 6. re-render: ✨ AI Ranked     │                   │                   │
+    │    badge + per-candidate "AI:" │                   │                   │
+    │<───── rationale                │                   │                   │
+```
+
+**Step-by-step:**
+
+1. **Deterministic top-N from match-cache.** The search handler resolves the requirement's deterministic ranking from `RequirementMatchCache` (see *Recruiter Candidate Search Flow*). The overlay operates over the globally-ordered top-N slice, where `RERANK_TOP_N = 25` (`backend/src/lib/llmRerank.ts`).
+2. **Freshness gate.** `applyLlmRerankOverlay()` computes `top_n_hash` and reads the stored re-rank via `getLlmRerank(requirementId)`. A stored entry is considered **fresh** only when **all three** of `top_n_hash`, `model`, and `prompt_version` match the current request. A mismatch on **any** of the three fields treats the cache as stale and triggers a recompute.
+3. **(3a) Cache hit** — when the stored entry is fresh, the page is reordered in-memory by each candidate's `llmScore` and each candidate's `rationale` is attached. The response carries `llmRerank.ranked = true`. No LLM call is made. **(3b) Cache miss** — when the stored entry is stale or cold, the handler atomically claims the computation and fires the `llmRerankWorker` Lambda **fire-and-forget** (it does not await it), and the response carries `llmRerank.pending = true`. In both miss and hit cases the deterministic page is what gets returned in this response.
+4. **Frontend renders deterministic results immediately.** The recruiter always sees the deterministic match-score order without waiting on any LLM call. The header badge reflects the returned state (see *Frontend UI states* below).
+5. **Frontend polls when pending.** When `llmRerank.pending` is set, the search page re-issues the same search in the background on a `setInterval` — `RERANK_POLL_INTERVAL_MS = 4000` ms between attempts, bounded to `RERANK_MAX_POLLS = 10` attempts (`frontend/src/app/recruiter/search/page.tsx`). Polling stops as soon as a ranked result lands or the attempt budget is exhausted (in which case it falls back to the deterministic order).
+6. **Reorder and display.** Once the worker has persisted the re-rank, a poll returns `llmRerank.ranked = true` with the reordered page; the UI re-renders with the **✨ AI Ranked** badge and a per-candidate **"AI:"** rationale line.
+
+**Freshness gate.** The gate is the correctness contract for serving a stored re-rank. All three fields must match:
+
+| Field | Meaning | On mismatch |
+|-------|---------|-------------|
+| `top_n_hash` | sha256 over the **globally-ordered deterministic top-N candidate ID list** (`RERANK_TOP_N = 25`), via `computeTopNHash(orderedIds)` — **not** the returned page slice. Taken over the full top-N id-set so any page view of the same requirement gates on the same key. | recompute |
+| `model` | The provider/model that served the re-rank, from `getRerankSignature()`. | recompute |
+| `prompt_version` | Version of the `candidate_reranker` prompt (`number \| null`; `null` when the in-code fallback prompt was used). | recompute |
+
+A mismatch on **any** one of the three fields treats the stored entry as stale and triggers a single async recompute. Because `top_n_hash` covers the full global top-N id-set rather than the page slice, paging through the same requirement does not invalidate the re-rank, while a change to the underlying ranking (a candidate entering/leaving/moving within the top-N) does.
+
+**`llmRerankWorker` Lambda.** Invoked fire-and-forget from the search read path on a cache miss (`backend/src/handlers/worker/llmRerankWorker.ts`):
+
+- **Inputs:** `{ requirementId, candidateIds, topNHash }` — `candidateIds` is the deterministic top-N ID list (the freshness set) the caller computed.
+- **Output:** runs the batched `rerankTopN()` call once and writes a **`RequirementLlmRerankItem`** record (the reordered `entries` of `{ candidate_id, llmScore, rationale }`, plus `top_n_hash`, `model`, `prompt_version`, `computed_at`) into the **`RequirementLlmRerank`** table via `putLlmRerank()`, keyed by the caller's `topNHash` so the next view's freshness gate matches.
+- **Non-fatal error handling:** all worker errors are caught, logged, and a `FallbackCount` metric is emitted — they are **not** thrown and **do not** affect the search response, which already returned the deterministic order. A failed recompute simply means the next view re-fires the worker.
+
+**`LLM_RERANK_ENABLED` kill-switch.** The entire overlay is gated by the `LLM_RERANK_ENABLED` SSM parameter (`/quadzero-scout/{stage}/LLM_RERANK_ENABLED`), resolved in `infra/serverless.yml` and read via `config.featureFlags.llmRerankEnabled`. **Its default value is `false`** — the overlay is disabled in **all** environments unless the parameter is explicitly set to `true`. Both the search read path and the worker check the flag (defense in depth). This mirrors the **`EMAIL_INGEST_ENABLED`** kill-switch pattern: same SSM-with-default-`false` resolution, off everywhere until deliberately enabled per stage.
+
+**Frontend UI states.** The header badge (shown only when `requirementId` is present and sort is `matchScore`) has three mutually exclusive states:
+
+| State | Trigger | Display |
+|-------|---------|---------|
+| AI Ranked | `llmRerank.ranked` | **✨ AI Ranked** badge + a per-candidate **"AI:"** rationale line under each reranked candidate |
+| Pending | `llmRerank.pending` (recompute in flight) | **"Refining order…"** indicator |
+| Deterministic | neither flag set | **"Ranked by match score"** label |
+
+**Cost impact.** Each recompute is a **single batched** Flash-tier LLM call (the whole top-N is sent in one prompt, not one call per candidate), costing roughly **~$0.005–0.01** per call. **Cache hits incur no LLM cost** — a fresh stored re-rank is applied entirely in-memory with no LLM call. Worst-case cost is bounded primarily by the `LLM_RERANK_ENABLED` kill-switch: at the default `false` the overlay is completely inactive and incurs **zero** LLM cost in that environment; when enabled, the per-requirement claim guard ensures at most one in-flight recompute per fresh top-N, so repeated polling does not multiply calls.
+
+**Backward compatibility.** The `llmRerank` response object (`{ ranked, pending }`) and the per-candidate `rationale` field are **optional** additions to the search response. Existing API clients that do not read these fields safely ignore the absent values and continue to work unchanged — the deterministic results array is unaffected by the overlay.
+
 ### Requirement Matching & Shortlisting Flow
 
 ```
