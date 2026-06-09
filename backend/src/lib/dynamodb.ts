@@ -1376,16 +1376,15 @@ export async function getAllActiveCandidates(): Promise<CandidateItem[]> {
   let currentKey: Record<string, unknown> | undefined;
 
   do {
+    // No is_active filter: candidate profiles never carry that attribute, so
+    // filtering on it returns nothing. This must scan the same universe as the
+    // live searchCandidates path so the match cache stays in parity with it.
     const params: {
       TableName: string;
-      FilterExpression: string;
-      ExpressionAttributeValues: Record<string, unknown>;
       Limit: number;
       ExclusiveStartKey?: Record<string, unknown>;
     } = {
       TableName: config.dynamodb.talentProfilesTable,
-      FilterExpression: 'is_active = :active',
-      ExpressionAttributeValues: { ':active': true },
       Limit: PAGE_SIZE,
     };
 
