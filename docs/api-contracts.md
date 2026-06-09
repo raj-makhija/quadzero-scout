@@ -3309,6 +3309,120 @@ Resume processing a paused/failed bulk import batch.
 
 ---
 
+### POST /admin/clone-data/start
+
+Start an async clone of production data to the current environment (DEV/QA only).
+
+**Auth:** Requires `admin` role; returns 403 if `config.stage === 'prod'`.
+
+**Request Body (all fields optional — defaults to full clone):**
+```json
+{
+  "options": {
+    "includeS3": true,
+    "includeConfigTables": true,
+    "clearTarget": true,
+    "dryRun": false
+  }
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `options.includeS3` | boolean | `true` | Include resume bucket copy |
+| `options.includeConfigTables` | boolean | `true` | Include Prompts and PricingConfig tables |
+| `options.clearTarget` | boolean | `true` | Clear target tables before copy (`false` = incremental mode) |
+| `options.dryRun` | boolean | `false` | Scan and count only — no writes, deletes, or copies |
+
+**Notes:**
+- The target is always `config.stage` (the current environment). Any `target` field in the request body is ignored.
+- All options default to `true` except `dryRun` which defaults to `false`.
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "jobId": "clone_a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+  }
+}
+```
+
+**Error Responses:**
+| Status | Code | Description |
+|--------|------|-------------|
+| 403 | FORBIDDEN | Stage is `prod` — clone not permitted |
+| 500 | INTERNAL_ERROR | Worker configuration missing |
+
+---
+
+### GET /admin/clone-data/status/{jobId}
+
+Get the status of a production data clone job.
+
+**Auth:** Requires `admin` role; returns 403 if `config.stage === 'prod'`.
+
+**Path Parameters:**
+- `jobId`: The clone job identifier returned by `POST /admin/clone-data/start`
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "jobId": "clone_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "status": "running",
+    "source": "prod",
+    "target": "dev",
+    "options": {
+      "includeS3": true,
+      "includeConfigTables": true,
+      "clearTarget": true,
+      "dryRun": false
+    },
+    "tables": [
+      {
+        "tableName": "TalentProfiles",
+        "scanned": 1200,
+        "written": 1200
+      },
+      {
+        "tableName": "Requirements",
+        "scanned": 85,
+        "written": 85
+      }
+    ],
+    "s3": 1200,
+    "error": null,
+    "createdAt": "2026-06-09T10:30:00Z",
+    "startedAt": "2026-06-09T10:30:01Z",
+    "completedAt": null
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `jobId` | string | Unique job identifier |
+| `status` | string | `pending` \| `running` \| `completed` \| `error` |
+| `source` | string | Source stage (always `prod`) |
+| `target` | string | Target stage (`dev` or `qa`) |
+| `options` | object | The clone options used for this run |
+| `tables` | array | Per-table progress: `tableName`, `scanned`, `written` |
+| `s3` | number | Count of S3 files copied |
+| `error` | string \| null | Error message if `status` is `error`; otherwise `null` |
+| `createdAt` | string | ISO 8601 timestamp when the job was created |
+| `startedAt` | string \| null | ISO 8601 timestamp when the worker started; `null` if still `pending` |
+| `completedAt` | string \| null | ISO 8601 timestamp when the job finished; `null` if not yet complete |
+
+**Error Responses:**
+| Status | Code | Description |
+|--------|------|-------------|
+| 404 | NOT_FOUND | Job not found |
+| 403 | FORBIDDEN | Stage is `prod` |
+
+---
+
 ## Pricing Endpoints
 
 ### PUT /recruiter/candidate-ctc
