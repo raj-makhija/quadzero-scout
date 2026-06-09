@@ -23,6 +23,7 @@ interface Config {
     recruiterTasksTable: string;
     requirementMatchCacheTable: string;
     requirementLlmRerankTable: string;
+    cloneJobsTable: string;
   };
   s3: {
     resumesBucket: string;
@@ -36,6 +37,7 @@ interface Config {
     bulkImportWorkerName: string;
     notifyWorkerName: string;
     llmRerankWorkerName: string;
+    cloneDataWorkerName: string;
   };
   featureFlags: {
     llmRerankEnabled: boolean;
@@ -97,6 +99,7 @@ export const config: Config = {
     recruiterTasksTable: getEnvVar('DYNAMODB_TABLE_RECRUITER_TASKS', 'RecruiterTasks-dev'),
     requirementMatchCacheTable: getEnvVar('DYNAMODB_TABLE_REQUIREMENT_MATCH_CACHE', 'RequirementMatchCache-dev'),
     requirementLlmRerankTable: getEnvVar('DYNAMODB_TABLE_REQUIREMENT_LLM_RERANK', 'RequirementLlmRerank-dev'),
+    cloneJobsTable: getEnvVar('DYNAMODB_TABLE_CLONE_JOBS', 'CloneJobs-dev'),
   },
   s3: {
     resumesBucket: getEnvVar('S3_BUCKET_RESUMES', 'quadzero-scout-resumes-dev'),
@@ -110,6 +113,7 @@ export const config: Config = {
     bulkImportWorkerName: getEnvVar('BULK_IMPORT_WORKER_NAME', ''),
     notifyWorkerName: getEnvVar('NOTIFY_WORKER_NAME', ''),
     llmRerankWorkerName: getEnvVar('LLM_RERANK_WORKER_NAME', ''),
+    cloneDataWorkerName: getEnvVar('CLONE_DATA_WORKER_NAME', ''),
   },
   featureFlags: {
     llmRerankEnabled: getEnvVar('LLM_RERANK_ENABLED', 'false') === 'true',

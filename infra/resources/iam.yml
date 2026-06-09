@@ -40,6 +40,10 @@ dynamoDbPolicy:
     - !Sub '${RecruiterTasksTable.Arn}/index/*'
     - !GetAtt RequirementMatchCacheTable.Arn
     - !GetAtt RequirementLlmRerankTable.Arn
+    # Clone Prod Data job-status table (ticket #303). Without this grant the
+    # start handler's createCloneJob (and the worker's get/updateCloneJob) get
+    # AccessDenied at runtime, surfacing as a 500 in the admin UI.
+    - !GetAtt CloneJobsTable.Arn
 
 # S3 Policy
 s3Policy:
@@ -64,6 +68,7 @@ lambdaInvokePolicy:
     - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-bulkImportWorker'
     - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-notifyWorker'
     - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-llmRerankWorker'
+    - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-cloneDataWorker'
 
 # SES Policy (for sending notification emails)
 sesPolicy:
