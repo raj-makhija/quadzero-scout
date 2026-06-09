@@ -18,6 +18,10 @@ type ViewMode = 'input' | 'requirement_details' | 'criteria' | 'results';
 
 const STORAGE_KEY = 'scout_recruiter_search';
 const PAGE_SIZE = 20;
+// LLM re-rank poll budget (#239): ~40s of coverage (10 × 4s) so the ~20s async
+// compute reliably lands within the view before we fall back to deterministic.
+const RERANK_MAX_POLLS = 10;
+const RERANK_POLL_INTERVAL_MS = 4000;
 
 export default function RecruiterSearchPage() {
   const router = useRouter();
@@ -176,16 +180,28 @@ export default function RecruiterSearchPage() {
   }, [sortBy, sourceRequirementId]);
 
   // Progressive enhancement (#239): when the read path reports a pending LLM
-  // recompute, re-fetch shortly to pick up the LLM-ordered list within the same
-  // view session. Bounded poll budget so a perpetually-stale entry can't loop.
+  // recompute, re-fetch until the LLM-ordered list lands. The batched compute
+  // takes ~20s, so poll across ~40s (10 × 4s); polling never re-triggers the
+  // compute thanks to the backend in-flight claim guard. If it still hasn't
+  // landed, stop showing "Refining…" and fall back to the deterministic order
+  // rather than spinning forever.
   useEffect(() => {
     if (!llmPending || !sourceRequirementId || sortBy !== 'matchScore') return;
-    if (rerankPollCount.current >= 3) return;
-    const timer = setTimeout(() => {
+    // setInterval (not a per-poll setTimeout): `llmPending` stays true the whole
+    // time the compute is in flight, so the effect won't re-run between polls —
+    // an interval keeps the ~4s cadence going until the reorder lands or the
+    // budget is spent.
+    const id = setInterval(() => {
       rerankPollCount.current += 1;
+      if (rerankPollCount.current > RERANK_MAX_POLLS) {
+        // Compute didn't land in time — stop showing "Refining…" and fall back
+        // to deterministic order rather than spinning forever.
+        setLlmPending(false);
+        return;
+      }
       runSearch(searchCriteria, undefined, undefined, false, showNotSuitable, true);
-    }, 3000);
-    return () => clearTimeout(timer);
+    }, RERANK_POLL_INTERVAL_MS);
+    return () => clearInterval(id);
   }, [llmPending, sourceRequirementId, sortBy, searchCriteria, showNotSuitable, runSearch]);
 
   // Run auto-search and clean up sessionStorage for prefilled state

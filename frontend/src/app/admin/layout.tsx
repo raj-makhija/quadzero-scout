@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { Header } from '@/components/Header';
-import { Users, FileText, LayoutDashboard, Upload, ClipboardList, Settings, BarChart3 } from 'lucide-react';
+import { getStage } from '@/lib/environment';
+import { Users, FileText, LayoutDashboard, Upload, ClipboardList, Settings, BarChart3, DatabaseZap } from 'lucide-react';
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -14,6 +15,7 @@ interface AdminLayoutProps {
 export default function AdminLayout({ children }: AdminLayoutProps) {
   const router = useRouter();
   const { data: session, status } = useSession();
+  const stage = getStage();
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -79,6 +81,15 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 <Upload className="w-5 h-5 mr-3" />
                 Bulk Import
               </Link>
+              {stage !== 'prod' && (
+                <Link
+                  href="/admin/clone-data"
+                  className="flex items-center px-4 py-2 text-sm font-medium rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"
+                >
+                  <DatabaseZap className="w-5 h-5 mr-3" />
+                  Clone Prod Data
+                </Link>
+              )}
               <Link
                 href="/admin/audit-logs"
                 className="flex items-center px-4 py-2 text-sm font-medium rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"

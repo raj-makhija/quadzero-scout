@@ -304,6 +304,7 @@ export interface CandidateSearchResult {
   engagementModel: string;
   currentCtc?: number;
   expectedCtc?: number;
+  expectedCtcType?: string;
   matchScore: number;
   matchDetails: {
     mustHaveMatched: string[];
@@ -330,11 +331,15 @@ export interface CandidateSearchResult {
   hackerrankScore?: number;
   notInterested?: boolean;
   notInterestedAt?: string;
+  roles?: string[];
+  headline?: string;
   isShortlisted?: boolean;
   isNotSuitable?: boolean;
   subVendorId?: string;
   subVendorName?: string;
   subVendorContactPerson?: string;
+  subVendorContactPhone?: string;
+  subVendorContactEmail?: string;
   // LLM tie-break rationale — present only when an LLM re-rank is applied (#239).
   rationale?: string;
 }
@@ -426,6 +431,45 @@ export interface BulkImportBatchItem {
   completed_count: number;
   failed_count: number;
   files: BulkImportFileEntry[];
+  ttl?: number;
+}
+
+// Clone Prod Data job (admin-triggered prod → dev/qa clone, ticket #303)
+export type CloneJobStatus = 'processing' | 'completed' | 'partial' | 'error';
+
+export interface CloneTableResult {
+  table: string;
+  scanned: number;
+  written: number;
+  failed: number;
+}
+
+export interface CloneS3Result {
+  copied: number;
+  failed: number;
+}
+
+// Per-run clone options (ticket #303). Mirror the original CLI script's flags,
+// exposed in the admin UI. Positive framing: `true` = include / perform.
+export interface CloneOptions {
+  includeS3: boolean; // copy the prod resumes bucket (script: !--skip-s3)
+  includeConfigTables: boolean; // copy Prompts + PricingConfig (script: !--skip-config)
+  clearTarget: boolean; // wipe target before copy (script: !--skip-clear)
+  dryRun: boolean; // scan/count only, no writes or deletes (script: --dry-run)
+}
+
+export interface CloneJobItem {
+  job_id: string;
+  status: CloneJobStatus;
+  source: string; // always 'prod'
+  target: string; // current stage (dev|qa), never client-supplied
+  options: CloneOptions;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  tables: CloneTableResult[];
+  s3: CloneS3Result;
+  error?: string;
   ttl?: number;
 }
 
@@ -1453,6 +1497,7 @@ export type AuditAction =
   | 'PRICING_CONFIG_UPDATE'
   | 'PROMPT_UPDATE'
   | 'BULK_IMPORT_START'
+  | 'CLONE_DATA_START'
   | 'SESSION_SETTINGS_UPDATE'
   | 'SHORTLIST_MARK_NOT_SUITABLE'
   | 'SUB_VENDOR_CREATE'

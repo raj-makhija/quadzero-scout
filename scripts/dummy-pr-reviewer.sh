@@ -155,14 +155,31 @@ fi
 
 case "$VERDICT" in
   APPROVE)
-    gh issue comment "$TICKET" --body "[pr-reviewer] APPROVE on PR #$PR.
+    # Docs-only fast-path: if the approved diff is confined to markdown /
+    # docs/** files, skip QA entirely -- squash-merge straight to develop.
+    # The diff is checked here (not just the type:docs label) so a
+    # mislabeled or code-touching ticket falls through to the normal
+    # awaiting-qa (full QA gate) path. An empty/unreadable diff is treated
+    # as NOT docs-only by pl_is_docs_only, so it also falls through safely.
+    DIFF_FILES="$(gh pr diff "$PR" --name-only 2>/dev/null || true)"
+    if printf '%s\n' "$DIFF_FILES" | pl_is_docs_only; then
+      gh issue comment "$TICKET" --body "[pr-reviewer] APPROVE on PR #$PR (docs-only fast-path).
+
+$REVIEW_BODY
+
+Diff is confined to markdown / \`docs/**\` files. Squash-merging straight to develop and marking \`status:qa-approved\` -- no \`pipeline:qa-deploy\`, no QA single-tenant lock, no human \`pipeline:qa-approve\` click. It ships at the next nightly develop->main mirror." >&2
+      "$SCRIPT_DIR/docs-merge.sh" "$TICKET"
+      echo "pr-reviewer -> docs fast-path merge on #$TICKET (PR #$PR merged to develop)" >&2
+    else
+      gh issue comment "$TICKET" --body "[pr-reviewer] APPROVE on PR #$PR.
 
 $REVIEW_BODY
 
 Branch + PR left intact for QA. The change is NOT merged to develop now: \`pipeline:qa-deploy\` merges develop in, re-runs the tests, and deploys it to QA; \`pipeline:qa-approve\` performs the merge to develop." >&2
-    "$SCRIPT_DIR/set-field.sh" "$TICKET" "Pipeline Status" awaiting-qa
-    "$SCRIPT_DIR/set-status.sh" "$TICKET" ready-for-qa
-    echo "pr-reviewer -> awaiting-qa on #$TICKET (PR #$PR left open for QA)" >&2
+      "$SCRIPT_DIR/set-field.sh" "$TICKET" "Pipeline Status" awaiting-qa
+      "$SCRIPT_DIR/set-status.sh" "$TICKET" ready-for-qa
+      echo "pr-reviewer -> awaiting-qa on #$TICKET (PR #$PR left open for QA)" >&2
+    fi
     ;;
 
   REQUEST_CHANGES)

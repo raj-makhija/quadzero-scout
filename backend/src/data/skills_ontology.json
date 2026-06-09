@@ -291,6 +291,10 @@
 
     "oracle erp": "oracle_erp",
     "oracle financials": "oracle_erp",
+
+    "clm": "clm",
+    "contract lifecycle management": "clm",
+
     "servicenow": "servicenow",
     "service now": "servicenow",
 
@@ -422,7 +426,7 @@
       "hubspot", "zoho_crm", "dynamics_365"
     ],
     "erp": [
-      "sap", "sap_hana", "oracle_erp", "servicenow"
+      "sap", "sap_hana", "oracle_erp", "servicenow", "clm"
     ],
     "marketing_analytics": [
       "google_analytics", "seo", "sem", "google_ads", "meta_ads",

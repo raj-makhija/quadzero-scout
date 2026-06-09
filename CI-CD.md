@@ -18,6 +18,7 @@ see `docs/two-route-playbook.md`.
 ## Table of Contents
 
 - [1. Overview](#1-overview)
+  - [1.1 Docs-only fast-path](#11-docs-only-fast-path)
 - [2. Architecture](#2-architecture)
   - [2.1 The four agents](#21-the-four-agents)
   - [2.1.1 Model tiering](#211-model-tiering)
@@ -141,6 +142,49 @@ ticket at a time; see §5.7):
   `status:released`.
 - `scripts/back-merge-main.sh` -> after a hotfix, merges `main` into
   `develop` and forces a re-QA of any ticket then in QA.
+
+### 1.1 Docs-only fast-path
+
+`type:docs` tickets whose committed diff is confined to `*.md` or
+`docs/**` files take an abbreviated path through the pipeline that
+bypasses the QA lock and requires no human `pipeline:qa-approve` click:
+
+1. **Tester write (no-op)**: the state machine advances to `tests-pending`
+   as normal, but the tester immediately no-ops — no test plan is
+   generated. A comment is posted and the ticket routes to `dev-pending`.
+
+2. **Developer implements**: the developer agent makes the markdown
+   changes and commits to a normal attempt branch
+   (`docs/ticket-N-attempt-1`).
+
+3. **Tester validate (diff-gated)**: at `validation-pending` the tester
+   inspects the committed diff. If every changed file is `*.md` or under
+   `docs/**`, a `PASS` is posted immediately (no `npm ci && npm test`, no
+   static review) and the ticket routes to `pr-pending`. If the diff
+   touches **any non-docs file**, the full `npm test` + static-review gate
+   runs instead — the `type:docs` label alone is not trusted.
+
+4. **PR-reviewer APPROVE → direct develop merge**: after pr-reviewer
+   `APPROVE`, the diff is re-verified at the pr-reviewer stage. If it is
+   still docs-only, `scripts/docs-merge.sh` squash-merges the PR straight
+   to `develop`, sets `Pipeline Status=merged-to-develop`, and marks
+   `status:qa-approved`. No `status:in-qa`, no `pipeline:qa-deploy`, no
+   human click required.
+
+5. **Nightly mirror**: the ticket ships at the next nightly
+   `develop`→`main` mirror (or break-glass `pipeline:prod-release`),
+   exactly like any other `status:qa-approved` ticket.
+
+**QA lock exclusion**: docs tickets never acquire `status:in-qa`. A
+parallel code ticket can proceed through `pipeline:qa-deploy` without
+conflict — the single-tenant QA lock is never held by a docs ticket.
+
+**Safety gates**: both the tester (validate stage) and the pr-reviewer
+independently re-inspect the diff against the actual file list. A
+`type:docs` ticket with any non-docs file falls through to the full
+tester+QA lifecycle at both checkpoints. An empty diff is also treated
+as non-docs-only. `docs-merge.sh` adds a third guard immediately before
+merging and will refuse if the diff is not docs-only.
 
 ---
 
@@ -1420,7 +1464,8 @@ scripts/
   open-pr.sh                  # PR opener
   dummy-tester.sh             # tester agent (dummy-prefix is legacy)
   dummy-developer.sh          # developer agent
-  dummy-pr-reviewer.sh        # pr-reviewer agent (APPROVE -> awaiting-qa, no merge)
+  dummy-pr-reviewer.sh        # pr-reviewer agent (APPROVE -> awaiting-qa, or docs fast-path merge)
+  docs-merge.sh               # docs fast-path: squash-merges docs-only PR straight to develop (no QA lock)
   qa-deploy.sh                # human: deploy one ticket's branch to QA (single-tenant)
   qa-approve.sh               # human: squash-merge ticket to develop; release QA lock
   qa-reject.sh                # human: reset qa to develop; rework

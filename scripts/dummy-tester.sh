@@ -64,6 +64,21 @@ export PIPELINE_AGENT_MODEL="${PIPELINE_TESTER_MODEL:-claude-sonnet-4-6}"
 case "$MODE" in
   # ----------------------------------------------------------------- write
   write)
+    # Docs fast-path: a type:docs ticket has no behavioral tests to write
+    # for prose, so skip the test-plan agent and hand straight to the
+    # developer. The ticket still passes through tests-pending (manager
+    # primed it here), so the stage is visible; the agent just no-ops.
+    # SAFETY: this is label-only because no diff exists yet. A mislabeled
+    # ticket that actually touches code is caught at the validate stage,
+    # where the committed diff is checked and the full test gate runs.
+    if pl_ticket_is_docs "$TICKET"; then
+      gh issue comment "$TICKET" --body "[tester] Docs-only ticket (\`type:docs\`) -- no behavioral tests to write for prose. Skipping the test plan and handing to the developer. The validate stage re-checks the actual diff and runs the full test gate if it turns out to touch non-docs files." >&2
+      "$SCRIPT_DIR/set-field.sh" "$TICKET" "Agent" developer
+      "$SCRIPT_DIR/set-field.sh" "$TICKET" "Pipeline Status" dev-pending
+      echo "tester -> docs no-op (write); #$TICKET now dev-pending" >&2
+      exit 0
+    fi
+
     if [[ "$USE_REAL_AGENT" != "true" ]]; then
       gh issue comment "$TICKET" --body "[dummy tester] Happy-path + edge-case tests written. Handing to developer." >&2
     else
@@ -136,6 +151,26 @@ PROMPT
     # suite) see the actual diff.
     git fetch origin "$BRANCH" --quiet || true
     git checkout "$BRANCH" >&2
+
+    # Docs fast-path (safety-gated): a type:docs ticket whose COMMITTED diff
+    # is confined to markdown / docs/** files needs no test gate -- prose has
+    # no tests. A type:docs ticket whose diff touches any non-docs file does
+    # NOT qualify and falls through to the full npm-test + static-review gate
+    # below (Fix 4 safety: a mislabeled code ticket still gets the full
+    # tester gate). Unlike the write stage, the diff exists here, so the
+    # check is diff-based, not label-only. An empty/unreadable diff is
+    # treated as NOT docs-only by pl_is_docs_only, so it also falls through.
+    if pl_ticket_is_docs "$TICKET"; then
+      DIFF_FILES="$(git diff --name-only "$BASE_SHA"..HEAD 2>/dev/null || true)"
+      if printf '%s\n' "$DIFF_FILES" | pl_is_docs_only; then
+        gh issue comment "$TICKET" --body "[tester] PASS on \`$BRANCH\` (docs-only fast-path). Diff is confined to markdown / \`docs/**\` files; no test gate needed for prose. Handing back to the developer to open the PR." >&2
+        "$SCRIPT_DIR/set-field.sh" "$TICKET" "Agent" developer
+        "$SCRIPT_DIR/set-field.sh" "$TICKET" "Pipeline Status" pr-pending
+        echo "tester -> docs no-op (validate); #$TICKET now pr-pending" >&2
+        exit 0
+      fi
+      echo "tester: #$TICKET is type:docs but its diff touches non-docs files; running the full validation gate" >&2
+    fi
 
     # Helper: route a FAIL outcome (npm test failure OR claude FAIL)
     # through the same rework path. Argument: the comment body.

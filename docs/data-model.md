@@ -1706,7 +1706,68 @@ For looking up sub-vendors by normalized name (duplicate prevention).
 
 ---
 
-### 16. PipelineActivity
+### 16. RequirementLlmRerank
+
+Stores the LLM tie-break re-rank of a requirement's deterministic top-N candidates. One item per requirement, written fire-and-forget by the `llmRerankWorker` Lambda and read on the requirement-bound search path to overlay LLM scores on the displayed page. Kept separate from `RequirementMatchCache` so the per-entry rationales stay under the 400KB single-item limit.
+
+**Table Configuration:**
+- Table Name: `RequirementLlmRerank-{stage}`
+- Billing Mode: PAY_PER_REQUEST
+- Deletion Policy: Retain
+- Update Replace Policy: Retain
+
+**Primary Key:**
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| requirement_id | String (S) | Partition Key - Requirement UUID |
+
+**Attributes:**
+
+| Attribute | Type | Required | Description |
+|-----------|------|----------|-------------|
+| requirement_id | String | Yes | Requirement ID (PK) |
+| entries | List\<Map\> | Yes | LLM-scored candidate entries (see shape below) |
+| top_n_hash | String | Yes | Hash of the deterministic top-N id list this re-rank was computed for; the search read path serves the stored result only when it matches the freshly computed hash |
+| model | String | Yes | Model name that served the re-rank call (reflects the provider that actually answered, including after a rate-limit fallback) |
+| prompt_version | Number \| null | Yes | Version of the `candidate_reranker` prompt used; `null` when the in-code fallback prompt was used |
+| computed_at | String | Yes | ISO 8601 timestamp of when the re-rank was computed |
+
+**entries item shape:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| candidate_id | String | Candidate UUID |
+| llmScore | Number | LLM-assigned tie-break score |
+| rationale | String | Short natural-language justification for the score |
+
+**Example Item:**
+```json
+{
+  "requirement_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "entries": [
+    { "candidate_id": "cand_aaa111bbb222", "llmScore": 94, "rationale": "Direct match on required Kafka + Spark experience; led a comparable migration." },
+    { "candidate_id": "cand_ccc333ddd444", "llmScore": 88, "rationale": "Strong backend fit but no direct streaming-platform exposure." },
+    { "candidate_id": "cand_eee555fff666", "llmScore": 79, "rationale": "Relevant domain, fewer years on the core required stack." }
+  ],
+  "top_n_hash": "9f2c1ab47de03b6e",
+  "model": "gemini-2.0-flash",
+  "prompt_version": 3,
+  "computed_at": "2026-06-01T08:05:00Z"
+}
+```
+
+**Global Secondary Indexes:** None — store-only table accessed exclusively by primary key.
+
+**Access Patterns:**
+
+| Operation | Access Pattern | Index |
+|-----------|---------------|-------|
+| Get stored re-rank | GetItem by requirement_id | Primary |
+| Store/refresh re-rank | PutItem (atomic full overwrite) | Primary |
+
+---
+
+### 17. PipelineActivity
 
 Stores activity log entries for the post-shortlisting candidate pipeline. Each activity records a discrete event (stage change, feedback, interview, note, etc.) against a requirement-candidate pair.
 
