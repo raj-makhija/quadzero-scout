@@ -1050,6 +1050,49 @@ A read-only, unauthenticated page at `/vendor/requirements` that lists open posi
 - `frontend/src/app/vendor/` — Vendor-facing pages (no auth required)
 - `frontend/src/components/VendorHeader.tsx` — Minimal branded header
 
+## Admin Features
+
+### Clone Prod Data
+
+A self-service admin feature that clones all production data (DynamoDB tables and S3 resume files) to the current environment. Available on **DEV and QA stages only**.
+
+**Availability:**
+Three-layer defense prevents accidental execution in production:
+1. **UI gate**: The "Clone Prod Data" button is only rendered when `getStage() !== 'prod'`.
+2. **API gate**: The handler returns 403 if `config.stage === 'prod'`.
+3. **IAM gate**: The `cloneDataWorker` and `cloneDataStatus` Lambdas are excluded from the prod stack via the `IsNotProd` CloudFormation Condition.
+
+**Purpose & behavior:**
+Copies all data from the prod environment to the current stage. The clone is **destructive by default** — target tables are cleared before copying (configurable via `clearTarget: false` for incremental mode). S3 resume files are also copied unless opted out via `includeS3: false`.
+
+**Scope:**
+9 DynamoDB tables are cloned: TalentProfiles, Requirements, Shortlists, SavedSearches, BulkImportBatches, Clients, CandidateScreenings, Prompts, PricingConfig.
+
+The **Users table is explicitly excluded** — prod credentials and PII must not reach lower environments.
+
+S3 resume bucket is included by default.
+
+**Clone options (all default to full clone):**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `includeS3` | `true` | Include resume bucket copy |
+| `includeConfigTables` | `true` | Include Prompts and PricingConfig tables |
+| `clearTarget` | `true` | Clear target tables before copy; set `false` for incremental mode |
+| `dryRun` | `false` | Scan and count only — no writes, deletes, or copies |
+
+**Async execution:**
+The clone runs as a long-duration Lambda worker (~900s timeout). The initiating API call returns immediately with a `jobId`. The admin UI polls `GET /admin/clone-data/status/{jobId}` for progress, receiving per-table scanned/written counts, S3 copy count, and overall job status.
+
+**Audit logging:**
+Every clone start is recorded as a `CLONE_DATA_START` audit event with metadata including source stage, target stage, and the options used.
+
+**Infrastructure:**
+- New `CloneJobs-<stage>` DynamoDB table (small, with TTL) stores job status records during and after execution.
+- New cross-stage IAM policy grants dev/qa Lambdas read-only access to prod resources: `Scan`, `Query`, `GetItem`, `BatchGetItem` on prod DynamoDB tables, and `ListBucket`/`GetObject` on the prod S3 resume bucket. **No write permissions to prod are granted.**
+
+---
+
 ## Scalability Considerations
 
 ### DynamoDB
