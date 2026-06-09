@@ -40,6 +40,7 @@ import {
   getLlmRerank,
   putLlmRerank,
   deleteLlmRerank,
+  claimLlmRerankComputation,
   putMatchCache,
   getMatchCache,
   deleteMatchCache,
@@ -174,5 +175,32 @@ describe('LLM re-rank access layer', () => {
     await deleteMatchCache('req_1');
     expect(await getMatchCache('req_1')).toBeNull();
     expect(await getLlmRerank('req_1')).toEqual({ requirement_id: 'req_1', ...sampleRerank });
+  });
+
+  describe('claimLlmRerankComputation — in-flight guard', () => {
+    it('returns true and writes a conditional "computing" claim when the claim is won', async () => {
+      const won = await claimLlmRerankComputation('req_1', 'hash_x', 60);
+      expect(won).toBe(true);
+      const put = mockSend.mock.calls.find((c) => (c[0] as MockCommand).__type === 'Put')![0] as MockCommand & {
+        input: { Item: Record<string, unknown>; ConditionExpression?: string };
+      };
+      expect(put.input.Item.status).toBe('computing');
+      expect(put.input.Item.top_n_hash).toBe('hash_x');
+      expect(put.input.ConditionExpression).toContain('attribute_not_exists');
+    });
+
+    it('returns false (does not throw) when a fresh claim already exists', async () => {
+      mockSend.mockImplementationOnce(async () => {
+        throw Object.assign(new Error('condition failed'), { name: 'ConditionalCheckFailedException' });
+      });
+      expect(await claimLlmRerankComputation('req_1', 'hash_x', 60)).toBe(false);
+    });
+
+    it('rethrows non-conditional errors', async () => {
+      mockSend.mockImplementationOnce(async () => {
+        throw new Error('network boom');
+      });
+      await expect(claimLlmRerankComputation('req_1', 'hash_x', 60)).rejects.toThrow('network boom');
+    });
   });
 });

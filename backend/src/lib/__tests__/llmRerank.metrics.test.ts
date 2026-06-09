@@ -5,12 +5,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // ---------------------------------------------------------------------------
 
 const mockGetLlmRerank = vi.fn();
+const mockClaimLlmRerank = vi.fn();
 const mockInvokeLambdaAsync = vi.fn();
 const mockGetRerankSignature = vi.fn();
 const mockPutLlmRerankMetric = vi.fn();
 
 vi.mock('../dynamodb.js', () => ({
   getLlmRerank: (...a: unknown[]) => mockGetLlmRerank(...a),
+  claimLlmRerankComputation: (...a: unknown[]) => mockClaimLlmRerank(...a),
 }));
 
 vi.mock('../lambdaInvoke.js', () => ({
@@ -61,6 +63,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockPutLlmRerankMetric.mockResolvedValue(undefined);
   mockInvokeLambdaAsync.mockResolvedValue(undefined);
+  mockClaimLlmRerank.mockResolvedValue(true); // default: this view wins the claim
   mockGetRerankSignature.mockResolvedValue({ model: 'gemini-2.0-flash', promptVersion: 1 });
   config.featureFlags.llmRerankEnabled = true;
 });
@@ -100,6 +103,30 @@ describe('applyLlmRerankOverlay — cache-miss metric', () => {
     expect(result.pending).toBe(true);
 
     expect(mockPutLlmRerankMetric).toHaveBeenCalledWith('CacheMiss', 1, 'Count');
+  });
+});
+
+describe('applyLlmRerankOverlay — in-flight claim guard', () => {
+  it('invokes the worker once when this view wins the claim', async () => {
+    mockGetLlmRerank.mockResolvedValue(null);
+    mockClaimLlmRerank.mockResolvedValue(true);
+
+    const result = await applyLlmRerankOverlay('req-1', topNIds, page);
+
+    expect(result.pending).toBe(true);
+    expect(mockClaimLlmRerank).toHaveBeenCalledTimes(1);
+    expect(mockInvokeLambdaAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT invoke the worker when another view already holds the claim', async () => {
+    mockGetLlmRerank.mockResolvedValue(null);
+    mockClaimLlmRerank.mockResolvedValue(false);
+
+    const result = await applyLlmRerankOverlay('req-1', topNIds, page);
+
+    // Still pending (compute is in flight elsewhere), but no duplicate LLM call.
+    expect(result.pending).toBe(true);
+    expect(mockInvokeLambdaAsync).not.toHaveBeenCalled();
   });
 });
 
