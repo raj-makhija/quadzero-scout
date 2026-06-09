@@ -50,6 +50,8 @@ provider:
     DYNAMODB_TABLE_BULK_IMPORT_BATCHES: ${self:custom.bulkImportBatchesTable}
     BULK_IMPORT_WORKER_NAME: ${self:service}-${self:provider.stage}-bulkImportWorker
     NOTIFY_WORKER_NAME: ${self:service}-${self:provider.stage}-notifyWorker
+    LLM_RERANK_WORKER_NAME: ${self:service}-${self:provider.stage}-llmRerankWorker
+    LLM_RERANK_ENABLED: ${ssm:/quadzero-scout/${self:provider.stage}/LLM_RERANK_ENABLED, env:LLM_RERANK_ENABLED, 'false'}
     SES_SENDER_EMAIL: ${ssm:/quadzero-scout/${self:provider.stage}/SES_SENDER_EMAIL, env:SES_SENDER_EMAIL, ''}
     FRONTEND_BASE_URL: ${ssm:/quadzero-scout/${self:provider.stage}/FRONTEND_BASE_URL, env:FRONTEND_BASE_URL, 'https://dev.scout.quadzero.com'}
     DYNAMODB_TABLE_REQUIREMENTS: ${self:custom.requirementsTable}
@@ -565,6 +567,13 @@ functions:
       - schedule:
           rate: rate(1 day)
           enabled: true
+
+  # LLM tie-break re-rank worker (ticket #239) — invoked fire-and-forget from
+  # the requirement-bound search read path on a stale/cold re-rank. No events.
+  llmRerankWorker:
+    handler: src/handlers/worker/llmRerankWorker.handler
+    timeout: 120
+    memorySize: 512
 
   # Email Ingest Worker (scheduled, no HTTP events)
   emailIngestWorker:

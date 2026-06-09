@@ -810,5 +810,17 @@ export async function rerankTopN(input: RerankTopNInput): Promise<RerankTopNOutp
   };
 }
 
+/**
+ * The live freshness signature for the candidate re-rank (#239): the model and
+ * active prompt version a recompute would stamp onto its stored entry. Read at
+ * search time to gate a cached re-rank WITHOUT firing an LLM call — only a cheap
+ * (cached) prompt lookup.
+ */
+export async function getRerankSignature(): Promise<{ model: string; promptVersion: number | null }> {
+  const provider = getLLMProvider();
+  const { version } = await getPromptContent('candidate_reranker');
+  return { model: modelNameFor(provider), promptVersion: version };
+}
+
 export { BaseLLMProvider };
 export type { LLMMessage, LLMOptions };

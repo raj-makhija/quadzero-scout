@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
 // ---------------------------------------------------------------------------
@@ -289,5 +289,102 @@ describe('RecruiterSearchPage — pagination', () => {
     });
     const callArgs = mockSearchCandidates.mock.calls[0];
     expect(callArgs[4]).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// LLM tie-break overlay — progressive enhancement (#239)
+// ---------------------------------------------------------------------------
+describe('RecruiterSearchPage — LLM tie-break overlay', () => {
+  const REQ_PREFILL = {
+    viewMode: 'results',
+    searchCriteria: { mustHaveSkills: ['react'] },
+    requirementId: 'req-123',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    mockGetClientNames.mockResolvedValue({ clientNames: [], endClients: [] });
+    mockGetRequirement.mockResolvedValue({ requirementId: 'req-123', clientName: 'Test', engagementModel: 'full_time_regular' });
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation((key) =>
+      key === STORAGE_KEY ? JSON.stringify(REQ_PREFILL) : null
+    );
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
+  const det = (overrides = {}) => ({
+    candidates: makeCandidates(2),
+    pagination: { count: 2, hasMore: false },
+    totalMatches: 2,
+    ...overrides,
+  });
+
+  it('renders deterministic results immediately, then applies the LLM reorder after the async poll resolves', async () => {
+    // First response: deterministic order, recompute pending.
+    mockSearchCandidates.mockResolvedValueOnce(
+      det({ candidates: makeCandidates(2), llmRerank: { ranked: false, pending: true } })
+    );
+    // Poll response: LLM-reordered (cand_2 first) with rationale.
+    const reordered = makeCandidates(2).reverse().map((c, i) =>
+      i === 0 ? { ...c, rationale: 'Top pick: deeper systems experience' } : c
+    );
+    mockSearchCandidates.mockResolvedValueOnce(
+      det({ candidates: reordered, llmRerank: { ranked: true, pending: true } })
+    );
+
+    render(<RecruiterSearchPage />);
+
+    // Deterministic results paint without waiting on the LLM.
+    await vi.waitFor(() => {
+      expect(screen.getByText('2 candidates found')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('llm-rank-pending')).toBeInTheDocument();
+    expect(screen.queryByTestId('llm-rationale')).not.toBeInTheDocument();
+    expect(mockSearchCandidates).toHaveBeenCalledTimes(1);
+
+    // The pending poll fires after its delay and the reordered list appears.
+    await vi.advanceTimersByTimeAsync(3100);
+
+    await vi.waitFor(() => {
+      expect(screen.getByTestId('llm-rank-indicator')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('llm-rationale')).toHaveTextContent('Top pick: deeper systems experience');
+    expect(mockSearchCandidates).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows the AI Ranked indicator and rationale immediately when the cache is already fresh', async () => {
+    const withRationale = makeCandidates(2).map((c, i) =>
+      i === 0 ? { ...c, rationale: 'Strongest match' } : c
+    );
+    mockSearchCandidates.mockResolvedValue(
+      det({ candidates: withRationale, llmRerank: { ranked: true, pending: false } })
+    );
+
+    render(<RecruiterSearchPage />);
+
+    await vi.waitFor(() => {
+      expect(screen.getByTestId('llm-rank-indicator')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('llm-rationale')).toHaveTextContent('Strongest match');
+  });
+
+  it('shows the deterministic (fallback) label and no rationale when the overlay is off/fallback', async () => {
+    mockSearchCandidates.mockResolvedValue(
+      det({ candidates: makeCandidates(2), llmRerank: { ranked: false, pending: false } })
+    );
+
+    render(<RecruiterSearchPage />);
+
+    await vi.waitFor(() => {
+      expect(screen.getByTestId('llm-rank-deterministic')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('llm-rank-indicator')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('llm-rationale')).not.toBeInTheDocument();
   });
 });

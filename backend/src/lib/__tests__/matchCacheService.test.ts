@@ -34,6 +34,7 @@ import {
   rebuildAllMatchCaches,
   deleteMatchCache,
 } from '../matchCacheService.js';
+import { getLlmRerank, putLlmRerank } from '../dynamodb.js';
 
 // ---------------------------------------------------------------------------
 // Fixtures / helpers
@@ -277,5 +278,37 @@ describe('deleteMatchCache re-export', () => {
   it('delegates to the dynamodb store delete', async () => {
     await deleteMatchCache('req_1');
     expect(mockDeleteMatchCache).toHaveBeenCalledWith('req_1');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// LLM re-rank regression guard (#239): the cache write paths (candidate ingest,
+// requirement rebuild, nightly full rebuild) must NEVER touch the LLM re-rank
+// store or fire a recompute. Re-rank is strictly a lazy read-path overlay.
+// ---------------------------------------------------------------------------
+
+describe('cache write paths never trigger LLM re-rank', () => {
+  it('updateCacheForCandidates (ingest/edit) makes no LLM re-rank calls', async () => {
+    mockMatchAndRank.mockReturnValue(scored([['cand_1', 0.7]]));
+    await updateCacheForCandidates([cand('cand_1')], [req('req_1')]);
+    expect(vi.mocked(getLlmRerank)).not.toHaveBeenCalled();
+    expect(vi.mocked(putLlmRerank)).not.toHaveBeenCalled();
+  });
+
+  it('rebuildCacheForRequirement makes no LLM re-rank calls', async () => {
+    mockGetAllActiveCandidates.mockResolvedValue([cand('cand_1')]);
+    mockMatchAndRank.mockReturnValue(scored([['cand_1', 0.7]]));
+    await rebuildCacheForRequirement(req('req_1'));
+    expect(vi.mocked(getLlmRerank)).not.toHaveBeenCalled();
+    expect(vi.mocked(putLlmRerank)).not.toHaveBeenCalled();
+  });
+
+  it('rebuildAllMatchCaches (nightly) makes no LLM re-rank calls', async () => {
+    mockGetAllActiveRequirements.mockResolvedValue([req('req_1')]);
+    mockGetAllActiveCandidates.mockResolvedValue([cand('cand_1')]);
+    mockMatchAndRank.mockReturnValue(scored([['cand_1', 0.42]]));
+    await rebuildAllMatchCaches();
+    expect(vi.mocked(getLlmRerank)).not.toHaveBeenCalled();
+    expect(vi.mocked(putLlmRerank)).not.toHaveBeenCalled();
   });
 });
