@@ -83,6 +83,13 @@ textractPolicy:
     - textract:GetDocumentTextDetection
   Resource: '*'
 
+# CloudWatch Metrics Policy (LLM rerank observability)
+cloudwatchMetricsPolicy:
+  Effect: Allow
+  Action:
+    - cloudwatch:PutMetricData
+  Resource: '*'
+
 # SSM Parameter Store Policy
 ssmPolicy:
   Effect: Allow
