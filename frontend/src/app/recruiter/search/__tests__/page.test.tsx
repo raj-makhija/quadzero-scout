@@ -349,13 +349,36 @@ describe('RecruiterSearchPage — LLM tie-break overlay', () => {
     expect(mockSearchCandidates).toHaveBeenCalledTimes(1);
 
     // The pending poll fires after its delay and the reordered list appears.
-    await vi.advanceTimersByTimeAsync(3100);
+    await vi.advanceTimersByTimeAsync(4100);
 
     await vi.waitFor(() => {
       expect(screen.getByTestId('llm-rank-indicator')).toBeInTheDocument();
     });
     expect(screen.getByTestId('llm-rationale')).toHaveTextContent('Top pick: deeper systems experience');
     expect(mockSearchCandidates).toHaveBeenCalledTimes(2);
+  });
+
+  it('falls back to the deterministic label when the reorder never lands within the poll budget', async () => {
+    // Every response stays pending — the compute never lands.
+    mockSearchCandidates.mockResolvedValue(
+      det({ candidates: makeCandidates(2), llmRerank: { ranked: false, pending: true } })
+    );
+
+    render(<RecruiterSearchPage />);
+
+    await vi.waitFor(() => {
+      expect(screen.getByTestId('llm-rank-pending')).toBeInTheDocument();
+    });
+
+    // Exhaust the ~40s poll budget (10 × 4s) without the rerank landing.
+    await vi.advanceTimersByTimeAsync(45000);
+
+    await vi.waitFor(() => {
+      expect(screen.getByTestId('llm-rank-deterministic')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('llm-rank-pending')).not.toBeInTheDocument();
+    // 1 initial search + at most 10 polls — bounded, no infinite loop.
+    expect(mockSearchCandidates.mock.calls.length).toBeLessThanOrEqual(11);
   });
 
   it('shows the AI Ranked indicator and rationale immediately when the cache is already fresh', async () => {
