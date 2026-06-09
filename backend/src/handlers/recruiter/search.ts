@@ -9,6 +9,7 @@ import {
   getCandidatesByIds,
 } from '../../lib/dynamodb.js';
 import { matchAndRankCandidates, type MatchCriteria } from '../../lib/candidateMatching.js';
+import { applyLlmRerankOverlay, RERANK_TOP_N } from '../../lib/llmRerank.js';
 import type { MatchDetails } from '../../lib/matchScoring.js';
 import { withOptionalAuth, type OptionalAuthEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
@@ -156,6 +157,7 @@ async function handleRequest(
 
     let pageCandidates: CandidateSearchResult[];
     let totalMatches: number;
+    let llmRerank: { ranked: boolean; pending: boolean } | undefined;
 
     if (requirementId && cached) {
       // ── Cache read path ───────────────────────────────────────────────────
@@ -203,6 +205,17 @@ async function handleRequest(
         );
       } else if (sortBy === 'experience') {
         pageCandidates.sort((a, b) => b.totalExperience - a.totalExperience);
+      } else {
+        // matchScore order (default): overlay the lazy LLM tie-break (#239) on
+        // the displayed page. Non-fatal — any error serves deterministic order.
+        try {
+          const topNIds = filtered.slice(0, RERANK_TOP_N).map((e) => e.candidate_id);
+          const overlay = await applyLlmRerankOverlay(requirementId, topNIds, pageCandidates);
+          pageCandidates = overlay.page;
+          llmRerank = { ranked: overlay.ranked, pending: overlay.pending };
+        } catch (err) {
+          console.error('LLM rerank overlay failed, serving deterministic order:', err);
+        }
       }
     } else {
       // ── Live-scan path ────────────────────────────────────────────────────
@@ -297,6 +310,7 @@ async function handleRequest(
         lastEvaluatedKey: encodedNextKey,
       },
       totalMatches,
+      ...(llmRerank ? { llmRerank } : {}),
     };
 
     if (event.auth) {

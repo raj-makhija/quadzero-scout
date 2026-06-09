@@ -35,6 +35,10 @@ interface Config {
     formatResumeWorkerName: string;
     bulkImportWorkerName: string;
     notifyWorkerName: string;
+    llmRerankWorkerName: string;
+  };
+  featureFlags: {
+    llmRerankEnabled: boolean;
   };
   email: {
     senderEmail: string;
@@ -105,6 +109,10 @@ export const config: Config = {
     formatResumeWorkerName: getEnvVar('FORMAT_RESUME_WORKER_NAME', ''),
     bulkImportWorkerName: getEnvVar('BULK_IMPORT_WORKER_NAME', ''),
     notifyWorkerName: getEnvVar('NOTIFY_WORKER_NAME', ''),
+    llmRerankWorkerName: getEnvVar('LLM_RERANK_WORKER_NAME', ''),
+  },
+  featureFlags: {
+    llmRerankEnabled: getEnvVar('LLM_RERANK_ENABLED', 'false') === 'true',
   },
   email: {
     senderEmail: getEnvVar('SES_SENDER_EMAIL', ''),
