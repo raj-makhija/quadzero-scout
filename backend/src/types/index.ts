@@ -304,6 +304,7 @@ export interface CandidateSearchResult {
   engagementModel: string;
   currentCtc?: number;
   expectedCtc?: number;
+  expectedCtcType?: string;
   matchScore: number;
   matchDetails: {
     mustHaveMatched: string[];
@@ -330,11 +331,15 @@ export interface CandidateSearchResult {
   hackerrankScore?: number;
   notInterested?: boolean;
   notInterestedAt?: string;
+  roles?: string[];
+  headline?: string;
   isShortlisted?: boolean;
   isNotSuitable?: boolean;
   subVendorId?: string;
   subVendorName?: string;
   subVendorContactPerson?: string;
+  subVendorContactPhone?: string;
+  subVendorContactEmail?: string;
   // LLM tie-break rationale — present only when an LLM re-rank is applied (#239).
   rationale?: string;
 }
