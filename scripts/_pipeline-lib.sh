@@ -118,6 +118,29 @@ pl_type_from_labels() {
   printf '%s' "$types"
 }
 
+# Return 0 if the ticket carries the `type:docs` label, 1 otherwise.
+pl_ticket_is_docs() {
+  local issue="$1"
+  gh issue view "$issue" --json labels -q '.labels[].name' 2>/dev/null \
+    | grep -qx 'type:docs'
+}
+
+# Read a newline-separated list of file paths on stdin and return 0 only if
+# the list is NON-EMPTY and every path is a docs file: a markdown file
+# (case-insensitive *.md) or anything under a `docs/` directory at any depth.
+#
+# An EMPTY list returns 1 (NOT docs-only). This is the safe fallback: if a
+# diff can't be fetched (e.g. no PR/branch yet), the caller must take the
+# full tester + QA lifecycle rather than silently skipping the QA gate.
+pl_is_docs_only() {
+  local files non_docs
+  files="$(sed '/^[[:space:]]*$/d')"
+  [[ -z "$files" ]] && return 1
+  non_docs="$(printf '%s\n' "$files" | grep -viE '\.md$|(^|/)docs/' || true)"
+  [[ -n "$non_docs" ]] && return 1
+  return 0
+}
+
 # Abort if the working tree has uncommitted changes. Respects gitignore.
 # Tolerates the tsbuildinfo noise by filtering well-known transient paths.
 pl_require_clean_tree() {
