@@ -258,6 +258,83 @@ the Function URL, allowing the LLM parsing up to 60 seconds.
      │                │                │                │                │
 ```
 
+### Recruiter Candidate Search Flow
+
+When a recruiter triggers a candidate search (via the requirement detail page or the ad-hoc search UI), the `POST /recruiter/search` handler routes the request through one of two paths depending on whether a `requirementId` is present and whether a warm cache exists for it.
+
+**Live overlays — always fresh, regardless of path:**
+On every request, `getPlacedCandidateIds()` fetches the set of placed candidates (`pipeline_stage = 'joined'`) and `getShortlistsForRequirement()` fetches the current shortlist and not-suitable status for the requirement. These are never read from the cache so that exclusions and statuses are always accurate even when the ranked list itself is served from cache.
+
+**Warm-cache path (requirement-bound, cache hit):**
+When `requirementId` is provided and `getMatchCache(requirementId)` returns a ranked list, the handler:
+1. Sorts the cached `RankedMatchEntry[]` by `rank` ascending (= match score descending).
+2. Applies live overlays (placed-candidate exclusion, not-suitable filtering) to the id-list *before* fetching candidate details so that `totalMatches` and pagination counts stay correct without loading the full corpus.
+3. Slices the filtered id-list to the requested page and fetches only those rows via `getCandidatesByIds` (DynamoDB `BatchGet`).
+4. Re-runs `matchAndRankCandidates` on the page (≤ `pageSize` candidates) to regenerate `matchDetails`; the score used for ordering and display still comes from the cache.
+
+**Ad-hoc path (no `requirementId`) and cold-cache fallback:**
+When `requirementId` is absent, or when `getMatchCache` returns `null` (cache has not been built yet or was invalidated), the handler falls back to a full live scan: `searchCandidates()` performs a DynamoDB scan with filter expressions, and `matchAndRankCandidates` scores and ranks the entire result set in memory before slicing the page.
+
+**Sorting modes and their scope:**
+- `matchScore` (default): preserves the cache rank order for the full ranked list; on the live-scan path the scorer determines the order directly.
+- `lastUpdated` and `experience`: valid only on the resolved page — after the page is fetched via `BatchGet` (cache path) or sliced from the in-memory result (live-scan path), these modes re-sort the page candidates only. They do **not** re-order the full ranked list in the cache.
+
+**Removed symbols:**
+The previous implementation kept a module-level `Map` inside `search.ts` as an in-memory LRU. All three associated symbols — `searchCache`, `SEARCH_CACHE_TTL`, and `_clearSearchCache` — were removed when the `RequirementMatchCache` DynamoDB table replaced them (ticket #234 / #235). The DynamoDB-backed cache is maintained on candidate and requirement writes so the ranked list is always fresh when the handler reads it.
+
+```
+Warm-cache path (requirementId present, cache hit)
+──────────────────────────────────────────────────
+
+Recruiter  Frontend   Lambda (search)       DynamoDB
+    │          │              │                  │
+    │ Search   │              │                  │
+    │─────────>│              │                  │
+    │          │ POST /search │                  │
+    │          │─────────────>│                  │
+    │          │              │ getPlacedCandidateIds()
+    │          │              │─────────────────>│
+    │          │              │<─────────────────│
+    │          │              │ getShortlistsForRequirement()
+    │          │              │─────────────────>│
+    │          │              │<─────────────────│
+    │          │              │ getMatchCache(reqId)
+    │          │              │─────────────────>│
+    │          │              │  ranked id-list  │
+    │          │              │<─────────────────│
+    │          │              │                  │
+    │          │              │ apply live overlays to id-list
+    │          │              │ slice page, getCandidatesByIds()
+    │          │              │─────────────────>│ (BatchGet)
+    │          │              │<─────────────────│
+    │          │              │                  │
+    │          │              │ re-score page for matchDetails
+    │          │<─────────────│                  │
+    │<─────────│              │                  │
+
+
+Ad-hoc path (no requirementId) or cold-cache fallback (cache miss)
+──────────────────────────────────────────────────────────────────
+
+Recruiter  Frontend   Lambda (search)       DynamoDB
+    │          │              │                  │
+    │          │ POST /search │                  │
+    │          │─────────────>│                  │
+    │          │              │ getPlacedCandidateIds()
+    │          │              │─────────────────>│
+    │          │              │<─────────────────│
+    │          │              │ getMatchCache → null (or no requirementId)
+    │          │              │                  │
+    │          │              │ searchCandidates() (DynamoDB scan + filters)
+    │          │              │─────────────────>│
+    │          │              │<─────────────────│
+    │          │              │                  │
+    │          │              │ matchAndRankCandidates() (full in-memory score)
+    │          │              │ apply live overlays, slice page
+    │          │<─────────────│                  │
+    │<─────────│              │                  │
+```
+
 ### Requirement Matching & Shortlisting Flow
 
 ```
@@ -360,14 +437,16 @@ Single Upload:
           └─► notificationService.notifyMatchingRecruiters([id])
                 ├─► getAllActiveRequirements()           (DynamoDB scan)
                 ├─► calculateMatchScore() per requirement
+                ├─► upsert RequirementMatchCache per active requirement  ← unconditional; not gated on email config
                 ├─► group matches by requirement
                 └─► sendNewProfilesNotificationEmail()   (AWS SES) × (requirements × recruiters)
+                      (skipped if no recruiters are opted in for that requirement)
 
 Bulk Upload:
   bulkImportWorker (when all files processed)
     └─► finalizeBulkImportBatch()
     └─► notificationService.notifyMatchingRecruiters([...completedCandidateIds])
-          ├─► same matching logic as above
+          ├─► same matching logic as above (cache upsert is unconditional)
           └─► one email per (requirement, recruiter) covering all matching candidates
 ```
 
@@ -379,6 +458,9 @@ Bulk Upload:
 - Notification toggle stored in `notify_recruiter_ids` on the `Requirements` table item
 - Creator is opted in by default; any recruiter can opt in/out via `PUT /recruiter/requirements/{id}/notify`
 - Pre-deploy requirement: sender email identity must be verified in AWS SES (ap-south-1)
+- **`RequirementMatchCache` is maintained unconditionally** — the cache upsert runs for every active requirement on every ingest event, regardless of whether any recruiter has notifications enabled. Email dispatch and cache maintenance are independent concerns.
+- **`updateCandidateCtc` and `updateCandidateCustomFields`** both trigger a match-cache update: a read-modify-write upsert that refreshes the candidate's `{ candidate_id, rank, score }` entry in every active requirement's cache with the latest computed rank and score.
+- Cache entries store only stable ranking data: `{ candidate_id, rank, score }`. Volatile per-candidate state (screening status, CTC flags) is intentionally absent — it is applied as a read-time overlay when search results or notification lists are built from the cache.
 
 **Email content:**
 - Subject: "New profile match(es): {requirement label}"
@@ -386,6 +468,19 @@ Bulk Upload:
 - Profile links are capped at 10 per email; additional matches show an "and N more..." note
 - A "View Requirement" button links to the requirement detail page
 - Both HTML and plain-text versions are sent
+
+### Requirement Lifecycle & Match-Cache Maintenance
+
+The `RequirementMatchCache` table is kept in sync automatically at every requirement lifecycle event:
+
+| Trigger | Cache Effect |
+|---------|-------------|
+| Requirement **created** | Full active-candidate scan; builds the cache from scratch for the new requirement using the initial scoring criteria |
+| Requirement **criteria edited** | Full cache rebuild: all existing entries for the requirement are replaced using the updated scoring criteria |
+| Requirement **reopened** (`closed_on_hold` → `active`) | Full cache rebuild; equivalent to creation — re-scores all currently active candidates against the requirement |
+| Requirement **closed** (`active` → `closed_on_hold`) or **deleted** | Drops the entire cache entry for that requirement (all candidate rows removed) |
+
+Cache entries store only stable ranking data: `{ candidate_id, rank, score }`. Volatile per-candidate state — screening status, CTC flags, availability — is intentionally absent from the stored cache and applied as a read-time overlay when search results or notification lists are built.
 
 ### Recruiter Candidate Screening Flow
 

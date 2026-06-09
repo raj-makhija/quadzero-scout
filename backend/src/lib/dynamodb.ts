@@ -1376,16 +1376,15 @@ export async function getAllActiveCandidates(): Promise<CandidateItem[]> {
   let currentKey: Record<string, unknown> | undefined;
 
   do {
+    // No is_active filter: candidate profiles never carry that attribute, so
+    // filtering on it returns nothing. This must scan the same universe as the
+    // live searchCandidates path so the match cache stays in parity with it.
     const params: {
       TableName: string;
-      FilterExpression: string;
-      ExpressionAttributeValues: Record<string, unknown>;
       Limit: number;
       ExclusiveStartKey?: Record<string, unknown>;
     } = {
       TableName: config.dynamodb.talentProfilesTable,
-      FilterExpression: 'is_active = :active',
-      ExpressionAttributeValues: { ':active': true },
       Limit: PAGE_SIZE,
     };
 
@@ -2665,4 +2664,48 @@ export async function deleteLlmRerank(requirementId: string): Promise<void> {
       Key: { requirement_id: requirementId },
     })
   );
+}
+
+/**
+ * In-flight guard for the lazy re-rank (#239). The read path calls this before
+ * invoking the compute worker; it conditionally writes a short-lived "computing"
+ * claim and returns whether THIS caller won the claim. Concurrent views polling
+ * the same requirement therefore fire the worker at most once per fresh view,
+ * instead of one LLM call per poll. The claim is overwritten by the worker's
+ * result on success, and reclaimable after `staleSeconds` if a worker died.
+ */
+export async function claimLlmRerankComputation(
+  requirementId: string,
+  topNHash: string,
+  staleSeconds: number
+): Promise<boolean> {
+  const nowMs = Date.now();
+  const claimedAt = new Date(nowMs).toISOString();
+  const staleCutoff = new Date(nowMs - staleSeconds * 1000).toISOString();
+  try {
+    await docClient.send(
+      new PutCommand({
+        TableName: config.dynamodb.requirementLlmRerankTable,
+        Item: {
+          requirement_id: requirementId,
+          top_n_hash: topNHash,
+          status: 'computing',
+          claimed_at: claimedAt,
+        },
+        // Claim unless a *fresh* in-flight claim already exists. Succeeds on a
+        // cold key, a completed result (no status attribute), or a stale claim.
+        // ('status' is a DynamoDB reserved word → aliased.)
+        ConditionExpression:
+          'attribute_not_exists(requirement_id) OR attribute_not_exists(#s) OR #s <> :computing OR claimed_at < :stale',
+        ExpressionAttributeNames: { '#s': 'status' },
+        ExpressionAttributeValues: { ':computing': 'computing', ':stale': staleCutoff },
+      })
+    );
+    return true;
+  } catch (err) {
+    if ((err as { name?: string })?.name === 'ConditionalCheckFailedException') {
+      return false; // another view already claimed the compute — don't double-fire.
+    }
+    throw err;
+  }
 }

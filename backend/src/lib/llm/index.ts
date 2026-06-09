@@ -743,6 +743,7 @@ export interface RerankTopNOutput {
   model: string;
   promptVersion: number | null;
   topNHash: string;
+  usage?: { inputTokens: number; outputTokens: number };
 }
 
 /**
@@ -788,25 +789,42 @@ export async function rerankTopN(input: RerankTopNInput): Promise<RerankTopNOutp
   });
 
   const parsed = servedBy.parseJsonResponse<unknown>(response.content);
-  const validated = LlmRerankOutputSchema.safeParse(parsed);
-  if (!validated.success) {
-    throw new Error(`Candidate re-rank LLM output failed schema validation: ${validated.error.message}`);
-  }
 
-  // Fail fast if the model dropped any candidate — never return a partial result.
-  const returnedIds = new Set(validated.data.map((e) => e.candidate_id));
-  const missing = input.candidates.filter((c) => !returnedIds.has(c.candidate_id));
-  if (missing.length > 0) {
-    throw new Error(
-      `Candidate re-rank LLM omitted ${missing.length} candidate(s): ${missing.map((c) => c.candidate_id).join(', ')}`
+  // Tolerant validation: keep the well-formed entries the model returned and
+  // drop malformed/omitted ones rather than failing the whole batch. A
+  // maxTokens-truncated response (large top-N) would otherwise discard every
+  // score, leaving the read path stuck recomputing ("Refining order…" forever).
+  // Dropped candidates simply retain their deterministic position in the overlay.
+  const requestedIds = new Set(input.candidates.map((c) => c.candidate_id));
+  const seen = new Set<string>();
+  const entries = (Array.isArray(parsed) ? parsed : []).flatMap((raw) => {
+    const r = LlmRerankOutputSchema.element.safeParse(raw);
+    if (!r.success || !requestedIds.has(r.data.candidate_id) || seen.has(r.data.candidate_id)) {
+      return [];
+    }
+    seen.add(r.data.candidate_id);
+    return [r.data];
+  });
+
+  if (entries.length === 0) {
+    throw new Error('Candidate re-rank LLM returned no usable entries');
+  }
+  const dropped = input.candidates.length - entries.length;
+  if (dropped > 0) {
+    console.warn(
+      `[rerankTopN] kept ${entries.length}/${input.candidates.length} candidate scores; ` +
+        `${dropped} dropped (truncated/omitted) and retain deterministic order`
     );
   }
 
   return {
-    entries: validated.data,
+    entries,
     model: modelNameFor(servedBy),
     promptVersion,
     topNHash: input.topNHash,
+    usage: response.usage
+      ? { inputTokens: response.usage.inputTokens, outputTokens: response.usage.outputTokens }
+      : undefined,
   };
 }
 

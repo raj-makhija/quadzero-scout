@@ -97,6 +97,7 @@ provider:
         - ${file(resources/iam.yml):ssmPolicy}
         - ${file(resources/iam.yml):sesPolicy}
         - ${file(resources/iam.yml):textractPolicy}
+        - ${file(resources/iam.yml):cloudwatchMetricsPolicy}
 
 custom:
   corsOrigins:

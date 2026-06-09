@@ -9,6 +9,7 @@ vi.mock('../../lib/dynamodb.js', () => ({
   getLlmRerank: vi.fn().mockResolvedValue(null),
   putLlmRerank: vi.fn().mockResolvedValue(undefined),
   deleteLlmRerank: vi.fn().mockResolvedValue(undefined),
+  claimLlmRerankComputation: vi.fn().mockResolvedValue(true),
   searchCandidates: vi.fn().mockResolvedValue({
     items: [
       {
@@ -152,6 +153,10 @@ vi.mock('../../lib/auth.js', () => ({
 
 vi.mock('../../lib/lambdaInvoke.js', () => ({
   invokeLambdaAsync: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../../lib/cloudwatchMetrics.js', () => ({
+  putLlmRerankMetric: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../../lib/config.js', () => ({

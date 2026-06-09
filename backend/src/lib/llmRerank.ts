@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
 import { config } from './config.js';
-import { getLlmRerank } from './dynamodb.js';
+import { getLlmRerank, claimLlmRerankComputation } from './dynamodb.js';
 import { invokeLambdaAsync } from './lambdaInvoke.js';
 import { getRerankSignature, type RerankCandidateInput } from './llm/index.js';
+import { putLlmRerankMetric } from './cloudwatchMetrics.js';
 import type { CandidateItem, RequirementItem, CandidateSearchResult } from '../types/index.js';
 
 /**
@@ -16,7 +17,14 @@ import type { CandidateItem, RequirementItem, CandidateSearchResult } from '../t
 // Size of the deterministic slice the LLM re-ranks. The freshness hash is taken
 // over this ordered id-set, so any page view of the same requirement gates on
 // the same key regardless of which page slice is displayed.
-export const RERANK_TOP_N = 50;
+// 25 keeps the batched LLM output (a score + rationale per candidate) within the
+// 4096-token response budget; 50 truncated the JSON and failed every rerank.
+export const RERANK_TOP_N = 25;
+
+// How long an in-flight compute "claim" blocks re-invocation. Comfortably above
+// the ~20s batched LLM call, so a live worker is never double-fired, but short
+// enough that a crashed worker's claim is reclaimable on the next view.
+export const RERANK_CLAIM_STALE_SECONDS = 60;
 
 /** Freshness key: sha256 over the ordered top-N candidate ids. */
 export function computeTopNHash(orderedIds: string[]): string {
@@ -88,16 +96,23 @@ export async function applyLlmRerankOverlay(
       // against a stale entry leaking rationale onto the wrong candidate.
       if (entry) c.rationale = entry.rationale;
     }
+    putLlmRerankMetric('CacheHit', 1, 'Count').catch(() => undefined);
     return { page: reordered, ranked: true, pending: false };
   }
 
   // Stale or cold cache → recompute once, async, never blocking the response.
+  // The claim guard makes the worker fire at most once per fresh view even when
+  // the client polls repeatedly while the ~20s compute is in flight (#239).
   if (config.lambda.llmRerankWorkerName) {
-    invokeLambdaAsync(config.lambda.llmRerankWorkerName, {
-      requirementId,
-      candidateIds: topNIds,
-      topNHash,
-    }).catch((err) => console.error('llmRerank worker invoke failed:', err));
+    const claimed = await claimLlmRerankComputation(requirementId, topNHash, RERANK_CLAIM_STALE_SECONDS);
+    if (claimed) {
+      invokeLambdaAsync(config.lambda.llmRerankWorkerName, {
+        requirementId,
+        candidateIds: topNIds,
+        topNHash,
+      }).catch((err) => console.error('llmRerank worker invoke failed:', err));
+    }
   }
+  putLlmRerankMetric('CacheMiss', 1, 'Count').catch(() => undefined);
   return { page, ranked: false, pending: true };
 }

@@ -2,6 +2,7 @@ import { config } from '../../lib/config.js';
 import { getRequirementById, getCandidatesByIds, putLlmRerank } from '../../lib/dynamodb.js';
 import { rerankTopN } from '../../lib/llm/index.js';
 import { buildRequirementJd, buildRerankCandidates } from '../../lib/llmRerank.js';
+import { putLlmRerankMetric } from '../../lib/cloudwatchMetrics.js';
 
 /**
  * LLM tie-break recompute worker (ticket #239).
@@ -23,6 +24,7 @@ export async function handler(event: LlmRerankEvent): Promise<void> {
   // Kill switch — defense in depth; the search path already gates on this.
   if (!config.featureFlags.llmRerankEnabled) {
     console.log('[llmRerankWorker] LLM rerank disabled (LLM_RERANK_ENABLED=false)');
+    await putLlmRerankMetric('KillSwitchDisabled', 1, 'Count');
     return;
   }
 
@@ -51,11 +53,30 @@ export async function handler(event: LlmRerankEvent): Promise<void> {
       return;
     }
 
+    await putLlmRerankMetric('LlmCallCount', 1, 'Count');
+
+    const callStart = Date.now();
     const result = await rerankTopN({
       jobDescription: buildRequirementJd(requirement),
       candidates: buildRerankCandidates(ordered),
       topNHash,
     });
+    const latencyMs = Date.now() - callStart;
+
+    const dimensions = [
+      { Name: 'Model', Value: result.model },
+      { Name: 'Provider', Value: config.llm.provider },
+    ];
+
+    await Promise.all([
+      putLlmRerankMetric('LlmLatencyMs', latencyMs, 'Milliseconds', dimensions),
+      result.usage
+        ? putLlmRerankMetric('InputTokens', result.usage.inputTokens, 'Count', dimensions)
+        : Promise.resolve(),
+      result.usage
+        ? putLlmRerankMetric('OutputTokens', result.usage.outputTokens, 'Count', dimensions)
+        : Promise.resolve(),
+    ]);
 
     await putLlmRerank(requirementId, {
       entries: result.entries,
@@ -68,5 +89,6 @@ export async function handler(event: LlmRerankEvent): Promise<void> {
     console.log(`[llmRerankWorker] stored re-rank for ${requirementId} (${result.entries.length} entries)`);
   } catch (err) {
     console.error(`[llmRerankWorker] failed for ${requirementId}:`, err);
+    await putLlmRerankMetric('FallbackCount', 1, 'Count');
   }
 }
