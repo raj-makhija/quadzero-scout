@@ -566,6 +566,29 @@ Resources:
         - Key: Project
           Value: quadzero-scout
 
+  # RequirementLlmRerank Table (ticket #238 — LLM tie-break re-rank of top-N)
+  # One item per requirement: { candidate_id, llmScore, rationale }[] plus
+  # top_n_hash, model, prompt_version, computed_at. Separate from the match
+  # cache so per-entry rationales stay under the 400KB single-item limit.
+  RequirementLlmRerankTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: ${self:custom.requirementLlmRerankTable}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: requirement_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: requirement_id
+          KeyType: HASH
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Project
+          Value: quadzero-scout
+
 Outputs:
   TalentProfilesTableArn:
     Description: TalentProfiles table ARN
@@ -674,3 +697,9 @@ Outputs:
     Value: !GetAtt RequirementMatchCacheTable.Arn
     Export:
       Name: ${self:provider.stage}-RequirementMatchCacheTableArn
+
+  RequirementLlmRerankTableArn:
+    Description: RequirementLlmRerank table ARN
+    Value: !GetAtt RequirementLlmRerankTable.Arn
+    Export:
+      Name: ${self:provider.stage}-RequirementLlmRerankTableArn

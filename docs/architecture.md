@@ -109,6 +109,8 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │    Screenings  │  │                 │  │                                 │
 │  - Pipeline    │  │                 │  │                                 │
 │    Activity    │  │                 │  │                                 │
+│  - Requirement  │  │                 │  │                                 │
+│    MatchCache   │  │                 │  │                                 │
 └─────────────────┘  └─────────────────┘  └─────────────────────────────────┘
           │
           ▼
@@ -496,6 +498,19 @@ Cache entries store only stable ranking data: `{ candidate_id, rank, score }`. V
 - **Recruiter Activity** (`/recruiter/activity`): Full-page view of the recruiter's own activity with a period selector (Previous Day, Last 7 Days, Last 30 Days, Last Year) and Summary/Detailed tab toggle. The summary tab shows categorized action counts (Searches, Shortlists, Resumes, Screenings, Requirements, Clients). The detailed tab shows a chronological table of individual audit log entries with expandable rows for metadata. Data is fetched from `GET /recruiter/my-activity` which queries the AuditLog table by `USER#{userId}` partition key with date range on the sort key. For day/week periods, both summary and logs are returned; for month/year, only summary is returned by default (uses `ProjectionExpression` for efficiency).
 
 - **Admin Activity Dashboard** (`/admin/activity`): Admin-only page accessible from the admin sidebar and dashboard. Supports two view modes: "All Recruiters" (cumulative) and "Individual" (single recruiter). In cumulative mode, shows an overall activity summary card and a recruiter breakdown table with per-recruiter counts across action categories, sorted by total activity. In individual mode, shows a recruiter selector dropdown populated by `GET /admin/recruiters/list`, the selected recruiter's activity summary, and an optional detailed log view. The cumulative view queries the AuditLog `DateIndex` GSI across date partitions with batched concurrent queries (10 at a time). The individual view uses the same `USER#{userId}` partition key query as the recruiter endpoint.
+
+### Precomputed Match Cache Store
+
+**What it stores:** The `RequirementMatchCache` table holds a pre-ranked list of candidates for each active requirement. Each item records the full sorted result set (`ranked`) — an ordered list of `{ candidate_id, rank, score }` objects — computed at cache-refresh time, along with an `updated_at` timestamp.
+
+**Why it exists:** Scoring all candidates against every active requirement on each search or match-notification event would re-run expensive scoring logic repeatedly for the same requirement. The cache stores the result once per refresh cycle and serves it on read, eliminating redundant re-scoring.
+
+**Scope (store-only, #233):** Ticket #233 provisions the `RequirementMatchCache` table and implements the three access functions. Consumption — wiring the cache into the search handler and notification service — is deferred to follow-up tickets (#234+). At this stage, nothing reads from the cache during normal request handling.
+
+**Access functions** (in `backend/src/lib/dynamodb.ts`):
+- `getMatchCache(requirementId)` — GetItem by `requirement_id`; returns `null` if no cache entry exists.
+- `putMatchCache(requirementId, ranked)` — PutItem (atomic full overwrite); writes the ranked list and sets `updated_at`.
+- `deleteMatchCache(requirementId)` — DeleteItem by `requirement_id`; idempotent (safe to call even if no entry exists).
 
 ### Stack-Abbreviation Expansion
 
@@ -910,7 +925,7 @@ This is a tactical bridge, not the long-term answer. The intended fix is to deco
 | Authentication | NextAuth.js v4 (JWE sessions) |
 | API Gateway | AWS HTTP API (API Gateway v2) |
 | Compute | AWS Lambda (Node.js 20, arm64) |
-| Database | AWS DynamoDB (10 tables) |
+| Database | AWS DynamoDB (11 tables) |
 | Storage | AWS S3 |
 | Text Extraction | pdf-parse (PDF), mammoth (DOCX) |
 | PDF Generation | puppeteer-core + @sparticuz/chromium |

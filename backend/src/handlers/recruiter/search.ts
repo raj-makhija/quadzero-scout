@@ -1,71 +1,78 @@
 import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, SearchRequestSchema } from '../../lib/validation.js';
-import { searchCandidates, getShortlistsForRequirement, getPlacedCandidateIds } from '../../lib/dynamodb.js';
-import { matchAndRankCandidates } from '../../lib/candidateMatching.js';
+import {
+  searchCandidates,
+  getShortlistsForRequirement,
+  getPlacedCandidateIds,
+  getMatchCache,
+  getCandidatesByIds,
+} from '../../lib/dynamodb.js';
+import { matchAndRankCandidates, type MatchCriteria } from '../../lib/candidateMatching.js';
+import { applyLlmRerankOverlay, RERANK_TOP_N } from '../../lib/llmRerank.js';
+import type { MatchDetails } from '../../lib/matchScoring.js';
 import { withOptionalAuth, type OptionalAuthEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
-import type { CandidateSearchResult, SearchResponse, SearchCriteria } from '../../types/index.js';
+import type { CandidateItem, CandidateSearchResult, SearchResponse, SearchCriteria } from '../../types/index.js';
 
-const SEARCH_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
-
-interface SearchCacheEntry {
-  scoredCandidates: CandidateSearchResult[];
-  fetchedAt: number;
-}
-
-const searchCache = new Map<string, SearchCacheEntry>();
-
-export function _clearSearchCache(): void {
-  searchCache.clear();
-}
-
-type CriteriaInput = {
-  coreSkill?: string;
-  mustHaveSkills?: string[];
-  goodToHaveSkills?: string[];
-  minExperience?: number;
-  maxExperience?: number;
-  seniority?: string[];
-  availability?: string[];
-  location?: string;
-  remote?: boolean;
-  industries?: string[];
-  roles?: string[];
-  maxBudgetLpa?: number;
-  engagementModel?: string;
-  skillSynonyms?: Record<string, string[]>;
+// Details placeholder for the rare case where a cached candidate no longer
+// scores against the live criteria (e.g. its skills changed since cache build).
+// The candidate is still returned (the cache ranked it) but with empty details.
+const EMPTY_MATCH_DETAILS: MatchDetails = {
+  mustHaveMatched: [],
+  mustHaveFuzzy: [],
+  mustHaveSecondary: [],
+  mustHaveRelated: [],
+  mustHaveMissing: [],
+  goodToHaveMatched: [],
+  goodToHaveFuzzy: [],
+  goodToHaveRelated: [],
+  experienceMatch: 'none',
+  seniorityMatch: false,
+  ctcMatch: false,
+  locationMatch: 'none',
+  availabilityMatch: 'none',
+  roleMatch: 'none',
 };
 
-function buildCacheKey(
-  requirementId: string | undefined,
-  criteria: CriteriaInput,
-  sortBy: string | undefined
-): string {
-  const effectiveSortBy = sortBy ?? 'matchScore';
-  const normalizedCriteria = {
-    coreSkill: criteria.coreSkill ?? null,
-    mustHaveSkills: [...(criteria.mustHaveSkills ?? [])].sort(),
-    goodToHaveSkills: [...(criteria.goodToHaveSkills ?? [])].sort(),
-    minExperience: criteria.minExperience ?? null,
-    maxExperience: criteria.maxExperience ?? null,
-    seniority: [...(criteria.seniority ?? [])].sort(),
-    availability: [...(criteria.availability ?? [])].sort(),
-    location: criteria.location ?? null,
-    remote: criteria.remote ?? null,
-    industries: [...(criteria.industries ?? [])].sort(),
-    roles: [...(criteria.roles ?? [])].sort(),
-    maxBudgetLpa: criteria.maxBudgetLpa ?? null,
-    engagementModel: criteria.engagementModel ?? null,
-    skillSynonyms: criteria.skillSynonyms
-      ? Object.fromEntries(
-          Object.entries(criteria.skillSynonyms)
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([k, v]) => [k, [...v].sort()])
-        )
-      : null,
+function toSearchResult(
+  candidate: CandidateItem,
+  score: number,
+  details: MatchDetails
+): CandidateSearchResult {
+  return {
+    candidateId: candidate.candidate_id,
+    fullName: candidate.full_name,
+    location: candidate.location,
+    primarySkills: candidate.primary_skills,
+    totalExperience: candidate.total_experience,
+    seniority: candidate.seniority,
+    availability: candidate.availability,
+    engagementModel: candidate.engagement_model || 'either',
+    currentCtc: candidate.current_ctc,
+    expectedCtc: candidate.expected_ctc,
+    expectedCtcType: candidate.expected_ctc_type,
+    matchScore: score,
+    matchDetails: details,
+    lastUpdated: candidate.last_updated,
+    lastScreenedAt: candidate.last_screened_at,
+    lastScreenedBy: candidate.last_screened_by_name || candidate.last_screened_by,
+    linkedinUrl: candidate.linkedin_url,
+    githubUrl: candidate.github_url,
+    hackerrankUrl: candidate.hackerrank_url,
+    hackerrankScore: candidate.hackerrank_score,
+    notInterested: candidate.not_interested || false,
+    notInterestedAt: candidate.not_interested_at,
+    roles: candidate.roles || [],
+    headline: candidate.headline,
+    isShortlisted: false,
+    isNotSuitable: false,
+    subVendorId: candidate.sub_vendor_id,
+    subVendorName: candidate.sub_vendor_name,
+    subVendorContactPerson: candidate.sub_vendor_contact_person,
+    subVendorContactPhone: candidate.sub_vendor_contact_phone,
+    subVendorContactEmail: candidate.sub_vendor_contact_email,
   };
-  return JSON.stringify({ requirementId: requirementId ?? null, criteria: normalizedCriteria, sortBy: effectiveSortBy });
 }
 
 async function handleRequest(
@@ -113,15 +120,107 @@ async function handleRequest(
       }
     }
 
-    // Check cache — key excludes page offset so all pages share one cached corpus
-    const cacheKey = buildCacheKey(requirementId, criteria, sortBy);
-    const cached = searchCache.get(cacheKey);
-    let allScoredCandidates: CandidateSearchResult[];
+    const matchCriteria: MatchCriteria = {
+      coreSkill: criteria.coreSkill,
+      mustHaveSkills: criteria.mustHaveSkills,
+      goodToHaveSkills: criteria.goodToHaveSkills,
+      minExperience: criteria.minExperience,
+      maxExperience: criteria.maxExperience,
+      seniority: criteria.seniority,
+      availability: criteria.availability,
+      location: criteria.location,
+      roles: criteria.roles,
+      maxBudgetLpa: criteria.maxBudgetLpa,
+      engagementModel: criteria.engagementModel,
+      skillSynonyms: criteria.skillSynonyms,
+    };
 
-    if (cached && Date.now() - cached.fetchedAt < SEARCH_CACHE_TTL) {
-      allScoredCandidates = cached.scoredCandidates;
+    // Placed candidates (pipeline_stage 'joined') are excluded on every request,
+    // regardless of path — always fetched fresh, never cached.
+    const placedCandidateIds = await getPlacedCandidateIds();
+
+    // Shortlist / not-suitable overlay (requirement-bound only) — always fresh.
+    let shortlistedIds = new Set<string>();
+    let notSuitableIds = new Set<string>();
+    if (requirementId) {
+      const shortlists = await getShortlistsForRequirement(requirementId);
+      shortlistedIds = new Set(
+        shortlists.filter((s) => s.status !== 'not_suitable').map((s) => s.candidate_id)
+      );
+      notSuitableIds = new Set(
+        shortlists.filter((s) => s.status === 'not_suitable').map((s) => s.candidate_id)
+      );
+    }
+
+    // Requirement-bound searches read the pre-ranked id-list from the match cache.
+    const cached = requirementId ? await getMatchCache(requirementId) : null;
+
+    let pageCandidates: CandidateSearchResult[];
+    let totalMatches: number;
+    let llmRerank: { ranked: boolean; pending: boolean } | undefined;
+
+    if (requirementId && cached) {
+      // ── Cache read path ───────────────────────────────────────────────────
+      // The cache stores the matchScore ranking (rank asc == score desc).
+      const ranked = [...cached].sort((a, b) => a.rank - b.rank);
+
+      // Apply live overlays to the id-list BEFORE fetching candidate details so
+      // pagination and totalMatches stay correct without fetching the full corpus.
+      const filtered = ranked.filter(
+        (e) =>
+          !placedCandidateIds.has(e.candidate_id) &&
+          !(includeNotSuitable === false && notSuitableIds.has(e.candidate_id))
+      );
+      totalMatches = filtered.length;
+
+      // Paginate the ranked id-list, then BatchGet only the requested page.
+      const pageEntries = filtered.slice(offset, offset + pageSize);
+      const pageItems = await getCandidatesByIds(pageEntries.map((e) => e.candidate_id));
+      const itemsById = new Map(pageItems.map((c) => [c.candidate_id, c]));
+
+      // Re-score the page (≤ pageSize candidates) to regenerate matchDetails;
+      // the score used for ordering/display still comes from the cache.
+      const scored = matchAndRankCandidates(pageItems, matchCriteria, {});
+      const detailsById = new Map(scored.map((s) => [s.candidate.candidate_id, s.details]));
+
+      pageCandidates = pageEntries
+        .map((e) => {
+          const item = itemsById.get(e.candidate_id);
+          if (!item) return null; // candidate row deleted since cache build
+          const result = toSearchResult(
+            item,
+            e.score,
+            detailsById.get(e.candidate_id) ?? EMPTY_MATCH_DETAILS
+          );
+          result.isShortlisted = shortlistedIds.has(e.candidate_id);
+          result.isNotSuitable = notSuitableIds.has(e.candidate_id);
+          return result;
+        })
+        .filter((c): c is CandidateSearchResult => c !== null);
+
+      // The cache is matchScore-ranked; other sort modes re-sort the resolved page.
+      if (sortBy === 'lastUpdated') {
+        pageCandidates.sort(
+          (a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime()
+        );
+      } else if (sortBy === 'experience') {
+        pageCandidates.sort((a, b) => b.totalExperience - a.totalExperience);
+      } else {
+        // matchScore order (default): overlay the lazy LLM tie-break (#239) on
+        // the displayed page. Non-fatal — any error serves deterministic order.
+        try {
+          const topNIds = filtered.slice(0, RERANK_TOP_N).map((e) => e.candidate_id);
+          const overlay = await applyLlmRerankOverlay(requirementId, topNIds, pageCandidates);
+          pageCandidates = overlay.page;
+          llmRerank = { ranked: overlay.ranked, pending: overlay.pending };
+        } catch (err) {
+          console.error('LLM rerank overlay failed, serving deterministic order:', err);
+        }
+      }
     } else {
-      // Build search criteria with defaults
+      // ── Live-scan path ────────────────────────────────────────────────────
+      // Ad-hoc search (no requirementId) or cold-cache fallback. Runs the full
+      // scan + shared scorer, then resolves the page from the in-memory result.
       const searchCriteria: SearchCriteria = {
         mustHaveSkills: criteria.mustHaveSkills || [],
         goodToHaveSkills: criteria.goodToHaveSkills || [],
@@ -136,96 +235,30 @@ async function handleRequest(
         engagementModel: criteria.engagementModel,
       };
 
-      // Full corpus scan (always from the beginning)
       const searchResult = await searchCandidates(searchCriteria);
+      const scored = matchAndRankCandidates(searchResult.items, matchCriteria, { sortBy });
 
-      const scored = matchAndRankCandidates(
-        searchResult.items,
-        {
-          coreSkill: criteria.coreSkill,
-          mustHaveSkills: criteria.mustHaveSkills,
-          goodToHaveSkills: criteria.goodToHaveSkills,
-          minExperience: criteria.minExperience,
-          maxExperience: criteria.maxExperience,
-          seniority: criteria.seniority,
-          availability: criteria.availability,
-          location: criteria.location,
-          roles: criteria.roles,
-          maxBudgetLpa: criteria.maxBudgetLpa,
-          engagementModel: criteria.engagementModel,
-          skillSynonyms: criteria.skillSynonyms,
-        },
-        { sortBy }
-      );
-
-      allScoredCandidates = scored.map(({ candidate, score, details }) => ({
-        candidateId: candidate.candidate_id,
-        fullName: candidate.full_name,
-        location: candidate.location,
-        primarySkills: candidate.primary_skills,
-        totalExperience: candidate.total_experience,
-        seniority: candidate.seniority,
-        availability: candidate.availability,
-        engagementModel: candidate.engagement_model || 'either',
-        currentCtc: candidate.current_ctc,
-        expectedCtc: candidate.expected_ctc,
-        expectedCtcType: candidate.expected_ctc_type,
-        matchScore: score,
-        matchDetails: details,
-        lastUpdated: candidate.last_updated,
-        lastScreenedAt: candidate.last_screened_at,
-        lastScreenedBy: candidate.last_screened_by_name || candidate.last_screened_by,
-        linkedinUrl: candidate.linkedin_url,
-        githubUrl: candidate.github_url,
-        hackerrankUrl: candidate.hackerrank_url,
-        hackerrankScore: candidate.hackerrank_score,
-        notInterested: candidate.not_interested || false,
-        notInterestedAt: candidate.not_interested_at,
-        roles: candidate.roles || [],
-        headline: candidate.headline,
-        isShortlisted: false,
-        isNotSuitable: false,
-        subVendorId: candidate.sub_vendor_id,
-        subVendorName: candidate.sub_vendor_name,
-        subVendorContactPerson: candidate.sub_vendor_contact_person,
-        subVendorContactPhone: candidate.sub_vendor_contact_phone,
-        subVendorContactEmail: candidate.sub_vendor_contact_email,
-      }));
-
-      // Store full globally-sorted list in cache
-      searchCache.set(cacheKey, {
-        scoredCandidates: allScoredCandidates,
-        fetchedAt: Date.now(),
+      let allScoredCandidates = scored.map(({ candidate, score, details }) => {
+        const result = toSearchResult(candidate, score, details);
+        result.isShortlisted = shortlistedIds.has(candidate.candidate_id);
+        result.isNotSuitable = notSuitableIds.has(candidate.candidate_id);
+        return result;
       });
+
+      allScoredCandidates = allScoredCandidates.filter(
+        (c) => !placedCandidateIds.has(c.candidateId)
+      );
+
+      const visibleCandidates =
+        includeNotSuitable === false
+          ? allScoredCandidates.filter((c) => !c.isNotSuitable)
+          : allScoredCandidates;
+
+      totalMatches = visibleCandidates.length;
+      pageCandidates = visibleCandidates.slice(offset, offset + pageSize);
     }
 
-    // Always fetch fresh shortlist status so it reflects recent shortlist/not-suitable changes
-    if (requirementId) {
-      const shortlists = await getShortlistsForRequirement(requirementId);
-      const shortlistedCandidateIds = new Set(
-        shortlists.filter((s) => s.status !== 'not_suitable').map((s) => s.candidate_id)
-      );
-      const notSuitableCandidateIds = new Set(
-        shortlists.filter((s) => s.status === 'not_suitable').map((s) => s.candidate_id)
-      );
-      allScoredCandidates = allScoredCandidates.map((c) => ({
-        ...c,
-        isShortlisted: shortlistedCandidateIds.has(c.candidateId),
-        isNotSuitable: notSuitableCandidateIds.has(c.candidateId),
-      }));
-    }
-
-    // Exclude placed candidates (pipeline_stage 'joined' on any requirement) — always fresh
-    const placedCandidateIds = await getPlacedCandidateIds();
-    allScoredCandidates = allScoredCandidates.filter(c => !placedCandidateIds.has(c.candidateId));
-
-    const visibleCandidates = includeNotSuitable === false
-      ? allScoredCandidates.filter(c => !c.isNotSuitable)
-      : allScoredCandidates;
-
-    // Serve page as an offset-based slice of the globally sorted list
-    const pageCandidates = visibleCandidates.slice(offset, offset + pageSize);
-    const hasMore = offset + pageSize < visibleCandidates.length;
+    const hasMore = offset + pageSize < totalMatches;
     const encodedNextKey = hasMore
       ? Buffer.from(JSON.stringify({ offset: offset + pageSize })).toString('base64')
       : undefined;
@@ -276,7 +309,8 @@ async function handleRequest(
         hasMore,
         lastEvaluatedKey: encodedNextKey,
       },
-      totalMatches: visibleCandidates.length,
+      totalMatches,
+      ...(llmRerank ? { llmRerank } : {}),
     };
 
     if (event.auth) {

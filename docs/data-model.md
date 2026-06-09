@@ -983,7 +983,63 @@ Provides distributed locking for candidate screening to prevent two recruiters f
 
 ---
 
-### 12. EmailIngestLog
+### 12. RequirementMatchCache
+
+Stores precomputed ranked candidate lists per active requirement. Written during match-cache refresh; consumed on-demand by search and notification flows (consumption wired in follow-up tickets #234+).
+
+**Table Configuration:**
+- Table Name: `RequirementMatchCache-{stage}`
+- Billing Mode: PAY_PER_REQUEST
+- Deletion Policy: Retain
+- Update Replace Policy: Retain
+
+**Primary Key:**
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| requirement_id | String (S) | Partition Key - Active requirement UUID |
+
+**Attributes:**
+
+| Attribute | Type | Required | Description |
+|-----------|------|----------|-------------|
+| requirement_id | String | Yes | Active requirement ID (PK) |
+| ranked | List\<Map\> | Yes | Ordered list of candidate match entries (see shape below) |
+| updated_at | String | Yes | ISO 8601 timestamp of last cache write |
+
+**ranked item shape:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| candidate_id | String | Candidate UUID |
+| rank | Number | 1-based ordinal rank in the sorted result set |
+| score | Number | Match score (0–100) at time of cache write |
+
+**Example Item:**
+```json
+{
+  "requirement_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "ranked": [
+    { "candidate_id": "cand_aaa111bbb222", "rank": 1, "score": 92 },
+    { "candidate_id": "cand_ccc333ddd444", "rank": 2, "score": 87 },
+    { "candidate_id": "cand_eee555fff666", "rank": 3, "score": 81 }
+  ],
+  "updated_at": "2026-06-01T08:00:00Z"
+}
+```
+
+**Global Secondary Indexes:** None
+
+**Access Patterns:**
+
+| Operation | Access Pattern | Index |
+|-----------|---------------|-------|
+| Get cached ranked list | GetItem by requirement_id | Primary |
+| Store/refresh ranked list | PutItem (atomic full overwrite) | Primary |
+| Remove cache on requirement close | DeleteItem by requirement_id (idempotent) | Primary |
+
+---
+
+### 13. EmailIngestLog
 
 Idempotency log for email-based resume ingestion. Prevents duplicate processing of the same email when the `emailIngestWorker` Lambda polls the M365 shared mailbox.
 
@@ -1538,7 +1594,7 @@ See `backend/src/data/skills_ontology.json` for the full list of mappings, categ
 
 ---
 
-### 12. AuditLog Table (`AuditLog-{stage}`)
+### 14. AuditLog Table (`AuditLog-{stage}`)
 
 Centralized activity audit trail for all recruiter and admin actions.
 
@@ -1584,7 +1640,7 @@ Centralized activity audit trail for all recruiter and admin actions.
 
 ---
 
-### 13. SubVendors
+### 15. SubVendors
 
 Stores sub-vendor (staffing agency / third-party vendor) master data. Sub-vendors can be linked to candidate profiles to track sourcing channels.
 
@@ -1650,7 +1706,7 @@ For looking up sub-vendors by normalized name (duplicate prevention).
 
 ---
 
-### 14. PipelineActivity
+### 16. PipelineActivity
 
 Stores activity log entries for the post-shortlisting candidate pipeline. Each activity records a discrete event (stage change, feedback, interview, note, etc.) against a requirement-candidate pair.
 

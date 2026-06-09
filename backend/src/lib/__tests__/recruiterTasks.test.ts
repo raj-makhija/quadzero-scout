@@ -18,6 +18,7 @@ import {
   buildTaskItem,
   createTaskIfAbsent,
   resolveTaskByEntity,
+  resolveScreeningTasksForCandidate,
   listActiveTasksForRecruiter,
   snoozeTaskById,
   completeTaskById,
@@ -299,6 +300,35 @@ describe('resolveTaskByEntity (auto-complete)', () => {
     expect(upd.ExpressionAttributeValues[':c']).toBe('completed');
     expect(upd.ExpressionAttributeValues[':cb']).toBe('rec-2');
     expect(upd.ExpressionAttributeValues[':ttl']).toBe(ttlEpochFrom(NOW.toISOString()));
+  });
+});
+
+describe('resolveScreeningTasksForCandidate (auto-complete on screen)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("completes the candidate's screen + rescreen pool tasks across requirements", async () => {
+    const state = installMock({
+      ownerItems: {
+        POOL: [
+          makeTask({ owner_id: POOL_OWNER, task_id: 's1', type: 'screen_candidate', entity_ref: 'REQ#r1#CAND#c1' }),
+          makeTask({ owner_id: POOL_OWNER, task_id: 's2', type: 'rescreen_candidate', entity_ref: 'REQ#r2#CAND#c1' }),
+          makeTask({ owner_id: POOL_OWNER, task_id: 'other-type', type: 'close_requirement', entity_ref: 'REQ#r1#CAND#c1' }),
+          makeTask({ owner_id: POOL_OWNER, task_id: 'other-cand', type: 'screen_candidate', entity_ref: 'REQ#r1#CAND#c2' }),
+        ],
+      },
+    });
+    const count = await resolveScreeningTasksForCandidate({ candidateId: 'c1', completedBy: 'rec-2' }, NOW);
+    expect(count).toBe(2);
+    expect(state.updates).toHaveLength(2);
+    expect(state.updates.every((u) => (u.ExpressionAttributeValues as Record<string, unknown>)[':c'] === 'completed')).toBe(true);
+    expect(state.updates.every((u) => (u.ExpressionAttributeValues as Record<string, unknown>)[':cb'] === 'rec-2')).toBe(true);
+  });
+
+  it('is a no-op when the candidate has no open screen tasks', async () => {
+    const state = installMock({ ownerItems: { POOL: [] } });
+    const count = await resolveScreeningTasksForCandidate({ candidateId: 'c1', completedBy: 'rec-2' }, NOW);
+    expect(count).toBe(0);
+    expect(state.updates).toHaveLength(0);
   });
 });
 
