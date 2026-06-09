@@ -109,6 +109,8 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │    Screenings  │  │                 │  │                                 │
 │  - Pipeline    │  │                 │  │                                 │
 │    Activity    │  │                 │  │                                 │
+│  - Requirement  │  │                 │  │                                 │
+│    MatchCache   │  │                 │  │                                 │
 └─────────────────┘  └─────────────────┘  └─────────────────────────────────┘
           │
           ▼
@@ -357,14 +359,16 @@ Single Upload:
           └─► notificationService.notifyMatchingRecruiters([id])
                 ├─► getAllActiveRequirements()           (DynamoDB scan)
                 ├─► calculateMatchScore() per requirement
+                ├─► upsert RequirementMatchCache per active requirement  ← unconditional; not gated on email config
                 ├─► group matches by requirement
                 └─► sendNewProfilesNotificationEmail()   (AWS SES) × (requirements × recruiters)
+                      (skipped if no recruiters are opted in for that requirement)
 
 Bulk Upload:
   bulkImportWorker (when all files processed)
     └─► finalizeBulkImportBatch()
     └─► notificationService.notifyMatchingRecruiters([...completedCandidateIds])
-          ├─► same matching logic as above
+          ├─► same matching logic as above (cache upsert is unconditional)
           └─► one email per (requirement, recruiter) covering all matching candidates
 ```
 
@@ -376,6 +380,9 @@ Bulk Upload:
 - Notification toggle stored in `notify_recruiter_ids` on the `Requirements` table item
 - Creator is opted in by default; any recruiter can opt in/out via `PUT /recruiter/requirements/{id}/notify`
 - Pre-deploy requirement: sender email identity must be verified in AWS SES (ap-south-1)
+- **`RequirementMatchCache` is maintained unconditionally** — the cache upsert runs for every active requirement on every ingest event, regardless of whether any recruiter has notifications enabled. Email dispatch and cache maintenance are independent concerns.
+- **`updateCandidateCtc` and `updateCandidateCustomFields`** both trigger a match-cache update: a read-modify-write upsert that refreshes the candidate's `{ candidate_id, rank, score }` entry in every active requirement's cache with the latest computed rank and score.
+- Cache entries store only stable ranking data: `{ candidate_id, rank, score }`. Volatile per-candidate state (screening status, CTC flags) is intentionally absent — it is applied as a read-time overlay when search results or notification lists are built from the cache.
 
 **Email content:**
 - Subject: "New profile match(es): {requirement label}"
@@ -383,6 +390,19 @@ Bulk Upload:
 - Profile links are capped at 10 per email; additional matches show an "and N more..." note
 - A "View Requirement" button links to the requirement detail page
 - Both HTML and plain-text versions are sent
+
+### Requirement Lifecycle & Match-Cache Maintenance
+
+The `RequirementMatchCache` table is kept in sync automatically at every requirement lifecycle event:
+
+| Trigger | Cache Effect |
+|---------|-------------|
+| Requirement **created** | Full active-candidate scan; builds the cache from scratch for the new requirement using the initial scoring criteria |
+| Requirement **criteria edited** | Full cache rebuild: all existing entries for the requirement are replaced using the updated scoring criteria |
+| Requirement **reopened** (`closed_on_hold` → `active`) | Full cache rebuild; equivalent to creation — re-scores all currently active candidates against the requirement |
+| Requirement **closed** (`active` → `closed_on_hold`) or **deleted** | Drops the entire cache entry for that requirement (all candidate rows removed) |
+
+Cache entries store only stable ranking data: `{ candidate_id, rank, score }`. Volatile per-candidate state — screening status, CTC flags, availability — is intentionally absent from the stored cache and applied as a read-time overlay when search results or notification lists are built.
 
 ### Recruiter Candidate Screening Flow
 
@@ -478,6 +498,19 @@ Bulk Upload:
 - **Recruiter Activity** (`/recruiter/activity`): Full-page view of the recruiter's own activity with a period selector (Previous Day, Last 7 Days, Last 30 Days, Last Year) and Summary/Detailed tab toggle. The summary tab shows categorized action counts (Searches, Shortlists, Resumes, Screenings, Requirements, Clients). The detailed tab shows a chronological table of individual audit log entries with expandable rows for metadata. Data is fetched from `GET /recruiter/my-activity` which queries the AuditLog table by `USER#{userId}` partition key with date range on the sort key. For day/week periods, both summary and logs are returned; for month/year, only summary is returned by default (uses `ProjectionExpression` for efficiency).
 
 - **Admin Activity Dashboard** (`/admin/activity`): Admin-only page accessible from the admin sidebar and dashboard. Supports two view modes: "All Recruiters" (cumulative) and "Individual" (single recruiter). In cumulative mode, shows an overall activity summary card and a recruiter breakdown table with per-recruiter counts across action categories, sorted by total activity. In individual mode, shows a recruiter selector dropdown populated by `GET /admin/recruiters/list`, the selected recruiter's activity summary, and an optional detailed log view. The cumulative view queries the AuditLog `DateIndex` GSI across date partitions with batched concurrent queries (10 at a time). The individual view uses the same `USER#{userId}` partition key query as the recruiter endpoint.
+
+### Precomputed Match Cache Store
+
+**What it stores:** The `RequirementMatchCache` table holds a pre-ranked list of candidates for each active requirement. Each item records the full sorted result set (`ranked`) — an ordered list of `{ candidate_id, rank, score }` objects — computed at cache-refresh time, along with an `updated_at` timestamp.
+
+**Why it exists:** Scoring all candidates against every active requirement on each search or match-notification event would re-run expensive scoring logic repeatedly for the same requirement. The cache stores the result once per refresh cycle and serves it on read, eliminating redundant re-scoring.
+
+**Scope (store-only, #233):** Ticket #233 provisions the `RequirementMatchCache` table and implements the three access functions. Consumption — wiring the cache into the search handler and notification service — is deferred to follow-up tickets (#234+). At this stage, nothing reads from the cache during normal request handling.
+
+**Access functions** (in `backend/src/lib/dynamodb.ts`):
+- `getMatchCache(requirementId)` — GetItem by `requirement_id`; returns `null` if no cache entry exists.
+- `putMatchCache(requirementId, ranked)` — PutItem (atomic full overwrite); writes the ranked list and sets `updated_at`.
+- `deleteMatchCache(requirementId)` — DeleteItem by `requirement_id`; idempotent (safe to call even if no entry exists).
 
 ### Stack-Abbreviation Expansion
 
@@ -892,7 +925,7 @@ This is a tactical bridge, not the long-term answer. The intended fix is to deco
 | Authentication | NextAuth.js v4 (JWE sessions) |
 | API Gateway | AWS HTTP API (API Gateway v2) |
 | Compute | AWS Lambda (Node.js 20, arm64) |
-| Database | AWS DynamoDB (10 tables) |
+| Database | AWS DynamoDB (11 tables) |
 | Storage | AWS S3 |
 | Text Extraction | pdf-parse (PDF), mammoth (DOCX) |
 | PDF Generation | puppeteer-core + @sparticuz/chromium |
