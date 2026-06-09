@@ -6,6 +6,10 @@ import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 // ---------------------------------------------------------------------------
 
 vi.mock('../../lib/dynamodb.js', () => ({
+  getLlmRerank: vi.fn().mockResolvedValue(null),
+  putLlmRerank: vi.fn().mockResolvedValue(undefined),
+  deleteLlmRerank: vi.fn().mockResolvedValue(undefined),
+  claimLlmRerankComputation: vi.fn().mockResolvedValue(true),
   searchCandidates: vi.fn().mockResolvedValue({
     items: [
       {
@@ -99,6 +103,7 @@ vi.mock('../../lib/dynamodb.js', () => ({
 }));
 
 vi.mock('../../lib/llm/index.js', () => ({
+  getRerankSignature: vi.fn().mockResolvedValue({ model: 'gemini-2.0-flash', promptVersion: 1 }),
   parseJobDescription: vi.fn().mockResolvedValue({
     output: {
       mustHaveSkills: ['react', 'nodejs'],
@@ -150,11 +155,19 @@ vi.mock('../../lib/lambdaInvoke.js', () => ({
   invokeLambdaAsync: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('../../lib/cloudwatchMetrics.js', () => ({
+  putLlmRerankMetric: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('../../lib/config.js', () => ({
   config: {
     lambda: {
       formatResumeWorkerName: '',
       notifyWorkerName: '',
+      llmRerankWorkerName: 'llm-rerank-worker',
+    },
+    featureFlags: {
+      llmRerankEnabled: false,
     },
   },
 }));
@@ -168,9 +181,11 @@ import { handler as saveSearchHandler } from '../recruiter/saveSearch.js';
 import { handler as getSearchesHandler } from '../recruiter/getSearches.js';
 import { handler as deleteSearchHandler } from '../recruiter/deleteSearch.js';
 import { handler as listRecentProfilesHandler } from '../recruiter/listRecentProfiles.js';
-import { getCandidateById, getSavedSearches, getRecentProfiles, searchCandidates, getShortlistsForRequirement, getPlacedCandidateIds, getMatchCache, getCandidatesByIds } from '../../lib/dynamodb.js';
-import { parseJobDescription } from '../../lib/llm/index.js';
+import { getCandidateById, getSavedSearches, getRecentProfiles, searchCandidates, getShortlistsForRequirement, getPlacedCandidateIds, getMatchCache, getCandidatesByIds, getLlmRerank } from '../../lib/dynamodb.js';
+import { parseJobDescription, getRerankSignature } from '../../lib/llm/index.js';
 import { generateDownloadUrl } from '../../lib/s3.js';
+import { invokeLambdaAsync } from '../../lib/lambdaInvoke.js';
+import { config } from '../../lib/config.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1623,6 +1638,206 @@ describe('POST /recruiter/search — match-cache read path', () => {
     );
     expect(body.data.candidates.map((c: { candidateId: string }) => c.candidateId)).toEqual(['c1']);
     expect(body.data.totalMatches).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /recruiter/search — LLM tie-break overlay (#239)
+// ---------------------------------------------------------------------------
+
+describe('POST /recruiter/search — LLM tie-break overlay', () => {
+  const REQ_ID = '00000000-0000-0000-0000-000000000239';
+  const SIG = { model: 'gemini-2.0-flash', promptVersion: 1 };
+
+  const makeCandidate = (id: string, overrides: Record<string, unknown> = {}) => ({
+    candidate_id: id,
+    user_id: `u_${id}`,
+    full_name: `Name ${id}`,
+    email: `${id}@example.com`,
+    primary_skills: ['react'],
+    primary_skill_years: { react: 4 },
+    secondary_skills: [],
+    total_experience: 5,
+    seniority: 'mid',
+    availability: 'immediate',
+    industries: [],
+    roles: [],
+    experience_bucket: '3-5',
+    resume_s3_key: `r/${id}.pdf`,
+    created_at: '2024-01-01T00:00:00Z',
+    last_updated: '2024-01-15T00:00:00Z',
+    ...overrides,
+  });
+
+  const serveCorpus = (corpus: ReturnType<typeof makeCandidate>[]) => {
+    vi.mocked(getCandidatesByIds).mockImplementation((ids: string[]) =>
+      Promise.resolve(corpus.filter((c) => ids.includes(c.candidate_id)))
+    );
+  };
+
+  // Deterministic cache: c1 (score 90) then c2 (score 80).
+  const seedCache = () => {
+    vi.mocked(getMatchCache).mockResolvedValue([
+      { candidate_id: 'c1', rank: 1, score: 90 },
+      { candidate_id: 'c2', rank: 2, score: 80 },
+    ]);
+    serveCorpus([makeCandidate('c1'), makeCandidate('c2')]);
+  };
+
+  const runSearch = async () =>
+    parseBody(
+      await searchHandler(
+        makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] }, requirementId: REQ_ID }) })
+      )
+    );
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getMatchCache).mockResolvedValue(null);
+    vi.mocked(getCandidatesByIds).mockResolvedValue([]);
+    vi.mocked(getPlacedCandidateIds).mockResolvedValue(new Set());
+    vi.mocked(getShortlistsForRequirement).mockResolvedValue([]);
+    vi.mocked(getRerankSignature).mockResolvedValue(SIG);
+    vi.mocked(getLlmRerank).mockResolvedValue(null);
+    config.featureFlags.llmRerankEnabled = false;
+  });
+
+  it('kill switch off → deterministic order, no LLM work', async () => {
+    config.featureFlags.llmRerankEnabled = false;
+    seedCache();
+
+    const body = await runSearch();
+
+    expect(body.data.candidates.map((c: { candidateId: string }) => c.candidateId)).toEqual(['c1', 'c2']);
+    expect(body.data.llmRerank).toEqual({ ranked: false, pending: false });
+    expect(vi.mocked(getLlmRerank)).not.toHaveBeenCalled();
+    expect(vi.mocked(invokeLambdaAsync)).not.toHaveBeenCalled();
+    expect(body.data.candidates.every((c: { rationale?: string }) => !c.rationale)).toBe(true);
+  });
+
+  it('cold cache → fires recompute once, serves deterministic order, no rationale', async () => {
+    config.featureFlags.llmRerankEnabled = true;
+    vi.mocked(getLlmRerank).mockResolvedValue(null);
+    seedCache();
+
+    const body = await runSearch();
+
+    expect(body.data.candidates.map((c: { candidateId: string }) => c.candidateId)).toEqual(['c1', 'c2']);
+    expect(body.data.llmRerank).toEqual({ ranked: false, pending: true });
+    expect(vi.mocked(invokeLambdaAsync)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(invokeLambdaAsync).mock.calls[0][0]).toBe('llm-rerank-worker');
+    expect(vi.mocked(invokeLambdaAsync).mock.calls[0][1]).toMatchObject({
+      requirementId: REQ_ID,
+      candidateIds: ['c1', 'c2'],
+    });
+    expect(body.data.candidates.every((c: { rationale?: string }) => !c.rationale)).toBe(true);
+  });
+
+  it('fresh cache → serves LLM order with rationale, zero LLM cost (no recompute)', async () => {
+    config.featureFlags.llmRerankEnabled = true;
+    seedCache();
+    // Stored re-rank flips the order: c2 above c1.
+    vi.mocked(getLlmRerank).mockImplementation(async (reqId: string) => {
+      const { computeTopNHash } = await import('../../lib/llmRerank.js');
+      return {
+        requirement_id: reqId,
+        entries: [
+          { candidate_id: 'c2', llmScore: 0.95, rationale: 'Stronger systems depth' },
+          { candidate_id: 'c1', llmScore: 0.6, rationale: 'Solid but narrower' },
+        ],
+        top_n_hash: computeTopNHash(['c1', 'c2']),
+        model: SIG.model,
+        prompt_version: SIG.promptVersion,
+        computed_at: '2026-06-09T00:00:00Z',
+      };
+    });
+
+    const body = await runSearch();
+
+    expect(body.data.candidates.map((c: { candidateId: string }) => c.candidateId)).toEqual(['c2', 'c1']);
+    expect(body.data.llmRerank).toEqual({ ranked: true, pending: false });
+    expect(body.data.candidates[0].rationale).toBe('Stronger systems depth');
+    expect(vi.mocked(invokeLambdaAsync)).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['top_n_hash differs', { top_n_hash: 'stale-hash' }],
+    ['model differs', { model: 'other-model' }],
+    ['prompt_version differs', { prompt_version: 999 }],
+  ])('stale cache (%s) → fires recompute exactly once', async (_label, mismatch) => {
+    config.featureFlags.llmRerankEnabled = true;
+    seedCache();
+    vi.mocked(getLlmRerank).mockImplementation(async (reqId: string) => {
+      const { computeTopNHash } = await import('../../lib/llmRerank.js');
+      return {
+        requirement_id: reqId,
+        entries: [{ candidate_id: 'c1', llmScore: 0.9, rationale: 'x' }],
+        top_n_hash: computeTopNHash(['c1', 'c2']),
+        model: SIG.model,
+        prompt_version: SIG.promptVersion,
+        computed_at: '2026-06-09T00:00:00Z',
+        ...mismatch,
+      };
+    });
+
+    const body = await runSearch();
+
+    expect(body.data.llmRerank).toEqual({ ranked: false, pending: true });
+    expect(vi.mocked(invokeLambdaAsync)).toHaveBeenCalledTimes(1);
+  });
+
+  it('LLM store error → graceful fallback to deterministic order, HTTP 200', async () => {
+    config.featureFlags.llmRerankEnabled = true;
+    seedCache();
+    vi.mocked(getLlmRerank).mockRejectedValue(new Error('DynamoDB timeout'));
+
+    const result = await searchHandler(
+      makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] }, requirementId: REQ_ID }) })
+    );
+    const body = parseBody(result);
+
+    expect((result as { statusCode: number }).statusCode).toBe(200);
+    expect(body.data.candidates.map((c: { candidateId: string }) => c.candidateId)).toEqual(['c1', 'c2']);
+    // No overlay metadata set when the overlay throws — deterministic fallback.
+    expect(body.data.llmRerank).toBeUndefined();
+  });
+
+  it('non-matchScore sort (experience) → LLM overlay skipped', async () => {
+    config.featureFlags.llmRerankEnabled = true;
+    seedCache();
+
+    const body = parseBody(
+      await searchHandler(
+        makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] }, requirementId: REQ_ID, sortBy: 'experience' }) })
+      )
+    );
+
+    expect(body.data.llmRerank).toBeUndefined();
+    expect(vi.mocked(getLlmRerank)).not.toHaveBeenCalled();
+    expect(vi.mocked(invokeLambdaAsync)).not.toHaveBeenCalled();
+  });
+
+  it('ad-hoc search (no requirementId) → LLM overlay never runs', async () => {
+    config.featureFlags.llmRerankEnabled = true;
+    vi.mocked(searchCandidates).mockResolvedValue({ items: [makeCandidate('c1')], lastKey: undefined });
+
+    await searchHandler(makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] } }) }));
+
+    expect(vi.mocked(getLlmRerank)).not.toHaveBeenCalled();
+    expect(vi.mocked(invokeLambdaAsync)).not.toHaveBeenCalled();
+  });
+
+  it('empty top-N after filters → no LLM call, zero candidates', async () => {
+    config.featureFlags.llmRerankEnabled = true;
+    vi.mocked(getMatchCache).mockResolvedValue([{ candidate_id: 'c1', rank: 1, score: 90 }]);
+    serveCorpus([makeCandidate('c1')]);
+    vi.mocked(getPlacedCandidateIds).mockResolvedValue(new Set(['c1'])); // filtered out
+
+    const body = await runSearch();
+
+    expect(body.data.candidates).toHaveLength(0);
+    expect(vi.mocked(getLlmRerank)).not.toHaveBeenCalled();
+    expect(vi.mocked(invokeLambdaAsync)).not.toHaveBeenCalled();
   });
 });
 

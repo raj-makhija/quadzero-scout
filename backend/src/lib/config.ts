@@ -22,6 +22,7 @@ interface Config {
     candidateAttachmentsTable: string;
     recruiterTasksTable: string;
     requirementMatchCacheTable: string;
+    requirementLlmRerankTable: string;
   };
   s3: {
     resumesBucket: string;
@@ -34,6 +35,10 @@ interface Config {
     formatResumeWorkerName: string;
     bulkImportWorkerName: string;
     notifyWorkerName: string;
+    llmRerankWorkerName: string;
+  };
+  featureFlags: {
+    llmRerankEnabled: boolean;
   };
   email: {
     senderEmail: string;
@@ -91,6 +96,7 @@ export const config: Config = {
     candidateAttachmentsTable: getEnvVar('DYNAMODB_TABLE_CANDIDATE_ATTACHMENTS', 'CandidateAttachments-dev'),
     recruiterTasksTable: getEnvVar('DYNAMODB_TABLE_RECRUITER_TASKS', 'RecruiterTasks-dev'),
     requirementMatchCacheTable: getEnvVar('DYNAMODB_TABLE_REQUIREMENT_MATCH_CACHE', 'RequirementMatchCache-dev'),
+    requirementLlmRerankTable: getEnvVar('DYNAMODB_TABLE_REQUIREMENT_LLM_RERANK', 'RequirementLlmRerank-dev'),
   },
   s3: {
     resumesBucket: getEnvVar('S3_BUCKET_RESUMES', 'quadzero-scout-resumes-dev'),
@@ -103,6 +109,10 @@ export const config: Config = {
     formatResumeWorkerName: getEnvVar('FORMAT_RESUME_WORKER_NAME', ''),
     bulkImportWorkerName: getEnvVar('BULK_IMPORT_WORKER_NAME', ''),
     notifyWorkerName: getEnvVar('NOTIFY_WORKER_NAME', ''),
+    llmRerankWorkerName: getEnvVar('LLM_RERANK_WORKER_NAME', ''),
+  },
+  featureFlags: {
+    llmRerankEnabled: getEnvVar('LLM_RERANK_ENABLED', 'false') === 'true',
   },
   email: {
     senderEmail: getEnvVar('SES_SENDER_EMAIL', ''),

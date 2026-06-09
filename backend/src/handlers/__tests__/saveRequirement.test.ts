@@ -8,6 +8,9 @@ import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 const mockSaveRequirement = vi.fn();
 
 vi.mock('../../lib/dynamodb.js', () => ({
+  getLlmRerank: vi.fn().mockResolvedValue(null),
+  putLlmRerank: vi.fn().mockResolvedValue(undefined),
+  deleteLlmRerank: vi.fn().mockResolvedValue(undefined),
   saveRequirement: (...args: unknown[]) => mockSaveRequirement(...args),
 }));
 

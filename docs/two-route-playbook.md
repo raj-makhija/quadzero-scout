@@ -68,6 +68,17 @@ Default to **auto** for: documentation tickets, single-concern feature
 adds with clear AC, bug fixes with a reproducible failing test, label
 adjustments, prompt tweaks, version bumps.
 
+**`type:docs` tickets with a docs-only diff** (all changed files are
+`*.md` or under `docs/**`) get an additional short-circuit beyond the
+normal auto path: the tester no-ops (no test plan), and after
+pr-reviewer APPROVE, `scripts/docs-merge.sh` squash-merges the branch
+straight to `develop` — no `pipeline:qa-deploy`, no QA single-tenant
+lock, no human `pipeline:qa-approve` click. The ticket ships at the
+next nightly `develop`→`main` mirror. A `type:docs` ticket whose diff
+touches **any non-docs file** (code, config, scripts) falls through to
+the full tester+QA lifecycle at both the validate and pr-reviewer
+stages — the label alone is not a bypass.
+
 ---
 
 ## 4. Route A: full auto
@@ -276,8 +287,9 @@ listed paths. If "None", scribe exits cleanly with no follow-up.
 
 ## 8. Re-entering the post-merge flow (cheat sheet)
 
-Regardless of route, once a change is built + reviewed (branch intact,
-NOT yet merged to `develop`):
+**Standard path** — code tickets, and `type:docs` tickets whose diff
+touches any non-docs file — once a change is built + reviewed (branch
+intact, NOT yet merged to `develop`):
 
 ```
 status:ready-for-qa     ← set by pr-reviewer APPROVE (auto) or manually (Cowork §5.3)
@@ -292,9 +304,17 @@ status:in-qa            ← Amplify + serverless deploy completed (QA lock held)
                                 (Cowork tickets: just reopen and iterate manually)
 ```
 
-Scribe runs at the `pipeline:qa-approve` step regardless of route. It
-reads the merge diff + ticket thread; it doesn't care who wrote the
-code.
+**Docs-only fast-path** — `type:docs` ticket + diff confined to `*.md`
+/ `docs/**`: `pipeline:qa-deploy` is skipped entirely. After
+pr-reviewer APPROVE, `scripts/docs-merge.sh` squash-merges straight to
+`develop` (`Pipeline Status=merged-to-develop`, `status:qa-approved`).
+The QA single-tenant lock is never held, so parallel code tickets can
+proceed through `pipeline:qa-deploy` unblocked. The ticket ships at the
+next nightly `develop`→`main` mirror.
+
+Scribe runs at the `pipeline:qa-approve` step (or the docs-merge
+equivalent) regardless of route. It reads the merge diff + ticket
+thread; it doesn't care who wrote the code.
 
 ---
 

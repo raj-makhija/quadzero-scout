@@ -24,6 +24,9 @@ const mockGetExperienceBucket = vi.fn((years: number) => {
 });
 
 vi.mock('../../lib/dynamodb.js', () => ({
+  getLlmRerank: vi.fn().mockResolvedValue(null),
+  putLlmRerank: vi.fn().mockResolvedValue(undefined),
+  deleteLlmRerank: vi.fn().mockResolvedValue(undefined),
   getCandidateById: (...args: unknown[]) => mockGetCandidateById(...args),
   saveScreening: (...args: unknown[]) => mockSaveScreening(...args),
   updateCandidateProfileFields: (...args: unknown[]) => mockUpdateCandidateProfileFields(...args),
@@ -70,6 +73,12 @@ vi.mock('../../lib/recruiterTasks.js', async () => {
     safeResolveScreeningTasks: (...args: unknown[]) => mockSafeResolveScreeningTasks(...args),
   };
 });
+
+const mockGenerateScreeningQuestions = vi.fn();
+
+vi.mock('../../lib/llm/index.js', () => ({
+  generateScreeningQuestions: (...args: unknown[]) => mockGenerateScreeningQuestions(...args),
+}));
 
 vi.mock('../../lib/auth.js', () => ({
   withAuth: (_roles: string[], handler: Function) => handler,
@@ -898,5 +907,96 @@ describe('screenCandidate handler (shortlist rate recalculation)', () => {
       }),
       expect.anything()
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: Generate Screening Questions
+// ---------------------------------------------------------------------------
+
+describe('generateScreeningQuestions handler', () => {
+  let handler: Function;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const mod = await import('../recruiter/generateScreeningQuestions.js');
+    handler = mod.handler;
+  });
+
+  it('should call LLM and return questions for a first-time screening', async () => {
+    mockGetCandidateById.mockResolvedValue({ ...mockCandidate, last_screened_at: undefined });
+    mockGenerateScreeningQuestions.mockResolvedValue(['Q1', 'Q2', 'Q3']);
+
+    const event = makeEvent({ candidateId: 'cand_1' });
+    const result = await handler(event);
+    const body = JSON.parse(result.body);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.data.generated).toBe(true);
+    expect(body.data.questions).toEqual(['Q1', 'Q2', 'Q3']);
+    expect(mockGenerateScreeningQuestions).toHaveBeenCalledOnce();
+  });
+
+  it('should skip LLM and return generated:false with a re-screening notice', async () => {
+    mockGetCandidateById.mockResolvedValue({ ...mockCandidate, last_screened_at: '2026-05-01T10:00:00Z' });
+
+    const event = makeEvent({ candidateId: 'cand_1' });
+    const result = await handler(event);
+    const body = JSON.parse(result.body);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.data.generated).toBe(false);
+    expect(body.data.questions).toEqual([]);
+    expect(body.data.notice).toBe('Re-screening; no additional questions are needed here.');
+    expect(mockGenerateScreeningQuestions).not.toHaveBeenCalled();
+  });
+
+  it('should fire re-screen guard before profile-empty check', async () => {
+    mockGetCandidateById.mockResolvedValue({
+      candidate_id: 'cand_2',
+      last_screened_at: '2026-05-01T10:00:00Z',
+    });
+
+    const event = makeEvent({ candidateId: 'cand_2' });
+    const result = await handler(event);
+    const body = JSON.parse(result.body);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.data.generated).toBe(false);
+    expect(body.data.questions).toEqual([]);
+    expect(body.data.notice).toBe('Re-screening; no additional questions are needed here.');
+    expect(mockGenerateScreeningQuestions).not.toHaveBeenCalled();
+  });
+
+  it('should return 400 when candidateId is missing', async () => {
+    const event = makeEvent({});
+    const result = await handler(event);
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body).success).toBe(false);
+  });
+
+  it('should return 404 when candidate does not exist', async () => {
+    mockGetCandidateById.mockResolvedValue(null);
+
+    const event = makeEvent({ candidateId: 'nonexistent' });
+    const result = await handler(event);
+    expect(result.statusCode).toBe(404);
+    expect(JSON.parse(result.body).success).toBe(false);
+  });
+
+  it('should degrade gracefully when LLM throws on first screening', async () => {
+    mockGetCandidateById.mockResolvedValue({ ...mockCandidate, last_screened_at: undefined });
+    mockGenerateScreeningQuestions.mockRejectedValue(new Error('LLM error'));
+
+    const event = makeEvent({ candidateId: 'cand_1' });
+    const result = await handler(event);
+    const body = JSON.parse(result.body);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.data.generated).toBe(false);
+    expect(body.data.questions).toEqual([]);
+    expect(body.data.notice).toBeDefined();
   });
 });

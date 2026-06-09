@@ -484,6 +484,82 @@ describe('calculateSkillMatch()', () => {
 });
 
 // ---------------------------------------------------------------------------
+// TC-CLM-001 through TC-CLM-009: CLM / Contract Lifecycle Management
+// ---------------------------------------------------------------------------
+
+describe('CLM normalization and matching', () => {
+  // TC-CLM-001: abbreviation and full phrase normalize to same canonical
+  it('normalizes "CLM" to "clm"', () => {
+    expect(normalizeSkill('CLM')).toBe('clm');
+  });
+
+  it('normalizes "Contract Lifecycle Management" to "clm"', () => {
+    expect(normalizeSkill('Contract Lifecycle Management')).toBe('clm');
+  });
+
+  // TC-CLM-002: both forms produce the same canonical value
+  it('"CLM" and "Contract Lifecycle Management" normalize to the same canonical form', () => {
+    expect(normalizeSkill('CLM')).toBe(normalizeSkill('Contract Lifecycle Management'));
+  });
+
+  // TC-CLM-003: case-insensitive — all three casing variants normalize identically
+  it('"clm", "CLM", and "Clm" all normalize to "clm"', () => {
+    expect(normalizeSkill('clm')).toBe('clm');
+    expect(normalizeSkill('CLM')).toBe('clm');
+    expect(normalizeSkill('Clm')).toBe('clm');
+  });
+
+  // TC-CLM-004: candidate with "CLM" satisfies requirement "Contract Lifecycle Management"
+  it('candidate "CLM" exactly matches requirement "Contract Lifecycle Management"', () => {
+    const result = calculateSkillMatch(['CLM'], ['Contract Lifecycle Management']);
+    expect(result.exactMatched).toContain('clm');
+    expect(result.missing).toEqual([]);
+  });
+
+  // TC-CLM-005: symmetric — candidate with full phrase satisfies abbreviation requirement
+  it('candidate "Contract Lifecycle Management" exactly matches requirement "CLM"', () => {
+    const result = calculateSkillMatch(['Contract Lifecycle Management'], ['CLM']);
+    expect(result.exactMatched).toContain('clm');
+    expect(result.missing).toEqual([]);
+  });
+
+  // TC-CLM-006: lowercase full phrase is included in the mapping (not only the abbreviation)
+  it('candidate "contract lifecycle management" (lowercase) exactly matches requirement "CLM"', () => {
+    const result = calculateSkillMatch(['contract lifecycle management'], ['CLM']);
+    expect(result.exactMatched).toContain('clm');
+    expect(result.missing).toEqual([]);
+  });
+
+  // TC-CLM-007: canonical skill is assigned to the erp category
+  it('getSkillCategory("clm") returns a non-null category', () => {
+    expect(getSkillCategory('clm')).not.toBeNull();
+    expect(getSkillCategory('clm')).not.toBeUndefined();
+  });
+
+  it('getSkillCategory("clm") returns "erp"', () => {
+    expect(getSkillCategory('clm')).toBe('erp');
+  });
+
+  // TC-CLM-008: related-skills lookup works via canonical form
+  it('getRelatedSkills("clm") returns a non-empty array', () => {
+    const related = getRelatedSkills('clm');
+    expect(related.length).toBeGreaterThan(0);
+    expect(related).not.toContain('clm');
+  });
+
+  // TC-CLM-009: edge cases
+  it('adjacent acronyms CRM and ERP are unaffected — spot-check', () => {
+    expect(normalizeSkill('sap')).toBe('sap');
+    expect(normalizeSkill('SAP')).toBe('sap');
+  });
+
+  it('whitespace variations do not throw an exception', () => {
+    expect(() => normalizeSkill('contract  lifecycle  management')).not.toThrow();
+    expect(() => calculateSkillMatch(['contract  lifecycle  management'], ['CLM'])).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // TC-ORACLE-001 through TC-ORACLE-009: Oracle PL/SQL normalization and matching
 // ---------------------------------------------------------------------------
 

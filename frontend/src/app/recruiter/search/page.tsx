@@ -18,6 +18,10 @@ type ViewMode = 'input' | 'requirement_details' | 'criteria' | 'results';
 
 const STORAGE_KEY = 'scout_recruiter_search';
 const PAGE_SIZE = 20;
+// LLM re-rank poll budget (#239): ~40s of coverage (10 × 4s) so the ~20s async
+// compute reliably lands within the view before we fall back to deterministic.
+const RERANK_MAX_POLLS = 10;
+const RERANK_POLL_INTERVAL_MS = 4000;
 
 export default function RecruiterSearchPage() {
   const router = useRouter();
@@ -59,6 +63,11 @@ export default function RecruiterSearchPage() {
   const [sourceRequirementId, setSourceRequirementId] = useState<string | null>(prefilled?.requirementId || null);
   const [sortBy, setSortBy] = useState<'matchScore' | 'experience' | 'lastUpdated'>('matchScore');
   const [screeningCandidate, setScreeningCandidate] = useState<CandidateSearchResult | null>(null);
+  // LLM tie-break overlay state (#239). `llmRanked` — displayed order is
+  // LLM-influenced; `llmPending` — a recompute is in flight, poll once it lands.
+  const [llmRanked, setLlmRanked] = useState(false);
+  const [llmPending, setLlmPending] = useState(false);
+  const rerankPollCount = useRef(0);
 
   // Shortlisting state
   const [shortlistModalCandidate, setShortlistModalCandidate] = useState<CandidateSearchResult | null>(null);
@@ -139,9 +148,13 @@ export default function RecruiterSearchPage() {
   }, [engagementModel, payroll]);
 
   // Search helper — reusable for both button click and state restore
-  const runSearch = useCallback(async (criteria: SearchCriteria, lastEvaluatedKey?: string, sort?: 'matchScore' | 'experience' | 'lastUpdated', append?: boolean, includeNotSuitable?: boolean) => {
+  const runSearch = useCallback(async (criteria: SearchCriteria, lastEvaluatedKey?: string, sort?: 'matchScore' | 'experience' | 'lastUpdated', append?: boolean, includeNotSuitable?: boolean, isRerankPoll?: boolean) => {
     try {
-      setLoading(true);
+      // A fresh, user-initiated search resets the rerank-poll budget; a poll or
+      // a "load more" page does not.
+      if (!append && !isRerankPoll) rerankPollCount.current = 0;
+      // A rerank poll refreshes order in the background — don't show the spinner.
+      if (!isRerankPoll) setLoading(true);
       setError(null);
       const pagination = lastEvaluatedKey ? { lastEvaluatedKey } : undefined;
       const response = await api.searchCandidates(criteria, pagination, sort || sortBy, sourceRequirementId || undefined, includeNotSuitable);
@@ -150,17 +163,46 @@ export default function RecruiterSearchPage() {
       } else {
         setAllResults(response.candidates);
         setCurrentPage(1);
+        // Only a non-append (full) response carries the canonical overlay state.
+        setLlmRanked(!!response.llmRerank?.ranked);
+        setLlmPending(!!response.llmRerank?.pending);
       }
       setTotalMatches(response.totalMatches);
       setPaginationKey(response.pagination.lastEvaluatedKey);
       setHasMore(response.pagination.hasMore);
       setViewMode('results');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Search failed');
+      // A failed background poll must not surface an error over good results.
+      if (!isRerankPoll) setError(err instanceof Error ? err.message : 'Search failed');
     } finally {
-      setLoading(false);
+      if (!isRerankPoll) setLoading(false);
     }
-  }, [sortBy]);
+  }, [sortBy, sourceRequirementId]);
+
+  // Progressive enhancement (#239): when the read path reports a pending LLM
+  // recompute, re-fetch until the LLM-ordered list lands. The batched compute
+  // takes ~20s, so poll across ~40s (10 × 4s); polling never re-triggers the
+  // compute thanks to the backend in-flight claim guard. If it still hasn't
+  // landed, stop showing "Refining…" and fall back to the deterministic order
+  // rather than spinning forever.
+  useEffect(() => {
+    if (!llmPending || !sourceRequirementId || sortBy !== 'matchScore') return;
+    // setInterval (not a per-poll setTimeout): `llmPending` stays true the whole
+    // time the compute is in flight, so the effect won't re-run between polls —
+    // an interval keeps the ~4s cadence going until the reorder lands or the
+    // budget is spent.
+    const id = setInterval(() => {
+      rerankPollCount.current += 1;
+      if (rerankPollCount.current > RERANK_MAX_POLLS) {
+        // Compute didn't land in time — stop showing "Refining…" and fall back
+        // to deterministic order rather than spinning forever.
+        setLlmPending(false);
+        return;
+      }
+      runSearch(searchCriteria, undefined, undefined, false, showNotSuitable, true);
+    }, RERANK_POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [llmPending, sourceRequirementId, sortBy, searchCriteria, showNotSuitable, runSearch]);
 
   // Run auto-search and clean up sessionStorage for prefilled state
   useEffect(() => {
@@ -1074,6 +1116,31 @@ export default function RecruiterSearchPage() {
               <div>
                 <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Search Results</h2>
                 <p className="text-gray-600 dark:text-gray-400">{totalMatches} candidates found</p>
+                {sourceRequirementId && sortBy === 'matchScore' && (
+                  llmRanked ? (
+                    <span
+                      data-testid="llm-rank-indicator"
+                      title="Top candidates re-ordered by an AI tie-break over the match-score shortlist."
+                      className="mt-1 inline-flex items-center gap-1 badge bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300"
+                    >
+                      ✨ AI Ranked
+                    </span>
+                  ) : llmPending ? (
+                    <span
+                      data-testid="llm-rank-pending"
+                      className="mt-1 inline-flex items-center gap-1 badge bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400"
+                    >
+                      Refining order…
+                    </span>
+                  ) : (
+                    <span
+                      data-testid="llm-rank-deterministic"
+                      className="mt-1 inline-flex items-center gap-1 badge bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400"
+                    >
+                      Ranked by match score
+                    </span>
+                  )
+                )}
               </div>
               <div className="flex items-center gap-3 self-start sm:self-auto">
                 <select
@@ -1275,6 +1342,15 @@ export default function RecruiterSearchPage() {
                           {candidate.matchDetails.mustHaveMissing.length > 0 && (
                             <div className="mt-2 text-sm text-red-600 dark:text-red-400">
                               Missing: {candidate.matchDetails.mustHaveMissing.join(', ')}
+                            </div>
+                          )}
+
+                          {candidate.rationale && (
+                            <div
+                              data-testid="llm-rationale"
+                              className="mt-2 text-sm text-violet-700 dark:text-violet-300"
+                            >
+                              <span className="font-medium">AI: </span>{candidate.rationale}
                             </div>
                           )}
                         </>

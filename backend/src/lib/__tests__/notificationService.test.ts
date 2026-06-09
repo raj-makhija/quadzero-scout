@@ -9,6 +9,9 @@ const mockGetAllActiveRequirements = vi.fn();
 const mockGetUserById = vi.fn();
 
 vi.mock('../dynamodb.js', () => ({
+  getLlmRerank: vi.fn().mockResolvedValue(null),
+  putLlmRerank: vi.fn().mockResolvedValue(undefined),
+  deleteLlmRerank: vi.fn().mockResolvedValue(undefined),
   getCandidateById: (...args: unknown[]) => mockGetCandidateById(...args),
   getAllActiveRequirements: (...args: unknown[]) => mockGetAllActiveRequirements(...args),
   getUserById: (...args: unknown[]) => mockGetUserById(...args),

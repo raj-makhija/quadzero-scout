@@ -8,7 +8,7 @@ import { OpenAIProvider } from './openai.js';
 import { OpenRouterProvider } from './openrouter.js';
 import { GeminiProvider } from './gemini.js';
 import { isRateLimitError } from './base.js';
-import { LLMResumeOutputSchema, LLMJDOutputSchema, ScreeningQuestionsSchema } from '../../types/index.js';
+import { LLMResumeOutputSchema, LLMJDOutputSchema, ScreeningQuestionsSchema, LlmRerankOutputSchema } from '../../types/index.js';
 import { normalizeSeniorityArray } from '../seniorityNormalizer.js';
 import type { LLMResumeOutput, LLMJDOutput, ScreeningQuestion } from '../../types/index.js';
 import { convertToLpa, type RateUnit } from '../ctcConversion.js';
@@ -179,11 +179,27 @@ Rules:
 4. Each question must be concise, specific, and answerable in a phone screen
 5. ONLY output the JSON array, no additional text or wrapping object`;
 
+const FALLBACK_CANDIDATE_RERANKER_PROMPT = `You are an expert technical recruiter performing a tie-break re-rank of a shortlist of candidates against a job requirement.
+
+You will be given a JOB REQUIREMENT and a list of CANDIDATES, each with a candidate_id and a profile. Assess how well each candidate fits the requirement and assign a score with a brief rationale.
+
+You MUST respond with valid JSON — an array containing exactly one object per candidate you were given:
+[
+  {
+    "candidate_id": "the candidate_id exactly as provided",
+    "llmScore": number from 0 to 100 indicating fit,
+    "rationale": "1-2 sentence explanation of the score"
+  }
+]
+
+Include every candidate_id you were given — do not omit, merge, or invent candidates. ONLY output the JSON array, no additional text.`;
+
 const FALLBACK_PROMPTS: Record<string, string> = {
   resume_parser: FALLBACK_RESUME_PARSER_PROMPT,
   jd_parser: FALLBACK_JD_PARSER_PROMPT,
   resume_formatter: FALLBACK_RESUME_FORMATTER_PROMPT,
   screening_questions: FALLBACK_SCREENING_QUESTIONS_PROMPT,
+  candidate_reranker: FALLBACK_CANDIDATE_RERANKER_PROMPT,
 };
 
 async function getPromptContent(promptKey: string): Promise<{ content: string; version: number | null }> {
@@ -206,6 +222,11 @@ async function getPromptContent(promptKey: string): Promise<{ content: string; v
 
   // Return fallback
   return { content: FALLBACK_PROMPTS[promptKey] || '', version: null };
+}
+
+/** Test-only: drop the in-memory prompt cache so each test sees a fresh fetch. */
+export function _clearPromptCache(): void {
+  promptCache.clear();
 }
 
 export async function parseResume(resumeText: string, supplementaryText?: string): Promise<{
@@ -682,6 +703,141 @@ Identify any existing requirements that are potential duplicates of the new one 
       lastRequestedAt: existing?.lastRequestedAt,
     };
   });
+}
+
+// ─── Candidate Re-rank (ticket #238) ──────────────────────────────────────────
+
+/** Map a provider to the concrete model id it serves, for stamping on results. */
+function modelNameFor(provider: BaseLLMProvider): string {
+  switch (provider.name) {
+    case 'gemini':
+      return config.llm.geminiModel;
+    case 'openrouter':
+      return config.llm.openrouterModel;
+    case 'openai':
+      return 'gpt-4-turbo-preview';
+    case 'claude':
+      return 'claude-sonnet-4-6';
+    default:
+      return provider.name;
+  }
+}
+
+export interface RerankCandidateInput {
+  candidate_id: string;
+  /** A compact text profile of the candidate (skills, experience, etc.). */
+  profile: string;
+}
+
+export interface RerankTopNInput {
+  /** The requirement's JD / parsed criteria as text — the prompt-cached prefix. */
+  jobDescription: string;
+  /** The deterministic top-N candidates to re-rank (the per-call delta). */
+  candidates: RerankCandidateInput[];
+  /** Freshness key computed by the caller; echoed back verbatim on the output. */
+  topNHash: string;
+}
+
+export interface RerankTopNOutput {
+  entries: { candidate_id: string; llmScore: number; rationale: string }[];
+  model: string;
+  promptVersion: number | null;
+  topNHash: string;
+  usage?: { inputTokens: number; outputTokens: number };
+}
+
+/**
+ * LLM tie-break re-rank of a requirement's top-N candidates (ticket #238).
+ *
+ * One batched call per invocation regardless of N: the JD/criteria + scoring
+ * instructions ride as the prompt-cached prefix, the candidate profiles as the
+ * per-call delta. Honors the provider abstraction and rate-limit fallback. The
+ * caller stores the returned entries with the echoed `topNHash` as the
+ * freshness key. No read-path/search wiring here — store + compute only.
+ */
+export async function rerankTopN(input: RerankTopNInput): Promise<RerankTopNOutput> {
+  const provider = getLLMProvider();
+
+  // Empty top-N: nothing to rank, so no LLM call fires (cost guard).
+  if (input.candidates.length === 0) {
+    return { entries: [], model: modelNameFor(provider), promptVersion: null, topNHash: input.topNHash };
+  }
+
+  const { content: systemPrompt, version: promptVersion } = await getPromptContent('candidate_reranker');
+
+  const candidateBlock = input.candidates
+    .map((c, i) => `[${i + 1}] candidate_id: ${c.candidate_id}\n${c.profile}`)
+    .join('\n\n');
+
+  const userPrompt = `JOB REQUIREMENT:\n${input.jobDescription}\n\nCANDIDATES TO RANK:\n${candidateBlock}`;
+
+  const messages: LLMMessage[] = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt },
+  ];
+
+  // Track which provider actually served the call so the stored model is accurate
+  // even when the rate-limit fallback fires.
+  let servedBy = provider;
+  const response = await withProviderFallback(provider, (p) => {
+    servedBy = p;
+    return p.completeWithRetry(
+      messages,
+      { temperature: 0, maxTokens: 4096, responseFormat: 'json' },
+      config.llm.maxRetries
+    );
+  });
+
+  const parsed = servedBy.parseJsonResponse<unknown>(response.content);
+
+  // Tolerant validation: keep the well-formed entries the model returned and
+  // drop malformed/omitted ones rather than failing the whole batch. A
+  // maxTokens-truncated response (large top-N) would otherwise discard every
+  // score, leaving the read path stuck recomputing ("Refining order…" forever).
+  // Dropped candidates simply retain their deterministic position in the overlay.
+  const requestedIds = new Set(input.candidates.map((c) => c.candidate_id));
+  const seen = new Set<string>();
+  const entries = (Array.isArray(parsed) ? parsed : []).flatMap((raw) => {
+    const r = LlmRerankOutputSchema.element.safeParse(raw);
+    if (!r.success || !requestedIds.has(r.data.candidate_id) || seen.has(r.data.candidate_id)) {
+      return [];
+    }
+    seen.add(r.data.candidate_id);
+    return [r.data];
+  });
+
+  if (entries.length === 0) {
+    throw new Error('Candidate re-rank LLM returned no usable entries');
+  }
+  const dropped = input.candidates.length - entries.length;
+  if (dropped > 0) {
+    console.warn(
+      `[rerankTopN] kept ${entries.length}/${input.candidates.length} candidate scores; ` +
+        `${dropped} dropped (truncated/omitted) and retain deterministic order`
+    );
+  }
+
+  return {
+    entries,
+    model: modelNameFor(servedBy),
+    promptVersion,
+    topNHash: input.topNHash,
+    usage: response.usage
+      ? { inputTokens: response.usage.inputTokens, outputTokens: response.usage.outputTokens }
+      : undefined,
+  };
+}
+
+/**
+ * The live freshness signature for the candidate re-rank (#239): the model and
+ * active prompt version a recompute would stamp onto its stored entry. Read at
+ * search time to gate a cached re-rank WITHOUT firing an LLM call — only a cheap
+ * (cached) prompt lookup.
+ */
+export async function getRerankSignature(): Promise<{ model: string; promptVersion: number | null }> {
+  const provider = getLLMProvider();
+  const { version } = await getPromptContent('candidate_reranker');
+  return { model: modelNameFor(provider), promptVersion: version };
 }
 
 export { BaseLLMProvider };

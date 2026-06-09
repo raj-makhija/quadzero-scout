@@ -304,6 +304,7 @@ export interface CandidateSearchResult {
   engagementModel: string;
   currentCtc?: number;
   expectedCtc?: number;
+  expectedCtcType?: string;
   matchScore: number;
   matchDetails: {
     mustHaveMatched: string[];
@@ -330,11 +331,17 @@ export interface CandidateSearchResult {
   hackerrankScore?: number;
   notInterested?: boolean;
   notInterestedAt?: string;
+  roles?: string[];
+  headline?: string;
   isShortlisted?: boolean;
   isNotSuitable?: boolean;
   subVendorId?: string;
   subVendorName?: string;
   subVendorContactPerson?: string;
+  subVendorContactPhone?: string;
+  subVendorContactEmail?: string;
+  // LLM tie-break rationale — present only when an LLM re-rank is applied (#239).
+  rationale?: string;
 }
 
 export interface SearchResponse {
@@ -345,6 +352,10 @@ export interface SearchResponse {
     lastEvaluatedKey?: string;
   };
   totalMatches: number;
+  // LLM tie-break overlay status for the requirement-bound read path (#239).
+  // `ranked` — the returned order is LLM-influenced. `pending` — a recompute was
+  // kicked off; the client may re-fetch shortly to pick up the LLM order.
+  llmRerank?: { ranked: boolean; pending: boolean };
 }
 
 // API Warning (for graceful degradation signals)
@@ -836,6 +847,34 @@ export interface RequirementMatchCacheItem {
   ranked: RankedMatchEntry[];
   updated_at: string;
 }
+
+// One LLM-reranked candidate within a requirement's top-N tie-break list.
+export interface LlmRerankEntry {
+  candidate_id: string;
+  llmScore: number;
+  rationale: string;
+}
+
+// One item per requirement: the LLM tie-break re-rank of its top-N candidates.
+// Stored separately from RequirementMatchCacheItem (ticket #238) — a per-entry
+// rationale across all candidates would blow the 400KB single-item limit.
+export interface RequirementLlmRerankItem {
+  requirement_id: string;
+  entries: LlmRerankEntry[];
+  top_n_hash: string;
+  model: string;
+  prompt_version: number | null;
+  computed_at: string;
+}
+
+// Shape the candidate_reranker LLM call must return: one entry per candidate.
+export const LlmRerankOutputSchema = z.array(
+  z.object({
+    candidate_id: z.string(),
+    llmScore: z.number(),
+    rationale: z.string(),
+  })
+);
 
 // ─── Pipeline Activity Types ────────────────────────────────────────────────
 

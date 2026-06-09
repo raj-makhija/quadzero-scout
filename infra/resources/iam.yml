@@ -39,6 +39,7 @@ dynamoDbPolicy:
     - !GetAtt RecruiterTasksTable.Arn
     - !Sub '${RecruiterTasksTable.Arn}/index/*'
     - !GetAtt RequirementMatchCacheTable.Arn
+    - !GetAtt RequirementLlmRerankTable.Arn
 
 # S3 Policy
 s3Policy:
@@ -62,6 +63,7 @@ lambdaInvokePolicy:
     - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-formatResumeWorker'
     - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-bulkImportWorker'
     - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-notifyWorker'
+    - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-llmRerankWorker'
 
 # SES Policy (for sending notification emails)
 sesPolicy:
@@ -79,6 +81,13 @@ textractPolicy:
   Action:
     - textract:StartDocumentTextDetection
     - textract:GetDocumentTextDetection
+  Resource: '*'
+
+# CloudWatch Metrics Policy (LLM rerank observability)
+cloudwatchMetricsPolicy:
+  Effect: Allow
+  Action:
+    - cloudwatch:PutMetricData
   Resource: '*'
 
 # SSM Parameter Store Policy

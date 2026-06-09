@@ -50,6 +50,8 @@ provider:
     DYNAMODB_TABLE_BULK_IMPORT_BATCHES: ${self:custom.bulkImportBatchesTable}
     BULK_IMPORT_WORKER_NAME: ${self:service}-${self:provider.stage}-bulkImportWorker
     NOTIFY_WORKER_NAME: ${self:service}-${self:provider.stage}-notifyWorker
+    LLM_RERANK_WORKER_NAME: ${self:service}-${self:provider.stage}-llmRerankWorker
+    LLM_RERANK_ENABLED: ${ssm:/quadzero-scout/${self:provider.stage}/LLM_RERANK_ENABLED, env:LLM_RERANK_ENABLED, 'false'}
     SES_SENDER_EMAIL: ${ssm:/quadzero-scout/${self:provider.stage}/SES_SENDER_EMAIL, env:SES_SENDER_EMAIL, ''}
     FRONTEND_BASE_URL: ${ssm:/quadzero-scout/${self:provider.stage}/FRONTEND_BASE_URL, env:FRONTEND_BASE_URL, 'https://dev.scout.quadzero.com'}
     DYNAMODB_TABLE_REQUIREMENTS: ${self:custom.requirementsTable}
@@ -65,6 +67,7 @@ provider:
     DYNAMODB_TABLE_CANDIDATE_ATTACHMENTS: ${self:custom.candidateAttachmentsTable}
     DYNAMODB_TABLE_RECRUITER_TASKS: ${self:custom.recruiterTasksTable}
     DYNAMODB_TABLE_REQUIREMENT_MATCH_CACHE: ${self:custom.requirementMatchCacheTable}
+    DYNAMODB_TABLE_REQUIREMENT_LLM_RERANK: ${self:custom.requirementLlmRerankTable}
     GRAPH_TENANT_ID: ${ssm:/quadzero-scout/${self:provider.stage}/GRAPH_TENANT_ID, env:GRAPH_TENANT_ID, ''}
     GRAPH_CLIENT_ID: ${ssm:/quadzero-scout/${self:provider.stage}/GRAPH_CLIENT_ID, env:GRAPH_CLIENT_ID, ''}
     GRAPH_CLIENT_SECRET: ${ssm:/quadzero-scout/${self:provider.stage}/GRAPH_CLIENT_SECRET, env:GRAPH_CLIENT_SECRET, ''}
@@ -94,6 +97,7 @@ provider:
         - ${file(resources/iam.yml):ssmPolicy}
         - ${file(resources/iam.yml):sesPolicy}
         - ${file(resources/iam.yml):textractPolicy}
+        - ${file(resources/iam.yml):cloudwatchMetricsPolicy}
 
 custom:
   corsOrigins:
@@ -130,6 +134,7 @@ custom:
   candidateAttachmentsTable: CandidateAttachments-${self:provider.stage}
   recruiterTasksTable: RecruiterTasks-${self:provider.stage}
   requirementMatchCacheTable: RequirementMatchCache-${self:provider.stage}
+  requirementLlmRerankTable: RequirementLlmRerank-${self:provider.stage}
 
   dotenv:
     include:
@@ -554,6 +559,23 @@ functions:
     timeout: 60
     memorySize: 512
 
+  # Match-cache full rebuild worker (ticket #236) — nightly EventBridge schedule.
+  matchCacheRebuildWorker:
+    handler: src/handlers/worker/matchCacheRebuildWorker.handler
+    timeout: 120
+    memorySize: 512
+    events:
+      - schedule:
+          rate: rate(1 day)
+          enabled: true
+
+  # LLM tie-break re-rank worker (ticket #239) — invoked fire-and-forget from
+  # the requirement-bound search read path on a stale/cold re-rank. No events.
+  llmRerankWorker:
+    handler: src/handlers/worker/llmRerankWorker.handler
+    timeout: 120
+    memorySize: 512
+
   # Email Ingest Worker (scheduled, no HTTP events)
   emailIngestWorker:
     handler: src/handlers/worker/emailIngestWorker.handler
@@ -851,6 +873,16 @@ functions:
       - httpApi:
           path: /admin/recruiters/list
           method: GET
+
+  # Match-cache full rebuild — manual admin trigger (ticket #236).
+  adminRebuildMatchCache:
+    handler: src/handlers/admin/rebuildMatchCache.handler
+    timeout: 120
+    memorySize: 512
+    events:
+      - httpApi:
+          path: /admin/match-cache/rebuild
+          method: POST
 
 resources:
   - ${file(resources/dynamodb.yml)}

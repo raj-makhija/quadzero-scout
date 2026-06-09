@@ -56,7 +56,7 @@ jobs:
 
     steps:
       - name: Checkout develop (with PAT for git ops + label edits)
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           ref: develop
           fetch-depth: 0
@@ -75,10 +75,31 @@ jobs:
           gh --version
           jq --version
 
-      - name: Install Claude Code CLI (needed by scribe agent on qa-approve)
+      # The Claude Code CLI is only needed by the scribe agent on the
+      # qa-approve path. Every other command (show-status, park, retry,
+      # qa-deploy, qa-reject, approve-cost, reject-cost, prod-release) runs
+      # no agent, so we skip the install entirely for them.
+      - name: Configure npm global prefix (cacheable path)
+        if: github.event.label.name == 'pipeline:qa-approve'
         run: |
-          npm install -g @anthropic-ai/claude-code
-          claude --version
+          npm config set prefix "$HOME/.npm-global"
+          echo "$HOME/.npm-global/bin" >> "$GITHUB_PATH"
+
+      - name: Cache Claude Code CLI
+        if: github.event.label.name == 'pipeline:qa-approve'
+        id: claude-cli-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.npm-global
+          key: claude-code-cli-${{ runner.os }}-v1
+
+      - name: Install Claude Code CLI (needed by scribe agent on qa-approve)
+        if: github.event.label.name == 'pipeline:qa-approve' && steps.claude-cli-cache.outputs.cache-hit != 'true'
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Verify Claude Code CLI
+        if: github.event.label.name == 'pipeline:qa-approve'
+        run: claude --version
 
       - name: Route command
         env:

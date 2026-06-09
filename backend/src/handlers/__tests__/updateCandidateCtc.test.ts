@@ -9,6 +9,9 @@ const mockUpdateCtcInDb = vi.fn().mockResolvedValue(undefined);
 const mockGetCandidateById = vi.fn();
 
 vi.mock('../../lib/dynamodb.js', () => ({
+  getLlmRerank: vi.fn().mockResolvedValue(null),
+  putLlmRerank: vi.fn().mockResolvedValue(undefined),
+  deleteLlmRerank: vi.fn().mockResolvedValue(undefined),
   updateCandidateCtc: (...args: unknown[]) => mockUpdateCtcInDb(...args),
   getCandidateById: (...args: unknown[]) => mockGetCandidateById(...args),
 }));

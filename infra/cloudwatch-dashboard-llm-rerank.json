@@ -1,0 +1,79 @@
+{
+  "dashboardName": "QuadzeroScout-LlmRerank",
+  "namespace": "QuadzeroScout/LlmRerank",
+  "description": "Observability dashboard for the LLM rerank pipeline (ticket #240). Covers cost/token usage, call count, cache hit rate, latency, and fallback count. All metrics are in the QuadzeroScout/LlmRerank CloudWatch namespace.",
+  "metrics": [
+    {
+      "metricName": "LlmCallCount",
+      "unit": "Count",
+      "dimensions": ["Model", "Provider"],
+      "description": "Number of LLM rerank calls initiated by the worker. Emitted once per successful worker invocation (after kill-switch and candidate checks pass).",
+      "suggestedStatistics": ["Sum"],
+      "suggestedPeriod": 300
+    },
+    {
+      "metricName": "InputTokens",
+      "unit": "Count",
+      "dimensions": ["Model", "Provider"],
+      "description": "Input token count per LLM rerank call. Use Sum over a period for total token consumption.",
+      "suggestedStatistics": ["Sum", "Average"],
+      "suggestedPeriod": 300
+    },
+    {
+      "metricName": "OutputTokens",
+      "unit": "Count",
+      "dimensions": ["Model", "Provider"],
+      "description": "Output token count per LLM rerank call.",
+      "suggestedStatistics": ["Sum", "Average"],
+      "suggestedPeriod": 300
+    },
+    {
+      "metricName": "LlmLatencyMs",
+      "unit": "Milliseconds",
+      "dimensions": ["Model", "Provider"],
+      "description": "Wall-clock duration of the rerankTopN LLM call in milliseconds. Use p50/p95 statistics to track added latency of the async rerank step.",
+      "suggestedStatistics": ["p50", "p95", "Average"],
+      "suggestedPeriod": 60
+    },
+    {
+      "metricName": "FallbackCount",
+      "unit": "Count",
+      "dimensions": [],
+      "description": "Number of times the LLM rerank worker caught an error and fell back to deterministic order. A sustained non-zero value indicates LLM instability.",
+      "suggestedStatistics": ["Sum"],
+      "suggestedPeriod": 300
+    },
+    {
+      "metricName": "CacheHit",
+      "unit": "Count",
+      "dimensions": [],
+      "description": "Read-path cache hits: a fresh, hash-matching LLM rerank result was found and applied to the page.",
+      "suggestedStatistics": ["Sum"],
+      "suggestedPeriod": 60
+    },
+    {
+      "metricName": "CacheMiss",
+      "unit": "Count",
+      "dimensions": [],
+      "description": "Read-path cache misses: no stored result or a stale/hash-mismatched entry triggered an async worker recompute.",
+      "suggestedStatistics": ["Sum"],
+      "suggestedPeriod": 60
+    },
+    {
+      "metricName": "KillSwitchDisabled",
+      "unit": "Count",
+      "dimensions": [],
+      "description": "Emitted when the worker is invoked but LLM_RERANK_ENABLED=false. A non-zero count confirms the kill switch is active.",
+      "suggestedStatistics": ["Sum"],
+      "suggestedPeriod": 300
+    }
+  ],
+  "derivedQueries": [
+    {
+      "name": "CacheHitRate",
+      "expression": "CacheHit / (CacheHit + CacheMiss) * 100",
+      "description": "Percentage of read-path requests served from a fresh cached rerank. Target >80% in steady state.",
+      "unit": "Percent"
+    }
+  ]
+}
