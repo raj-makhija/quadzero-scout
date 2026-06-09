@@ -823,6 +823,14 @@ The Gemini provider implements in-provider exponential backoff on rate-limit err
 
 `extractTextFromResume()` first tries `pdf-parse` (embedded text layer). If it returns fewer than 50 characters — typical for scanned/image-only PDFs — it falls back to AWS Textract's async `StartDocumentTextDetection` API using the document's S3 reference (supports multi-page PDFs). The Lambda polls `GetDocumentTextDetection` every 2 seconds for up to 60 seconds. Required IAM actions: `textract:StartDocumentTextDetection`, `textract:GetDocumentTextDetection` (granted via `textractPolicy` in `infra/resources/iam.yml`). Cost: ~$0.0015 per page, billed only for fallback invocations.
 
+**LLM Reranking Service:**
+
+`rerankTopN()` in `lib/llm/index.ts` computes an LLM tie-break score for a requirement's deterministic top-N candidate list in a **single batched LLM call** — the whole top-N is sent as one prompt rather than one call per candidate. It loads the `candidate_reranker` prompt (registered in `FALLBACK_PROMPTS`, so an in-code fallback exists when no DB prompt is configured), sends the job requirement plus the numbered candidate block at `temperature: 0`, and tolerantly parses the JSON array — keeping the well-formed entries and dropping any malformed or omitted ones rather than failing the whole batch (a dropped candidate simply retains its deterministic position).
+
+It returns a `RerankTopNOutput`: `entries` (`{ candidate_id, llmScore, rationale }[]`), `model` (the provider that actually served the call), `promptVersion` (`number | null` — `null` when the in-code fallback prompt was used), and `topNHash` (echoed from the input). Like the parser calls, it runs through `withProviderFallback()`, so a primary-provider rate-limit error — and only a rate-limit error; other failures propagate untouched — re-runs the call against `LLM_FALLBACK_PROVIDER`.
+
+The service is invoked lazily from the requirement-bound search read path. On the default matchScore sort, `applyLlmRerankOverlay()` overlays the stored re-rank onto the displayed page and, when the stored result is cold or stale (its `top_n_hash` no longer matches the current top-N), fires the `llmRerankWorker` Lambda fire-and-forget. The worker runs `rerankTopN` once and persists the result via `putLlmRerank()` into the `RequirementLlmRerank` table, keyed by the caller's `topNHash` so the next view's freshness gate matches. The overlay is non-fatal — any error serves the deterministic order — and the whole path is gated by the `LLM_RERANK_ENABLED` kill switch.
+
 ### Data Layer
 
 | Component | Technology | Responsibility |
