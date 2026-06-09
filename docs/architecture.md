@@ -359,14 +359,16 @@ Single Upload:
           └─► notificationService.notifyMatchingRecruiters([id])
                 ├─► getAllActiveRequirements()           (DynamoDB scan)
                 ├─► calculateMatchScore() per requirement
+                ├─► upsert RequirementMatchCache per active requirement  ← unconditional; not gated on email config
                 ├─► group matches by requirement
                 └─► sendNewProfilesNotificationEmail()   (AWS SES) × (requirements × recruiters)
+                      (skipped if no recruiters are opted in for that requirement)
 
 Bulk Upload:
   bulkImportWorker (when all files processed)
     └─► finalizeBulkImportBatch()
     └─► notificationService.notifyMatchingRecruiters([...completedCandidateIds])
-          ├─► same matching logic as above
+          ├─► same matching logic as above (cache upsert is unconditional)
           └─► one email per (requirement, recruiter) covering all matching candidates
 ```
 
@@ -378,6 +380,9 @@ Bulk Upload:
 - Notification toggle stored in `notify_recruiter_ids` on the `Requirements` table item
 - Creator is opted in by default; any recruiter can opt in/out via `PUT /recruiter/requirements/{id}/notify`
 - Pre-deploy requirement: sender email identity must be verified in AWS SES (ap-south-1)
+- **`RequirementMatchCache` is maintained unconditionally** — the cache upsert runs for every active requirement on every ingest event, regardless of whether any recruiter has notifications enabled. Email dispatch and cache maintenance are independent concerns.
+- **`updateCandidateCtc` and `updateCandidateCustomFields`** both trigger a match-cache update: a read-modify-write upsert that refreshes the candidate's `{ candidate_id, rank, score }` entry in every active requirement's cache with the latest computed rank and score.
+- Cache entries store only stable ranking data: `{ candidate_id, rank, score }`. Volatile per-candidate state (screening status, CTC flags) is intentionally absent — it is applied as a read-time overlay when search results or notification lists are built from the cache.
 
 **Email content:**
 - Subject: "New profile match(es): {requirement label}"
@@ -385,6 +390,19 @@ Bulk Upload:
 - Profile links are capped at 10 per email; additional matches show an "and N more..." note
 - A "View Requirement" button links to the requirement detail page
 - Both HTML and plain-text versions are sent
+
+### Requirement Lifecycle & Match-Cache Maintenance
+
+The `RequirementMatchCache` table is kept in sync automatically at every requirement lifecycle event:
+
+| Trigger | Cache Effect |
+|---------|-------------|
+| Requirement **created** | Full active-candidate scan; builds the cache from scratch for the new requirement using the initial scoring criteria |
+| Requirement **criteria edited** | Full cache rebuild: all existing entries for the requirement are replaced using the updated scoring criteria |
+| Requirement **reopened** (`closed_on_hold` → `active`) | Full cache rebuild; equivalent to creation — re-scores all currently active candidates against the requirement |
+| Requirement **closed** (`active` → `closed_on_hold`) or **deleted** | Drops the entire cache entry for that requirement (all candidate rows removed) |
+
+Cache entries store only stable ranking data: `{ candidate_id, rank, score }`. Volatile per-candidate state — screening status, CTC flags, availability — is intentionally absent from the stored cache and applied as a read-time overlay when search results or notification lists are built.
 
 ### Recruiter Candidate Screening Flow
 
