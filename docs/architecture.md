@@ -71,13 +71,14 @@ Quadzero Scout is a production SaaS platform that connects IT professionals with
 │                            │  - interviewFeedback / updatePipelineStage  │ │
 │                            │  - getPipeline / getActivities / addNote    │ │
 │                            └──────────────────────────────────────────────┘ │
-│  ┌──────────────────────┐                                                   │
-│  │  Worker Lambdas      │                                                   │
-│  │  - formatResume      │                                                   │
-│  │  - bulkImportWorker  │                                                   │
-│  │  - notifyWorker      │                                                   │
-│  │  - emailIngestWorker │                                                   │
-│  └──────────────────────┘                                                   │
+│  ┌────────────────────────────┐                                             │
+│  │  Worker Lambdas            │                                             │
+│  │  - formatResume            │                                             │
+│  │  - bulkImportWorker        │                                             │
+│  │  - notifyWorker            │                                             │
+│  │  - emailIngestWorker       │                                             │
+│  │  - matchCacheRebuildWorker │                                             │
+│  └────────────────────────────┘                                             │
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
 │  │                        Shared Libraries                              │    │
@@ -603,6 +604,23 @@ Parse-time expansion handles records created after this feature shipped. Match-t
 - S3 key prefix: `email-resumes/{year}/{month}/{uuid}-{filename}` (separate from `resumes/` for operational visibility)
 - Kill switch: `EMAIL_INGEST_ENABLED` SSM parameter (also disables the EventBridge schedule rule)
 - Graph API authentication: OAuth2 client credentials flow via Azure AD (Entra ID) registered app
+
+### Match Cache Rebuild — Scheduled Maintenance
+
+The `matchCacheRebuildWorker` Lambda rebuilds every authoritative `RequirementMatchCache` entry from scratch, so cached match scores always reflect the current scoring logic. It is the safety net for deploys that change scoring weights or the matching algorithm, and for recovering from cache corruption.
+
+**Purpose:** Recompute all requirement-candidate match scores from authoritative inputs rather than reading and patching existing cache entries. This guarantees the cache reflects the latest scoring weights and algorithm after a deploy or weight change.
+
+**Scheduled trigger:** Runs nightly via an EventBridge `rate(1 day)` schedule (one invocation per day).
+
+**Manual trigger:** The admin endpoint `POST /admin/match-cache/rebuild` triggers the same rebuild on-demand — used immediately after a scoring-logic change rather than waiting for the nightly run.
+
+**Implementation:** Both triggers delegate to the shared `rebuildAllMatchCaches()` helper in `matchCacheService.ts`. The helper fetches all active requirements and candidates once, scores each requirement against the full candidate list, and writes authoritative cache entries without reading existing data.
+
+**Key behavior:**
+- No read-modify-write — existing cache entries are overwritten, never read back first.
+- Candidates are scanned once and reused across all requirements, avoiding a per-requirement candidate fetch.
+- Requirements with no matching candidates still receive an (empty) cache entry, so the cache is exhaustive.
 
 ## Component Details
 
