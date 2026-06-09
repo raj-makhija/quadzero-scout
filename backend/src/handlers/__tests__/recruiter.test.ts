@@ -154,6 +154,10 @@ vi.mock('../../lib/lambdaInvoke.js', () => ({
   invokeLambdaAsync: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('../../lib/cloudwatchMetrics.js', () => ({
+  putLlmRerankMetric: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('../../lib/config.js', () => ({
   config: {
     lambda: {

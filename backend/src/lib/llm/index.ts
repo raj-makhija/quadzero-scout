@@ -743,6 +743,7 @@ export interface RerankTopNOutput {
   model: string;
   promptVersion: number | null;
   topNHash: string;
+  usage?: { inputTokens: number; outputTokens: number };
 }
 
 /**
@@ -807,6 +808,9 @@ export async function rerankTopN(input: RerankTopNInput): Promise<RerankTopNOutp
     model: modelNameFor(servedBy),
     promptVersion,
     topNHash: input.topNHash,
+    usage: response.usage
+      ? { inputTokens: response.usage.inputTokens, outputTokens: response.usage.outputTokens }
+      : undefined,
   };
 }
 

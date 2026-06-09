@@ -3,6 +3,7 @@ import { config } from './config.js';
 import { getLlmRerank } from './dynamodb.js';
 import { invokeLambdaAsync } from './lambdaInvoke.js';
 import { getRerankSignature, type RerankCandidateInput } from './llm/index.js';
+import { putLlmRerankMetric } from './cloudwatchMetrics.js';
 import type { CandidateItem, RequirementItem, CandidateSearchResult } from '../types/index.js';
 
 /**
@@ -88,6 +89,7 @@ export async function applyLlmRerankOverlay(
       // against a stale entry leaking rationale onto the wrong candidate.
       if (entry) c.rationale = entry.rationale;
     }
+    putLlmRerankMetric('CacheHit', 1, 'Count').catch(() => undefined);
     return { page: reordered, ranked: true, pending: false };
   }
 
@@ -99,5 +101,6 @@ export async function applyLlmRerankOverlay(
       topNHash,
     }).catch((err) => console.error('llmRerank worker invoke failed:', err));
   }
+  putLlmRerankMetric('CacheMiss', 1, 'Count').catch(() => undefined);
   return { page, ranked: false, pending: true };
 }
