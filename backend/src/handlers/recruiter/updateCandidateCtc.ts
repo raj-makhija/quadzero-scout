@@ -5,6 +5,7 @@ import { updateCandidateCtc as updateCtcInDb, getCandidateById } from '../../lib
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
 import { recalcShortlistRatesForCandidate } from '../../lib/recalcShortlistRates.js';
+import { updateCacheForCandidates } from '../../lib/matchCacheService.js';
 
 async function handleRequest(
   event: AuthenticatedEvent
@@ -40,6 +41,19 @@ async function handleRequest(
 
     try {
       const candidate = await getCandidateById(candidateId);
+
+      // Refresh the match-cache with the updated CTC (feeds the budget penalty).
+      // Independent of the recalc below so neither failure blocks the other.
+      if (candidate) {
+        try {
+          await updateCacheForCandidates([
+            { ...candidate, expected_ctc: expectedCtc, current_ctc: currentCtc },
+          ]);
+        } catch (cacheErr) {
+          console.error('Failed to update match-cache after CTC update:', cacheErr);
+        }
+      }
+
       const experienceYears = candidate?.total_experience as number ?? 0;
       await recalcShortlistRatesForCandidate(candidateId, expectedCtc, experienceYears);
     } catch (recalcErr) {

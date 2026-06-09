@@ -9,9 +9,17 @@ const mockGetAllActiveRequirements = vi.fn();
 const mockGetUserById = vi.fn();
 
 vi.mock('../dynamodb.js', () => ({
+  getLlmRerank: vi.fn().mockResolvedValue(null),
+  putLlmRerank: vi.fn().mockResolvedValue(undefined),
+  deleteLlmRerank: vi.fn().mockResolvedValue(undefined),
   getCandidateById: (...args: unknown[]) => mockGetCandidateById(...args),
   getAllActiveRequirements: (...args: unknown[]) => mockGetAllActiveRequirements(...args),
   getUserById: (...args: unknown[]) => mockGetUserById(...args),
+}));
+
+const mockUpdateCacheForCandidates = vi.fn();
+vi.mock('../matchCacheService.js', () => ({
+  updateCacheForCandidates: (...args: unknown[]) => mockUpdateCacheForCandidates(...args),
 }));
 
 const mockCalculateMatchScore = vi.fn();
@@ -116,6 +124,7 @@ describe('notifyMatchingRecruiters', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSendEmail.mockResolvedValue(undefined);
+    mockUpdateCacheForCandidates.mockResolvedValue(undefined);
     mockGetUserById.mockResolvedValue({ email: 'rec@example.com', name: 'Alice Recruiter' });
   });
 
@@ -125,13 +134,15 @@ describe('notifyMatchingRecruiters', () => {
     expect(mockSendEmail).not.toHaveBeenCalled();
   });
 
-  it('TC-NOTIFY-002: returns early if no requirements have notify_recruiter_ids', async () => {
+  it('TC-NOTIFY-002: sends no email if no requirements have notify_recruiter_ids, but still updates cache', async () => {
     mockGetCandidateById.mockResolvedValue(candidateA);
     mockGetAllActiveRequirements.mockResolvedValue([
       { ...requirementActive, notify_recruiter_ids: [] },
     ]);
     await notifyMatchingRecruiters(['cand_1']);
     expect(mockSendEmail).not.toHaveBeenCalled();
+    // AC1: cache is maintained for active requirements even with no opted-in recruiters
+    expect(mockUpdateCacheForCandidates).toHaveBeenCalledOnce();
   });
 
   it('TC-NOTIFY-003: no email when candidate does not meet MIN_MUST_HAVE_MATCH_RATIO', async () => {
@@ -203,16 +214,55 @@ describe('notifyMatchingRecruiters', () => {
     await expect(notifyMatchingRecruiters(['cand_1'])).resolves.toBeUndefined();
   });
 
-  it('TC-NOTIFY-007: skips gracefully when SES_SENDER_EMAIL not configured', async () => {
+  it('TC-NOTIFY-007: skips email but STILL updates cache when SES_SENDER_EMAIL not configured', async () => {
     // Override config mock for this test
     const { config } = await import('../config.js');
     const original = config.email.senderEmail;
     (config.email as { senderEmail: string }).senderEmail = '';
 
+    mockGetCandidateById.mockResolvedValue(candidateA);
+    mockGetAllActiveRequirements.mockResolvedValue([requirementActive]);
+
     await notifyMatchingRecruiters(['cand_1']);
-    expect(mockGetCandidateById).not.toHaveBeenCalled();
+
+    // AC1: cache maintenance must not be gated behind SES configuration
+    expect(mockGetCandidateById).toHaveBeenCalled();
+    expect(mockUpdateCacheForCandidates).toHaveBeenCalledOnce();
+    // ...but no email is sent without a sender address
+    expect(mockSendEmail).not.toHaveBeenCalled();
 
     (config.email as { senderEmail: string }).senderEmail = original;
+  });
+
+  it('TC-NOTIFY-016: cache update receives all active requirements (not just notifiable ones)', async () => {
+    const notifiable = requirementActive;
+    const nonNotifiable = {
+      ...requirementActive,
+      requirement_id: 'req_2',
+      notify_recruiter_ids: [],
+    };
+    mockGetCandidateById.mockResolvedValue(candidateA);
+    mockGetAllActiveRequirements.mockResolvedValue([notifiable, nonNotifiable]);
+    mockCalculateMatchScore.mockReturnValue(goodMatchScore);
+
+    await notifyMatchingRecruiters(['cand_1']);
+
+    expect(mockUpdateCacheForCandidates).toHaveBeenCalledOnce();
+    const [, reqsArg] = mockUpdateCacheForCandidates.mock.calls[0];
+    expect((reqsArg as { requirement_id: string }[]).map((r) => r.requirement_id)).toEqual([
+      'req_1',
+      'req_2',
+    ]);
+  });
+
+  it('TC-NOTIFY-017: cache failure is non-fatal and does not block email', async () => {
+    mockGetCandidateById.mockResolvedValue(candidateA);
+    mockGetAllActiveRequirements.mockResolvedValue([requirementActive]);
+    mockCalculateMatchScore.mockReturnValue(goodMatchScore);
+    mockUpdateCacheForCandidates.mockRejectedValue(new Error('cache write failed'));
+
+    await expect(notifyMatchingRecruiters(['cand_1'])).resolves.toBeUndefined();
+    expect(mockSendEmail).toHaveBeenCalledOnce();
   });
 
   it('TC-NOTIFY-008: skips recruiter silently if user not found in DB', async () => {

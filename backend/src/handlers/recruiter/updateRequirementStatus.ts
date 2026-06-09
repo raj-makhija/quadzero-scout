@@ -4,6 +4,7 @@ import { validate, formatZodErrors, UpdateRequirementStatusRequestSchema } from 
 import { getRequirementById, updateRequirementStatus } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
+import { rebuildCacheForRequirement, deleteMatchCache } from '../../lib/matchCacheService.js';
 import type { StatusHistoryEntry } from '../../types/index.js';
 
 async function handleRequest(
@@ -69,6 +70,19 @@ async function handleRequest(
     };
 
     await updateRequirementStatus(requirementId, newStatus, historyEntry);
+
+    // Reopen (→ active) rebuilds the cache from a full scan; any other
+    // transition (close / on-hold / duplicate) drops the cache entry.
+    // Non-fatal — cache failure must not fail the status change.
+    try {
+      if (newStatus === 'active') {
+        await rebuildCacheForRequirement({ ...existing, status: newStatus });
+      } else {
+        await deleteMatchCache(requirementId);
+      }
+    } catch (cacheErr) {
+      console.error('Failed to update match-cache after status change:', cacheErr);
+    }
 
     logAuditEvent(event.auth, event, {
       action: 'REQUIREMENT_UPDATE_STATUS',

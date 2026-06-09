@@ -1,20 +1,17 @@
 import { getCandidateById, getAllActiveRequirements, getUserById } from './dynamodb.js';
 import { matchAndRankCandidates } from './candidateMatching.js';
+import { updateCacheForCandidates } from './matchCacheService.js';
 import { sendNewProfilesNotificationEmail, type MatchedProfile } from './emailService.js';
 import { config } from './config.js';
 import type { CandidateItem, RequirementItem } from '../types/index.js';
 
 /**
- * For a list of candidate IDs, runs matching against all active requirements
- * and sends one email per (requirement, recruiter) pair to opted-in recruiters.
- * Emails are aggregated — one email per requirement covers all matching candidates.
- * Non-fatal: email errors are logged but never throw.
+ * For a list of candidate IDs, maintains the match-cache for every active
+ * requirement and sends one email per (requirement, recruiter) pair to opted-in
+ * recruiters. Emails are aggregated — one email per requirement covers all
+ * matching candidates. Non-fatal: cache and email errors are logged but never throw.
  */
 export async function notifyMatchingRecruiters(candidateIds: string[]): Promise<void> {
-  if (!config.email.senderEmail) {
-    console.log('SES_SENDER_EMAIL not configured, skipping recruiter notifications');
-    return;
-  }
   if (candidateIds.length === 0) return;
 
   // Fetch all candidates in parallel
@@ -26,6 +23,21 @@ export async function notifyMatchingRecruiters(candidateIds: string[]): Promise<
 
   // Fetch all active requirements
   const requirements = await getAllActiveRequirements();
+
+  // Maintain the match-cache for EVERY active requirement. This runs before —
+  // and independently of — the email path so that cache maintenance is never
+  // blocked by SES configuration or recruiter opt-in (which gate only email).
+  try {
+    await updateCacheForCandidates(candidates, requirements);
+  } catch (err) {
+    console.error('Failed to update match-cache after candidate ingest:', err);
+  }
+
+  // ─── Email notifications (gated on SES config + opted-in recruiters) ───
+  if (!config.email.senderEmail) {
+    console.log('SES_SENDER_EMAIL not configured, skipping recruiter notifications');
+    return;
+  }
 
   // Only process requirements with at least one recruiter opted in
   const notifiableRequirements = requirements.filter(

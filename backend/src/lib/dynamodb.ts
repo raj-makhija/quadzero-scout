@@ -2,6 +2,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
   GetCommand,
+  BatchGetCommand,
   PutCommand,
   QueryCommand,
   ScanCommand,
@@ -9,7 +10,7 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { config } from './config.js';
-import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, StatusHistoryEntry, RequirementChangeEntry, PricingConfig, PricingConfigItem, SessionSettings, SessionSettingsItem, ShortlistItem, ClientItem, SubVendorItem, ScreeningItem, ScreeningLockItem, AuditLogItem, AuditLogEntry, PipelineActivityItem, AttachmentItem, RankedMatchEntry, RequirementMatchCacheItem } from '../types/index.js';
+import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, StatusHistoryEntry, RequirementChangeEntry, PricingConfig, PricingConfigItem, SessionSettings, SessionSettingsItem, ShortlistItem, ClientItem, SubVendorItem, ScreeningItem, ScreeningLockItem, AuditLogItem, AuditLogEntry, PipelineActivityItem, AttachmentItem, RankedMatchEntry, RequirementMatchCacheItem, RequirementLlmRerankItem } from '../types/index.js';
 import { DEFAULT_SESSION_TIMEOUT_SECONDS } from '../types/index.js';
 
 const client = new DynamoDBClient({ region: config.region });
@@ -42,6 +43,28 @@ export async function getCandidateById(candidateId: string): Promise<CandidateIt
     })
   );
   return (result.Item as CandidateItem) || null;
+}
+
+// Resolve a list of candidate ids to their full profile rows via BatchGet.
+// Used by the cache-served search read path to fetch only the requested page
+// (~20 ids) instead of scanning the whole TalentProfiles table. Order of the
+// returned items is not guaranteed; callers re-order by their own ranking.
+export async function getCandidatesByIds(candidateIds: string[]): Promise<CandidateItem[]> {
+  if (candidateIds.length === 0) return [];
+  const tableName = config.dynamodb.talentProfilesTable;
+  const results: CandidateItem[] = [];
+  // BatchGet accepts at most 100 keys per request.
+  for (let i = 0; i < candidateIds.length; i += 100) {
+    let keys = candidateIds.slice(i, i + 100).map((id) => ({ candidate_id: id }));
+    while (keys.length > 0) {
+      const result = await docClient.send(
+        new BatchGetCommand({ RequestItems: { [tableName]: { Keys: keys } } })
+      );
+      results.push(...((result.Responses?.[tableName] as CandidateItem[]) || []));
+      keys = (result.UnprocessedKeys?.[tableName]?.Keys as { candidate_id: string }[]) || [];
+    }
+  }
+  return results;
 }
 
 export async function getCandidateByEmail(email: string): Promise<CandidateItem | null> {
@@ -1346,6 +1369,38 @@ export async function getAllActiveRequirements(): Promise<RequirementItem[]> {
   return allItems;
 }
 
+export async function getAllActiveCandidates(): Promise<CandidateItem[]> {
+  const PAGE_SIZE = 100;
+  const MAX_ITEMS = 10000;
+  const allItems: CandidateItem[] = [];
+  let currentKey: Record<string, unknown> | undefined;
+
+  do {
+    const params: {
+      TableName: string;
+      FilterExpression: string;
+      ExpressionAttributeValues: Record<string, unknown>;
+      Limit: number;
+      ExclusiveStartKey?: Record<string, unknown>;
+    } = {
+      TableName: config.dynamodb.talentProfilesTable,
+      FilterExpression: 'is_active = :active',
+      ExpressionAttributeValues: { ':active': true },
+      Limit: PAGE_SIZE,
+    };
+
+    if (currentKey) {
+      params.ExclusiveStartKey = currentKey;
+    }
+
+    const result = await docClient.send(new ScanCommand(params));
+    allItems.push(...((result.Items || []) as CandidateItem[]));
+    currentKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (currentKey && allItems.length < MAX_ITEMS);
+
+  return allItems;
+}
+
 // ─── Shortlist Operations ───────────────────────────────────────────────────
 
 export async function saveShortlist(item: ShortlistItem): Promise<void> {
@@ -2562,6 +2617,51 @@ export async function deleteMatchCache(requirementId: string): Promise<void> {
   await docClient.send(
     new DeleteCommand({
       TableName: config.dynamodb.requirementMatchCacheTable,
+      Key: { requirement_id: requirementId },
+    })
+  );
+}
+
+// ─── Requirement LLM Re-rank Operations ───────────────────────────────────────
+// One item per requirement holding the LLM tie-break re-rank of its top-N
+// candidates. Separate table from the match cache (ticket #238). Store only —
+// no wiring into search yet.
+
+export async function getLlmRerank(
+  requirementId: string
+): Promise<RequirementLlmRerankItem | null> {
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: config.dynamodb.requirementLlmRerankTable,
+      Key: { requirement_id: requirementId },
+    })
+  );
+  return (result.Item as RequirementLlmRerankItem) || null;
+}
+
+export async function putLlmRerank(
+  requirementId: string,
+  rerank: Omit<RequirementLlmRerankItem, 'requirement_id'>
+): Promise<void> {
+  const item: RequirementLlmRerankItem = {
+    requirement_id: requirementId,
+    ...rerank,
+  };
+  // PutCommand overwrites the whole item, so this replaces (not appends to) any
+  // existing re-rank for the requirement.
+  await docClient.send(
+    new PutCommand({
+      TableName: config.dynamodb.requirementLlmRerankTable,
+      Item: item,
+    })
+  );
+}
+
+export async function deleteLlmRerank(requirementId: string): Promise<void> {
+  // DeleteItem is idempotent — deleting a non-existent key is a no-op.
+  await docClient.send(
+    new DeleteCommand({
+      TableName: config.dynamodb.requirementLlmRerankTable,
       Key: { requirement_id: requirementId },
     })
   );

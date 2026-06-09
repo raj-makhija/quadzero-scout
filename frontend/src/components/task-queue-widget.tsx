@@ -17,6 +17,11 @@ import { toast } from '@/hooks/use-toast';
 
 export const COLLAPSED_COUNT = 3;
 const POLL_INTERVAL_MS = 60_000;
+/** Fired on `window` when an action elsewhere resolves a task server-side (e.g. a completed screening), so the widget reloads without waiting for the poll. */
+export const TASK_REFRESH_EVENT = 'recruiter-tasks:refresh';
+
+/** Screening tasks auto-resolve server-side when the screening is saved, so they need no manual "Done". */
+const AUTO_RESOLVING_TYPES = new Set(['screen_candidate', 'rescreen_candidate']);
 
 export const TASK_LABELS: Record<string, string> = {
   submit_to_client: 'Submit to client',
@@ -103,13 +108,15 @@ function TaskCard({
         >
           Do It
         </button>
-        <button
-          type="button"
-          onClick={() => onComplete(task)}
-          className="inline-flex items-center gap-1 rounded border border-gray-300 dark:border-gray-600 px-2 py-1 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
-        >
-          <Check className="h-3 w-3" /> Done
-        </button>
+        {!AUTO_RESOLVING_TYPES.has(task.type) && (
+          <button
+            type="button"
+            onClick={() => onComplete(task)}
+            className="inline-flex items-center gap-1 rounded border border-gray-300 dark:border-gray-600 px-2 py-1 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+          >
+            <Check className="h-3 w-3" /> Done
+          </button>
+        )}
         <div className="relative">
           <button
             type="button"
@@ -213,7 +220,13 @@ export function TaskQueueWidget() {
     if (!isRecruiter) return;
     load();
     const id = setInterval(load, POLL_INTERVAL_MS);
-    return () => clearInterval(id);
+    // Reload immediately when a screening (or other action) resolves a task
+    // server-side, so the completed task drops off without waiting for the poll.
+    window.addEventListener(TASK_REFRESH_EVENT, load);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener(TASK_REFRESH_EVENT, load);
+    };
   }, [isRecruiter, load]);
 
   const removeLocal = (taskId: string) => setTasks((prev) => prev.filter((t) => t.task_id !== taskId));

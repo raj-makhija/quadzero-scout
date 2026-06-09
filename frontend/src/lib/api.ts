@@ -1175,6 +1175,8 @@ export interface CandidateSearchResult {
   subVendorContactPerson?: string;
   subVendorContactPhone?: string;
   subVendorContactEmail?: string;
+  // LLM tie-break rationale — present only when an LLM re-rank is applied (#239).
+  rationale?: string;
 }
 
 export interface SearchResponse {
@@ -1185,6 +1187,8 @@ export interface SearchResponse {
     lastEvaluatedKey?: string;
   };
   totalMatches: number;
+  // LLM tie-break overlay status for the requirement-bound read path (#239).
+  llmRerank?: { ranked: boolean; pending: boolean };
 }
 
 export interface SavedSearch {

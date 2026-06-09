@@ -6,6 +6,9 @@ import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 // ---------------------------------------------------------------------------
 
 vi.mock('../../lib/dynamodb.js', () => ({
+  getLlmRerank: vi.fn().mockResolvedValue(null),
+  putLlmRerank: vi.fn().mockResolvedValue(undefined),
+  deleteLlmRerank: vi.fn().mockResolvedValue(undefined),
   searchCandidates: vi.fn().mockResolvedValue({
     items: [
       {
@@ -92,11 +95,14 @@ vi.mock('../../lib/dynamodb.js', () => ({
   getPlacedCandidateIds: vi.fn().mockResolvedValue(new Set()),
   putAuditLog: vi.fn().mockResolvedValue(undefined),
   getMatchCache: vi.fn().mockResolvedValue(null),
+  getCandidatesByIds: vi.fn().mockResolvedValue([]),
   putMatchCache: vi.fn().mockResolvedValue(undefined),
   deleteMatchCache: vi.fn().mockResolvedValue(undefined),
+  getAllActiveCandidates: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('../../lib/llm/index.js', () => ({
+  getRerankSignature: vi.fn().mockResolvedValue({ model: 'gemini-2.0-flash', promptVersion: 1 }),
   parseJobDescription: vi.fn().mockResolvedValue({
     output: {
       mustHaveSkills: ['react', 'nodejs'],
@@ -153,12 +159,16 @@ vi.mock('../../lib/config.js', () => ({
     lambda: {
       formatResumeWorkerName: '',
       notifyWorkerName: '',
+      llmRerankWorkerName: 'llm-rerank-worker',
+    },
+    featureFlags: {
+      llmRerankEnabled: false,
     },
   },
 }));
 
 // Import handlers after mocks
-import { handler as searchHandler, _clearSearchCache } from '../recruiter/search.js';
+import { handler as searchHandler } from '../recruiter/search.js';
 import { handler as parseJdHandler } from '../recruiter/parseJd.js';
 import { handler as resumeUrlHandler } from '../recruiter/resumeUrl.js';
 import { handler as originalResumeUrlHandler } from '../recruiter/originalResumeUrl.js';
@@ -166,9 +176,11 @@ import { handler as saveSearchHandler } from '../recruiter/saveSearch.js';
 import { handler as getSearchesHandler } from '../recruiter/getSearches.js';
 import { handler as deleteSearchHandler } from '../recruiter/deleteSearch.js';
 import { handler as listRecentProfilesHandler } from '../recruiter/listRecentProfiles.js';
-import { getCandidateById, getSavedSearches, getRecentProfiles, searchCandidates, getShortlistsForRequirement, getPlacedCandidateIds } from '../../lib/dynamodb.js';
-import { parseJobDescription } from '../../lib/llm/index.js';
+import { getCandidateById, getSavedSearches, getRecentProfiles, searchCandidates, getShortlistsForRequirement, getPlacedCandidateIds, getMatchCache, getCandidatesByIds, getLlmRerank } from '../../lib/dynamodb.js';
+import { parseJobDescription, getRerankSignature } from '../../lib/llm/index.js';
 import { generateDownloadUrl } from '../../lib/s3.js';
+import { invokeLambdaAsync } from '../../lib/lambdaInvoke.js';
+import { config } from '../../lib/config.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -278,7 +290,10 @@ describe('POST /recruiter/parse-jd', () => {
 describe('POST /recruiter/search', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    _clearSearchCache();
+    // clearAllMocks resets call history but not implementations; restore the
+    // cold-cache defaults so a persistent override in one test cannot leak.
+    vi.mocked(getMatchCache).mockResolvedValue(null);
+    vi.mocked(getCandidatesByIds).mockResolvedValue([]);
   });
 
   // TC-SEARCH-001
@@ -740,7 +755,7 @@ describe('POST /recruiter/search', () => {
     expect(body.data.candidates[0].candidateId).toBe('cand_high_scorer');
   });
 
-  it('in-memory cache serves offset-based pages without re-querying DynamoDB', async () => {
+  it('paginates ad-hoc offset-based pages consistently across requests', async () => {
     const candidates = Array.from({ length: 5 }, (_, i) => ({
       candidate_id: `cand_cache_${i}`,
       user_id: `user_cache_${i}`,
@@ -760,10 +775,12 @@ describe('POST /recruiter/search', () => {
       last_updated: `2024-01-${10 + i}T00:00:00Z`,
     }));
 
-    vi.mocked(searchCandidates).mockResolvedValueOnce({
-      items: candidates,
-      lastKey: undefined,
-    });
+    // Ad-hoc search has no in-memory cache: each page re-scans, so supply the
+    // same corpus for both page requests (mockResolvedValueOnce avoids leaking
+    // a persistent override into later tests).
+    vi.mocked(searchCandidates)
+      .mockResolvedValueOnce({ items: candidates, lastKey: undefined })
+      .mockResolvedValueOnce({ items: candidates, lastKey: undefined });
 
     const baseCriteria = { mustHaveSkills: ['java', 'spring'] };
 
@@ -794,8 +811,8 @@ describe('POST /recruiter/search', () => {
     expect(body2.data.totalMatches).toBe(5);
     expect(body2.data.pagination.hasMore).toBe(true);
 
-    // searchCandidates should have been called only once (cache served page 2)
-    expect(vi.mocked(searchCandidates)).toHaveBeenCalledTimes(1);
+    // No in-memory cache: each page triggers its own scan
+    expect(vi.mocked(searchCandidates)).toHaveBeenCalledTimes(2);
 
     // No duplicates across pages
     const page1Ids = body1.data.candidates.map((c: { candidateId: string }) => c.candidateId);
@@ -824,10 +841,10 @@ describe('POST /recruiter/search', () => {
       last_updated: `2024-01-${10 + i}T00:00:00Z`,
     }));
 
-    vi.mocked(searchCandidates).mockResolvedValueOnce({
-      items: candidates,
-      lastKey: undefined,
-    });
+    // No in-memory cache: each page re-scans, so supply the corpus per call.
+    vi.mocked(searchCandidates)
+      .mockResolvedValueOnce({ items: candidates, lastKey: undefined })
+      .mockResolvedValueOnce({ items: candidates, lastKey: undefined });
 
     // Page 1 (limit 2 → hasMore should be true)
     const event1 = makeEvent({
@@ -972,10 +989,10 @@ describe('POST /recruiter/search', () => {
       last_updated: `2024-01-${10 + i}T00:00:00Z`,
     }));
 
-    vi.mocked(searchCandidates).mockResolvedValueOnce({
-      items: candidates,
-      lastKey: undefined,
-    });
+    // No in-memory cache: each page re-scans, so supply the corpus per call.
+    vi.mocked(searchCandidates)
+      .mockResolvedValueOnce({ items: candidates, lastKey: undefined })
+      .mockResolvedValueOnce({ items: candidates, lastKey: undefined });
 
     // Page 1
     const event1 = makeEvent({
@@ -1003,33 +1020,31 @@ describe('POST /recruiter/search', () => {
     expect(Math.min(...page1Scores)).toBeGreaterThanOrEqual(Math.max(...page2Scores));
   });
 
-  it('returns fresh shortlist status on cache hit when requirementId is provided', async () => {
-    vi.mocked(searchCandidates).mockResolvedValueOnce({
-      items: [
-        {
-          candidate_id: 'cand_sl',
-          user_id: 'u_sl',
-          full_name: 'Shortlist Test',
-          email: 'sl@example.com',
-          primary_skills: ['react', 'nodejs'],
-          primary_skill_years: { react: 4, nodejs: 3 },
-          secondary_skills: [],
-          total_experience: 5,
-          seniority: 'mid',
-          availability: 'immediate',
-          industries: [],
-          roles: [],
-          experience_bucket: '3-5',
-          resume_s3_key: 'r/sl.pdf',
-          created_at: '2024-01-01T00:00:00Z',
-          last_updated: '2024-01-15T00:00:00Z',
-        },
-      ],
-      lastKey: undefined,
-    });
-
+  it('returns fresh shortlist status on every cache-served request', async () => {
     const reqId = '00000000-0000-0000-0000-000000000099';
     const criteria = { mustHaveSkills: ['react', 'nodejs'] };
+    const candItem = {
+      candidate_id: 'cand_sl',
+      user_id: 'u_sl',
+      full_name: 'Shortlist Test',
+      email: 'sl@example.com',
+      primary_skills: ['react', 'nodejs'],
+      primary_skill_years: { react: 4, nodejs: 3 },
+      secondary_skills: [],
+      total_experience: 5,
+      seniority: 'mid',
+      availability: 'immediate',
+      industries: [],
+      roles: [],
+      experience_bucket: '3-5',
+      resume_s3_key: 'r/sl.pdf',
+      created_at: '2024-01-01T00:00:00Z',
+      last_updated: '2024-01-15T00:00:00Z',
+    };
+
+    // Warm cache: ranked id-list for the requirement; page resolved via BatchGet.
+    vi.mocked(getMatchCache).mockResolvedValue([{ candidate_id: 'cand_sl', rank: 1, score: 80 }]);
+    vi.mocked(getCandidatesByIds).mockResolvedValue([candItem]);
 
     // First search — no shortlists exist
     vi.mocked(getShortlistsForRequirement).mockResolvedValueOnce([]);
@@ -1040,7 +1055,7 @@ describe('POST /recruiter/search', () => {
     expect(body1.data.candidates[0].isShortlisted).toBe(false);
     expect(body1.data.candidates[0].isNotSuitable).toBe(false);
 
-    // Second search (cache hit) — candidate now shortlisted
+    // Second search (still a cache hit) — candidate now shortlisted
     vi.mocked(getShortlistsForRequirement).mockResolvedValueOnce([
       { requirement_id: reqId, candidate_id: 'cand_sl', status: 'shortlisted', tagged_by: 'u1', tagged_at: '2024-01-16T00:00:00Z' },
     ]);
@@ -1051,9 +1066,9 @@ describe('POST /recruiter/search', () => {
     expect(body2.data.candidates[0].isShortlisted).toBe(true);
     expect(body2.data.candidates[0].isNotSuitable).toBe(false);
 
-    // DynamoDB scan should have been called only once (cache served the second request)
-    expect(vi.mocked(searchCandidates)).toHaveBeenCalledTimes(1);
-    // But shortlist fetch should have been called twice (always fresh)
+    // Served from the cache — the full live scan is never run
+    expect(vi.mocked(searchCandidates)).not.toHaveBeenCalled();
+    // Shortlist fetch runs on every request (always fresh)
     expect(vi.mocked(getShortlistsForRequirement)).toHaveBeenCalledTimes(2);
   });
 
@@ -1189,7 +1204,8 @@ describe('POST /recruiter/search', () => {
 describe('POST /recruiter/search — placed-candidate exclusion', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    _clearSearchCache();
+    vi.mocked(getMatchCache).mockResolvedValue(null);
+    vi.mocked(getCandidatesByIds).mockResolvedValue([]);
   });
 
   const makeCandidates = () => ({
@@ -1280,8 +1296,10 @@ describe('POST /recruiter/search — placed-candidate exclusion', () => {
     expect(body.data.pagination.hasMore).toBe(false);
   });
 
-  it('fetches placed candidates fresh on every request (not cached)', async () => {
-    vi.mocked(searchCandidates).mockResolvedValueOnce(makeCandidates());
+  it('fetches placed candidates fresh on every request', async () => {
+    vi.mocked(searchCandidates)
+      .mockResolvedValueOnce(makeCandidates())
+      .mockResolvedValueOnce(makeCandidates());
 
     // First request — no placed candidates
     vi.mocked(getPlacedCandidateIds).mockResolvedValueOnce(new Set());
@@ -1291,7 +1309,7 @@ describe('POST /recruiter/search — placed-candidate exclusion', () => {
     const body1 = parseBody(await searchHandler(event1));
     expect(body1.data.candidates).toHaveLength(2);
 
-    // Second request (cache hit for scoring) — candidate now placed
+    // Second request — candidate now placed
     vi.mocked(getPlacedCandidateIds).mockResolvedValueOnce(new Set(['cand_placed']));
     const event2 = makeEvent({
       body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] } }),
@@ -1299,9 +1317,522 @@ describe('POST /recruiter/search — placed-candidate exclusion', () => {
     const body2 = parseBody(await searchHandler(event2));
     expect(body2.data.candidates).toHaveLength(1);
 
-    // DynamoDB scan called once (cached), but placed-candidate fetch called twice
-    expect(vi.mocked(searchCandidates)).toHaveBeenCalledTimes(1);
+    // Ad-hoc path re-scans each request; placed-candidate fetch is always fresh
+    expect(vi.mocked(searchCandidates)).toHaveBeenCalledTimes(2);
     expect(vi.mocked(getPlacedCandidateIds)).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /recruiter/search — match-cache read path (ticket #235)
+// ---------------------------------------------------------------------------
+
+describe('POST /recruiter/search — match-cache read path', () => {
+  const REQ_ID = '00000000-0000-0000-0000-000000000235';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // clearAllMocks clears call history but not implementations; restore every
+    // mock this block mutates to its default so persistent overrides can't leak.
+    vi.mocked(getMatchCache).mockResolvedValue(null);
+    vi.mocked(getCandidatesByIds).mockResolvedValue([]);
+    vi.mocked(getPlacedCandidateIds).mockResolvedValue(new Set());
+    vi.mocked(getShortlistsForRequirement).mockResolvedValue([]);
+  });
+
+  const makeCandidate = (id: string, overrides: Record<string, unknown> = {}) => ({
+    candidate_id: id,
+    user_id: `u_${id}`,
+    full_name: `Name ${id}`,
+    email: `${id}@example.com`,
+    primary_skills: ['react'],
+    primary_skill_years: { react: 4 },
+    secondary_skills: [],
+    total_experience: 5,
+    seniority: 'mid',
+    availability: 'immediate',
+    industries: [],
+    roles: [],
+    experience_bucket: '3-5',
+    resume_s3_key: `r/${id}.pdf`,
+    created_at: '2024-01-01T00:00:00Z',
+    last_updated: '2024-01-15T00:00:00Z',
+    ...overrides,
+  });
+
+  // Resolve only the requested page ids, as the real BatchGet would.
+  const serveCorpus = (corpus: ReturnType<typeof makeCandidate>[]) => {
+    vi.mocked(getCandidatesByIds).mockImplementation((ids: string[]) =>
+      Promise.resolve(corpus.filter((c) => ids.includes(c.candidate_id)))
+    );
+  };
+
+  const encodeOffset = (offset: number) =>
+    Buffer.from(JSON.stringify({ offset })).toString('base64');
+
+  // Acceptance item 3: parity — the cache path reproduces the live scan + score.
+  it('yields identical candidate order and scores to a live scan + score (parity)', async () => {
+    const corpus = [
+      makeCandidate('p1', { primary_skills: ['react', 'nodejs'], primary_skill_years: { react: 5, nodejs: 4 }, total_experience: 8 }),
+      makeCandidate('p2', { primary_skills: ['react'], total_experience: 5 }),
+      makeCandidate('p3', { primary_skills: ['react'], total_experience: 2, last_updated: '2024-01-10T00:00:00Z' }),
+    ];
+    const criteria = { mustHaveSkills: ['react'], goodToHaveSkills: ['nodejs'] };
+
+    // Live scan (ad-hoc, no requirementId) — the source of truth.
+    vi.mocked(searchCandidates).mockResolvedValue({ items: corpus, lastKey: undefined });
+    const liveBody = parseBody(
+      await searchHandler(makeEvent({ body: JSON.stringify({ criteria }) }))
+    );
+    const liveOrder = liveBody.data.candidates.map((c: { candidateId: string }) => c.candidateId);
+    const liveScores = liveBody.data.candidates.map((c: { matchScore: number }) => c.matchScore);
+    expect(liveOrder.length).toBeGreaterThan(1);
+
+    // Build the cache from exactly what the scorer produced, then serve it.
+    const ranked = liveBody.data.candidates.map(
+      (c: { candidateId: string; matchScore: number }, i: number) => ({
+        candidate_id: c.candidateId,
+        rank: i + 1,
+        score: c.matchScore,
+      })
+    );
+    vi.mocked(getMatchCache).mockResolvedValue(ranked);
+    serveCorpus(corpus);
+
+    const cacheBody = parseBody(
+      await searchHandler(
+        makeEvent({ body: JSON.stringify({ criteria, requirementId: REQ_ID, pagination: { limit: 50 } }) })
+      )
+    );
+    const cacheOrder = cacheBody.data.candidates.map((c: { candidateId: string }) => c.candidateId);
+    const cacheScores = cacheBody.data.candidates.map((c: { matchScore: number }) => c.matchScore);
+
+    expect(cacheOrder).toEqual(liveOrder);
+    expect(cacheScores).toEqual(liveScores);
+    // The cache path never runs the live scan for the requirement-bound request.
+    expect(vi.mocked(searchCandidates)).toHaveBeenCalledTimes(1); // only the live ad-hoc call above
+  });
+
+  it('serves a requirement-bound search from the cache without a full scan', async () => {
+    const corpus = [makeCandidate('c1'), makeCandidate('c2')];
+    vi.mocked(getMatchCache).mockResolvedValue([
+      { candidate_id: 'c1', rank: 1, score: 90 },
+      { candidate_id: 'c2', rank: 2, score: 80 },
+    ]);
+    serveCorpus(corpus);
+
+    const body = parseBody(
+      await searchHandler(makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] }, requirementId: REQ_ID }) }))
+    );
+
+    expect(vi.mocked(searchCandidates)).not.toHaveBeenCalled();
+    expect(body.data.candidates.map((c: { candidateId: string }) => c.candidateId)).toEqual(['c1', 'c2']);
+    expect(body.data.candidates[0].matchScore).toBe(90);
+    // Re-scored page regenerates matchDetails (cache holds only the score).
+    expect(body.data.candidates[0].matchDetails.mustHaveMatched).toContain('react');
+  });
+
+  // Acceptance item 7
+  it('sortBy=matchScore preserves the cache pre-ranked order', async () => {
+    const corpus = [
+      makeCandidate('c1', { last_updated: '2024-01-01T00:00:00Z', total_experience: 2 }),
+      makeCandidate('c2', { last_updated: '2024-06-01T00:00:00Z', total_experience: 9 }),
+    ];
+    vi.mocked(getMatchCache).mockResolvedValue([
+      { candidate_id: 'c1', rank: 1, score: 95 },
+      { candidate_id: 'c2', rank: 2, score: 70 },
+    ]);
+    serveCorpus(corpus);
+
+    const body = parseBody(
+      await searchHandler(makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] }, requirementId: REQ_ID, sortBy: 'matchScore' }) }))
+    );
+    expect(body.data.candidates.map((c: { candidateId: string }) => c.candidateId)).toEqual(['c1', 'c2']);
+  });
+
+  // Acceptance item 8
+  it('sortBy=lastUpdated re-sorts the resolved page by recency, not cache rank', async () => {
+    const corpus = [
+      makeCandidate('c1', { last_updated: '2024-01-01T00:00:00Z' }),
+      makeCandidate('c2', { last_updated: '2024-06-01T00:00:00Z' }),
+    ];
+    vi.mocked(getMatchCache).mockResolvedValue([
+      { candidate_id: 'c1', rank: 1, score: 95 },
+      { candidate_id: 'c2', rank: 2, score: 70 },
+    ]);
+    serveCorpus(corpus);
+
+    const body = parseBody(
+      await searchHandler(makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] }, requirementId: REQ_ID, sortBy: 'lastUpdated' }) }))
+    );
+    expect(body.data.candidates.map((c: { candidateId: string }) => c.candidateId)).toEqual(['c2', 'c1']);
+  });
+
+  // Acceptance item 9
+  it('sortBy=experience re-sorts the resolved page by experience, not cache rank', async () => {
+    const corpus = [
+      makeCandidate('c1', { total_experience: 2 }),
+      makeCandidate('c2', { total_experience: 10 }),
+    ];
+    vi.mocked(getMatchCache).mockResolvedValue([
+      { candidate_id: 'c1', rank: 1, score: 95 },
+      { candidate_id: 'c2', rank: 2, score: 70 },
+    ]);
+    serveCorpus(corpus);
+
+    const body = parseBody(
+      await searchHandler(makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] }, requirementId: REQ_ID, sortBy: 'experience' }) }))
+    );
+    expect(body.data.candidates.map((c: { candidateId: string }) => c.candidateId)).toEqual(['c2', 'c1']);
+  });
+
+  // Acceptance item 4
+  it('excludes placed candidates from cache-served results on every request', async () => {
+    const corpus = [makeCandidate('c1'), makeCandidate('c2'), makeCandidate('c3')];
+    vi.mocked(getMatchCache).mockResolvedValue([
+      { candidate_id: 'c1', rank: 1, score: 90 },
+      { candidate_id: 'c2', rank: 2, score: 80 },
+      { candidate_id: 'c3', rank: 3, score: 70 },
+    ]);
+    serveCorpus(corpus);
+    vi.mocked(getPlacedCandidateIds).mockResolvedValue(new Set(['c2']));
+
+    const body = parseBody(
+      await searchHandler(makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] }, requirementId: REQ_ID }) }))
+    );
+    expect(body.data.candidates.map((c: { candidateId: string }) => c.candidateId)).toEqual(['c1', 'c3']);
+    expect(body.data.totalMatches).toBe(2);
+  });
+
+  // Acceptance item 6
+  it('hides not-suitable candidates from the cache path when includeNotSuitable is false', async () => {
+    const corpus = [makeCandidate('c1'), makeCandidate('c2')];
+    vi.mocked(getMatchCache).mockResolvedValue([
+      { candidate_id: 'c1', rank: 1, score: 90 },
+      { candidate_id: 'c2', rank: 2, score: 80 },
+    ]);
+    serveCorpus(corpus);
+    vi.mocked(getShortlistsForRequirement).mockResolvedValue([
+      { requirement_id: REQ_ID, candidate_id: 'c2', status: 'not_suitable', tagged_by: 'u1', tagged_at: '2024-01-16T00:00:00Z' },
+    ]);
+
+    const body = parseBody(
+      await searchHandler(makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] }, requirementId: REQ_ID, includeNotSuitable: false }) }))
+    );
+    expect(body.data.candidates.map((c: { candidateId: string }) => c.candidateId)).toEqual(['c1']);
+    expect(body.data.totalMatches).toBe(1);
+  });
+
+  // Acceptance item 10
+  it('paginates over the cached ranked list with no gaps or overlap', async () => {
+    const corpus = [makeCandidate('c1'), makeCandidate('c2'), makeCandidate('c3')];
+    vi.mocked(getMatchCache).mockResolvedValue([
+      { candidate_id: 'c1', rank: 1, score: 90 },
+      { candidate_id: 'c2', rank: 2, score: 80 },
+      { candidate_id: 'c3', rank: 3, score: 70 },
+    ]);
+    serveCorpus(corpus);
+
+    const page1 = parseBody(
+      await searchHandler(makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] }, requirementId: REQ_ID, pagination: { limit: 2 } }) }))
+    );
+    expect(page1.data.candidates.map((c: { candidateId: string }) => c.candidateId)).toEqual(['c1', 'c2']);
+    expect(page1.data.pagination.hasMore).toBe(true);
+    expect(page1.data.pagination.lastEvaluatedKey).toBeDefined();
+
+    const page2 = parseBody(
+      await searchHandler(makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] }, requirementId: REQ_ID, pagination: { limit: 2, lastEvaluatedKey: page1.data.pagination.lastEvaluatedKey } }) }))
+    );
+    expect(page2.data.candidates.map((c: { candidateId: string }) => c.candidateId)).toEqual(['c3']);
+    expect(page2.data.pagination.hasMore).toBe(false);
+    expect(page2.data.pagination.lastEvaluatedKey).toBeUndefined();
+  });
+
+  // Acceptance item 13 / edge: cold cache (getMatchCache null) falls back to a live scan.
+  it('falls back to a live scan when the cache is cold', async () => {
+    vi.mocked(getMatchCache).mockResolvedValue(null);
+    vi.mocked(searchCandidates).mockResolvedValue({ items: [makeCandidate('live1')], lastKey: undefined });
+
+    const body = parseBody(
+      await searchHandler(makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] }, requirementId: REQ_ID }) }))
+    );
+
+    expect(vi.mocked(searchCandidates)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(getCandidatesByIds)).not.toHaveBeenCalled();
+    expect(body.data.candidates.map((c: { candidateId: string }) => c.candidateId)).toEqual(['live1']);
+  });
+
+  // Edge: every cached candidate is placed -> empty page, totalMatches 0.
+  it('returns an empty page (totalMatches 0) when every cached candidate is placed', async () => {
+    vi.mocked(getMatchCache).mockResolvedValue([
+      { candidate_id: 'c1', rank: 1, score: 90 },
+      { candidate_id: 'c2', rank: 2, score: 80 },
+    ]);
+    serveCorpus([makeCandidate('c1'), makeCandidate('c2')]);
+    vi.mocked(getPlacedCandidateIds).mockResolvedValue(new Set(['c1', 'c2']));
+
+    const body = parseBody(
+      await searchHandler(makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] }, requirementId: REQ_ID }) }))
+    );
+    expect(body.data.candidates).toEqual([]);
+    expect(body.data.totalMatches).toBe(0);
+    expect(body.data.pagination.hasMore).toBe(false);
+  });
+
+  // Edge (tester-flagged): all not-suitable + includeNotSuitable false -> empty page.
+  it('returns an empty page when every cached candidate is not-suitable and includeNotSuitable is false', async () => {
+    vi.mocked(getMatchCache).mockResolvedValue([
+      { candidate_id: 'c1', rank: 1, score: 90 },
+      { candidate_id: 'c2', rank: 2, score: 80 },
+    ]);
+    serveCorpus([makeCandidate('c1'), makeCandidate('c2')]);
+    vi.mocked(getShortlistsForRequirement).mockResolvedValue([
+      { requirement_id: REQ_ID, candidate_id: 'c1', status: 'not_suitable', tagged_by: 'u1', tagged_at: '2024-01-16T00:00:00Z' },
+      { requirement_id: REQ_ID, candidate_id: 'c2', status: 'not_suitable', tagged_by: 'u1', tagged_at: '2024-01-16T00:00:00Z' },
+    ]);
+
+    const body = parseBody(
+      await searchHandler(makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] }, requirementId: REQ_ID, includeNotSuitable: false }) }))
+    );
+    expect(body.data.candidates).toEqual([]);
+    expect(body.data.totalMatches).toBe(0);
+    expect(body.data.pagination.hasMore).toBe(false);
+  });
+
+  // Edge (tester-flagged): pagination offset beyond the end of the filtered list.
+  it('returns an empty page with hasMore false when the offset is past the end', async () => {
+    vi.mocked(getMatchCache).mockResolvedValue([
+      { candidate_id: 'c1', rank: 1, score: 90 },
+      { candidate_id: 'c2', rank: 2, score: 80 },
+      { candidate_id: 'c3', rank: 3, score: 70 },
+    ]);
+    serveCorpus([makeCandidate('c1'), makeCandidate('c2'), makeCandidate('c3')]);
+
+    const body = parseBody(
+      await searchHandler(makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] }, requirementId: REQ_ID, pagination: { limit: 2, lastEvaluatedKey: encodeOffset(4) } }) }))
+    );
+    expect(body.data.candidates).toEqual([]);
+    expect(body.data.totalMatches).toBe(3);
+    expect(body.data.pagination.hasMore).toBe(false);
+  });
+
+  // Edge (tester-flagged): candidate both shortlisted and placed -> placed exclusion wins.
+  it('excludes a candidate that is both shortlisted and placed (placed wins)', async () => {
+    vi.mocked(getMatchCache).mockResolvedValue([
+      { candidate_id: 'c1', rank: 1, score: 90 },
+      { candidate_id: 'c2', rank: 2, score: 80 },
+    ]);
+    serveCorpus([makeCandidate('c1'), makeCandidate('c2')]);
+    vi.mocked(getPlacedCandidateIds).mockResolvedValue(new Set(['c2']));
+    vi.mocked(getShortlistsForRequirement).mockResolvedValue([
+      { requirement_id: REQ_ID, candidate_id: 'c2', status: 'shortlisted', tagged_by: 'u1', tagged_at: '2024-01-16T00:00:00Z' },
+    ]);
+
+    const body = parseBody(
+      await searchHandler(makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] }, requirementId: REQ_ID }) }))
+    );
+    expect(body.data.candidates.map((c: { candidateId: string }) => c.candidateId)).toEqual(['c1']);
+    expect(body.data.totalMatches).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /recruiter/search — LLM tie-break overlay (#239)
+// ---------------------------------------------------------------------------
+
+describe('POST /recruiter/search — LLM tie-break overlay', () => {
+  const REQ_ID = '00000000-0000-0000-0000-000000000239';
+  const SIG = { model: 'gemini-2.0-flash', promptVersion: 1 };
+
+  const makeCandidate = (id: string, overrides: Record<string, unknown> = {}) => ({
+    candidate_id: id,
+    user_id: `u_${id}`,
+    full_name: `Name ${id}`,
+    email: `${id}@example.com`,
+    primary_skills: ['react'],
+    primary_skill_years: { react: 4 },
+    secondary_skills: [],
+    total_experience: 5,
+    seniority: 'mid',
+    availability: 'immediate',
+    industries: [],
+    roles: [],
+    experience_bucket: '3-5',
+    resume_s3_key: `r/${id}.pdf`,
+    created_at: '2024-01-01T00:00:00Z',
+    last_updated: '2024-01-15T00:00:00Z',
+    ...overrides,
+  });
+
+  const serveCorpus = (corpus: ReturnType<typeof makeCandidate>[]) => {
+    vi.mocked(getCandidatesByIds).mockImplementation((ids: string[]) =>
+      Promise.resolve(corpus.filter((c) => ids.includes(c.candidate_id)))
+    );
+  };
+
+  // Deterministic cache: c1 (score 90) then c2 (score 80).
+  const seedCache = () => {
+    vi.mocked(getMatchCache).mockResolvedValue([
+      { candidate_id: 'c1', rank: 1, score: 90 },
+      { candidate_id: 'c2', rank: 2, score: 80 },
+    ]);
+    serveCorpus([makeCandidate('c1'), makeCandidate('c2')]);
+  };
+
+  const runSearch = async () =>
+    parseBody(
+      await searchHandler(
+        makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] }, requirementId: REQ_ID }) })
+      )
+    );
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getMatchCache).mockResolvedValue(null);
+    vi.mocked(getCandidatesByIds).mockResolvedValue([]);
+    vi.mocked(getPlacedCandidateIds).mockResolvedValue(new Set());
+    vi.mocked(getShortlistsForRequirement).mockResolvedValue([]);
+    vi.mocked(getRerankSignature).mockResolvedValue(SIG);
+    vi.mocked(getLlmRerank).mockResolvedValue(null);
+    config.featureFlags.llmRerankEnabled = false;
+  });
+
+  it('kill switch off → deterministic order, no LLM work', async () => {
+    config.featureFlags.llmRerankEnabled = false;
+    seedCache();
+
+    const body = await runSearch();
+
+    expect(body.data.candidates.map((c: { candidateId: string }) => c.candidateId)).toEqual(['c1', 'c2']);
+    expect(body.data.llmRerank).toEqual({ ranked: false, pending: false });
+    expect(vi.mocked(getLlmRerank)).not.toHaveBeenCalled();
+    expect(vi.mocked(invokeLambdaAsync)).not.toHaveBeenCalled();
+    expect(body.data.candidates.every((c: { rationale?: string }) => !c.rationale)).toBe(true);
+  });
+
+  it('cold cache → fires recompute once, serves deterministic order, no rationale', async () => {
+    config.featureFlags.llmRerankEnabled = true;
+    vi.mocked(getLlmRerank).mockResolvedValue(null);
+    seedCache();
+
+    const body = await runSearch();
+
+    expect(body.data.candidates.map((c: { candidateId: string }) => c.candidateId)).toEqual(['c1', 'c2']);
+    expect(body.data.llmRerank).toEqual({ ranked: false, pending: true });
+    expect(vi.mocked(invokeLambdaAsync)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(invokeLambdaAsync).mock.calls[0][0]).toBe('llm-rerank-worker');
+    expect(vi.mocked(invokeLambdaAsync).mock.calls[0][1]).toMatchObject({
+      requirementId: REQ_ID,
+      candidateIds: ['c1', 'c2'],
+    });
+    expect(body.data.candidates.every((c: { rationale?: string }) => !c.rationale)).toBe(true);
+  });
+
+  it('fresh cache → serves LLM order with rationale, zero LLM cost (no recompute)', async () => {
+    config.featureFlags.llmRerankEnabled = true;
+    seedCache();
+    // Stored re-rank flips the order: c2 above c1.
+    vi.mocked(getLlmRerank).mockImplementation(async (reqId: string) => {
+      const { computeTopNHash } = await import('../../lib/llmRerank.js');
+      return {
+        requirement_id: reqId,
+        entries: [
+          { candidate_id: 'c2', llmScore: 0.95, rationale: 'Stronger systems depth' },
+          { candidate_id: 'c1', llmScore: 0.6, rationale: 'Solid but narrower' },
+        ],
+        top_n_hash: computeTopNHash(['c1', 'c2']),
+        model: SIG.model,
+        prompt_version: SIG.promptVersion,
+        computed_at: '2026-06-09T00:00:00Z',
+      };
+    });
+
+    const body = await runSearch();
+
+    expect(body.data.candidates.map((c: { candidateId: string }) => c.candidateId)).toEqual(['c2', 'c1']);
+    expect(body.data.llmRerank).toEqual({ ranked: true, pending: false });
+    expect(body.data.candidates[0].rationale).toBe('Stronger systems depth');
+    expect(vi.mocked(invokeLambdaAsync)).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['top_n_hash differs', { top_n_hash: 'stale-hash' }],
+    ['model differs', { model: 'other-model' }],
+    ['prompt_version differs', { prompt_version: 999 }],
+  ])('stale cache (%s) → fires recompute exactly once', async (_label, mismatch) => {
+    config.featureFlags.llmRerankEnabled = true;
+    seedCache();
+    vi.mocked(getLlmRerank).mockImplementation(async (reqId: string) => {
+      const { computeTopNHash } = await import('../../lib/llmRerank.js');
+      return {
+        requirement_id: reqId,
+        entries: [{ candidate_id: 'c1', llmScore: 0.9, rationale: 'x' }],
+        top_n_hash: computeTopNHash(['c1', 'c2']),
+        model: SIG.model,
+        prompt_version: SIG.promptVersion,
+        computed_at: '2026-06-09T00:00:00Z',
+        ...mismatch,
+      };
+    });
+
+    const body = await runSearch();
+
+    expect(body.data.llmRerank).toEqual({ ranked: false, pending: true });
+    expect(vi.mocked(invokeLambdaAsync)).toHaveBeenCalledTimes(1);
+  });
+
+  it('LLM store error → graceful fallback to deterministic order, HTTP 200', async () => {
+    config.featureFlags.llmRerankEnabled = true;
+    seedCache();
+    vi.mocked(getLlmRerank).mockRejectedValue(new Error('DynamoDB timeout'));
+
+    const result = await searchHandler(
+      makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] }, requirementId: REQ_ID }) })
+    );
+    const body = parseBody(result);
+
+    expect((result as { statusCode: number }).statusCode).toBe(200);
+    expect(body.data.candidates.map((c: { candidateId: string }) => c.candidateId)).toEqual(['c1', 'c2']);
+    // No overlay metadata set when the overlay throws — deterministic fallback.
+    expect(body.data.llmRerank).toBeUndefined();
+  });
+
+  it('non-matchScore sort (experience) → LLM overlay skipped', async () => {
+    config.featureFlags.llmRerankEnabled = true;
+    seedCache();
+
+    const body = parseBody(
+      await searchHandler(
+        makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] }, requirementId: REQ_ID, sortBy: 'experience' }) })
+      )
+    );
+
+    expect(body.data.llmRerank).toBeUndefined();
+    expect(vi.mocked(getLlmRerank)).not.toHaveBeenCalled();
+    expect(vi.mocked(invokeLambdaAsync)).not.toHaveBeenCalled();
+  });
+
+  it('ad-hoc search (no requirementId) → LLM overlay never runs', async () => {
+    config.featureFlags.llmRerankEnabled = true;
+    vi.mocked(searchCandidates).mockResolvedValue({ items: [makeCandidate('c1')], lastKey: undefined });
+
+    await searchHandler(makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] } }) }));
+
+    expect(vi.mocked(getLlmRerank)).not.toHaveBeenCalled();
+    expect(vi.mocked(invokeLambdaAsync)).not.toHaveBeenCalled();
+  });
+
+  it('empty top-N after filters → no LLM call, zero candidates', async () => {
+    config.featureFlags.llmRerankEnabled = true;
+    vi.mocked(getMatchCache).mockResolvedValue([{ candidate_id: 'c1', rank: 1, score: 90 }]);
+    serveCorpus([makeCandidate('c1')]);
+    vi.mocked(getPlacedCandidateIds).mockResolvedValue(new Set(['c1'])); // filtered out
+
+    const body = await runSearch();
+
+    expect(body.data.candidates).toHaveLength(0);
+    expect(vi.mocked(getLlmRerank)).not.toHaveBeenCalled();
+    expect(vi.mocked(invokeLambdaAsync)).not.toHaveBeenCalled();
   });
 });
 

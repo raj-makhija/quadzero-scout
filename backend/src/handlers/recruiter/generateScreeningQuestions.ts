@@ -47,6 +47,16 @@ async function handleRequest(event: AuthenticatedEvent): Promise<APIGatewayProxy
       return error(ErrorCodes.NOT_FOUND, 'Candidate not found', 404);
     }
 
+    // Re-screening: a prior screening already produced questions, so skip the
+    // LLM entirely and surface a notice the modal can show in place of a list.
+    if (candidate.last_screened_at) {
+      return success({
+        questions: [],
+        generated: false,
+        notice: 'Re-screening; no additional questions are needed here.',
+      });
+    }
+
     const summary = buildCandidateSummary(candidate);
 
     // No profile content to base questions on (e.g. profile without a parsed
