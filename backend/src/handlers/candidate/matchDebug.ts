@@ -97,7 +97,7 @@ export async function handler(
           + (details.mustHaveSecondary?.length || 0) * MUST_HAVE_SECONDARY_WEIGHT
         ) / normalizedMustHave.length
       : 1;
-    const mustHaveRatioPassed = normalizedMustHave.length === 0 || effectiveRatio >= MIN_MUST_HAVE_MATCH_RATIO;
+    const mustHaveRatioPassed = normalizedMustHave.length === 0 || effectiveRatio > 0;
 
     // --- Filter 3: Engagement model ---
     const reqEngagementModel = requirement.engagement_model || criteria.engagementModel;
