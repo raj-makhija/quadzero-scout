@@ -242,8 +242,8 @@ describe('Match Scoring Algorithm', () => {
     expect(result.details.mustHaveMissing).toContain('salesforce');
   });
 
-  // TC-SCORE-015: 1/10 must-have is below 40% threshold
-  it('candidate with 1 of 10 must-have skills is below 40% threshold', () => {
+  // TC-SCORE-015: 1/10 must-have passes the OR gate (any positive ratio is sufficient)
+  it('candidate with 1 of 10 must-have skills passes the OR gate', () => {
     const candidate = makeCandidate({
       primary_skills: ['react'],
       secondary_skills: [],
@@ -253,7 +253,7 @@ describe('Match Scoring Algorithm', () => {
     const result = calculateMatchScore(candidate, mustHave, []);
     const ratio = result.details.mustHaveMatched.length / mustHave.length;
     expect(ratio).toBe(0.1);
-    expect(ratio).toBeLessThan(MIN_MUST_HAVE_MATCH_RATIO);
+    expect(ratio).toBeGreaterThan(MIN_MUST_HAVE_MATCH_RATIO);
   });
 
   // TC-SCORE-016: 4/10 must-have passes 40% threshold
@@ -300,8 +300,8 @@ describe('Match Scoring Algorithm', () => {
     expect(MUST_HAVE_RELATED_WEIGHT).toBe(0.3);
   });
 
-  it('MIN_MUST_HAVE_MATCH_RATIO is 0.40', () => {
-    expect(MIN_MUST_HAVE_MATCH_RATIO).toBe(0.40);
+  it('MIN_MUST_HAVE_MATCH_RATIO is 0', () => {
+    expect(MIN_MUST_HAVE_MATCH_RATIO).toBe(0);
   });
 
   it('MUST_HAVE_WEIGHT is 40', () => {
@@ -694,20 +694,20 @@ describe('Match Scoring Algorithm', () => {
     expect(splitResult.details.mustHaveSecondary).toEqual(['nodejs']);
   });
 
-  it('candidate whose only evidence of must-have is in secondary fails the 40% filter', () => {
+  it('candidate whose only evidence of must-have is in secondary passes the OR gate', () => {
     const candidate = makeCandidate({
       primary_skills: ['react'],
       secondary_skills: ['aws', 'docker'],
     });
     // Must-haves: aws, docker, kubernetes — two match in secondary, one missing
     const result = calculateMatchScore(candidate, ['aws', 'docker', 'kubernetes'], []);
-    // effective = (0 + 0*0.85 + 2*0.5) / 3 = 0.333 — below 0.40 threshold
+    // effective = (0 + 0*0.85 + 2*0.5) / 3 = 0.333 — positive, passes OR gate
     const effective = (
       result.details.mustHaveMatched.length
       + result.details.mustHaveFuzzy.length * 0.85
       + result.details.mustHaveSecondary.length * 0.5
     ) / 3;
-    expect(effective).toBeLessThan(MIN_MUST_HAVE_MATCH_RATIO);
+    expect(effective).toBeGreaterThan(MIN_MUST_HAVE_MATCH_RATIO);
   });
 
   // --- CTC Over-Budget Penalty Tests ---
