@@ -588,8 +588,11 @@ functions:
   # Match-cache full rebuild worker (ticket #236) — nightly EventBridge schedule.
   matchCacheRebuildWorker:
     handler: src/handlers/worker/matchCacheRebuildWorker.handler
-    timeout: 120
-    memorySize: 512
+    # Full rebuild scans ~3,500 profiles and scores them against every active
+    # requirement. At 120s/512MB it timed out before any cache was written
+    # (empty prod cache). Raised so the rebuild completes within budget.
+    timeout: 600
+    memorySize: 1536
     events:
       - schedule:
           rate: rate(1 day)
