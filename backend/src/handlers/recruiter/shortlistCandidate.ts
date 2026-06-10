@@ -1,7 +1,7 @@
 import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, ShortlistCandidateRequestSchema } from '../../lib/validation.js';
-import { getRequirementById, getCandidateById, getShortlistEntry, saveShortlist, updateShortlistStatus } from '../../lib/dynamodb.js';
+import { getRequirementById, getCandidateById, getShortlistEntry, saveShortlist, updateShortlistStatus, listAttachments } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
 import { safeGenerateTask, buildSubmitToClientTask } from '../../lib/recruiterTasks.js';
@@ -62,6 +62,21 @@ async function handleRequest(
         ErrorCodes.SCREENING_REQUIRED,
         `Candidate screening is expired (last screened ${Math.floor(daysSinceScreening)} days ago). Please re-screen the candidate before shortlisting.`,
         409
+      );
+    }
+
+    // Check required documents (PAN + Aadhaar must both be attached and tagged).
+    // Runs before the existing-entry check so it also blocks not_suitable re-shortlisting.
+    // Tags use the exact canonical strings from ticket #363 (case-sensitive).
+    const attachments = await listAttachments(candidateId);
+    const hasPan = attachments.some((a) => a.tag === 'PAN');
+    const hasAadhaar = attachments.some((a) => a.tag === 'Aadhaar');
+    if (!hasPan || !hasAadhaar) {
+      const missing = [!hasPan && 'PAN', !hasAadhaar && 'Aadhaar'].filter(Boolean).join(' and ');
+      return error(
+        ErrorCodes.DOCUMENTS_REQUIRED,
+        `Required document(s) missing: ${missing}. Please attach the candidate's ${missing} document before shortlisting.`,
+        422
       );
     }
 
