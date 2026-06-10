@@ -5,10 +5,10 @@ import type { CandidateItem, CandidateSearchResult } from '../types/index.js';
 
 export type MatchDetails = CandidateSearchResult['matchDetails'];
 
-/** Minimum ratio of exact must-have matches to total must-have skills.
- *  Candidates below this threshold are filtered out.
- *  Only exact matches count; related matches do not contribute to this ratio. */
-export const MIN_MUST_HAVE_MATCH_RATIO = 0.40;
+/** Minimum effective must-have ratio for a candidate to pass the gate.
+ *  Set to 0: any positive ratio (at least one exact, fuzzy, or secondary match)
+ *  passes; a ratio of exactly 0 (zero must-have matches) is excluded. */
+export const MIN_MUST_HAVE_MATCH_RATIO = 0;
 
 /** Weight applied to related (category-based) good-to-have skill matches. */
 export const RELATED_MATCH_WEIGHT = 0.3;

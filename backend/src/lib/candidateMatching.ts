@@ -116,7 +116,7 @@ export function matchAndRankCandidates(
         + (details.mustHaveFuzzy?.length ?? 0) * FUZZY_MATCH_WEIGHT
         + (details.mustHaveSecondary?.length ?? 0) * MUST_HAVE_SECONDARY_WEIGHT
       ) / normalizedMustHave.length;
-      if (effectiveRatio < MIN_MUST_HAVE_MATCH_RATIO) continue;
+      if (effectiveRatio <= 0) continue;
     }
 
     // Hard filter: discipline gate

@@ -16,7 +16,7 @@ vi.mock('../matchScoring.js', () => {
   };
   return {
     calculateMatchScore: (...args: unknown[]) => mockCalculateMatchScore(...args),
-    MIN_MUST_HAVE_MATCH_RATIO: 0.40,
+    MIN_MUST_HAVE_MATCH_RATIO: 0,
     FUZZY_MATCH_WEIGHT: 0.85,
     MUST_HAVE_SECONDARY_WEIGHT: 0.5,
     parseSearchLocations: (loc?: string) =>
@@ -162,8 +162,8 @@ describe('matchAndRankCandidates', () => {
   // Must-have ratio gate
   // ---------------------------------------------------------------------------
 
-  it('includes candidate whose effectiveRatio lands exactly at the 0.40 boundary (boundary is >=)', () => {
-    // 5 must-haves, 2 exact matches → effectiveRatio = 2/5 = 0.40 exactly
+  it('includes candidate with 2 of 5 must-have matches (effectiveRatio > 0 passes OR gate)', () => {
+    // 5 must-haves, 2 exact matches → effectiveRatio = 2/5 = 0.40, which is > 0
     mockCalculateMatchScore.mockReturnValue({
       score: 50,
       details: {
@@ -183,6 +183,151 @@ describe('matchAndRankCandidates', () => {
     expect(result).toHaveLength(1);
   });
 
+  it('includes candidate matching 1 of 3 must-have skills (OR semantics)', () => {
+    mockCalculateMatchScore.mockReturnValue({
+      score: 30,
+      details: {
+        ...goodDetails,
+        mustHaveMatched: ['react'],
+        mustHaveFuzzy: [],
+        mustHaveSecondary: [],
+        mustHaveMissing: ['nodejs', 'python'],
+      },
+    });
+
+    const result = matchAndRankCandidates(
+      [baseCandidate],
+      { mustHaveSkills: ['react', 'nodejs', 'python'] }
+    );
+
+    expect(result).toHaveLength(1);
+  });
+
+  it('includes candidate matching 1 of 5 must-have skills (OR semantics)', () => {
+    mockCalculateMatchScore.mockReturnValue({
+      score: 15,
+      details: {
+        ...goodDetails,
+        mustHaveMatched: ['react'],
+        mustHaveFuzzy: [],
+        mustHaveSecondary: [],
+        mustHaveMissing: ['nodejs', 'python', 'java', 'golang'],
+      },
+    });
+
+    const result = matchAndRankCandidates(
+      [baseCandidate],
+      { mustHaveSkills: ['react', 'nodejs', 'python', 'java', 'golang'] }
+    );
+
+    expect(result).toHaveLength(1);
+  });
+
+  it('excludes candidate matching 0 of N must-have skills', () => {
+    mockCalculateMatchScore.mockReturnValue({
+      score: 20,
+      details: {
+        ...goodDetails,
+        mustHaveMatched: [],
+        mustHaveFuzzy: [],
+        mustHaveSecondary: [],
+        mustHaveMissing: ['nodejs', 'python', 'java'],
+      },
+    });
+
+    const result = matchAndRankCandidates(
+      [baseCandidate],
+      { mustHaveSkills: ['nodejs', 'python', 'java'] }
+    );
+
+    expect(result).toHaveLength(0);
+  });
+
+  it('higher must-have partial match ranks above lower partial match', () => {
+    const candidateA: CandidateItem = { ...baseCandidate, candidate_id: 'cand_a' };
+    const candidateB: CandidateItem = { ...baseCandidate, candidate_id: 'cand_b' };
+
+    mockCalculateMatchScore
+      .mockReturnValueOnce({
+        score: 60,
+        details: { ...goodDetails, mustHaveMatched: ['react', 'typescript'], mustHaveFuzzy: [], mustHaveSecondary: [] },
+      })
+      .mockReturnValueOnce({
+        score: 30,
+        details: { ...goodDetails, mustHaveMatched: ['react'], mustHaveFuzzy: [], mustHaveSecondary: [] },
+      });
+
+    const result = matchAndRankCandidates(
+      [candidateA, candidateB],
+      { mustHaveSkills: ['react', 'typescript', 'nodejs'] }
+    );
+
+    expect(result).toHaveLength(2);
+    expect(result[0].candidate.candidate_id).toBe('cand_a');
+    expect(result[1].candidate.candidate_id).toBe('cand_b');
+  });
+
+  it('includes candidate whose only must-have match is fuzzy (OR semantics)', () => {
+    mockCalculateMatchScore.mockReturnValue({
+      score: 20,
+      details: {
+        ...goodDetails,
+        mustHaveMatched: [],
+        mustHaveFuzzy: ['react'],
+        mustHaveSecondary: [],
+        mustHaveMissing: ['nodejs', 'python'],
+      },
+    });
+
+    const result = matchAndRankCandidates(
+      [baseCandidate],
+      { mustHaveSkills: ['react', 'nodejs', 'python'] }
+    );
+
+    expect(result).toHaveLength(1);
+  });
+
+  it('includes candidate whose only must-have match is secondary-bucket (OR semantics)', () => {
+    mockCalculateMatchScore.mockReturnValue({
+      score: 15,
+      details: {
+        ...goodDetails,
+        mustHaveMatched: [],
+        mustHaveFuzzy: [],
+        mustHaveSecondary: ['react'],
+        mustHaveMissing: ['nodejs', 'python'],
+      },
+    });
+
+    const result = matchAndRankCandidates(
+      [baseCandidate],
+      { mustHaveSkills: ['react', 'nodejs', 'python'] }
+    );
+
+    expect(result).toHaveLength(1);
+  });
+
+  it('OR semantics apply consistently in notify mode (notifyInclusion=true)', () => {
+    mockCalculateMatchScore.mockReturnValue({
+      score: 10,
+      details: {
+        ...goodDetails,
+        mustHaveMatched: ['react'],
+        mustHaveFuzzy: [],
+        mustHaveSecondary: [],
+        mustHaveMissing: ['nodejs', 'python', 'java', 'golang'],
+      },
+    });
+
+    const result = matchAndRankCandidates(
+      [baseCandidate],
+      { mustHaveSkills: ['react', 'nodejs', 'python', 'java', 'golang'] },
+      { notifyInclusion: true }
+    );
+
+    expect(result).toHaveLength(1);
+  });
+
   it('skips ratio gate when criteria has zero must-have skills', () => {
     mockCalculateMatchScore.mockReturnValue({ score: 40, details: goodDetails });
 
@@ -191,7 +336,7 @@ describe('matchAndRankCandidates', () => {
     expect(result).toHaveLength(1);
   });
 
-  it('excludes candidate with non-zero score below the ratio gate even when notifyInclusion=true and budgetFit=true', () => {
+  it('excludes candidate with zero must-have matches even when notifyInclusion=true and budgetFit=true', () => {
     // ratio gate is a hard prerequisite — notifyInclusion does not bypass it
     mockCalculateMatchScore.mockReturnValue({
       score: 30,

@@ -198,7 +198,7 @@ Module-level state (caches, Maps, singletons) persists across vitest tests. `vi.
 
 Two patterns depending on the work:
 
-- **If the ticket IS itself a docs ticket** (`type:docs`): update `/docs/` (or `README.md`, `CI-CD.md`, etc., as applicable) in the same PR. The diff IS the deliverable.
+- **If the ticket IS itself a docs ticket** (`type:docs`) **and your diff is docs-only** (every changed file is `*.md` or under `docs/**`): update `/docs/` (or `README.md`, `CI-CD.md`, etc., as applicable) in the same PR. The diff IS the deliverable. The pipeline fast-paths these tickets: after pr-reviewer APPROVE, `scripts/docs-merge.sh` squash-merges directly to `develop` with no `pipeline:qa-deploy`, no QA lock, and no human `pipeline:qa-approve` required. The ticket ships at the next nightly `develop`→`main` mirror. Note: a `type:docs` ticket whose diff touches **any non-docs file** (code, config, scripts, etc.) falls through to the full tester+QA lifecycle at both the validate and pr-reviewer stages — the label is not a bypass on its own.
 - **For any other ticket** that affects user-visible behavior or architecture: do NOT update `/docs/` in the same PR. Instead, populate the **Doc updates needed** section of your `[developer:rationale]` comment on the ticket. The scribe agent reads it post-QA and files a follow-up `auto-pipeline,type:docs` ticket if needed (see `quadzero-scout/CI-CD.md` §5.9).
 
 This split exists so docs PRs are reviewed as docs and code PRs are reviewed as code. If your change is purely internal (refactor, internal helper, bug fix that restores intended behavior), put "None — internal change with no user-visible impact" in the "Doc updates needed" section so scribe doesn't file a spurious ticket.

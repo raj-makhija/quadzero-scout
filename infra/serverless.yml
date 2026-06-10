@@ -68,6 +68,8 @@ provider:
     DYNAMODB_TABLE_RECRUITER_TASKS: ${self:custom.recruiterTasksTable}
     DYNAMODB_TABLE_REQUIREMENT_MATCH_CACHE: ${self:custom.requirementMatchCacheTable}
     DYNAMODB_TABLE_REQUIREMENT_LLM_RERANK: ${self:custom.requirementLlmRerankTable}
+    DYNAMODB_TABLE_CLONE_JOBS: ${self:custom.cloneJobsTable}
+    CLONE_DATA_WORKER_NAME: ${self:service}-${self:provider.stage}-cloneDataWorker
     GRAPH_TENANT_ID: ${ssm:/quadzero-scout/${self:provider.stage}/GRAPH_TENANT_ID, env:GRAPH_TENANT_ID, ''}
     GRAPH_CLIENT_ID: ${ssm:/quadzero-scout/${self:provider.stage}/GRAPH_CLIENT_ID, env:GRAPH_CLIENT_ID, ''}
     GRAPH_CLIENT_SECRET: ${ssm:/quadzero-scout/${self:provider.stage}/GRAPH_CLIENT_SECRET, env:GRAPH_CLIENT_SECRET, ''}
@@ -135,6 +137,7 @@ custom:
   recruiterTasksTable: RecruiterTasks-${self:provider.stage}
   requirementMatchCacheTable: RequirementMatchCache-${self:provider.stage}
   requirementLlmRerankTable: RequirementLlmRerank-${self:provider.stage}
+  cloneJobsTable: CloneJobs-${self:provider.stage}
 
   dotenv:
     include:
@@ -553,6 +556,29 @@ functions:
     timeout: 120
     memorySize: 1024
 
+  # Admin Clone Prod Data (ticket #303) — DEV/QA only. The start/status handlers
+  # are deployed on all stages but return 403 on prod (API guard). The worker
+  # Lambda below is conditioned out of the prod stack (see resources/clone-data.yml).
+  adminCloneDataStart:
+    handler: src/handlers/admin/cloneDataStart.handler
+    events:
+      - httpApi:
+          path: /admin/clone-data/start
+          method: POST
+
+  adminCloneDataStatus:
+    handler: src/handlers/admin/cloneDataStatus.handler
+    events:
+      - httpApi:
+          path: /admin/clone-data/status/{jobId}
+          method: GET
+
+  # Clone Prod Data Worker (no HTTP events) — long-running clear+scan+copy.
+  cloneDataWorker:
+    handler: src/handlers/worker/cloneDataWorker.handler
+    timeout: 900
+    memorySize: 1024
+
   # Notify Worker (no HTTP events)
   notifyWorker:
     handler: src/handlers/worker/notifyWorker.handler
@@ -562,8 +588,11 @@ functions:
   # Match-cache full rebuild worker (ticket #236) — nightly EventBridge schedule.
   matchCacheRebuildWorker:
     handler: src/handlers/worker/matchCacheRebuildWorker.handler
-    timeout: 120
-    memorySize: 512
+    # Full rebuild scans ~3,500 profiles and scores them against every active
+    # requirement. At 120s/512MB it timed out before any cache was written
+    # (empty prod cache). Raised so the rebuild completes within budget.
+    timeout: 600
+    memorySize: 1536
     events:
       - schedule:
           rate: rate(1 day)
@@ -887,6 +916,7 @@ functions:
 resources:
   - ${file(resources/dynamodb.yml)}
   - ${file(resources/s3.yml)}
+  - ${file(resources/clone-data.yml)}
   - Resources:
       BulkImportWorkerLambdaFunction:
         Type: AWS::Lambda::Function
