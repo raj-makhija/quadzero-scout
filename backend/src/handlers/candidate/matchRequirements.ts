@@ -97,7 +97,7 @@ export async function handler(
           + (details.mustHaveFuzzy?.length || 0) * FUZZY_MATCH_WEIGHT
           + (details.mustHaveSecondary?.length || 0) * MUST_HAVE_SECONDARY_WEIGHT
         ) / normalizedMustHave.length;
-        if (effectiveRatio < MIN_MUST_HAVE_MATCH_RATIO) {
+        if (effectiveRatio <= 0) {
           continue;
         }
       }

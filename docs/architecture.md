@@ -680,6 +680,30 @@ Cache entries store only stable ranking data: `{ candidate_id, rank, score }`. V
 - `putMatchCache(requirementId, ranked)` — PutItem (atomic full overwrite); writes the ranked list and sets `updated_at`.
 - `deleteMatchCache(requirementId)` — DeleteItem by `requirement_id`; idempotent (safe to call even if no entry exists).
 
+### AI Re-rank Read Path
+
+The LLM re-rank feature (ticket #239, defects fixed in #338) overlays an AI-ranked order on top of the deterministic match-cache result for requirement-bound searches. It never blocks the read path: a fresh stored re-rank is applied in-memory; a stale or absent entry triggers a single async recompute and the page is returned in deterministic order while the compute runs.
+
+**Backend: in-flight claim guard**
+
+`claimLlmRerankComputation(requirementId, topNHash, staleSeconds)` in `backend/src/lib/dynamodb.ts` uses a conditional DynamoDB PutItem to atomically claim a recompute slot. The condition succeeds only when no fresh in-flight claim exists for the same requirement + top-N hash; otherwise it returns `false` and the worker is not re-invoked. `RERANK_CLAIM_STALE_SECONDS = 60` defines the stale window: a claim older than 60 s is treated as abandoned (e.g., a crashed Lambda) and a new worker may be fired.
+
+Without this guard, every concurrent poll from the same browser tab — or from multiple tabs or rapid re-renders viewing the same requirement — would fire a separate LLM call. In practice the frontend polls at 4 s intervals for up to 40 s while a ~20 s compute is in flight, which would produce approximately 4× redundant LLM invocations per view. The claim guard reduces that to exactly one call per fresh requirement view regardless of concurrent polls.
+
+**Configuration: `RERANK_TOP_N = 25`**
+
+`RERANK_TOP_N = 25` (in `backend/src/lib/llmRerank.ts`) controls how many top candidates from the deterministic ranking are sent to the LLM for re-ordering. This was reduced from 50 after the pre-#338 code produced JSON responses that were truncated at the `maxTokens: 4096` output budget — 50 candidates generated output that consistently exceeded 4096 tokens, causing every re-rank attempt to fail. 25 candidates fit comfortably within the 4096-token budget.
+
+**Backend: partial-output tolerance in `rerankTopN()`**
+
+`rerankTopN()` in `backend/src/lib/llm/index.ts` validates each entry of the LLM response individually using Zod. Well-formed entries are kept; malformed or omitted entries (e.g., from a truncated response) are silently dropped. The overlay applies the valid scores to the candidates the LLM returned and leaves the remaining candidates in their original deterministic rank position. This means a partial LLM response still produces a useful (partially reordered) result rather than discarding all scores. If zero valid entries are returned, the function throws and the caller falls back to deterministic order with HTTP 200.
+
+**Frontend: `setInterval` polling and deterministic fallback**
+
+When the backend responds with `llmPending: true` (recompute in flight), the recruiter search page (`frontend/src/app/recruiter/search/page.tsx`) starts a `setInterval`-based polling loop at a 4 s cadence. The poll budget is `RERANK_MAX_POLLS = 10`, giving ~40 s of total coverage — long enough for the ~20 s async compute to land before the budget expires. `setInterval` (not a per-poll `setTimeout`) is used so that `llmPending` remaining `true` throughout the interval prevents the effect from being re-registered between polls.
+
+If the re-ranked result has not arrived after 10 polls (~40 s), `llmPending` is set to `false` and the UI stops showing "Refining order…", displaying the deterministic badge order instead. There is no indefinite spinner: the fallback is always the pre-ranked deterministic result, which is shown immediately on first load and again if the poll budget is exhausted.
+
 ### Stack-Abbreviation Expansion
 
 Technology stack abbreviations (MERN, MEAN, PERN, LAMP) appear in resumes and job descriptions as single tokens but represent multiple distinct skills. The pipeline expands them at two points so that both newly parsed records and legacy records match correctly.
