@@ -94,7 +94,8 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
     uploaded: boolean;
     error?: string;
   }>>([]);
-  const [attachmentTag, setAttachmentTag] = useState('');
+  const [attachmentCategory, setAttachmentCategory] = useState('');
+  const [attachmentCustomTag, setAttachmentCustomTag] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Track which fields are empty/missing for highlighting
@@ -1230,24 +1231,51 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                   Attach salary slips, appraisal letters, or other supporting documents. PDF, DOCX, DOC, JPG, PNG up to 10 MB each.
                 </p>
 
-                {/* Tag input + file picker */}
-                <div className="flex gap-2 mb-3">
-                  <input
-                    type="text"
-                    value={attachmentTag}
-                    onChange={(e) => setAttachmentTag(e.target.value)}
-                    placeholder="Tag (e.g. Salary Slip)"
-                    maxLength={100}
-                    className="input text-sm flex-1"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="btn-secondary text-sm flex items-center gap-1.5"
-                  >
-                    <Upload className="h-3.5 w-3.5" />
-                    Add Files
-                  </button>
+                {/* Category dropdown + optional custom tag + file picker */}
+                <div className="flex flex-col gap-2 mb-3">
+                  <div className="flex gap-2">
+                    <select
+                      value={attachmentCategory}
+                      onChange={(e) => {
+                        setAttachmentCategory(e.target.value);
+                        if (e.target.value !== 'Others') setAttachmentCustomTag('');
+                      }}
+                      className="input text-sm flex-1"
+                    >
+                      <option value="">Select category</option>
+                      <option value="PAN">PAN</option>
+                      <option value="Aadhaar">Aadhaar</option>
+                      <option value="Passport">Passport</option>
+                      <option value="Experience letters">Experience letters</option>
+                      <option value="Relieving Letters">Relieving Letters</option>
+                      <option value="Salary Slips">Salary Slips</option>
+                      <option value="Offer letters">Offer letters</option>
+                      <option value="Others">Others</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (attachmentCategory === 'Others' && !attachmentCustomTag.trim()) return;
+                        if (!attachmentCategory) return;
+                        fileInputRef.current?.click();
+                      }}
+                      disabled={!attachmentCategory || (attachmentCategory === 'Others' && !attachmentCustomTag.trim())}
+                      className="btn-secondary text-sm flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                      Add Files
+                    </button>
+                  </div>
+                  {attachmentCategory === 'Others' && (
+                    <input
+                      type="text"
+                      value={attachmentCustomTag}
+                      onChange={(e) => setAttachmentCustomTag(e.target.value)}
+                      placeholder="Enter custom tag"
+                      maxLength={100}
+                      className="input text-sm"
+                    />
+                  )}
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -1257,6 +1285,9 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                     onChange={(e) => {
                       const files = e.target.files;
                       if (!files) return;
+                      const effectiveTag = attachmentCategory === 'Others'
+                        ? attachmentCustomTag.trim()
+                        : attachmentCategory;
                       const validTypes = [
                         'application/pdf',
                         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -1272,7 +1303,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                         })
                         .map((f) => ({
                           file: f,
-                          tag: attachmentTag,
+                          tag: effectiveTag,
                           uploading: false,
                           uploaded: false,
                         }));
