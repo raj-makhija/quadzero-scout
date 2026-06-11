@@ -14,7 +14,8 @@
 #   2. Resolve the ticket's branch from its open PR.
 #   3. git merge origin/develop into the branch (pick up approved work).
 #   4. Regression gate: npm test in backend/ and frontend/.
-#   5. Point qa at the branch, push (Amplify frontend) + serverless deploy --stage qa.
+#   5. Point qa at the branch, push (Amplify frontend) + serverless deploy --stage qa,
+#      then rebuild the qa match cache against the just-deployed code (non-fatal).
 #   6. status:in-qa (acquire the lock).
 #
 # Not-green (merge conflict OR red suite): qa is left UNTOUCHED, the lock is
@@ -22,7 +23,8 @@
 # is closed and branch deleted, exactly like the tester/reviewer rework
 # path. The developer agent re-implements fresh from develop HEAD.
 #
-# Set PIPELINE_SKIP_DEPLOY=1 to skip the serverless deploy.
+# Set PIPELINE_SKIP_DEPLOY=1 to skip the serverless deploy and the post-deploy
+# match cache rebuild.
 # Set PIPELINE_QA_RUN_NPM_TEST=false to skip the regression gate (plumbing).
 
 set -euo pipefail
@@ -157,6 +159,28 @@ if [[ "${PIPELINE_SKIP_DEPLOY:-}" == "1" ]]; then
   echo "==> PIPELINE_SKIP_DEPLOY=1 — skipping serverless deploy" >&2
 else
   pl_deploy_stage qa
+fi
+
+# Rebuild the QA match cache against the just-deployed code. Search reads the
+# precomputed RequirementMatchCache, so a scoring-logic change is invisible to
+# QA until the cache is rebuilt under the new code -- otherwise a tester can
+# validate against a stale cache. Mirrors the prod-release.sh step (#377).
+# Skipped when no backend was deployed; non-fatal -- the daily scheduled
+# rebuild remains as a fallback, so it must not abort the deploy.
+if [[ "${PIPELINE_SKIP_DEPLOY:-}" == "1" ]]; then
+  echo "==> PIPELINE_SKIP_DEPLOY=1 — skipping qa match cache rebuild" >&2
+else
+  echo "==> rebuilding qa match cache against the just-deployed code" >&2
+  REBUILD_META="$(aws lambda invoke \
+    --function-name "quadzero-scout-qa-matchCacheRebuildWorker" \
+    --region "${AWS_REGION:-ap-south-1}" \
+    --cli-read-timeout 700 \
+    /dev/null 2>&1)" || REBUILD_META="invoke command failed: $REBUILD_META"
+  if [[ "$REBUILD_META" == *FunctionError* || "$REBUILD_META" == *"invoke command failed"* ]]; then
+    echo "    WARNING: qa match cache rebuild did not succeed ($REBUILD_META); the daily scheduled rebuild will reconcile it" >&2
+  else
+    echo "    qa match cache rebuild complete" >&2
+  fi
 fi
 
 git checkout develop >&2
