@@ -432,6 +432,12 @@ class ApiClient {
     );
   }
 
+  async sendBenchListEmail() {
+    return this.request<Record<string, never>>('/recruiter/bench-list/email', {
+      method: 'POST',
+    });
+  }
+
   async getRequirement(requirementId: string) {
     return this.request<RequirementDetail>(`/recruiter/requirements/${requirementId}`);
   }
