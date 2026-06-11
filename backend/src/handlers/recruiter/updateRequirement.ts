@@ -81,8 +81,8 @@ async function handleRequest(
       return error(ErrorCodes.NOT_FOUND, 'Requirement not found', 404);
     }
 
-    if (!event.auth.isInternal) {
-      return error(ErrorCodes.FORBIDDEN, 'Only internal recruiters can modify requirements', 403);
+    if (!event.auth.isInternal && event.auth.role !== 'admin') {
+      return error(ErrorCodes.FORBIDDEN, 'Only internal recruiters or admins can modify requirements', 403);
     }
 
     if (existing.status === 'duplicate') {

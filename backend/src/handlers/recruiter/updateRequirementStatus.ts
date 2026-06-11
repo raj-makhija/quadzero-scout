@@ -16,8 +16,8 @@ async function handleRequest(
       return error(ErrorCodes.VALIDATION_ERROR, 'Requirement ID is required', 400);
     }
 
-    if (!event.auth.isInternal) {
-      return error(ErrorCodes.FORBIDDEN, 'Only internal recruiters can change requirement status', 403);
+    if (!event.auth.isInternal && event.auth.role !== 'admin') {
+      return error(ErrorCodes.FORBIDDEN, 'Only internal recruiters or admins can change requirement status', 403);
     }
 
     if (!event.body) {
