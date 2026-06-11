@@ -569,6 +569,8 @@ The `RequirementMatchCache` table is kept in sync automatically at every require
 | Requirement **criteria edited** | Full cache rebuild: all existing entries for the requirement are replaced using the updated scoring criteria |
 | Requirement **reopened** (`closed_on_hold` → `active`) | Full cache rebuild; equivalent to creation — re-scores all currently active candidates against the requirement |
 | Requirement **closed** (`active` → `closed_on_hold`) or **deleted** | Drops the entire cache entry for that requirement (all candidate rows removed) |
+| **Prod deploy** (via `scripts/prod-release.sh`) | Full rebuild of all active-requirement caches against the just-deployed Lambda code (non-fatal; skipped when `PIPELINE_SKIP_DEPLOY=1`) |
+| **QA deploy** (via `scripts/qa-deploy.sh`) | Full rebuild of all active-requirement caches against the just-deployed QA Lambda code (non-fatal; skipped when `PIPELINE_SKIP_DEPLOY=1`) |
 
 Cache entries store only stable ranking data: `{ candidate_id, rank, score }`. Volatile per-candidate state — screening status, CTC flags, availability — is intentionally absent from the stored cache and applied as a read-time overlay when search results or notification lists are built.
 
@@ -672,6 +674,8 @@ Cache entries store only stable ranking data: `{ candidate_id, rank, score }`. V
 **What it stores:** The `RequirementMatchCache` table holds a pre-ranked list of candidates for each active requirement. Each item records the full sorted result set (`ranked`) — an ordered list of `{ candidate_id, rank, score }` objects — computed at cache-refresh time, along with an `updated_at` timestamp.
 
 **Why it exists:** Scoring all candidates against every active requirement on each search or match-notification event would re-run expensive scoring logic repeatedly for the same requirement. The cache stores the result once per refresh cycle and serves it on read, eliminating redundant re-scoring.
+
+**When the cache refreshes:** In addition to the requirement lifecycle events in the table above, a **prod or QA deploy now immediately rebuilds the cache** against the just-shipped Lambda code (see `scripts/prod-release.sh` and `scripts/qa-deploy.sh`). This closes the window where a scoring-logic change is live in the Lambda but search continues serving a cache built under the old code — previously that gap could be up to ~24 h (until the next scheduled run). The daily `matchCacheRebuildWorker` scheduled job remains in place as a drift safety net; it is not removed by this change. The post-deploy rebuild is non-fatal: a failure logs a warning and the scheduled rebuild reconciles the cache at its next run. Both deploy scripts respect `PIPELINE_SKIP_DEPLOY=1` — when set, the serverless deploy **and** the cache rebuild are both skipped.
 
 **Scope (store-only, #233):** Ticket #233 provisions the `RequirementMatchCache` table and implements the three access functions. Consumption — wiring the cache into the search handler and notification service — is deferred to follow-up tickets (#234+). At this stage, nothing reads from the cache during normal request handling.
 
