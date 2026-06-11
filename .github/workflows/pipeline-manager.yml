@@ -11,7 +11,10 @@
 # Schedule, workflow_dispatch, repository_dispatch always proceed past the guard.
 #
 # Auth:
-#   - PIPELINE_TOKEN: classic PAT (repo + workflow + project) for gh ops
+#   - PIPELINE_APP_ID + PIPELINE_APP_PRIVATE_KEY: GitHub App credentials for gh ops
+#   - PIPELINE_TOKEN: user PAT, used ONLY for Projects v2 board reads/writes
+#     (PL_PROJECT_TOKEN). The board is user-owned and App tokens cannot access
+#     user-owned Projects v2; everything else uses the App token.
 #   - CLAUDE_CODE_OAUTH_TOKEN: from `claude setup-token`; ties Claude usage
 #     to the user's Pro/Max subscription. Use ANTHROPIC_API_KEY for API.
 
@@ -65,13 +68,21 @@ jobs:
             fi
           fi
 
-      - name: Checkout develop (with PAT so later pushes work)
+      - name: Generate GitHub App token
+        if: env.LABEL_GUARD_SKIP != 'true'
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ secrets.PIPELINE_APP_ID }}
+          private-key: ${{ secrets.PIPELINE_APP_PRIVATE_KEY }}
+
+      - name: Checkout develop (with App token so later pushes work)
         if: env.LABEL_GUARD_SKIP != 'true'
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           ref: develop
           fetch-depth: 0
-          token: ${{ secrets.PIPELINE_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Configure git identity for any pipeline commits
         if: env.LABEL_GUARD_SKIP != 'true'
@@ -86,7 +97,7 @@ jobs:
       - name: Verify gh + jq
         if: env.LABEL_GUARD_SKIP != 'true'
         env:
-          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           gh --version
           jq --version
@@ -117,13 +128,17 @@ jobs:
       - name: Validate ticket types (flag tickets missing type:* before drain)
         if: env.LABEL_GUARD_SKIP != 'true'
         env:
-          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: scripts/validate-ticket-types.sh
 
       - name: Drain the queue
         if: env.LABEL_GUARD_SKIP != 'true'
         env:
-          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          # User PAT for the user-owned Projects v2 board; App tokens can't read
+          # or write it. next-ticket.sh / get-field.sh / set-field.sh switch to
+          # this for board API calls only (see pl_use_project_token).
+          PL_PROJECT_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           PIPELINE_DEVELOPER_AGENT: claude
           PIPELINE_PR_REVIEWER_AGENT: claude
