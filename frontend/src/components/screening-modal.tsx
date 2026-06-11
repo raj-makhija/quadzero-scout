@@ -73,6 +73,14 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
   // AI-generated screening questions (ticket #191)
   const [screeningQuestions, setScreeningQuestions] = useState<ScreeningQuestion[]>([]);
   const [questionAnswers, setQuestionAnswers] = useState<Record<number, string>>({});
+  const SCREENING_RATING_OPTIONS = [
+    { value: 'Great Response', label: 'Great Response' },
+    { value: 'Good Response', label: 'Good Response' },
+    { value: 'Adequate Response', label: 'Adequate Response' },
+    { value: 'Poor Response', label: 'Poor Response' },
+    { value: 'No Clue', label: 'No Clue' },
+    { value: 'Question Skipped', label: 'Question Skipped' },
+  ];
   const [loadingQuestions, setLoadingQuestions] = useState(true);
   const [questionsNotice, setQuestionsNotice] = useState('');
 
@@ -324,6 +332,16 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
     }
     if (!notes.trim()) missingFields.push('Screening Notes');
 
+    // Validate screening question ratings
+    if (loadingQuestions) {
+      missingFields.push('Screening Questions (still loading — please wait)');
+    } else if (screeningQuestions.length > 0) {
+      const unansweredCount = screeningQuestions.filter((_, i) => !questionAnswers[i]).length;
+      if (unansweredCount > 0) {
+        missingFields.push(`All screening questions (${unansweredCount} unanswered)`);
+      }
+    }
+
     // Validate required additional fields
     if (additionalFields && additionalFields.length > 0) {
       for (const field of additionalFields) {
@@ -454,7 +472,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
       let finalNotes = notes;
       if (screeningQuestions.length > 0) {
         const qaBlock = screeningQuestions
-          .map((q, i) => `Q: ${q.question}\nA: ${(questionAnswers[i] || '').trim() || '(no answer)'}`)
+          .map((q, i) => `Q: ${q.question}\nA: ${questionAnswers[i]}`)
           .join('\n\n');
         finalNotes = `${notes}\n\n--- Screening Questions ---\n${qaBlock}`;
       }
@@ -557,7 +575,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
     lastWorkingDay, stillOnJob, onScreeningComplete,
     isShortlistFlow, additionalFields, customFieldValues,
     subVendorEnabled, subVendorData, initialSubVendorId,
-    pendingAttachments, screeningQuestions, questionAnswers,
+    pendingAttachments, screeningQuestions, questionAnswers, loadingQuestions,
   ]);
 
   return (
@@ -1179,14 +1197,19 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                         label={`${i + 1}. ${q.question}`}
                         htmlFor={`sq_${i}`}
                         hint={q.category}
+                        required
+                        touched={submitAttempted}
+                        error={submitAttempted && !questionAnswers[i] ? 'Required' : undefined}
                       >
-                        <FormInput
+                        <FormSelect
                           id={`sq_${i}`}
                           value={questionAnswers[i] ?? ''}
                           onChange={(e) =>
                             setQuestionAnswers((prev) => ({ ...prev, [i]: e.target.value }))
                           }
-                          placeholder="Candidate's answer"
+                          options={SCREENING_RATING_OPTIONS}
+                          placeholder="Select a rating"
+                          hasError={submitAttempted && !questionAnswers[i]}
                         />
                       </FormField>
                     ))}
