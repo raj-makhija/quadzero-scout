@@ -33,12 +33,19 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Checkout develop (with PAT for git ops + label edits)
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ secrets.PIPELINE_APP_ID }}
+          private-key: ${{ secrets.PIPELINE_APP_PRIVATE_KEY }}
+
+      - name: Checkout develop (with App token for git ops + label edits)
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           ref: develop
           fetch-depth: 0
-          token: ${{ secrets.PIPELINE_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Configure git identity
         run: |
@@ -48,7 +55,7 @@ jobs:
 
       - name: Verify gh + jq + aws
         env:
-          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           gh --version
           jq --version
@@ -56,7 +63,7 @@ jobs:
 
       - name: Run nightly cherry-pick batch release
         env:
-          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: ${{ secrets.AWS_REGION || 'ap-south-1' }}
