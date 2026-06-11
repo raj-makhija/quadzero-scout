@@ -18,6 +18,18 @@ import {
 import ScreeningHistoryPanel from '@/components/screening-history-panel';
 import { TASK_REFRESH_EVENT } from '@/components/task-queue-widget';
 
+// Objective rating options offered for each AI-generated screening question.
+// Ordered best-to-worst, with "Question Skipped" as the explicit opt-out that
+// still satisfies the mandatory-answer requirement.
+const SCREENING_RATING_OPTIONS = [
+  'Great Response',
+  'Good Response',
+  'Adequate Response',
+  'Poor Response',
+  'No Clue',
+  'Question Skipped',
+] as const;
+
 interface ScreeningModalProps {
   candidate?: CandidateSearchResult;
   candidateId?: string;
@@ -324,6 +336,18 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
     }
     if (!notes.trim()) missingFields.push('Screening Notes');
 
+    // Every screening question must be rated before submission. While questions
+    // are still loading we block too, so we never fire the API against an empty
+    // list and then have questions appear afterwards.
+    if (loadingQuestions) {
+      missingFields.push('Screening Questions (still loading — please wait)');
+    } else if (screeningQuestions.length > 0) {
+      const unanswered = screeningQuestions.filter((_, i) => !questionAnswers[i]).length;
+      if (unanswered > 0) {
+        missingFields.push(`All screening questions (${unanswered} unanswered)`);
+      }
+    }
+
     // Validate required additional fields
     if (additionalFields && additionalFields.length > 0) {
       for (const field of additionalFields) {
@@ -454,7 +478,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
       let finalNotes = notes;
       if (screeningQuestions.length > 0) {
         const qaBlock = screeningQuestions
-          .map((q, i) => `Q: ${q.question}\nA: ${(questionAnswers[i] || '').trim() || '(no answer)'}`)
+          .map((q, i) => `Q: ${q.question}\nA: ${questionAnswers[i]}`)
           .join('\n\n');
         finalNotes = `${notes}\n\n--- Screening Questions ---\n${qaBlock}`;
       }
@@ -557,7 +581,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
     lastWorkingDay, stillOnJob, onScreeningComplete,
     isShortlistFlow, additionalFields, customFieldValues,
     subVendorEnabled, subVendorData, initialSubVendorId,
-    pendingAttachments, screeningQuestions, questionAnswers,
+    pendingAttachments, screeningQuestions, questionAnswers, loadingQuestions,
   ]);
 
   return (
@@ -1179,15 +1203,34 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                         label={`${i + 1}. ${q.question}`}
                         htmlFor={`sq_${i}`}
                         hint={q.category}
+                        touched={submitAttempted}
+                        error={submitAttempted && !questionAnswers[i] ? 'Required' : undefined}
                       >
-                        <FormInput
+                        <div
                           id={`sq_${i}`}
-                          value={questionAnswers[i] ?? ''}
-                          onChange={(e) =>
-                            setQuestionAnswers((prev) => ({ ...prev, [i]: e.target.value }))
-                          }
-                          placeholder="Candidate's answer"
-                        />
+                          role="radiogroup"
+                          aria-label={q.question}
+                          className="flex flex-wrap gap-x-4 gap-y-2 pt-1"
+                        >
+                          {SCREENING_RATING_OPTIONS.map((option) => (
+                            <label
+                              key={option}
+                              className="flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-300 cursor-pointer"
+                            >
+                              <input
+                                type="radio"
+                                name={`sq_${i}`}
+                                value={option}
+                                checked={questionAnswers[i] === option}
+                                onChange={() =>
+                                  setQuestionAnswers((prev) => ({ ...prev, [i]: option }))
+                                }
+                                className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                              />
+                              {option}
+                            </label>
+                          ))}
+                        </div>
                       </FormField>
                     ))}
                   </div>
