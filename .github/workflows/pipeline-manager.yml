@@ -12,6 +12,9 @@
 #
 # Auth:
 #   - PIPELINE_APP_ID + PIPELINE_APP_PRIVATE_KEY: GitHub App credentials for gh ops
+#   - PIPELINE_TOKEN: user PAT, used ONLY for Projects v2 board reads/writes
+#     (PL_PROJECT_TOKEN). The board is user-owned and App tokens cannot access
+#     user-owned Projects v2; everything else uses the App token.
 #   - CLAUDE_CODE_OAUTH_TOKEN: from `claude setup-token`; ties Claude usage
 #     to the user's Pro/Max subscription. Use ANTHROPIC_API_KEY for API.
 
@@ -132,6 +135,10 @@ jobs:
         if: env.LABEL_GUARD_SKIP != 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          # User PAT for the user-owned Projects v2 board; App tokens can't read
+          # or write it. next-ticket.sh / get-field.sh / set-field.sh switch to
+          # this for board API calls only (see pl_use_project_token).
+          PL_PROJECT_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           PIPELINE_DEVELOPER_AGENT: claude
           PIPELINE_PR_REVIEWER_AGENT: claude

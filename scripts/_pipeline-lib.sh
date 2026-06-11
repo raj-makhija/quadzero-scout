@@ -34,6 +34,23 @@ pl_load_config() {
   export PL_CONFIG PL_PROJECT_ID PL_OWNER
 }
 
+# Point gh at the Projects v2 board token for the rest of the calling script.
+# The pipeline board is USER-owned (project #1, owner raj-makhija). GitHub App
+# installation tokens have no permission scope for user-owned Projects v2 --
+# only org boards expose `organization_projects` -- so under the App token
+# (#145) every project read/write silently returns empty or no-ops. The
+# scripts that hit the project GraphQL API (get-field.sh, set-field.sh,
+# next-ticket.sh, and pl_item_id_for_issue which they call) invoke this right
+# after pl_load_config so their gh calls use PL_PROJECT_TOKEN, a user PAT with
+# Projects access. The App token (GH_TOKEN) still drives comments, label edits,
+# and PR + git ops, preserving the bot identity. When PL_PROJECT_TOKEN is unset
+# -- e.g. local runs where gh is already authed as the user's PAT -- no-op.
+pl_use_project_token() {
+  if [[ -n "${PL_PROJECT_TOKEN:-}" ]]; then
+    export GH_TOKEN="$PL_PROJECT_TOKEN"
+  fi
+}
+
 # Resolve a field name to its metadata. Prints JSON {id, dataType, options}.
 pl_field() {
   local name="$1"
@@ -212,7 +229,10 @@ pl_pr_for_ticket() {
   libdir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   pr="$("$libdir/get-field.sh" "$ticket" "PR Number" 2>/dev/null || true)"
   if [[ -z "$pr" ]]; then
-    pr="$(gh issue view "$ticket" --json closedByPullRequestsReferences \
+    # Fallback used by the manual -cowork route (no "PR Number" field). Run it
+    # under the project PAT too: the App token may not resolve the issue->PR
+    # link, and this is a read with no attribution impact. No-op locally.
+    pr="$(GH_TOKEN="${PL_PROJECT_TOKEN:-${GH_TOKEN:-}}" gh issue view "$ticket" --json closedByPullRequestsReferences \
       -q '[.closedByPullRequestsReferences[] | select(.state == "OPEN") | .number][0] // empty' \
       2>/dev/null || true)"
   fi
