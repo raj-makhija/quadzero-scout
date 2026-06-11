@@ -1050,7 +1050,7 @@ export default function LocateProfilePage() {
         )}
       </div>
 
-      {showBenchList && benchListProfiles && benchListProfiles.length > 0 && (
+      {showBenchList && benchListProfiles && (
         <BenchListModal
           profiles={benchListProfiles}
           onClose={() => { setShowBenchList(false); setBenchListProfiles(null); }}

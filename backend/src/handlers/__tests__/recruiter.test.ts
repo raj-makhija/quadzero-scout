@@ -100,6 +100,7 @@ vi.mock('../../lib/dynamodb.js', () => ({
   putMatchCache: vi.fn().mockResolvedValue(undefined),
   deleteMatchCache: vi.fn().mockResolvedValue(undefined),
   getAllActiveCandidates: vi.fn().mockResolvedValue([]),
+  getBenchListCandidates: vi.fn().mockResolvedValue({ items: [] }),
 }));
 
 vi.mock('../../lib/llm/index.js', () => ({
@@ -181,7 +182,8 @@ import { handler as saveSearchHandler } from '../recruiter/saveSearch.js';
 import { handler as getSearchesHandler } from '../recruiter/getSearches.js';
 import { handler as deleteSearchHandler } from '../recruiter/deleteSearch.js';
 import { handler as listRecentProfilesHandler } from '../recruiter/listRecentProfiles.js';
-import { getCandidateById, getSavedSearches, getRecentProfiles, searchCandidates, getShortlistsForRequirement, getPlacedCandidateIds, getMatchCache, getCandidatesByIds, getLlmRerank } from '../../lib/dynamodb.js';
+import { handler as benchListHandler } from '../recruiter/benchList.js';
+import { getCandidateById, getSavedSearches, getRecentProfiles, searchCandidates, getShortlistsForRequirement, getPlacedCandidateIds, getMatchCache, getCandidatesByIds, getLlmRerank, getBenchListCandidates } from '../../lib/dynamodb.js';
 import { parseJobDescription, getRerankSignature } from '../../lib/llm/index.js';
 import { generateDownloadUrl } from '../../lib/s3.js';
 import { invokeLambdaAsync } from '../../lib/lambdaInvoke.js';
@@ -2283,5 +2285,65 @@ describe('GET /recruiter/recent-profiles', () => {
 
     expect(result.statusCode).toBe(400);
     expect(body.error.message).toContain('Invalid pagination key');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /recruiter/bench-list (benchList handler)
+// ---------------------------------------------------------------------------
+
+describe('GET /recruiter/bench-list', () => {
+  beforeEach(() => {
+    vi.mocked(getBenchListCandidates).mockReset();
+  });
+
+  function benchItem(overrides: Record<string, unknown> = {}) {
+    return {
+      candidate_id: 'cand_x',
+      full_name: 'Test Person',
+      total_experience: 5,
+      location: 'Bangalore, India',
+      roles: ['Backend Developer'],
+      availability: 'immediate',
+      last_screened_at: '2026-06-01T00:00:00Z',
+      seniority: 'senior',
+      primary_skills: ['java'],
+      ...overrides,
+    };
+  }
+
+  it('excludes candidates flagged not_interested === true', async () => {
+    vi.mocked(getBenchListCandidates).mockResolvedValue({
+      items: [
+        benchItem({ candidate_id: 'keep_1', not_interested: false }),
+        benchItem({ candidate_id: 'drop_1', not_interested: true }),
+        benchItem({ candidate_id: 'keep_2' }), // field absent
+      ],
+    } as Awaited<ReturnType<typeof getBenchListCandidates>>);
+
+    const result = await benchListHandler(makeEvent({}));
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    const ids = body.data.candidates.map((c: { candidateId: string }) => c.candidateId);
+    expect(ids).toContain('keep_1');
+    expect(ids).toContain('keep_2');
+    expect(ids).not.toContain('drop_1');
+    expect(body.data.totalCount).toBe(2);
+  });
+
+  it('keeps candidates whose not_interested is false or absent', async () => {
+    vi.mocked(getBenchListCandidates).mockResolvedValue({
+      items: [
+        benchItem({ candidate_id: 'a', not_interested: false }),
+        benchItem({ candidate_id: 'b' }),
+      ],
+    } as Awaited<ReturnType<typeof getBenchListCandidates>>);
+
+    const result = await benchListHandler(makeEvent({}));
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.data.totalCount).toBe(2);
   });
 });
