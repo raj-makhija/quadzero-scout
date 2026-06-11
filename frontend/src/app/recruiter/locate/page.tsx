@@ -1055,6 +1055,7 @@ export default function LocateProfilePage() {
       {showBenchList && benchListProfiles && (
         <BenchListModal
           profiles={benchListProfiles}
+          isInternal={isInternal}
           onClose={() => { setShowBenchList(false); setBenchListProfiles(null); }}
         />
       )}
