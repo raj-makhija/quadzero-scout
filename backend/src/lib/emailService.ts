@@ -345,4 +345,39 @@ export async function sendBatchSubmissionEmail(
   );
 }
 
+// ─── Bench List "Email to me" ────────────────────────────────────────────────
+
+export interface SendBenchListEmailParams {
+  toEmail: string;
+  subject: string;
+  htmlBody: string;
+}
+
+// Sends the bench-list HTML table to the requesting recruiter's own inbox
+// (ticket #362). Reuses the same SES client/sender pattern as the other emails;
+// no new AWS resource is introduced.
+export async function sendBenchListEmail(
+  params: SendBenchListEmailParams
+): Promise<void> {
+  if (!config.email.senderEmail) {
+    console.log('SES_SENDER_EMAIL not configured, skipping bench list email');
+    return;
+  }
+
+  const { toEmail, subject, htmlBody } = params;
+
+  await sesClient.send(
+    new SendEmailCommand({
+      Source: config.email.senderEmail,
+      Destination: { ToAddresses: [toEmail] },
+      Message: {
+        Subject: { Data: subject, Charset: 'UTF-8' },
+        Body: {
+          Html: { Data: htmlBody, Charset: 'UTF-8' },
+        },
+      },
+    })
+  );
+}
+
 export { getFormattedResumeUrl };

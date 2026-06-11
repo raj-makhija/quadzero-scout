@@ -1,12 +1,34 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import {
   BenchListModal,
   buildBenchGroups,
   generateHtmlTable,
   generatePlainText,
+  buildGroupedExportRows,
+  downloadGroupedCsv,
 } from '../bench-list-modal';
 import type { ProfileListItem } from '@/app/recruiter/locate/page';
+
+// xlsx is mocked so "Download XLSX" can be asserted without a real file write
+// (jsdom has no filesystem). writeFile is the spy under test.
+const mockWriteFile = vi.fn();
+vi.mock('xlsx', () => ({
+  utils: {
+    aoa_to_sheet: vi.fn(() => ({})),
+    book_new: vi.fn(() => ({})),
+    book_append_sheet: vi.fn(),
+  },
+  writeFile: (...args: unknown[]) => mockWriteFile(...args),
+}));
+
+// api is mocked so the "Email to me" button can be exercised without network.
+const mockSendBenchListEmail = vi.fn();
+vi.mock('@/lib/api', () => ({
+  api: {
+    sendBenchListEmail: (...args: unknown[]) => mockSendBenchListEmail(...args),
+  },
+}));
 
 // ---------------------------------------------------------------------------
 // Test data — roles are chosen so they normalize into canonical categories.
@@ -543,5 +565,210 @@ describe('BenchListModal include-rates toggle', () => {
     fireEvent.click(screen.getByText('Copy for LinkedIn'));
     await waitFor(() => expect(writeTextMock).toHaveBeenCalledTimes(2));
     expect(writeTextMock.mock.calls[1][0]).toContain('Indicative Rate');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildGroupedExportRows — grouped row shape for XLSX/CSV
+// ---------------------------------------------------------------------------
+describe('buildGroupedExportRows', () => {
+  it('produces a header row matching the modal columns (no rates by default)', () => {
+    const rows = buildGroupedExportRows(buildBenchGroups(mockProfiles));
+    expect(rows[0]).toEqual([
+      'Role / Category',
+      'Resources Available',
+      'Roles',
+      'Seniority',
+      'Experience',
+      'Availability',
+      'Preferred Location',
+    ]);
+  });
+
+  it('appends an Indicative Rate column when includeRates is true', () => {
+    const rows = buildGroupedExportRows(buildBenchGroups(ratedProfiles), true);
+    expect(rows[0]).toContain('Indicative Rate');
+    // One header + one row per group.
+    expect(rows.length).toBe(buildBenchGroups(ratedProfiles).length + 1);
+  });
+
+  it('returns a header-only sheet (no data rows) for an empty bench list', () => {
+    const rows = buildGroupedExportRows([]);
+    expect(rows.length).toBe(1);
+    expect(rows[0][0]).toBe('Role / Category');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Download buttons (XLSX / CSV)
+// ---------------------------------------------------------------------------
+describe('BenchListModal download buttons', () => {
+  const onClose = vi.fn();
+  const DATE_RE_XLSX = /^bench-list-\d{4}-\d{2}-\d{2}\.xlsx$/;
+  const DATE_RE_CSV = /^bench-list-\d{4}-\d{2}-\d{2}\.csv$/;
+
+  let createObjectURLMock: ReturnType<typeof vi.fn>;
+  let revokeObjectURLMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    createObjectURLMock = vi.fn(() => 'blob:mock');
+    revokeObjectURLMock = vi.fn();
+    (URL as any).createObjectURL = createObjectURLMock;
+    (URL as any).revokeObjectURL = revokeObjectURLMock;
+  });
+
+  it('renders both download buttons in the header', () => {
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} />);
+    expect(screen.getByText('Download XLSX')).toBeInTheDocument();
+    expect(screen.getByText('Download CSV')).toBeInTheDocument();
+  });
+
+  it('Download XLSX writes a file named bench-list-YYYY-MM-DD.xlsx', () => {
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} />);
+    fireEvent.click(screen.getByText('Download XLSX'));
+    expect(mockWriteFile).toHaveBeenCalledTimes(1);
+    const filename = mockWriteFile.mock.calls[0][1] as string;
+    expect(filename).toMatch(DATE_RE_XLSX);
+  });
+
+  it('Download CSV triggers an anchor download named bench-list-YYYY-MM-DD.csv', () => {
+    // Capture the generated anchor to read back its download attribute.
+    const realCreate = document.createElement.bind(document);
+    let captured: HTMLAnchorElement | null = null;
+    const createSpy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+      const el = realCreate(tag);
+      if (tag === 'a') {
+        captured = el as HTMLAnchorElement;
+        captured.click = vi.fn();
+      }
+      return el;
+    });
+
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} />);
+    fireEvent.click(screen.getByText('Download CSV'));
+
+    expect(createObjectURLMock).toHaveBeenCalledTimes(1);
+    expect(captured).not.toBeNull();
+    expect(captured!.download).toMatch(DATE_RE_CSV);
+    expect(captured!.click).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURLMock).toHaveBeenCalledTimes(1);
+
+    createSpy.mockRestore();
+  });
+
+  it('does not make any network request when downloading (XLSX or CSV)', () => {
+    const fetchSpy = vi.fn();
+    (globalThis as any).fetch = fetchSpy;
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} />);
+    fireEvent.click(screen.getByText('Download XLSX'));
+    fireEvent.click(screen.getByText('Download CSV'));
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(mockSendBenchListEmail).not.toHaveBeenCalled();
+  });
+
+  it('downloads a header-only CSV for an empty bench list without crashing', () => {
+    let capturedBlob: any = null;
+    const realBlob = globalThis.Blob;
+    (globalThis as any).Blob = class {
+      content: string;
+      constructor(parts: string[]) {
+        this.content = parts.join('');
+        capturedBlob = this;
+      }
+    };
+    render(<BenchListModal profiles={[]} onClose={onClose} />);
+    fireEvent.click(screen.getByText('Download CSV'));
+    expect(capturedBlob).not.toBeNull();
+    // Only the BOM + header line — no data rows.
+    expect(capturedBlob.content).toContain('Role / Category');
+    expect(capturedBlob.content.trim().split('\n').length).toBe(1);
+    (globalThis as any).Blob = realBlob;
+  });
+
+  it('downloadGroupedCsv emits a header-only file for empty groups (unit)', () => {
+    let capturedBlob: any = null;
+    const realBlob = globalThis.Blob;
+    (globalThis as any).Blob = class {
+      content: string;
+      constructor(parts: string[]) {
+        this.content = parts.join('');
+        capturedBlob = this;
+      }
+    };
+    downloadGroupedCsv([]);
+    expect(capturedBlob.content.trim().split('\n').length).toBe(1);
+    (globalThis as any).Blob = realBlob;
+  });
+});
+
+// ---------------------------------------------------------------------------
+// "Email to me" button
+// ---------------------------------------------------------------------------
+describe('BenchListModal "Email to me"', () => {
+  const onClose = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSendBenchListEmail.mockResolvedValue({});
+  });
+
+  it('renders the button when isInternal is true', () => {
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal />);
+    expect(screen.getByText('Email to me')).toBeInTheDocument();
+  });
+
+  it('does not render the button when isInternal is false or omitted', () => {
+    const { unmount } = render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal={false} />);
+    expect(screen.queryByText('Email to me')).not.toBeInTheDocument();
+    unmount();
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} />);
+    expect(screen.queryByText('Email to me')).not.toBeInTheDocument();
+  });
+
+  it('calls api.sendBenchListEmail on click', async () => {
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal />);
+    fireEvent.click(screen.getByText('Email to me'));
+    await waitFor(() => expect(mockSendBenchListEmail).toHaveBeenCalledTimes(1));
+  });
+
+  it('disables the button and shows "Sending…" while the request is in flight', async () => {
+    let resolve!: (v: unknown) => void;
+    mockSendBenchListEmail.mockReturnValue(new Promise((r) => { resolve = r; }));
+
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal />);
+    const button = screen.getByText('Email to me').closest('button')!;
+    fireEvent.click(button);
+
+    expect(screen.getByText('Sending…')).toBeInTheDocument();
+    expect(button).toBeDisabled();
+
+    await act(async () => { resolve({}); });
+    await waitFor(() => expect(screen.getByText('Sent!')).toBeInTheDocument());
+    expect(button).not.toBeDisabled();
+  });
+
+  it('shows "Sent!" on success then resets to "Email to me" after 2s', async () => {
+    vi.useFakeTimers();
+    try {
+      render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal />);
+      await act(async () => {
+        fireEvent.click(screen.getByText('Email to me'));
+      });
+      expect(screen.getByText('Sent!')).toBeInTheDocument();
+
+      await act(async () => { vi.advanceTimersByTime(2000); });
+      expect(screen.queryByText('Sent!')).not.toBeInTheDocument();
+      expect(screen.getByText('Email to me')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shows "Failed" when the request rejects', async () => {
+    mockSendBenchListEmail.mockRejectedValue(new Error('boom'));
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal />);
+    fireEvent.click(screen.getByText('Email to me'));
+    await waitFor(() => expect(screen.getByText('Failed')).toBeInTheDocument());
   });
 });

@@ -47,6 +47,7 @@ RESP="$(gh api graphql \
     query($owner: String!, $repo: String!) {
       repository(owner: $owner, name: $repo) {
         issues(first: 100, states: OPEN, labels: ["auto-pipeline"], orderBy: {field: CREATED_AT, direction: ASC}) {
+          pageInfo { hasNextPage }
           nodes {
             number
             title
@@ -71,6 +72,11 @@ RESP="$(gh api graphql \
       }
     }' \
   -f owner="$OWNER" -f repo="$REPO")"
+
+# Warn if GitHub returned exactly 100 issues (possible truncation).
+if [ "$(echo "$RESP" | jq '.data.repository.issues.pageInfo.hasNextPage')" = "true" ]; then
+  echo "warning: next-ticket.sh: more than 100 open auto-pipeline issues exist; results may be truncated." >&2
+fi
 
 # Filter: only issues that have a project item on OUR project, are not
 # flagged pipeline:awaiting-type (validator-set; needs human to add a

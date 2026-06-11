@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { X, Mail, Linkedin, Check } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { X, Mail, Linkedin, Check, Download, Send } from 'lucide-react';
 import type { ProfileListItem } from '@/app/recruiter/locate/page';
 import { formatAvailability, formatSeniority } from '@/lib/utils';
 import { normalizeRoleCategory } from '@/lib/roleCategories';
+import { api } from '@/lib/api';
 
 const EMPTY_STATE_MESSAGE =
   'No bench-ready resources found. Candidates must be available within 2 weeks and screened in the last 15 days.';
@@ -186,17 +188,98 @@ function escapeHtml(str: string): string {
     .replace(/"/g, '&quot;');
 }
 
+// ─── File downloads (XLSX / CSV) ─────────────────────────────────────────────
+
+// YYYY-MM-DD stamp for download filenames, evaluated at click time so the date
+// is never stale.
+function getDateStamp(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Builds the grouped export rows (header + one row per group) matching the modal
+// table columns. The Indicative Rate column is included only when rates are on.
+export function buildGroupedExportRows(groups: BenchGroup[], includeRates = false): string[][] {
+  const headers = [
+    'Role / Category',
+    'Resources Available',
+    'Roles',
+    'Seniority',
+    'Experience',
+    'Availability',
+    'Preferred Location',
+    ...(includeRates ? ['Indicative Rate'] : []),
+  ];
+  const rows = groups.map(g => [
+    g.role,
+    String(g.count),
+    g.specificRoles.join(', ') || 'N/A',
+    g.seniorities.join(', ') || 'N/A',
+    g.experienceRange,
+    g.availabilities.join(', ') || 'N/A',
+    g.locations.join(', '),
+    ...(includeRates ? [g.indicativeRateRange] : []),
+  ]);
+  return [headers, ...rows];
+}
+
+function escapeCsvField(field: string): string {
+  if (field.includes(',') || field.includes('"') || field.includes('\n')) {
+    return `"${field.replace(/"/g, '""')}"`;
+  }
+  return field;
+}
+
+export function downloadGroupedCsv(groups: BenchGroup[], includeRates = false): void {
+  const rows = buildGroupedExportRows(groups, includeRates);
+  const csv = rows.map(row => row.map(escapeCsvField).join(',')).join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `bench-list-${getDateStamp()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export function downloadGroupedXlsx(groups: BenchGroup[], includeRates = false): void {
+  const rows = buildGroupedExportRows(groups, includeRates);
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = rows[0].map((_, i) => ({
+    wch: Math.max(...rows.map(r => (r[i] || '').length), 10),
+  }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Bench List');
+  XLSX.writeFile(wb, `bench-list-${getDateStamp()}.xlsx`);
+}
+
 interface BenchListModalProps {
   profiles: ProfileListItem[];
   onClose: () => void;
+  // Gates the "Email to me" action; the endpoint is internal-only too.
+  isInternal?: boolean;
 }
 
-export function BenchListModal({ profiles, onClose }: BenchListModalProps) {
+export function BenchListModal({ profiles, onClose, isInternal = false }: BenchListModalProps) {
   const [copied, setCopied] = useState<'email' | 'linkedin' | null>(null);
   // Default off; not persisted, so reopening the modal always starts unchecked.
   const [includeRates, setIncludeRates] = useState(false);
+  const [emailStatus, setEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
   const groups = useMemo(() => buildBenchGroups(profiles), [profiles]);
   const totalCount = groups.reduce((sum, g) => sum + g.count, 0);
+
+  const emailToMe = async () => {
+    if (emailStatus === 'sending') return;
+    setEmailStatus('sending');
+    try {
+      await api.sendBenchListEmail();
+      setEmailStatus('sent');
+      setTimeout(() => setEmailStatus('idle'), 2000);
+    } catch {
+      setEmailStatus('failed');
+      setTimeout(() => setEmailStatus('idle'), 2000);
+    }
+  };
 
   const copyForEmail = async () => {
     try {
@@ -271,6 +354,40 @@ export function BenchListModal({ profiles, onClose }: BenchListModalProps) {
               {copied === 'linkedin' ? <Check className="w-4 h-4 text-green-600" /> : <Linkedin className="w-4 h-4" />}
               {copied === 'linkedin' ? 'Copied!' : 'Copy for LinkedIn'}
             </button>
+            <button
+              onClick={() => downloadGroupedXlsx(groups, includeRates)}
+              className="btn-secondary flex items-center gap-1.5 text-sm px-3 py-1.5"
+            >
+              <Download className="w-4 h-4" />
+              Download XLSX
+            </button>
+            <button
+              onClick={() => downloadGroupedCsv(groups, includeRates)}
+              className="btn-secondary flex items-center gap-1.5 text-sm px-3 py-1.5"
+            >
+              <Download className="w-4 h-4" />
+              Download CSV
+            </button>
+            {isInternal && (
+              <button
+                onClick={emailToMe}
+                disabled={emailStatus === 'sending'}
+                className="btn-secondary flex items-center gap-1.5 text-sm px-3 py-1.5 disabled:opacity-60"
+              >
+                {emailStatus === 'sent' ? (
+                  <Check className="w-4 h-4 text-green-600" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+                {emailStatus === 'sending'
+                  ? 'Sending…'
+                  : emailStatus === 'sent'
+                    ? 'Sent!'
+                    : emailStatus === 'failed'
+                      ? 'Failed'
+                      : 'Email to me'}
+              </button>
+            )}
             <button
               onClick={onClose}
               className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500"
