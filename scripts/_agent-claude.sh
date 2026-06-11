@@ -70,14 +70,26 @@ if [[ -n "${PIPELINE_AGENT_MODEL:-}" ]]; then
   MODEL_ARGS="--model ${PIPELINE_AGENT_MODEL}"
 fi
 
-echo "==> invoking claude (timeout ${TIMEOUT_SEC}s${PIPELINE_AGENT_MODEL:+, model=$PIPELINE_AGENT_MODEL})" >&2
+# Optional MCP server config (e.g. the qa-tester's browser MCP). Unset = no
+# extra tools beyond claude's defaults.
+MCP_ARGS=""
+if [[ -n "${PIPELINE_AGENT_MCP_CONFIG:-}" ]]; then
+  if [[ ! -f "$PIPELINE_AGENT_MCP_CONFIG" ]]; then
+    echo "error: PIPELINE_AGENT_MCP_CONFIG='$PIPELINE_AGENT_MCP_CONFIG' is not a readable file" >&2
+    exit 1
+  fi
+  MCP_ARGS="--mcp-config ${PIPELINE_AGENT_MCP_CONFIG}"
+fi
+
+echo "==> invoking claude (timeout ${TIMEOUT_SEC}s${PIPELINE_AGENT_MODEL:+, model=$PIPELINE_AGENT_MODEL}${PIPELINE_AGENT_MCP_CONFIG:+, mcp=$PIPELINE_AGENT_MCP_CONFIG})" >&2
 
 set +e
-# shellcheck disable=SC2086  # intentional word-splitting on MODEL_ARGS
+# shellcheck disable=SC2086  # intentional word-splitting on MODEL_ARGS/MCP_ARGS
 timeout "$TIMEOUT_SEC" claude \
   --print \
   --dangerously-skip-permissions \
   $MODEL_ARGS \
+  $MCP_ARGS \
   "$PROMPT" \
   > "$RESPONSE_FILE" 2>&1
 RC=$?
