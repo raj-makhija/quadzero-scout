@@ -18,9 +18,12 @@
 #   4. Push main (Amplify auto-deploys the frontend).
 #   5. Flip every status:qa-approved ticket -> status:released, comment the
 #      release URL, and cut a dated GitHub Release.
+#   6. Rebuild the precomputed match cache against the just-deployed code so
+#      scoring-logic changes take effect immediately (non-fatal; the daily
+#      scheduled rebuild remains as a safety net).
 #
 # Set PIPELINE_SKIP_DEPLOY=1 to skip the serverless deploy (frontend still
-# ships via Amplify on the main push).
+# ships via Amplify on the main push) and the post-deploy match cache rebuild.
 #
 # This is the only script that writes to main (other than hotfixes).
 
@@ -124,6 +127,30 @@ Release: $RELEASE_URL" >/dev/null 2>&1 || true
     fi
     pl_set_status "$t" released || true
   done <<< "$APPROVED"
+fi
+
+# --- 6. Rebuild the match cache against the just-deployed code -------------
+# The deterministic RequirementMatchCache is precomputed; a scoring-logic
+# change (e.g. #358) is invisible to search until the cache is rebuilt under
+# the new code. Trigger a full rebuild now so prod reflects this deploy
+# immediately instead of waiting for the daily scheduled rebuild (which still
+# runs as a safety net). Skipped when no backend was deployed; a failure here
+# is non-fatal -- the daily scheduled rebuild and the manual invoke remain as
+# fallbacks, so it must not abort an otherwise-complete release.
+if [[ "${PIPELINE_SKIP_DEPLOY:-}" == "1" ]]; then
+  echo "==> PIPELINE_SKIP_DEPLOY=1 — skipping match cache rebuild" >&2
+else
+  echo "==> rebuilding prod match cache against the just-deployed code" >&2
+  REBUILD_META="$(aws lambda invoke \
+    --function-name "quadzero-scout-prod-matchCacheRebuildWorker" \
+    --region "${AWS_REGION:-ap-south-1}" \
+    --cli-read-timeout 700 \
+    /dev/null 2>&1)" || REBUILD_META="invoke command failed: $REBUILD_META"
+  if [[ "$REBUILD_META" == *FunctionError* || "$REBUILD_META" == *"invoke command failed"* ]]; then
+    echo "    WARNING: match cache rebuild did not succeed ($REBUILD_META); the daily scheduled rebuild will reconcile it" >&2
+  else
+    echo "    match cache rebuild complete" >&2
+  fi
 fi
 
 git checkout develop >&2 2>/dev/null || git checkout -B develop origin/develop >&2
