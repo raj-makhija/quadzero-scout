@@ -1,6 +1,5 @@
 import {
   calculateMatchScore,
-  MIN_MUST_HAVE_MATCH_RATIO,
   FUZZY_MATCH_WEIGHT,
   MUST_HAVE_SECONDARY_WEIGHT,
   parseSearchLocations,
