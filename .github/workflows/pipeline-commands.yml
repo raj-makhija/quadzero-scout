@@ -111,6 +111,10 @@ jobs:
       - name: Route command
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          # User PAT for the user-owned Projects v2 board; App tokens can't read
+          # or write it. get-field.sh / set-field.sh / pl_pr_for_ticket switch to
+          # this for board API calls only (see pl_use_project_token).
+          PL_PROJECT_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
           TICKET: ${{ github.event.issue.number }}
           LABEL: ${{ github.event.label.name }}
           ACTOR: ${{ github.event.sender.login }}

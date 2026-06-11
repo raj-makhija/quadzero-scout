@@ -64,6 +64,10 @@ jobs:
       - name: Run nightly cherry-pick batch release
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          # User PAT for the user-owned Projects v2 board; App tokens can't read
+          # or write it. prod-release.sh resolves each ticket's "PR Number" via
+          # the board (see pl_use_project_token).
+          PL_PROJECT_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: ${{ secrets.AWS_REGION || 'ap-south-1' }}

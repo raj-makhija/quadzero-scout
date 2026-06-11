@@ -33,6 +33,7 @@ command -v gh >/dev/null || { echo "error: gh not found" >&2; exit 127; }
 command -v jq >/dev/null || { echo "error: jq not found" >&2; exit 127; }
 
 pl_load_config
+pl_use_project_token
 
 FIELD_JSON="$(pl_field "$FIELD_NAME")"
 FIELD_ID="$(echo "$FIELD_JSON" | jq -r '.id')"
