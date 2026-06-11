@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
-import { X, AlertCircle, Loader2, Send, FileText, Download } from 'lucide-react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { X, AlertCircle, Loader2, Send, FileText, Download, Upload } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import type { CandidateSearchResult, SearchCriteria, PricingOutput, AttachmentSummary } from '@/lib/api';
 import { PricingPanel } from '@/components/PricingPanel';
@@ -86,6 +86,10 @@ export function ShortlistModal({
   const [attachments, setAttachments] = useState<AttachmentSummary[]>([]);
   const [attachmentsLoading, setAttachmentsLoading] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [uploadTag, setUploadTag] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const uploadInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,6 +101,51 @@ export function ShortlistModal({
     });
     return () => { cancelled = true; };
   }, [candidate.candidateId]);
+
+  // PAN + Aadhaar must both be attached (exact canonical tags) before shortlisting.
+  const REQUIRED_DOC_TAGS = ['PAN', 'Aadhaar'];
+  const missingDocs = attachmentsLoading
+    ? []
+    : REQUIRED_DOC_TAGS.filter((tag) => !attachments.some((a) => a.tag === tag));
+
+  const refreshAttachments = useCallback(async () => {
+    try {
+      const res = await api.listAttachments(candidate.candidateId);
+      setAttachments(res.attachments);
+    } catch {
+      // silent — leave existing state in place
+    }
+  }, [candidate.candidateId]);
+
+  const handleUploadFile = useCallback(async (file: File) => {
+    setUploading(true);
+    setUploadError('');
+    try {
+      const { uploadUrl, s3Key, attachmentId } = await api.getAttachmentUploadUrl(
+        candidate.candidateId, file.name, file.type, file.size
+      );
+      await fetch(uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type },
+      });
+      await api.saveAttachment({
+        candidateId: candidate.candidateId,
+        attachmentId,
+        s3Key,
+        fileName: file.name,
+        contentType: file.type,
+        fileSize: file.size,
+        tag: uploadTag || undefined,
+      });
+      await refreshAttachments();
+      setUploadTag('');
+    } catch {
+      setUploadError('Failed to upload document. Please try again.');
+    } finally {
+      setUploading(false);
+    }
+  }, [candidate.candidateId, uploadTag, refreshAttachments]);
 
   const handleDownloadAttachment = useCallback(async (attachmentId: string) => {
     setDownloadingId(attachmentId);
@@ -256,7 +305,73 @@ export function ShortlistModal({
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
           {activeTab === 'documents' ? (
             /* Documents Tab */
-            <div>
+            <div className="space-y-4">
+              {/* Upload section — shortlisting requires PAN + Aadhaar */}
+              {isShortlistMode && (
+                <div className="p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                    Shortlisting requires a <strong>PAN</strong> and an <strong>Aadhaar</strong> document.
+                    Tag the file before uploading. PDF, DOCX, DOC, JPG, PNG up to 10 MB.
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={uploadTag}
+                      onChange={(e) => setUploadTag(e.target.value)}
+                      placeholder="Tag (e.g. PAN, Aadhaar)"
+                      maxLength={100}
+                      disabled={uploading}
+                      className="input text-sm flex-1"
+                    />
+                    {missingDocs.map((tag) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => setUploadTag(tag)}
+                        disabled={uploading}
+                        className={`btn-secondary text-xs ${uploadTag === tag ? 'ring-2 ring-primary-500' : ''}`}
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => uploadInputRef.current?.click()}
+                      disabled={uploading}
+                      className="btn-secondary text-sm flex items-center gap-1.5"
+                    >
+                      {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                      {uploading ? 'Uploading...' : 'Upload'}
+                    </button>
+                    <input
+                      ref={uploadInputRef}
+                      type="file"
+                      accept=".pdf,.docx,.doc,.jpg,.jpeg,.png"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = '';
+                        if (!file) return;
+                        const validTypes = [
+                          'application/pdf',
+                          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                          'application/msword',
+                          'image/jpeg',
+                          'image/png',
+                        ];
+                        if (!validTypes.includes(file.type) || file.size > 10_485_760) {
+                          setUploadError('Unsupported file type or file exceeds 10 MB.');
+                          return;
+                        }
+                        handleUploadFile(file);
+                      }}
+                    />
+                  </div>
+                  {uploadError && (
+                    <p className="text-xs text-red-600 dark:text-red-400 mt-2">{uploadError}</p>
+                  )}
+                </div>
+              )}
               {attachmentsLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="h-5 w-5 animate-spin text-primary-600" />
@@ -267,7 +382,9 @@ export function ShortlistModal({
                   <FileText className="h-10 w-10 text-gray-300 dark:text-gray-600 mb-3" />
                   <p className="text-sm font-medium text-gray-500 dark:text-gray-400">No documents attached</p>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                    Documents can be uploaded during screening
+                    {isShortlistMode
+                      ? 'Upload the PAN and Aadhaar documents above to enable shortlisting'
+                      : 'Documents can be uploaded during screening'}
                   </p>
                 </div>
               ) : (
@@ -319,6 +436,24 @@ export function ShortlistModal({
             <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-2">
               <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
               <p className="text-sm text-red-700 dark:text-red-300">{errorMessage}</p>
+            </div>
+          )}
+
+          {/* Missing required documents warning */}
+          {isShortlistMode && missingDocs.length > 0 && (
+            <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                  Missing required document{missingDocs.length > 1 ? 's' : ''}: {missingDocs.join(' and ')}
+                </p>
+                <button
+                  onClick={() => setActiveTab('documents')}
+                  className="text-sm text-amber-700 dark:text-amber-300 underline mt-0.5"
+                >
+                  Upload in the Documents tab to enable shortlisting
+                </button>
+              </div>
             </div>
           )}
 
@@ -636,14 +771,15 @@ export function ShortlistModal({
               ) : candidate.notInterested && !confirmNotInterested ? (
                 <button
                   onClick={() => setConfirmNotInterested(true)}
-                  className="w-full btn btn-outline border-amber-500 text-amber-700 hover:bg-amber-50 dark:border-amber-400 dark:text-amber-300 dark:hover:bg-amber-900/20 flex items-center justify-center gap-2"
+                  disabled={missingDocs.length > 0}
+                  className="w-full btn btn-outline border-amber-500 text-amber-700 hover:bg-amber-50 dark:border-amber-400 dark:text-amber-300 dark:hover:bg-amber-900/20 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Candidate is Not Interested — Shortlist Anyway?
                 </button>
               ) : (
                 <button
                   onClick={handleShortlist}
-                  disabled={loading}
+                  disabled={loading || missingDocs.length > 0}
                   className="btn-primary w-full flex items-center justify-center gap-2"
                 >
                   {loading ? (
