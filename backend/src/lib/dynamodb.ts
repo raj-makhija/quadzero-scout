@@ -200,7 +200,7 @@ export async function getBenchListCandidates(): Promise<{ items: CandidateItem[]
       ':a3': '2_weeks',
     },
     ProjectionExpression:
-      'candidate_id, full_name, total_experience, #loc, #roles, availability, last_screened_at, not_interested, seniority, primary_skills, engagement_model, sub_vendor_id, sub_vendor_name, sub_vendor_contact_person, sub_vendor_contact_phone, sub_vendor_contact_email',
+      'candidate_id, full_name, total_experience, #loc, #roles, availability, last_screened_at, not_interested, seniority, primary_skills, engagement_model, expected_ctc, sub_vendor_id, sub_vendor_name, sub_vendor_contact_person, sub_vendor_contact_phone, sub_vendor_contact_email',
   };
 
   // 'location' and 'roles' are DynamoDB reserved words — must use aliases

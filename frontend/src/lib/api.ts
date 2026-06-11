@@ -1358,6 +1358,7 @@ export interface BenchListCandidate {
   seniority?: string;
   primarySkills?: string[];
   engagementModel?: string;
+  indicativeBillingRateLpa?: number | null;
   subVendorId?: string;
   subVendorName?: string;
   subVendorContactPerson?: string;

@@ -101,6 +101,7 @@ vi.mock('../../lib/dynamodb.js', () => ({
   deleteMatchCache: vi.fn().mockResolvedValue(undefined),
   getAllActiveCandidates: vi.fn().mockResolvedValue([]),
   getBenchListCandidates: vi.fn().mockResolvedValue({ items: [] }),
+  getActivePricingConfig: vi.fn().mockResolvedValue({}),
 }));
 
 vi.mock('../../lib/llm/index.js', () => ({
