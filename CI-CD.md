@@ -27,7 +27,7 @@ see `docs/two-route-playbook.md`.
   - [2.4 Labels](#24-labels)
   - [2.5 Configuration file](#25-configuration-file)
 - [3. Authentication](#3-authentication)
-  - [3.1 PIPELINE_TOKEN (GitHub PAT)](#31-pipeline_token-github-pat)
+  - [3.1 GitHub App token](#31-github-app-token)
   - [3.2 CLAUDE_CODE_OAUTH_TOKEN](#32-claude_code_oauth_token)
   - [3.3 Default branch](#33-default-branch)
 - [4. Daily workflow — filing a ticket](#4-daily-workflow--filing-a-ticket)
@@ -335,14 +335,32 @@ opaque base64 -- never edit by hand.
 
 ## 3. Authentication
 
-### 3.1 PIPELINE_TOKEN (GitHub PAT)
+### 3.1 GitHub App token
 
-A **classic** Personal Access Token with scopes `repo`, `workflow`,
-`project`. Stored as a repo secret named `PIPELINE_TOKEN`.
+The pipeline authenticates using a **GitHub App token** generated per-job
+via `actions/create-github-app-token@v1`. The token is short-lived and
+scoped to the job — no long-lived PAT is stored.
 
-Important: fine-grained PATs **don't work** for user-owned Projects v2.
-They expose only `organization_projects`, not the user-level project
-permission needed to mutate items. Use a classic PAT.
+To set this up, operators must:
+
+1. Create a GitHub App (Settings → Developer settings → GitHub Apps → New)
+   with the following permissions:
+   - Contents: read + write
+   - Issues: read + write
+   - Pull Requests: read + write
+   - Workflows: read + write
+   - Actions: read + write
+   - Projects: read + write
+2. Install the app on the repository.
+3. Provision two repo secrets:
+   - `PIPELINE_APP_ID` — the app's numeric App ID (shown on the app's settings page)
+   - `PIPELINE_APP_PRIVATE_KEY` — the private key in PEM format (generated under the app's settings)
+
+`PIPELINE_TOKEN` is **no longer used** and can be deleted if it exists.
+
+Note: fine-grained PATs **don't work** for user-owned Projects v2 — they
+expose only `organization_projects`, not the user-level project permission
+needed to mutate items. The GitHub App approach avoids this limitation.
 
 ### 3.2 CLAUDE_CODE_OAUTH_TOKEN
 
@@ -876,8 +894,12 @@ git commit -m "chore: initial pipeline config"
 
 ### 6.4 Tokens
 
-1. Create a classic PAT with scopes `repo`, `workflow`, `project`.
-   Save as repo secret `PIPELINE_TOKEN`.
+1. Create a GitHub App (Settings → Developer settings → GitHub Apps → New)
+   with Contents, Issues, Pull Requests, Workflows, Actions (read+write) and
+   Projects (read+write) permissions. Install it on the repo. Then provision
+   two repo secrets:
+   - `PIPELINE_APP_ID` — the app's numeric App ID
+   - `PIPELINE_APP_PRIVATE_KEY` — the private key in PEM format
 2. Run `claude setup-token` on your laptop. Save the resulting OAuth
    token as repo secret `CLAUDE_CODE_OAUTH_TOKEN`.
 
@@ -931,9 +953,9 @@ Store the credentials as repo secrets (Settings → Secrets and variables
 
 **GitHub repo setting** — in Settings → Actions → General, enable
 **"Allow GitHub Actions to create and approve pull requests"**. The
-pipeline's `open-pr.sh` step uses the `PIPELINE_TOKEN` to open PRs and
-post review approvals. Without this setting, the PR-open step fails with
-a 403 even though the PAT has `repo` scope.
+pipeline's `open-pr.sh` step uses the per-job GitHub App token to open PRs
+and post review approvals. Without this setting, the PR-open step fails
+with a 403.
 
 ---
 
