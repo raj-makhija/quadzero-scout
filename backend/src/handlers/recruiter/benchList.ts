@@ -14,7 +14,12 @@ async function handleRequest(
 
     const result = await getBenchListCandidates();
 
-    const candidates = result.items.map((item) => ({
+    // Exclude candidates flagged not-interested — the bench list is published
+    // externally, so they must never appear (same post-filter pattern as the
+    // 15-day screening check in getBenchListCandidates).
+    const visible = result.items.filter((item) => item.not_interested !== true);
+
+    const candidates = visible.map((item) => ({
       candidateId: item.candidate_id,
       fullName: item.full_name,
       totalExperience: item.total_experience,

@@ -3,12 +3,17 @@
 import { useState, useMemo } from 'react';
 import { X, Mail, Linkedin, Check } from 'lucide-react';
 import type { ProfileListItem } from '@/app/recruiter/locate/page';
-import { formatAvailability } from '@/lib/utils';
+import { formatAvailability, formatSeniority } from '@/lib/utils';
+import { normalizeRoleCategory } from '@/lib/roleCategories';
+
+const EMPTY_STATE_MESSAGE =
+  'No bench-ready resources found. Candidates must be available within 2 weeks and screened in the last 15 days.';
 
 interface BenchGroup {
   role: string;
   count: number;
   specificRoles: string[];
+  seniorities: string[];
   experienceRange: string;
   availabilities: string[];
   locations: string[];
@@ -18,7 +23,7 @@ export function buildBenchGroups(profiles: ProfileListItem[]): BenchGroup[] {
   const groupMap = new Map<string, ProfileListItem[]>();
 
   for (const profile of profiles) {
-    const role = profile.roles?.[0] || 'Other';
+    const role = normalizeRoleCategory(profile.roles);
     const existing = groupMap.get(role) || [];
     existing.push(profile);
     groupMap.set(role, existing);
@@ -32,6 +37,11 @@ export function buildBenchGroups(profiles: ProfileListItem[]): BenchGroup[] {
 
     const allRoles = new Set<string>();
     members.forEach(m => m.roles?.forEach(r => allRoles.add(r)));
+
+    const seniorities = new Set<string>();
+    members.forEach(m => {
+      if (m.seniority) seniorities.add(formatSeniority(m.seniority));
+    });
 
     const avails = new Set<string>();
     members.forEach(m => {
@@ -47,6 +57,7 @@ export function buildBenchGroups(profiles: ProfileListItem[]): BenchGroup[] {
       role,
       count: members.length,
       specificRoles: Array.from(allRoles),
+      seniorities: Array.from(seniorities),
       experienceRange: minExp === maxExp ? `${minExp} years` : `${minExp}–${maxExp} years`,
       availabilities: Array.from(avails),
       locations: Array.from(locs),
@@ -65,7 +76,7 @@ function getFormattedDate(): string {
   });
 }
 
-function generatePlainText(groups: BenchGroup[]): string {
+export function generatePlainText(groups: BenchGroup[]): string {
   const date = getFormattedDate();
   const totalCount = groups.reduce((sum, g) => sum + g.count, 0);
   const lines: string[] = [
@@ -79,6 +90,7 @@ function generatePlainText(groups: BenchGroup[]): string {
     if (group.specificRoles.length > 0) {
       lines.push(`Roles: ${group.specificRoles.join(', ')}`);
     }
+    lines.push(`Seniority: ${group.seniorities.join(', ') || 'N/A'}`);
     lines.push(`Experience: ${group.experienceRange}`);
     if (group.availabilities.length > 0) {
       lines.push(`Availability: ${group.availabilities.join(', ')}`);
@@ -90,7 +102,7 @@ function generatePlainText(groups: BenchGroup[]): string {
   return lines.join('\n').trim();
 }
 
-function generateHtmlTable(groups: BenchGroup[]): string {
+export function generateHtmlTable(groups: BenchGroup[]): string {
   const date = getFormattedDate();
   const totalCount = groups.reduce((sum, g) => sum + g.count, 0);
 
@@ -104,6 +116,7 @@ function generateHtmlTable(groups: BenchGroup[]): string {
       <td style="${cellStyle}font-weight:500;">${escapeHtml(g.role)}</td>
       <td style="${cellStyle}text-align:center;">${g.count}</td>
       <td style="${cellStyle}">${escapeHtml(g.specificRoles.join(', ') || 'N/A')}</td>
+      <td style="${cellStyle}">${escapeHtml(g.seniorities.join(', ') || 'N/A')}</td>
       <td style="${cellStyle}">${escapeHtml(g.experienceRange)}</td>
       <td style="${cellStyle}">${escapeHtml(g.availabilities.join(', ') || 'N/A')}</td>
       <td style="${cellStyle}">${escapeHtml(g.locations.join(', '))}</td>
@@ -119,6 +132,7 @@ function generateHtmlTable(groups: BenchGroup[]): string {
         <th style="${headerStyle}">Role / Category</th>
         <th style="${headerStyle}text-align:center;">Resources Available</th>
         <th style="${headerStyle}">Roles</th>
+        <th style="${headerStyle}">Seniority</th>
         <th style="${headerStyle}">Experience</th>
         <th style="${headerStyle}">Availability</th>
         <th style="${headerStyle}">Preferred Location</th>
@@ -224,12 +238,18 @@ export function BenchListModal({ profiles, onClose }: BenchListModalProps) {
 
         {/* Table */}
         <div className="overflow-auto px-6 py-4" style={{ maxHeight: 'calc(90vh - 80px)' }}>
+          {groups.length === 0 ? (
+            <p className="text-center text-gray-500 dark:text-gray-400 py-12">
+              {EMPTY_STATE_MESSAGE}
+            </p>
+          ) : (
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr>
                 <th className="bg-primary-700 text-white text-left px-3 py-2.5 font-semibold border border-gray-300 dark:border-gray-600">Role / Category</th>
                 <th className="bg-primary-700 text-white text-center px-3 py-2.5 font-semibold border border-gray-300 dark:border-gray-600">Resources Available</th>
                 <th className="bg-primary-700 text-white text-left px-3 py-2.5 font-semibold border border-gray-300 dark:border-gray-600">Roles</th>
+                <th className="bg-primary-700 text-white text-left px-3 py-2.5 font-semibold border border-gray-300 dark:border-gray-600">Seniority</th>
                 <th className="bg-primary-700 text-white text-left px-3 py-2.5 font-semibold border border-gray-300 dark:border-gray-600">Experience</th>
                 <th className="bg-primary-700 text-white text-left px-3 py-2.5 font-semibold border border-gray-300 dark:border-gray-600">Availability</th>
                 <th className="bg-primary-700 text-white text-left px-3 py-2.5 font-semibold border border-gray-300 dark:border-gray-600">Preferred Location</th>
@@ -248,6 +268,9 @@ export function BenchListModal({ profiles, onClose }: BenchListModalProps) {
                     {group.specificRoles.join(', ') || 'N/A'}
                   </td>
                   <td className="px-3 py-2 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300">
+                    {group.seniorities.join(', ') || 'N/A'}
+                  </td>
+                  <td className="px-3 py-2 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300">
                     {group.experienceRange}
                   </td>
                   <td className="px-3 py-2 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300">
@@ -260,6 +283,7 @@ export function BenchListModal({ profiles, onClose }: BenchListModalProps) {
               ))}
             </tbody>
           </table>
+          )}
         </div>
       </div>
     </div>
