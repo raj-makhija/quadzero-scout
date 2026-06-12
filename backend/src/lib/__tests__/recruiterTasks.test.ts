@@ -12,6 +12,8 @@ import {
   buildFollowUpClientTask,
   buildScheduleInterviewTask,
   buildRecordInterviewFeedbackTask,
+  buildPreInterviewReminderTask,
+  MORNING_ANCHOR_UTC_HOURS,
   buildSendOfferTask,
   buildStageTransitionTask,
   buildSweepTasks,
@@ -156,6 +158,47 @@ describe('event-driven task builders', () => {
     expect(new Date(t.due_date).toISOString()).toBe('2026-06-03T11:00:00.000Z');
   });
 
+  it('pre_interview_reminder: P2, due = min(morning anchor, interview − 1h)', () => {
+    // Sanity-check the anchor the formula is built on (03:30 UTC = 9 AM IST).
+    expect(MORNING_ANCHOR_UTC_HOURS).toBe(3.5);
+
+    // Mid-afternoon interview: morning anchor (03:30) is earlier than 1h-before (08:30).
+    const afternoon = buildPreInterviewReminderTask({ ...PIPELINE_ARGS, scheduledAt: '2026-06-03T09:30:00.000Z' });
+    expect(afternoon.type).toBe('pre_interview_reminder');
+    expect(afternoon.priority).toBe(2);
+    expect(afternoon.due_date).toBe('2026-06-03T03:30:00.000Z');
+
+    // Early-morning interview: 1h-before (03:00) is earlier than the morning anchor (03:30).
+    const earlyMorning = buildPreInterviewReminderTask({ ...PIPELINE_ARGS, scheduledAt: '2026-06-03T04:00:00.000Z' });
+    expect(earlyMorning.due_date).toBe('2026-06-03T03:00:00.000Z');
+
+    // Tie: scheduled exactly 1h after the anchor — both candidate times equal 03:30.
+    const tie = buildPreInterviewReminderTask({ ...PIPELINE_ARGS, scheduledAt: '2026-06-03T04:30:00.000Z' });
+    expect(tie.due_date).toBe('2026-06-03T03:30:00.000Z');
+
+    // Far-future interview: due the morning of that specific day, not "now + offset".
+    const farFuture = buildPreInterviewReminderTask({ ...PIPELINE_ARGS, scheduledAt: '2026-07-15T10:00:00.000Z' });
+    expect(farFuture.due_date).toBe('2026-07-15T03:30:00.000Z');
+  });
+
+  it('pre_interview_reminder: keeps past due dates (interview < 1h out, same-day booking)', () => {
+    // Interview booked < 1h out (relative to NOW): 1h-before is already in the
+    // past; the task is still created with that past due date, never dropped.
+    const shortNotice = buildPreInterviewReminderTask({
+      ...PIPELINE_ARGS,
+      scheduledAt: new Date(NOW.getTime() + 30 * 60_000).toISOString(),
+    });
+    expect(shortNotice).not.toBeNull();
+    expect(shortNotice.type).toBe('pre_interview_reminder');
+    expect(new Date(shortNotice.due_date).getTime()).toBe(NOW.getTime() + 30 * 60_000 - 3_600_000);
+
+    // Same-day booking (interview later today): the morning anchor may already
+    // be in the past relative to NOW, but the task is still created at it.
+    const sameDay = buildPreInterviewReminderTask({ ...PIPELINE_ARGS, scheduledAt: '2026-06-01T10:00:00.000Z' });
+    expect(sameDay).not.toBeNull();
+    expect(sameDay.due_date).toBe('2026-06-01T03:30:00.000Z');
+  });
+
   it('send_offer: only proceed decision, P2, due +48h', () => {
     expect(buildSendOfferTask({ ...PIPELINE_ARGS, decision: 'reject' })).toBeNull();
     expect(buildSendOfferTask({ ...PIPELINE_ARGS, decision: 'hold' })).toBeNull();
@@ -284,6 +327,29 @@ describe('createTaskIfAbsent (idempotency)', () => {
   it('is a no-op when an active task already exists', async () => {
     const state = installMock({ entityItems: [makeTask({})] });
     const item = await createTaskIfAbsent(SPEC, NOW);
+    expect(item).toBeNull();
+    expect(state.puts).toHaveLength(0);
+  });
+});
+
+describe('pre_interview_reminder idempotency on re-scheduling', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const reminderSpec = buildPreInterviewReminderTask({ ...PIPELINE_ARGS, scheduledAt: '2026-06-03T09:30:00.000Z' });
+
+  it('writes the reminder on first schedule', async () => {
+    const state = installMock({ entityItems: [] });
+    const item = await createTaskIfAbsent(reminderSpec, NOW);
+    expect(item).not.toBeNull();
+    expect(item!.type).toBe('pre_interview_reminder');
+    expect(state.puts).toHaveLength(1);
+  });
+
+  it('does not write a duplicate when an active reminder already exists (re-schedule)', async () => {
+    const state = installMock({
+      entityItems: [makeTask({ type: 'pre_interview_reminder', entity_ref: reminderSpec.entity_ref })],
+    });
+    const item = await createTaskIfAbsent(reminderSpec, NOW);
     expect(item).toBeNull();
     expect(state.puts).toHaveLength(0);
   });

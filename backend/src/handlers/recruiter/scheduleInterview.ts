@@ -5,7 +5,7 @@ import { getShortlistEntry, updateShortlistPipelineStage } from '../../lib/dynam
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
 import { getEffectiveStage, createPipelineActivity, transitionPipelineStage } from '../../lib/pipelineService.js';
-import { safeGenerateTask, safeResolveTask, buildRecordInterviewFeedbackTask, loadTaskContext, compositeEntityRef } from '../../lib/recruiterTasks.js';
+import { safeGenerateTask, safeResolveTask, buildRecordInterviewFeedbackTask, buildPreInterviewReminderTask, loadTaskContext, compositeEntityRef } from '../../lib/recruiterTasks.js';
 
 async function handleRequest(
   event: AuthenticatedEvent
@@ -80,24 +80,26 @@ async function handleRequest(
       await updateShortlistPipelineStage(requirementId, candidateId, currentStage, event.auth.userId, extraFields);
     }
 
-    // Scheduling resolves the "schedule interview" task and queues the
-    // "record interview feedback" task due one hour after the interview.
+    // Scheduling resolves the "schedule interview" task and queues two
+    // follow-ups: a pre-interview reminder (due the morning of the interview
+    // day or 1h before it, whichever is earlier) and a "record interview
+    // feedback" task due one hour after the interview.
     await safeResolveTask({
       entityRef: compositeEntityRef(requirementId, candidateId),
       type: 'schedule_interview',
       completedBy: event.auth.userId,
     });
     const taskContext = await loadTaskContext(requirementId, candidateId);
-    await safeGenerateTask(
-      buildRecordInterviewFeedbackTask({
-        ownerId: event.auth.userId,
-        requirementId,
-        candidateId,
-        context: taskContext,
-        now: new Date(),
-        scheduledAt,
-      })
-    );
+    const taskArgs = {
+      ownerId: event.auth.userId,
+      requirementId,
+      candidateId,
+      context: taskContext,
+      now: new Date(),
+      scheduledAt,
+    };
+    await safeGenerateTask(buildPreInterviewReminderTask(taskArgs));
+    await safeGenerateTask(buildRecordInterviewFeedbackTask(taskArgs));
 
     logAuditEvent(event.auth, event, {
       action: 'PIPELINE_INTERVIEW_SCHEDULED',
