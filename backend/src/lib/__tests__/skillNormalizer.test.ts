@@ -626,6 +626,84 @@ describe('Oracle PL/SQL normalization', () => {
 });
 
 // ---------------------------------------------------------------------------
+// TC-ORDS-001 through TC-ORDS-009: ORDS / Oracle REST Data Services
+// ---------------------------------------------------------------------------
+
+describe('ORDS normalization and matching', () => {
+  // TC-ORDS-001: abbreviation passthrough and full phrase to canonical
+  it('normalizes "ORDS" to "ords"', () => {
+    expect(normalizeSkill('ORDS')).toBe('ords');
+  });
+
+  it('normalizes "Oracle Rest Data Services" to "ords"', () => {
+    expect(normalizeSkill('Oracle Rest Data Services')).toBe('ords');
+  });
+
+  it('normalizes "oracle rest data services" (lowercase) to "ords"', () => {
+    expect(normalizeSkill('oracle rest data services')).toBe('ords');
+  });
+
+  // TC-ORDS-002: canonical symmetry
+  it('"ORDS" and "Oracle Rest Data Services" normalize to the same canonical form', () => {
+    expect(normalizeSkill('ORDS')).toBe(normalizeSkill('Oracle Rest Data Services'));
+  });
+
+  // TC-ORDS-003: case-insensitive variants
+  it('"ords", "Ords", and "ORDS" all normalize to "ords"', () => {
+    expect(normalizeSkill('ords')).toBe('ords');
+    expect(normalizeSkill('Ords')).toBe('ords');
+    expect(normalizeSkill('ORDS')).toBe('ords');
+  });
+
+  // TC-ORDS-004: candidate abbreviation satisfies full-phrase requirement
+  it('candidate "ORDS" exactly matches requirement "Oracle Rest Data Services"', () => {
+    const result = calculateSkillMatch(['ORDS'], ['Oracle Rest Data Services']);
+    expect(result.exactMatched).toContain('ords');
+    expect(result.missing).toEqual([]);
+  });
+
+  // TC-ORDS-005: candidate full phrase satisfies abbreviation requirement
+  it('candidate "Oracle Rest Data Services" exactly matches requirement "ORDS"', () => {
+    const result = calculateSkillMatch(['Oracle Rest Data Services'], ['ORDS']);
+    expect(result.exactMatched).toContain('ords');
+    expect(result.missing).toEqual([]);
+  });
+
+  // TC-ORDS-006: category assignment
+  it('getSkillCategory("ords") returns a non-null category', () => {
+    expect(getSkillCategory('ords')).not.toBeNull();
+    expect(getSkillCategory('ords')).not.toBeUndefined();
+  });
+
+  it('getSkillCategory("ords") returns "erp"', () => {
+    expect(getSkillCategory('ords')).toBe('erp');
+  });
+
+  // TC-ORDS-007: ORDS not in mustHaveMissing when candidate has full phrase
+  it('"ords" is not in missing when candidate has "Oracle Rest Data Services" (full phrase)', () => {
+    const result = calculateSkillMatch(['Oracle Rest Data Services'], ['ORDS']);
+    expect(result.missing).not.toContain('ords');
+  });
+
+  // TC-ORDS-008: regression — adjacent Oracle skills unaffected
+  it('"oracle pl/sql" normalization is unaffected by ORDS mapping', () => {
+    expect(normalizeSkill('oracle pl/sql')).toBe('oracle pl/sql');
+    expect(normalizeSkill('Oracle PL/SQL')).toBe('oracle pl/sql');
+  });
+
+  // TC-ORDS-009: edge cases
+  it('whitespace-padded variants are trimmed and normalized correctly', () => {
+    expect(normalizeSkill(' ORDS ')).toBe('ords');
+    expect(normalizeSkill(' Oracle Rest Data Services ')).toBe('ords');
+  });
+
+  it('duplicate ORDS forms in a skill list deduplicate to a single "ords" token', () => {
+    const result = normalizeSkills(['ORDS', 'Oracle Rest Data Services']);
+    expect(result).toEqual(['ords']);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Fuzzy matching (token containment + synonym)
 // ---------------------------------------------------------------------------
 

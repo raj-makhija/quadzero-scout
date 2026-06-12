@@ -295,6 +295,9 @@
     "clm": "clm",
     "contract lifecycle management": "clm",
 
+    "ords": "ords",
+    "oracle rest data services": "ords",
+
     "servicenow": "servicenow",
     "service now": "servicenow",
 
@@ -426,7 +429,7 @@
       "hubspot", "zoho_crm", "dynamics_365"
     ],
     "erp": [
-      "sap", "sap_hana", "oracle_erp", "servicenow", "clm"
+      "sap", "sap_hana", "oracle_erp", "servicenow", "clm", "ords"
     ],
     "marketing_analytics": [
       "google_analytics", "seo", "sem", "google_ads", "meta_ads",
