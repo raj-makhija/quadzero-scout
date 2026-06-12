@@ -34,6 +34,8 @@ export const SCREENING_MAX_AGE_DAYS = 15;
 export const STALE_REQUIREMENT_DAYS = 7;
 /** Match score (0-100) at/above which a new profile becomes a screen-candidate task. */
 export const MATCH_TASK_THRESHOLD = 70;
+/** Pre-interview reminder "morning" anchor, in UTC hours (3.5 = 03:30 UTC = 9:00 AM IST). */
+export const MORNING_ANCHOR_UTC_HOURS = 3.5;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -43,6 +45,7 @@ export type TaskType =
   | 'follow_up_client'
   | 'schedule_interview'
   | 'record_interview_feedback'
+  | 'pre_interview_reminder'
   | 'send_offer'
   | 'follow_up_offer'
   | 'confirm_joining'
@@ -100,6 +103,7 @@ export interface RecruiterTask {
 /** Fixed priority per task type (ticket #153 priority model). */
 export const TASK_PRIORITY: Record<TaskType, TaskPriority> = {
   record_interview_feedback: 1,
+  pre_interview_reminder: 2,
   submit_to_client: 2,
   follow_up_client: 2,
   schedule_interview: 2,
@@ -254,6 +258,28 @@ export function buildScheduleInterviewTask(p: PipelineSpecArgs & { rating: strin
 export function buildRecordInterviewFeedbackTask(p: PipelineSpecArgs & { scheduledAt: string }): TaskSpec {
   const due = addHours(new Date(p.scheduledAt), 1);
   return spec('record_interview_feedback', p.ownerId, p.requirementId, p.candidateId, p.context, due);
+}
+
+/**
+ * Pre-interview reminder. Due = min(morning of the interview day at the
+ * MORNING_ANCHOR_UTC_HOURS anchor, interview start − 1h). Past due dates are
+ * kept (consistent with how all other past-due tasks rely on the expiry grace
+ * window), so an interview booked < 1h out or on the same day still gets a task.
+ */
+export function buildPreInterviewReminderTask(p: PipelineSpecArgs & { scheduledAt: string }): TaskSpec {
+  const interview = new Date(p.scheduledAt);
+  const anchorHours = Math.floor(MORNING_ANCHOR_UTC_HOURS);
+  const anchorMinutes = Math.round((MORNING_ANCHOR_UTC_HOURS - anchorHours) * 60);
+  const morningMs = Date.UTC(
+    interview.getUTCFullYear(),
+    interview.getUTCMonth(),
+    interview.getUTCDate(),
+    anchorHours,
+    anchorMinutes
+  );
+  const oneHourBeforeMs = interview.getTime() - 3_600_000;
+  const due = new Date(Math.min(morningMs, oneHourBeforeMs)).toISOString();
+  return spec('pre_interview_reminder', p.ownerId, p.requirementId, p.candidateId, p.context, due);
 }
 
 /** Only a "proceed" interview decision generates a send-offer task. */
