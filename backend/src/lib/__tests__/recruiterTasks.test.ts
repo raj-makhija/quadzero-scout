@@ -201,9 +201,29 @@ describe('buildSweepTasks', () => {
     });
     const types = specs.map((s) => s.type).sort();
     expect(types).toEqual(
-      ['close_requirement', 'rescreen_candidate', 'review_bulk_import', 'review_ingested_resume', 'screen_candidate', 'source_candidates'].sort()
+      ['close_requirement', 'found_candidate_for_requirement', 'rescreen_candidate', 'review_bulk_import', 'screen_candidate', 'source_candidates'].sort()
     );
     expect(specs.every((s) => s.owner_id === POOL_OWNER)).toBe(true);
+  });
+
+  it('emits found_candidate_for_requirement (REQ#..#CAND#.. ref) for a ≥70 match', () => {
+    const specs = buildSweepTasks({
+      now: NOW,
+      newMatches: [{ requirementId: 'r1', candidateId: 'c1', matchScore: 82 }],
+    });
+    expect(specs).toHaveLength(1);
+    expect(specs[0].type).toBe('found_candidate_for_requirement');
+    expect(specs[0].entity_ref).toBe('REQ#r1#CAND#c1');
+    expect(specs[0].action_url).toBe('/recruiter/locate/c1');
+  });
+
+  it('emits found_candidate_for_requirement at the inclusive 70 boundary', () => {
+    const specs = buildSweepTasks({
+      now: NOW,
+      newMatches: [{ requirementId: 'r1', candidateId: 'c1', matchScore: 70 }],
+    });
+    expect(specs).toHaveLength(1);
+    expect(specs[0].type).toBe('found_candidate_for_requirement');
   });
 
   it('drops matches below the 70% threshold', () => {
@@ -211,9 +231,23 @@ describe('buildSweepTasks', () => {
     expect(specs).toHaveLength(0);
   });
 
+  it('emits screen_candidate (CAND#.. ref, no REQ prefix) for an ingested resume', () => {
+    const specs = buildSweepTasks({ now: NOW, ingestedResumes: [{ candidateId: 'c6' }] });
+    expect(specs).toHaveLength(1);
+    expect(specs[0].type).toBe('screen_candidate');
+    expect(specs[0].entity_ref).toBe('CAND#c6');
+    expect(specs[0].action_url).toBe('/recruiter/locate/c6');
+  });
+
+  it('emits no screen_candidate task when ingestedResumes is absent', () => {
+    const specs = buildSweepTasks({ now: NOW });
+    expect(specs.filter((s) => s.type === 'screen_candidate')).toHaveLength(0);
+  });
+
   it('uses the fixed pool-task priorities', () => {
+    expect(TASK_PRIORITY.found_candidate_for_requirement).toBe(3);
     expect(TASK_PRIORITY.screen_candidate).toBe(3);
-    expect(TASK_PRIORITY.review_ingested_resume).toBe(3);
+    expect(TASK_PRIORITY.rescreen_candidate).toBe(3);
     expect(TASK_PRIORITY.source_candidates).toBe(4);
     expect(TASK_PRIORITY.close_requirement).toBe(4);
     expect(TASK_PRIORITY.review_bulk_import).toBe(4);
@@ -310,14 +344,16 @@ describe('resolveScreeningTasksForCandidate (auto-complete on screen)', () => {
     const state = installMock({
       ownerItems: {
         POOL: [
-          makeTask({ owner_id: POOL_OWNER, task_id: 's1', type: 'screen_candidate', entity_ref: 'REQ#r1#CAND#c1' }),
+          makeTask({ owner_id: POOL_OWNER, task_id: 's1', type: 'screen_candidate', entity_ref: 'CAND#c1' }),
           makeTask({ owner_id: POOL_OWNER, task_id: 's2', type: 'rescreen_candidate', entity_ref: 'REQ#r2#CAND#c1' }),
+          makeTask({ owner_id: POOL_OWNER, task_id: 'found', type: 'found_candidate_for_requirement', entity_ref: 'REQ#r1#CAND#c1' }),
           makeTask({ owner_id: POOL_OWNER, task_id: 'other-type', type: 'close_requirement', entity_ref: 'REQ#r1#CAND#c1' }),
-          makeTask({ owner_id: POOL_OWNER, task_id: 'other-cand', type: 'screen_candidate', entity_ref: 'REQ#r1#CAND#c2' }),
+          makeTask({ owner_id: POOL_OWNER, task_id: 'other-cand', type: 'screen_candidate', entity_ref: 'CAND#c2' }),
         ],
       },
     });
     const count = await resolveScreeningTasksForCandidate({ candidateId: 'c1', completedBy: 'rec-2' }, NOW);
+    // Only the screen + rescreen tasks for c1 — the found_candidate_for_requirement task is left untouched.
     expect(count).toBe(2);
     expect(state.updates).toHaveLength(2);
     expect(state.updates.every((u) => (u.ExpressionAttributeValues as Record<string, unknown>)[':c'] === 'completed')).toBe(true);

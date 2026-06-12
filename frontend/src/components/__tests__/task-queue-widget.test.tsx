@@ -63,6 +63,13 @@ describe('task-queue-widget helpers', () => {
   it('maps type to a human label', () => {
     expect(taskLabel(task({ type: 'record_interview_feedback' }))).toBe('Record interview feedback');
   });
+  it('labels the renamed task types (ticket #390)', () => {
+    expect(taskLabel(task({ type: 'screen_candidate' }))).toBe('Screen candidate');
+    expect(taskLabel(task({ type: 'found_candidate_for_requirement' }))).toBe('Found candidate for requirement');
+    expect(taskLabel(task({ type: 'rescreen_candidate' }))).toBe('Re-screen candidate');
+    // The old review_ingested_resume type no longer has a label and falls back to its raw type.
+    expect(taskLabel(task({ type: 'review_ingested_resume' }))).toBe('review_ingested_resume');
+  });
   it('joins candidate · requirement · client', () => {
     expect(taskContextLine(task({}))).toBe('Asha · Backend Dev · Acme');
   });
@@ -131,11 +138,18 @@ describe('TaskQueueWidget', () => {
   it('hides the Done button for screening tasks (they auto-resolve on screen)', async () => {
     mockGetTasks.mockResolvedValue({ tasks: [task({ owner_id: 'POOL', type: 'screen_candidate' })] });
     render(<TaskQueueWidget />);
-    expect(await screen.findByText('Screen matching candidate')).toBeInTheDocument();
+    expect(await screen.findByText('Screen candidate')).toBeInTheDocument();
     expect(screen.queryByText('Done')).not.toBeInTheDocument();
     // Do It / Snooze remain available.
     expect(screen.getByText('Do It')).toBeInTheDocument();
     expect(screen.getByText('Snooze')).toBeInTheDocument();
+  });
+
+  it('shows the Done button for found_candidate_for_requirement (not auto-resolving)', async () => {
+    mockGetTasks.mockResolvedValue({ tasks: [task({ owner_id: 'POOL', type: 'found_candidate_for_requirement' })] });
+    render(<TaskQueueWidget />);
+    expect(await screen.findByText('Found candidate for requirement')).toBeInTheDocument();
+    expect(screen.getByText('Done')).toBeInTheDocument();
   });
 
   it('reloads the task list on the refresh event (e.g. after a screening)', async () => {

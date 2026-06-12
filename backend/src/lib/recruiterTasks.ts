@@ -48,12 +48,12 @@ export type TaskType =
   | 'confirm_joining'
   | 'post_placement_checkin'
   // Scheduled sweep (pool)
+  | 'found_candidate_for_requirement'
   | 'screen_candidate'
   | 'rescreen_candidate'
   | 'source_candidates'
   | 'close_requirement'
-  | 'review_bulk_import'
-  | 'review_ingested_resume';
+  | 'review_bulk_import';
 
 export type TaskStatus = 'active' | 'completed' | 'expired';
 export type TaskPriority = 1 | 2 | 3 | 4;
@@ -107,9 +107,9 @@ export const TASK_PRIORITY: Record<TaskType, TaskPriority> = {
   follow_up_offer: 2,
   confirm_joining: 3,
   post_placement_checkin: 3,
+  found_candidate_for_requirement: 3,
   screen_candidate: 3,
   rescreen_candidate: 3,
-  review_ingested_resume: 3,
   source_candidates: 4,
   close_requirement: 4,
   review_bulk_import: 4,
@@ -149,10 +149,10 @@ export function compositeEntityRef(requirementId?: string, candidateId?: string)
 
 function actionUrlFor(type: TaskType, requirementId?: string, candidateId?: string): string {
   switch (type) {
+    case 'found_candidate_for_requirement':
     case 'screen_candidate':
     case 'rescreen_candidate':
     case 'review_bulk_import':
-    case 'review_ingested_resume':
       return candidateId ? `/recruiter/locate/${candidateId}` : '/recruiter/search';
     default:
       return requirementId ? `/recruiter/requirements/${requirementId}` : '/recruiter/search';
@@ -319,7 +319,7 @@ export function buildSweepTasks(input: SweepInput): TaskSpec[] {
     if (m.matchScore < MATCH_TASK_THRESHOLD) continue;
     out.push(
       poolSpec(
-        'screen_candidate',
+        'found_candidate_for_requirement',
         m.requirementId,
         m.candidateId,
         {
@@ -384,7 +384,7 @@ export function buildSweepTasks(input: SweepInput): TaskSpec[] {
   for (const e of input.ingestedResumes ?? []) {
     out.push(
       poolSpec(
-        'review_ingested_resume',
+        'screen_candidate',
         undefined,
         e.candidateId,
         { candidate_name: e.candidateName },
