@@ -18,6 +18,21 @@ import {
 import ScreeningHistoryPanel from '@/components/screening-history-panel';
 import { TASK_REFRESH_EVENT } from '@/components/task-queue-widget';
 
+// Objective rating options offered for each AI-generated screening question,
+// ordered best-to-worst with "Question Skipped" as the explicit opt-out that
+// still satisfies the mandatory-answer requirement. Rendered as a colour-graded
+// segmented control (one tap to grade) rather than a dropdown or bare radios,
+// so the scale reads green→red at a glance and each option is a large target.
+// The `value` doubles as the human-readable label persisted in the notes.
+const SCREENING_RATING_OPTIONS: Array<{ value: string; selectedClass: string }> = [
+  { value: 'Great Response', selectedClass: 'bg-emerald-600 border-emerald-600 text-white' },
+  { value: 'Good Response', selectedClass: 'bg-green-500 border-green-500 text-white' },
+  { value: 'Adequate Response', selectedClass: 'bg-amber-500 border-amber-500 text-white' },
+  { value: 'Poor Response', selectedClass: 'bg-orange-500 border-orange-500 text-white' },
+  { value: 'No Clue', selectedClass: 'bg-red-500 border-red-500 text-white' },
+  { value: 'Question Skipped', selectedClass: 'bg-gray-500 border-gray-500 text-white' },
+];
+
 interface ScreeningModalProps {
   candidate?: CandidateSearchResult;
   candidateId?: string;
@@ -324,6 +339,18 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
     }
     if (!notes.trim()) missingFields.push('Screening Notes');
 
+    // Every screening question must be rated before submission. While questions
+    // are still loading we block too, so we never fire the API against an empty
+    // list and then have questions appear afterwards.
+    if (loadingQuestions) {
+      missingFields.push('Screening Questions (still loading — please wait)');
+    } else if (screeningQuestions.length > 0) {
+      const unanswered = screeningQuestions.filter((_, i) => !questionAnswers[i]).length;
+      if (unanswered > 0) {
+        missingFields.push(`All screening questions (${unanswered} unanswered)`);
+      }
+    }
+
     // Validate required additional fields
     if (additionalFields && additionalFields.length > 0) {
       for (const field of additionalFields) {
@@ -454,7 +481,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
       let finalNotes = notes;
       if (screeningQuestions.length > 0) {
         const qaBlock = screeningQuestions
-          .map((q, i) => `Q: ${q.question}\nA: ${(questionAnswers[i] || '').trim() || '(no answer)'}`)
+          .map((q, i) => `Q: ${q.question}\nA: ${questionAnswers[i]}`)
           .join('\n\n');
         finalNotes = `${notes}\n\n--- Screening Questions ---\n${qaBlock}`;
       }
@@ -557,7 +584,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
     lastWorkingDay, stillOnJob, onScreeningComplete,
     isShortlistFlow, additionalFields, customFieldValues,
     subVendorEnabled, subVendorData, initialSubVendorId,
-    pendingAttachments, screeningQuestions, questionAnswers,
+    pendingAttachments, screeningQuestions, questionAnswers, loadingQuestions,
   ]);
 
   return (
@@ -1179,15 +1206,37 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                         label={`${i + 1}. ${q.question}`}
                         htmlFor={`sq_${i}`}
                         hint={q.category}
+                        touched={submitAttempted}
+                        error={submitAttempted && !questionAnswers[i] ? 'Required' : undefined}
                       >
-                        <FormInput
+                        <div
                           id={`sq_${i}`}
-                          value={questionAnswers[i] ?? ''}
-                          onChange={(e) =>
-                            setQuestionAnswers((prev) => ({ ...prev, [i]: e.target.value }))
-                          }
-                          placeholder="Candidate's answer"
-                        />
+                          role="radiogroup"
+                          aria-label={q.question}
+                          className="grid grid-cols-3 sm:grid-cols-6 gap-2 pt-1"
+                        >
+                          {SCREENING_RATING_OPTIONS.map((option) => {
+                            const selected = questionAnswers[i] === option.value;
+                            return (
+                              <button
+                                key={option.value}
+                                type="button"
+                                role="radio"
+                                aria-checked={selected}
+                                onClick={() =>
+                                  setQuestionAnswers((prev) => ({ ...prev, [i]: option.value }))
+                                }
+                                className={`rounded-md border px-2 py-2 text-xs font-medium leading-tight text-center transition-colors ${
+                                  selected
+                                    ? option.selectedClass
+                                    : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500'
+                                }`}
+                              >
+                                {option.value}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </FormField>
                     ))}
                   </div>
