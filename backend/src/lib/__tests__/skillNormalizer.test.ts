@@ -626,6 +626,84 @@ describe('Oracle PL/SQL normalization', () => {
 });
 
 // ---------------------------------------------------------------------------
+// TC-ORDS-001 through TC-ORDS-009: ORDS / Oracle REST Data Services
+// ---------------------------------------------------------------------------
+
+describe('ORDS normalization and matching', () => {
+  // TC-ORDS-001: abbreviation passthrough and full phrase to canonical
+  it('normalizes "ORDS" to "ords"', () => {
+    expect(normalizeSkill('ORDS')).toBe('ords');
+  });
+
+  it('normalizes "Oracle Rest Data Services" to "ords"', () => {
+    expect(normalizeSkill('Oracle Rest Data Services')).toBe('ords');
+  });
+
+  it('normalizes "oracle rest data services" (lowercase) to "ords"', () => {
+    expect(normalizeSkill('oracle rest data services')).toBe('ords');
+  });
+
+  // TC-ORDS-002: canonical symmetry
+  it('"ORDS" and "Oracle Rest Data Services" normalize to the same canonical form', () => {
+    expect(normalizeSkill('ORDS')).toBe(normalizeSkill('Oracle Rest Data Services'));
+  });
+
+  // TC-ORDS-003: case-insensitive variants
+  it('"ords", "Ords", and "ORDS" all normalize to "ords"', () => {
+    expect(normalizeSkill('ords')).toBe('ords');
+    expect(normalizeSkill('Ords')).toBe('ords');
+    expect(normalizeSkill('ORDS')).toBe('ords');
+  });
+
+  // TC-ORDS-004: candidate abbreviation satisfies full-phrase requirement
+  it('candidate "ORDS" exactly matches requirement "Oracle Rest Data Services"', () => {
+    const result = calculateSkillMatch(['ORDS'], ['Oracle Rest Data Services']);
+    expect(result.exactMatched).toContain('ords');
+    expect(result.missing).toEqual([]);
+  });
+
+  // TC-ORDS-005: candidate full phrase satisfies abbreviation requirement
+  it('candidate "Oracle Rest Data Services" exactly matches requirement "ORDS"', () => {
+    const result = calculateSkillMatch(['Oracle Rest Data Services'], ['ORDS']);
+    expect(result.exactMatched).toContain('ords');
+    expect(result.missing).toEqual([]);
+  });
+
+  // TC-ORDS-006: category assignment
+  it('getSkillCategory("ords") returns a non-null category', () => {
+    expect(getSkillCategory('ords')).not.toBeNull();
+    expect(getSkillCategory('ords')).not.toBeUndefined();
+  });
+
+  it('getSkillCategory("ords") returns "erp"', () => {
+    expect(getSkillCategory('ords')).toBe('erp');
+  });
+
+  // TC-ORDS-007: ORDS not in mustHaveMissing when candidate has full phrase
+  it('"ords" is not in missing when candidate has "Oracle Rest Data Services" (full phrase)', () => {
+    const result = calculateSkillMatch(['Oracle Rest Data Services'], ['ORDS']);
+    expect(result.missing).not.toContain('ords');
+  });
+
+  // TC-ORDS-008: regression — adjacent Oracle skills unaffected
+  it('"oracle pl/sql" normalization is unaffected by ORDS mapping', () => {
+    expect(normalizeSkill('oracle pl/sql')).toBe('oracle pl/sql');
+    expect(normalizeSkill('Oracle PL/SQL')).toBe('oracle pl/sql');
+  });
+
+  // TC-ORDS-009: edge cases
+  it('whitespace-padded variants are trimmed and normalized correctly', () => {
+    expect(normalizeSkill(' ORDS ')).toBe('ords');
+    expect(normalizeSkill(' Oracle Rest Data Services ')).toBe('ords');
+  });
+
+  it('duplicate ORDS forms in a skill list deduplicate to a single "ords" token', () => {
+    const result = normalizeSkills(['ORDS', 'Oracle Rest Data Services']);
+    expect(result).toEqual(['ords']);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Fuzzy matching (token containment + synonym)
 // ---------------------------------------------------------------------------
 
@@ -1262,5 +1340,103 @@ describe('coreSkill pre-filter — compound multi-token coreSkills', () => {
   it('passes "Oracle PL/SQL" for ["oracle","plsql"] when a candidate synonym maps plsql→pl/sql', () => {
     const candidateSynonyms = { plsql: ['pl/sql'] };
     expect(coreSkillSatisfiedBy('Oracle PL/SQL', ['oracle', 'plsql'], undefined, candidateSynonyms)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TC-IAM-001 through TC-IAM-009: IAM / Identity and Access Management
+// ---------------------------------------------------------------------------
+
+describe('IAM normalization and matching', () => {
+  // TC-IAM-001: abbreviation passthrough
+  it('normalizes "IAM" to "iam"', () => {
+    expect(normalizeSkill('IAM')).toBe('iam');
+  });
+
+  // TC-IAM-002: full phrase to canonical
+  it('normalizes "identity and access management" to "iam"', () => {
+    expect(normalizeSkill('identity and access management')).toBe('iam');
+  });
+
+  it('normalizes "Identity and Access Management" (mixed case) to "iam"', () => {
+    expect(normalizeSkill('Identity and Access Management')).toBe('iam');
+  });
+
+  // TC-IAM-003: canonical symmetry
+  it('"IAM" and "identity and access management" normalize to the same canonical form', () => {
+    expect(normalizeSkill('IAM')).toBe(normalizeSkill('identity and access management'));
+  });
+
+  // TC-IAM-004: case-insensitive variants
+  it('"iam", "Iam", and "IAM" all normalize to "iam"', () => {
+    expect(normalizeSkill('iam')).toBe('iam');
+    expect(normalizeSkill('Iam')).toBe('iam');
+    expect(normalizeSkill('IAM')).toBe('iam');
+  });
+
+  // TC-IAM-005: candidate "IAM" satisfies requirement "identity and access management"
+  it('candidate "IAM" exactly matches requirement "identity and access management"', () => {
+    const result = calculateSkillMatch(['IAM'], ['identity and access management']);
+    expect(result.exactMatched).toContain('iam');
+    expect(result.missing).toEqual([]);
+  });
+
+  // TC-IAM-006: symmetric — full phrase satisfies abbreviation requirement
+  it('candidate "identity and access management" exactly matches requirement "IAM"', () => {
+    const result = calculateSkillMatch(['identity and access management'], ['IAM']);
+    expect(result.exactMatched).toContain('iam');
+    expect(result.missing).toEqual([]);
+  });
+
+  // TC-IAM-007: category assignment
+  it('getSkillCategory("iam") returns "iam"', () => {
+    expect(getSkillCategory('iam')).toBe('iam');
+  });
+
+  it('getSkillCategory("IAM") returns "iam" via normalization', () => {
+    expect(getSkillCategory('IAM')).toBe('iam');
+  });
+
+  // TC-IAM-008: isCoreSkill
+  it('isCoreSkill("IAM") returns true', () => {
+    expect(isCoreSkill('IAM')).toBe(true);
+  });
+
+  it('isCoreSkill("identity and access management") returns true', () => {
+    expect(isCoreSkill('identity and access management')).toBe(true);
+  });
+
+  // TC-IAM-009: edge cases
+  it('whitespace-padded " IAM " normalizes to "iam"', () => {
+    expect(normalizeSkill(' IAM ')).toBe('iam');
+  });
+
+  it('whitespace-padded " identity and access management " normalizes to "iam"', () => {
+    expect(normalizeSkill(' identity and access management ')).toBe('iam');
+  });
+
+  it('duplicate entries ["IAM", "identity and access management"] deduplicate to ["iam"]', () => {
+    expect(normalizeSkills(['IAM', 'identity and access management'])).toEqual(['iam']);
+  });
+
+  // TC-IAM-010: regression — adjacent IAM-related skills unaffected
+  it('"sailpoint iiq" still normalizes to "sailpoint_iiq" (regression)', () => {
+    expect(normalizeSkill('sailpoint iiq')).toBe('sailpoint_iiq');
+  });
+
+  it('"identitynow" still normalizes to "sailpoint_idn" (regression)', () => {
+    expect(normalizeSkill('identitynow')).toBe('sailpoint_idn');
+  });
+
+  // TC-IAM-011: related-skill grouping consistent with category
+  it('"iam" appears in getRelatedSkills("sailpoint") — both are in the "iam" category', () => {
+    const related = getRelatedSkills('sailpoint');
+    expect(related).toContain('iam');
+  });
+
+  it('"sailpoint" appears in getRelatedSkills("iam") — both are in the "iam" category', () => {
+    const related = getRelatedSkills('iam');
+    expect(related).toContain('sailpoint');
+    expect(related).not.toContain('iam');
   });
 });

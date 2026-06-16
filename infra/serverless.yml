@@ -370,6 +370,13 @@ functions:
           path: /recruiter/bench-list
           method: GET
 
+  recruiterBenchListEmail:
+    handler: src/handlers/recruiter/benchListEmail.handler
+    events:
+      - httpApi:
+          path: /recruiter/bench-list/email
+          method: POST
+
   recruiterMyActivity:
     handler: src/handlers/recruiter/myActivity.handler
     events:

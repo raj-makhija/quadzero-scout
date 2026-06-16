@@ -139,6 +139,10 @@ describe('ErrorCodes', () => {
     expect(ErrorCodes.SCREENING_REQUIRED).toBe('SCREENING_REQUIRED');
   });
 
+  it('defines DOCUMENTS_REQUIRED', () => {
+    expect(ErrorCodes.DOCUMENTS_REQUIRED).toBe('DOCUMENTS_REQUIRED');
+  });
+
   it('defines LLM_ERROR', () => {
     expect(ErrorCodes.LLM_ERROR).toBe('LLM_ERROR');
   });
@@ -155,8 +159,8 @@ describe('ErrorCodes', () => {
     expect(ErrorCodes.INVALID_STAGE_TRANSITION).toBe('INVALID_STAGE_TRANSITION');
   });
 
-  it('has exactly 14 error codes', () => {
-    expect(Object.keys(ErrorCodes)).toHaveLength(14);
+  it('has exactly 15 error codes', () => {
+    expect(Object.keys(ErrorCodes)).toHaveLength(15);
   });
 });
 

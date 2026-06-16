@@ -19,7 +19,7 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { config } from './config.js';
-import { getRequirementById, getCandidateById } from './dynamodb.js';
+import { getRequirementById, getCandidateById, getRecentProfiles } from './dynamodb.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -34,6 +34,12 @@ export const SCREENING_MAX_AGE_DAYS = 15;
 export const STALE_REQUIREMENT_DAYS = 7;
 /** Match score (0-100) at/above which a new profile becomes a screen-candidate task. */
 export const MATCH_TASK_THRESHOLD = 70;
+/** Universal screen scan: only consider candidates created within this many days. */
+export const UNSCREENED_WINDOW_DAYS = 30;
+/** Universal screen scan: max never-screened candidates turned into tasks per sweep. */
+export const UNSCREENED_SCAN_CAP = 200;
+/** Pre-interview reminder "morning of the interview day" anchor, in UTC hours (03:30 UTC = 9:00 AM IST). */
+export const MORNING_ANCHOR_UTC_HOURS = 3.5;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -42,18 +48,19 @@ export type TaskType =
   | 'submit_to_client'
   | 'follow_up_client'
   | 'schedule_interview'
+  | 'pre_interview_reminder'
   | 'record_interview_feedback'
   | 'send_offer'
   | 'follow_up_offer'
   | 'confirm_joining'
   | 'post_placement_checkin'
   // Scheduled sweep (pool)
+  | 'found_candidate_for_requirement'
   | 'screen_candidate'
   | 'rescreen_candidate'
   | 'source_candidates'
   | 'close_requirement'
-  | 'review_bulk_import'
-  | 'review_ingested_resume';
+  | 'review_bulk_import';
 
 export type TaskStatus = 'active' | 'completed' | 'expired';
 export type TaskPriority = 1 | 2 | 3 | 4;
@@ -100,16 +107,17 @@ export interface RecruiterTask {
 /** Fixed priority per task type (ticket #153 priority model). */
 export const TASK_PRIORITY: Record<TaskType, TaskPriority> = {
   record_interview_feedback: 1,
+  found_candidate_for_requirement: 1,
   submit_to_client: 2,
   follow_up_client: 2,
   schedule_interview: 2,
+  pre_interview_reminder: 2,
   send_offer: 2,
   follow_up_offer: 2,
   confirm_joining: 3,
   post_placement_checkin: 3,
   screen_candidate: 3,
   rescreen_candidate: 3,
-  review_ingested_resume: 3,
   source_candidates: 4,
   close_requirement: 4,
   review_bulk_import: 4,
@@ -149,10 +157,10 @@ export function compositeEntityRef(requirementId?: string, candidateId?: string)
 
 function actionUrlFor(type: TaskType, requirementId?: string, candidateId?: string): string {
   switch (type) {
+    case 'found_candidate_for_requirement':
     case 'screen_candidate':
     case 'rescreen_candidate':
     case 'review_bulk_import':
-    case 'review_ingested_resume':
       return candidateId ? `/recruiter/locate/${candidateId}` : '/recruiter/search';
     default:
       return requirementId ? `/recruiter/requirements/${requirementId}` : '/recruiter/search';
@@ -256,6 +264,28 @@ export function buildRecordInterviewFeedbackTask(p: PipelineSpecArgs & { schedul
   return spec('record_interview_feedback', p.ownerId, p.requirementId, p.candidateId, p.context, due);
 }
 
+/**
+ * Pre-interview reminder, due at the earlier of (a) the "morning" of the
+ * interview day (MORNING_ANCHOR_UTC_HOURS UTC) and (b) one hour before the
+ * interview start. Always returns a spec — past due dates (short-notice or
+ * same-day bookings) are kept and handled by the expiry grace window.
+ */
+export function buildPreInterviewReminderTask(p: PipelineSpecArgs & { scheduledAt: string }): TaskSpec {
+  const interview = new Date(p.scheduledAt);
+  const anchorHours = Math.floor(MORNING_ANCHOR_UTC_HOURS);
+  const anchorMinutes = Math.round((MORNING_ANCHOR_UTC_HOURS - anchorHours) * 60);
+  const morningMs = Date.UTC(
+    interview.getUTCFullYear(),
+    interview.getUTCMonth(),
+    interview.getUTCDate(),
+    anchorHours,
+    anchorMinutes
+  );
+  const oneHourBeforeMs = interview.getTime() - 3_600_000;
+  const due = new Date(Math.min(morningMs, oneHourBeforeMs)).toISOString();
+  return spec('pre_interview_reminder', p.ownerId, p.requirementId, p.candidateId, p.context, due);
+}
+
 /** Only a "proceed" interview decision generates a send-offer task. */
 export function buildSendOfferTask(p: PipelineSpecArgs & { decision: string }): TaskSpec | null {
   if (p.decision !== 'proceed') return null;
@@ -296,8 +326,8 @@ export interface SweepInput {
   filledRequirements?: Array<{ requirementId: string; requirementTitle?: string; clientName?: string }>;
   /** Bulk-imported profiles parsed with low confidence. */
   lowConfidenceImports?: Array<{ candidateId: string; candidateName?: string; confidence: number }>;
-  /** Resumes ingested from email awaiting review. */
-  ingestedResumes?: Array<{ candidateId: string; candidateName?: string }>;
+  /** Never-screened candidates within the creation window (universal screening). */
+  unscreenedCandidates?: Array<{ candidateId: string; candidateName?: string }>;
 }
 
 function poolSpec(
@@ -319,7 +349,7 @@ export function buildSweepTasks(input: SweepInput): TaskSpec[] {
     if (m.matchScore < MATCH_TASK_THRESHOLD) continue;
     out.push(
       poolSpec(
-        'screen_candidate',
+        'found_candidate_for_requirement',
         m.requirementId,
         m.candidateId,
         {
@@ -381,14 +411,14 @@ export function buildSweepTasks(input: SweepInput): TaskSpec[] {
     );
   }
 
-  for (const e of input.ingestedResumes ?? []) {
+  for (const c of input.unscreenedCandidates ?? []) {
     out.push(
       poolSpec(
-        'review_ingested_resume',
+        'screen_candidate',
         undefined,
-        e.candidateId,
-        { candidate_name: e.candidateName },
-        addDays(now, 1)
+        c.candidateId,
+        { candidate_name: c.candidateName },
+        addDays(now, 2)
       )
     );
   }
@@ -712,30 +742,65 @@ export async function fetchLowConfidenceImports(
   return out;
 }
 
-/** Resumes ingested from email within the recent window. */
-export async function fetchRecentIngestedResumes(
+/** Minimal profile shape consumed by the universal unscreened scan. */
+interface ProfileForScan {
+  candidate_id?: string;
+  full_name?: string;
+  created_at?: string;
+  last_screened_at?: string;
+}
+
+/**
+ * Pure selector: from most-recent-first profiles, pick never-screened candidates
+ * (`last_screened_at` absent) created within the window, capped at `cap`. Returns
+ * the picks plus how many qualifying candidates were dropped because the cap was
+ * hit — so the caller can surface the truncation instead of hiding it.
+ */
+export function selectUnscreenedCandidates(
+  profiles: ProfileForScan[],
+  now: Date,
+  windowDays: number = UNSCREENED_WINDOW_DAYS,
+  cap: number = UNSCREENED_SCAN_CAP
+): { candidates: NonNullable<SweepInput['unscreenedCandidates']>; skipped: number } {
+  const cutoff = now.getTime() - windowDays * 86_400_000;
+  const qualifying: NonNullable<SweepInput['unscreenedCandidates']> = [];
+  for (const p of profiles) {
+    if (!p.candidate_id || p.last_screened_at || !p.created_at) continue;
+    if (new Date(p.created_at).getTime() < cutoff) continue;
+    qualifying.push({ candidateId: p.candidate_id, candidateName: p.full_name });
+  }
+  const candidates = qualifying.slice(0, cap);
+  return { candidates, skipped: qualifying.length - candidates.length };
+}
+
+/**
+ * Universal screening gatherer: never-screened candidates created within the
+ * window, most-recent first, capped at K per sweep. Pages the RecentProfilesIndex
+ * (sorted by `last_updated` desc); since `created_at` ≤ `last_updated`, once a
+ * page's oldest `last_updated` falls below the window every later profile is out
+ * of range, so paging stops there.
+ */
+export async function fetchUnscreenedCandidates(
   now: Date = new Date(),
-  windowMs: number = 2 * 3_600_000
-): Promise<NonNullable<SweepInput['ingestedResumes']>> {
-  const out: NonNullable<SweepInput['ingestedResumes']> = [];
+  windowDays: number = UNSCREENED_WINDOW_DAYS,
+  cap: number = UNSCREENED_SCAN_CAP
+): Promise<NonNullable<SweepInput['unscreenedCandidates']>> {
+  const cutoff = now.getTime() - windowDays * 86_400_000;
+  const profiles: ProfileForScan[] = [];
   let lastKey: Record<string, unknown> | undefined;
   do {
-    const result = await docClient.send(
-      new ScanCommand({
-        TableName: config.dynamodb.emailIngestLogTable,
-        FilterExpression: '#status = :done',
-        ExpressionAttributeNames: { '#status': 'status' },
-        ExpressionAttributeValues: { ':done': 'completed' },
-        ExclusiveStartKey: lastKey,
-      })
-    );
-    for (const entry of (result.Items as Array<{ processed_at?: string; candidate_ids?: string[] }>) || []) {
-      if (entry.processed_at && now.getTime() - new Date(entry.processed_at).getTime() > windowMs) continue;
-      for (const candidateId of entry.candidate_ids ?? []) {
-        out.push({ candidateId });
-      }
-    }
-    lastKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+    const { items, lastKey: next } = await getRecentProfiles(100, lastKey);
+    profiles.push(...items);
+    const oldest = items[items.length - 1] as { last_updated?: string } | undefined;
+    if (oldest?.last_updated && new Date(oldest.last_updated).getTime() < cutoff) break;
+    lastKey = next;
   } while (lastKey);
-  return out;
+
+  const { candidates, skipped } = selectUnscreenedCandidates(profiles, now, windowDays, cap);
+  if (skipped > 0) {
+    console.log(
+      `[recruiterTasks] unscreened scan cap ${cap} hit; ${skipped} candidate(s) skipped this sweep`
+    );
+  }
+  return candidates;
 }

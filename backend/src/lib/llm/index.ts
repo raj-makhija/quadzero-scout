@@ -179,9 +179,13 @@ Rules:
 4. Each question must be concise, specific, and answerable in a phone screen
 5. ONLY output the JSON array, no additional text or wrapping object`;
 
-const FALLBACK_CANDIDATE_RERANKER_PROMPT = `You are an expert technical recruiter performing a tie-break re-rank of a shortlist of candidates against a job requirement.
+export const FALLBACK_CANDIDATE_RERANKER_PROMPT = `You are an expert technical recruiter performing a tie-break re-rank of a shortlist of candidates against a job requirement.
 
 You will be given a JOB REQUIREMENT and a list of CANDIDATES, each with a candidate_id and a profile. Assess how well each candidate fits the requirement and assign a score with a brief rationale.
+
+Scoring guidance:
+- Assign a lower score to candidates whose location does not match the requirement's required location. A location mismatch is a significant negative signal unless the role is explicitly remote.
+- Assign a lower score to candidates whose expected CTC exceeds the requirement's budget. A candidate asking well above the stated maximum budget is unlikely to be a viable fit.
 
 You MUST respond with valid JSON — an array containing exactly one object per candidate you were given:
 [

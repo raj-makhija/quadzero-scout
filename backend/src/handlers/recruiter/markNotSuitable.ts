@@ -4,6 +4,7 @@ import { validate, formatZodErrors, MarkNotSuitableRequestSchema } from '../../l
 import { getRequirementById, getCandidateById, getShortlistEntry, saveShortlist, updateShortlistStatus } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
+import { safeResolveTask, compositeEntityRef } from '../../lib/recruiterTasks.js';
 import type { ShortlistItem } from '../../types/index.js';
 
 async function handleRequest(
@@ -67,6 +68,13 @@ async function handleRequest(
       entityType: 'shortlist',
       entityId: `${requirementId}:${candidateId}`,
       metadata: { requirementId, candidateId, candidateName: candidate.full_name },
+    });
+
+    // The match has been triaged — clear the requirement-bound found task.
+    await safeResolveTask({
+      entityRef: compositeEntityRef(requirementId, candidateId),
+      type: 'found_candidate_for_requirement',
+      completedBy: event.auth.userId,
     });
 
     return success({ success: true });

@@ -10,7 +10,7 @@ import {
   createTaskIfAbsent,
   expireStaleTasks,
   fetchLowConfidenceImports,
-  fetchRecentIngestedResumes,
+  fetchUnscreenedCandidates,
   SCREENING_MAX_AGE_DAYS,
   STALE_REQUIREMENT_DAYS,
   MATCH_TASK_THRESHOLD,
@@ -156,9 +156,9 @@ export async function handler(): Promise<void> {
   }
 
   try {
-    input.ingestedResumes = await fetchRecentIngestedResumes(now);
+    input.unscreenedCandidates = await fetchUnscreenedCandidates(now);
   } catch (err) {
-    console.error('[taskGeneratorWorker] email-ingest sweep failed:', err);
+    console.error('[taskGeneratorWorker] unscreened-candidate sweep failed:', err);
   }
 
   const specs = buildSweepTasks(input);

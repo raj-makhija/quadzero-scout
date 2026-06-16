@@ -29,6 +29,7 @@ export type ProfileListItem = {
   headline?: string;
   availability?: string;
   engagementModel?: string;
+  indicativeBillingRateLpa?: number | null;
   subVendorId?: string;
   subVendorName?: string;
   subVendorContactPerson?: string;
@@ -556,6 +557,7 @@ export default function LocateProfilePage() {
         roles: c.roles,
         availability: c.availability,
         engagementModel: c.engagementModel,
+        indicativeBillingRateLpa: c.indicativeBillingRateLpa,
         subVendorId: c.subVendorId,
         subVendorName: c.subVendorName,
         subVendorContactPerson: c.subVendorContactPerson,
@@ -1050,9 +1052,10 @@ export default function LocateProfilePage() {
         )}
       </div>
 
-      {showBenchList && benchListProfiles && benchListProfiles.length > 0 && (
+      {showBenchList && benchListProfiles && (
         <BenchListModal
           profiles={benchListProfiles}
+          isInternal={isInternal}
           onClose={() => { setShowBenchList(false); setBenchListProfiles(null); }}
         />
       )}

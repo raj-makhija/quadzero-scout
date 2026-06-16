@@ -38,6 +38,7 @@ async function handleRequest(
       lastUpdated: item.last_updated,
       createdAt: item.created_at,
       lastScreenedAt: item.last_screened_at,
+      notInterested: item.not_interested || false,
       roles: item.roles || [],
       headline: item.headline,
       subVendorId: item.sub_vendor_id,

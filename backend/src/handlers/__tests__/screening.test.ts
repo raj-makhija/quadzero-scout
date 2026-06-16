@@ -15,6 +15,8 @@ const mockSaveShortlist = vi.fn().mockResolvedValue(undefined);
 const mockGetShortlistsForCandidate = vi.fn().mockResolvedValue([]);
 const mockGetActivePricingConfig = vi.fn().mockResolvedValue({});
 const mockUpdateShortlistRates = vi.fn().mockResolvedValue(undefined);
+const mockListAttachments = vi.fn().mockResolvedValue([]);
+const mockUpdateShortlistStatus = vi.fn().mockResolvedValue(undefined);
 const mockGetExperienceBucket = vi.fn((years: number) => {
   if (years <= 2) return '0-2';
   if (years <= 5) return '3-5';
@@ -38,6 +40,8 @@ vi.mock('../../lib/dynamodb.js', () => ({
   getActivePricingConfig: (...args: unknown[]) => mockGetActivePricingConfig(...args),
   updateShortlistRates: (...args: unknown[]) => mockUpdateShortlistRates(...args),
   getExperienceBucket: (...args: unknown[]) => mockGetExperienceBucket(...args),
+  listAttachments: (...args: unknown[]) => mockListAttachments(...args),
+  updateShortlistStatus: (...args: unknown[]) => mockUpdateShortlistStatus(...args),
 }));
 
 const mockCalculatePricing = vi.fn().mockReturnValue({
@@ -65,12 +69,22 @@ vi.mock('../../lib/skillNormalizer.js', () => ({
 }));
 
 const mockSafeResolveScreeningTasks = vi.fn().mockResolvedValue(undefined);
+const mockResolveTaskByEntity = vi.fn().mockResolvedValue(0);
 
 vi.mock('../../lib/recruiterTasks.js', async () => {
   const actual = await vi.importActual('../../lib/recruiterTasks.js') as Record<string, unknown>;
   return {
     ...actual,
     safeResolveScreeningTasks: (...args: unknown[]) => mockSafeResolveScreeningTasks(...args),
+    // Mirror the real fire-and-forget wrapper: delegate to (mocked) resolveTaskByEntity
+    // and swallow any error so a failed resolution never breaks the handler.
+    safeResolveTask: async (args: unknown) => {
+      try {
+        await mockResolveTaskByEntity(args);
+      } catch {
+        // swallowed by design
+      }
+    },
   };
 });
 
@@ -397,11 +411,18 @@ describe('getScreeningHistory handler', () => {
 // Tests: Shortlist with Screening Rule
 // ---------------------------------------------------------------------------
 
+const BOTH_DOCS = [
+  { candidate_id: 'cand_1', attachment_id: 'att_pan', tag: 'PAN', filename: 'pan.pdf' },
+  { candidate_id: 'cand_1', attachment_id: 'att_aadhaar', tag: 'Aadhaar', filename: 'aadhaar.pdf' },
+];
+
 describe('shortlistCandidate handler (screening rule)', () => {
   let handler: Function;
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    // Seed required docs so screening-rule tests aren't blocked by the document gate.
+    mockListAttachments.mockResolvedValue(BOTH_DOCS);
     const mod = await import('../recruiter/shortlistCandidate.js');
     handler = mod.handler;
   });
@@ -491,6 +512,218 @@ describe('shortlistCandidate handler (screening rule)', () => {
     expect(body.data.warning).toBe('NOT_INTERESTED');
     expect(body.data.notInterestedAt).toBe(fiveDaysAgo);
     expect(mockSaveShortlist).toHaveBeenCalledOnce();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: Shortlist Document Gate (PAN + Aadhaar) — ticket #364
+// ---------------------------------------------------------------------------
+
+describe('shortlistCandidate handler (document gate)', () => {
+  let handler: Function;
+  const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockGetRequirementById.mockResolvedValue({ requirement_id: 'req_1' });
+    mockGetCandidateById.mockResolvedValue({ ...mockCandidate, last_screened_at: fiveDaysAgo });
+    mockGetShortlistEntry.mockResolvedValue(null);
+    const mod = await import('../recruiter/shortlistCandidate.js');
+    handler = mod.handler;
+  });
+
+  const event = () => makeEvent({ requirementId: 'req_1', candidateId: 'cand_1' });
+
+  it('allows shortlisting when both PAN and Aadhaar are attached', async () => {
+    mockListAttachments.mockResolvedValue(BOTH_DOCS);
+    const result = await handler(event());
+    expect(result.statusCode).toBe(200);
+    expect(mockSaveShortlist).toHaveBeenCalledOnce();
+  });
+
+  it('blocks shortlisting when no attachments at all', async () => {
+    mockListAttachments.mockResolvedValue([]);
+    const result = await handler(event());
+    const body = JSON.parse(result.body);
+    expect(result.statusCode).toBe(422);
+    expect(body.error.code).toBe('DOCUMENTS_REQUIRED');
+    expect(body.error.code).not.toBe('SCREENING_REQUIRED');
+    expect(body.error.message).toMatch(/PAN/);
+    expect(body.error.message).toMatch(/Aadhaar/);
+    expect(mockSaveShortlist).not.toHaveBeenCalled();
+  });
+
+  it('blocks shortlisting when only PAN is attached (Aadhaar missing)', async () => {
+    mockListAttachments.mockResolvedValue([BOTH_DOCS[0]]);
+    const result = await handler(event());
+    const body = JSON.parse(result.body);
+    expect(result.statusCode).toBe(422);
+    expect(body.error.code).toBe('DOCUMENTS_REQUIRED');
+    expect(body.error.message).toMatch(/Aadhaar/);
+    expect(body.error.message).not.toMatch(/PAN/);
+  });
+
+  it('blocks shortlisting when only Aadhaar is attached (PAN missing)', async () => {
+    mockListAttachments.mockResolvedValue([BOTH_DOCS[1]]);
+    const result = await handler(event());
+    const body = JSON.parse(result.body);
+    expect(result.statusCode).toBe(422);
+    expect(body.error.code).toBe('DOCUMENTS_REQUIRED');
+    expect(body.error.message).toMatch(/PAN/);
+    expect(body.error.message).not.toMatch(/Aadhaar/);
+  });
+
+  it('document gate fires on not_suitable re-shortlisting when docs absent', async () => {
+    mockGetShortlistEntry.mockResolvedValue({ status: 'not_suitable' });
+    mockListAttachments.mockResolvedValue([]);
+    const result = await handler(event());
+    const body = JSON.parse(result.body);
+    expect(result.statusCode).toBe(422);
+    expect(body.error.code).toBe('DOCUMENTS_REQUIRED');
+    expect(mockUpdateShortlistStatus).not.toHaveBeenCalled();
+  });
+
+  it('succeeds with multiple PAN docs and one Aadhaar (at least one of each)', async () => {
+    mockListAttachments.mockResolvedValue([BOTH_DOCS[0], { ...BOTH_DOCS[0], attachment_id: 'att_pan_2' }, BOTH_DOCS[1]]);
+    const result = await handler(event());
+    expect(result.statusCode).toBe(200);
+    expect(mockSaveShortlist).toHaveBeenCalledOnce();
+  });
+
+  it('treats wrong-case tags as non-matching (case-sensitive)', async () => {
+    mockListAttachments.mockResolvedValue([
+      { ...BOTH_DOCS[0], tag: 'pan' },
+      { ...BOTH_DOCS[1], tag: 'AADHAAR' },
+    ]);
+    const result = await handler(event());
+    const body = JSON.parse(result.body);
+    expect(result.statusCode).toBe(422);
+    expect(body.error.code).toBe('DOCUMENTS_REQUIRED');
+  });
+
+  it('returns 500 when listAttachments fails (gate not bypassed)', async () => {
+    mockListAttachments.mockRejectedValue(new Error('dynamo down'));
+    const result = await handler(event());
+    const body = JSON.parse(result.body);
+    expect(result.statusCode).toBe(500);
+    expect(body.error.code).toBe('DYNAMODB_ERROR');
+    expect(mockSaveShortlist).not.toHaveBeenCalled();
+  });
+
+  it('returns SCREENING_REQUIRED (409) when docs present but screening expired', async () => {
+    const twentyDaysAgo = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString();
+    mockGetCandidateById.mockResolvedValue({ ...mockCandidate, last_screened_at: twentyDaysAgo });
+    mockListAttachments.mockResolvedValue(BOTH_DOCS);
+    const result = await handler(event());
+    const body = JSON.parse(result.body);
+    expect(result.statusCode).toBe(409);
+    expect(body.error.code).toBe('SCREENING_REQUIRED');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: found_candidate_for_requirement resolver (ticket #390)
+// ---------------------------------------------------------------------------
+
+describe('shortlistCandidate handler (found-task resolver)', () => {
+  let handler: Function;
+  const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockGetRequirementById.mockResolvedValue({ requirement_id: 'req_1', job_title: 'Backend Dev', client_name: 'Acme' });
+    mockGetCandidateById.mockResolvedValue({ ...mockCandidate, last_screened_at: fiveDaysAgo });
+    mockListAttachments.mockResolvedValue(BOTH_DOCS);
+    mockResolveTaskByEntity.mockResolvedValue(0);
+    const mod = await import('../recruiter/shortlistCandidate.js');
+    handler = mod.handler;
+  });
+
+  const event = () => makeEvent({ requirementId: 'req_1', candidateId: 'cand_1' });
+
+  it('resolves the found task on a new shortlist', async () => {
+    mockGetShortlistEntry.mockResolvedValue(null);
+    const result = await handler(event());
+    expect(result.statusCode).toBe(200);
+    expect(mockResolveTaskByEntity).toHaveBeenCalledWith({
+      entityRef: 'REQ#req_1#CAND#cand_1',
+      type: 'found_candidate_for_requirement',
+      completedBy: 'recruiter_1',
+    });
+  });
+
+  it('resolves the found task when re-shortlisting a previously not-suitable candidate', async () => {
+    mockGetShortlistEntry.mockResolvedValue({ status: 'not_suitable' });
+    const result = await handler(event());
+    expect(result.statusCode).toBe(200);
+    expect(mockUpdateShortlistStatus).toHaveBeenCalled();
+    expect(mockResolveTaskByEntity).toHaveBeenCalledWith({
+      entityRef: 'REQ#req_1#CAND#cand_1',
+      type: 'found_candidate_for_requirement',
+      completedBy: 'recruiter_1',
+    });
+  });
+
+  it('still returns 200 when the found-task resolver hits a DynamoDB error', async () => {
+    mockGetShortlistEntry.mockResolvedValue(null);
+    mockResolveTaskByEntity.mockRejectedValue(new Error('dynamo down'));
+    const result = await handler(event());
+    expect(result.statusCode).toBe(200);
+    expect(JSON.parse(result.body).success).toBe(true);
+  });
+});
+
+describe('markNotSuitable handler (found-task resolver)', () => {
+  let handler: Function;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockGetRequirementById.mockResolvedValue({ requirement_id: 'req_1' });
+    mockGetCandidateById.mockResolvedValue(mockCandidate);
+    mockResolveTaskByEntity.mockResolvedValue(0);
+    const mod = await import('../recruiter/markNotSuitable.js');
+    handler = mod.handler;
+  });
+
+  const event = () => makeEvent({ requirementId: 'req_1', candidateId: 'cand_1' });
+
+  it('resolves the found task when marking a candidate not suitable (new entry)', async () => {
+    mockGetShortlistEntry.mockResolvedValue(null);
+    const result = await handler(event());
+    expect(result.statusCode).toBe(200);
+    expect(mockSaveShortlist).toHaveBeenCalledOnce();
+    expect(mockResolveTaskByEntity).toHaveBeenCalledWith({
+      entityRef: 'REQ#req_1#CAND#cand_1',
+      type: 'found_candidate_for_requirement',
+      completedBy: 'recruiter_1',
+    });
+  });
+
+  it('resolves the found task when flipping an existing shortlisted entry to not suitable', async () => {
+    mockGetShortlistEntry.mockResolvedValue({ status: 'shortlisted' });
+    const result = await handler(event());
+    expect(result.statusCode).toBe(200);
+    expect(mockUpdateShortlistStatus).toHaveBeenCalled();
+    expect(mockResolveTaskByEntity).toHaveBeenCalledWith({
+      entityRef: 'REQ#req_1#CAND#cand_1',
+      type: 'found_candidate_for_requirement',
+      completedBy: 'recruiter_1',
+    });
+  });
+
+  it('does NOT resolve the found task on the already-not-suitable 409 path', async () => {
+    mockGetShortlistEntry.mockResolvedValue({ status: 'not_suitable' });
+    const result = await handler(event());
+    expect(result.statusCode).toBe(409);
+    expect(mockResolveTaskByEntity).not.toHaveBeenCalled();
+  });
+
+  it('still returns 200 when the found-task resolver hits a DynamoDB error', async () => {
+    mockGetShortlistEntry.mockResolvedValue(null);
+    mockResolveTaskByEntity.mockRejectedValue(new Error('dynamo down'));
+    const result = await handler(event());
+    expect(result.statusCode).toBe(200);
+    expect(JSON.parse(result.body).success).toBe(true);
   });
 });
 

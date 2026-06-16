@@ -295,8 +295,14 @@
     "clm": "clm",
     "contract lifecycle management": "clm",
 
+    "ords": "ords",
+    "oracle rest data services": "ords",
+
     "servicenow": "servicenow",
     "service now": "servicenow",
+
+    "identity and access management": "iam",
+    "identity & access management": "iam",
 
     "sailpoint iiq": "sailpoint_iiq",
     "sailpoint identityiq": "sailpoint_iiq",
@@ -426,7 +432,7 @@
       "hubspot", "zoho_crm", "dynamics_365"
     ],
     "erp": [
-      "sap", "sap_hana", "oracle_erp", "servicenow", "clm"
+      "sap", "sap_hana", "oracle_erp", "servicenow", "clm", "ords"
     ],
     "marketing_analytics": [
       "google_analytics", "seo", "sem", "google_ads", "meta_ads",
@@ -440,7 +446,7 @@
       "sharepoint", "power_automate"
     ],
     "iam": [
-      "sailpoint", "sailpoint_iiq", "sailpoint_idn"
+      "iam", "sailpoint", "sailpoint_iiq", "sailpoint_idn"
     ]
   },
   "roleTaxonomy": {
