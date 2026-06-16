@@ -69,12 +69,22 @@ vi.mock('../../lib/skillNormalizer.js', () => ({
 }));
 
 const mockSafeResolveScreeningTasks = vi.fn().mockResolvedValue(undefined);
+const mockResolveTaskByEntity = vi.fn().mockResolvedValue(0);
 
 vi.mock('../../lib/recruiterTasks.js', async () => {
   const actual = await vi.importActual('../../lib/recruiterTasks.js') as Record<string, unknown>;
   return {
     ...actual,
     safeResolveScreeningTasks: (...args: unknown[]) => mockSafeResolveScreeningTasks(...args),
+    // Mirror the real fire-and-forget wrapper: delegate to (mocked) resolveTaskByEntity
+    // and swallow any error so a failed resolution never breaks the handler.
+    safeResolveTask: async (args: unknown) => {
+      try {
+        await mockResolveTaskByEntity(args);
+      } catch {
+        // swallowed by design
+      }
+    },
   };
 });
 
@@ -608,6 +618,112 @@ describe('shortlistCandidate handler (document gate)', () => {
     const body = JSON.parse(result.body);
     expect(result.statusCode).toBe(409);
     expect(body.error.code).toBe('SCREENING_REQUIRED');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: found_candidate_for_requirement resolver (ticket #390)
+// ---------------------------------------------------------------------------
+
+describe('shortlistCandidate handler (found-task resolver)', () => {
+  let handler: Function;
+  const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockGetRequirementById.mockResolvedValue({ requirement_id: 'req_1', job_title: 'Backend Dev', client_name: 'Acme' });
+    mockGetCandidateById.mockResolvedValue({ ...mockCandidate, last_screened_at: fiveDaysAgo });
+    mockListAttachments.mockResolvedValue(BOTH_DOCS);
+    mockResolveTaskByEntity.mockResolvedValue(0);
+    const mod = await import('../recruiter/shortlistCandidate.js');
+    handler = mod.handler;
+  });
+
+  const event = () => makeEvent({ requirementId: 'req_1', candidateId: 'cand_1' });
+
+  it('resolves the found task on a new shortlist', async () => {
+    mockGetShortlistEntry.mockResolvedValue(null);
+    const result = await handler(event());
+    expect(result.statusCode).toBe(200);
+    expect(mockResolveTaskByEntity).toHaveBeenCalledWith({
+      entityRef: 'REQ#req_1#CAND#cand_1',
+      type: 'found_candidate_for_requirement',
+      completedBy: 'recruiter_1',
+    });
+  });
+
+  it('resolves the found task when re-shortlisting a previously not-suitable candidate', async () => {
+    mockGetShortlistEntry.mockResolvedValue({ status: 'not_suitable' });
+    const result = await handler(event());
+    expect(result.statusCode).toBe(200);
+    expect(mockUpdateShortlistStatus).toHaveBeenCalled();
+    expect(mockResolveTaskByEntity).toHaveBeenCalledWith({
+      entityRef: 'REQ#req_1#CAND#cand_1',
+      type: 'found_candidate_for_requirement',
+      completedBy: 'recruiter_1',
+    });
+  });
+
+  it('still returns 200 when the found-task resolver hits a DynamoDB error', async () => {
+    mockGetShortlistEntry.mockResolvedValue(null);
+    mockResolveTaskByEntity.mockRejectedValue(new Error('dynamo down'));
+    const result = await handler(event());
+    expect(result.statusCode).toBe(200);
+    expect(JSON.parse(result.body).success).toBe(true);
+  });
+});
+
+describe('markNotSuitable handler (found-task resolver)', () => {
+  let handler: Function;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockGetRequirementById.mockResolvedValue({ requirement_id: 'req_1' });
+    mockGetCandidateById.mockResolvedValue(mockCandidate);
+    mockResolveTaskByEntity.mockResolvedValue(0);
+    const mod = await import('../recruiter/markNotSuitable.js');
+    handler = mod.handler;
+  });
+
+  const event = () => makeEvent({ requirementId: 'req_1', candidateId: 'cand_1' });
+
+  it('resolves the found task when marking a candidate not suitable (new entry)', async () => {
+    mockGetShortlistEntry.mockResolvedValue(null);
+    const result = await handler(event());
+    expect(result.statusCode).toBe(200);
+    expect(mockSaveShortlist).toHaveBeenCalledOnce();
+    expect(mockResolveTaskByEntity).toHaveBeenCalledWith({
+      entityRef: 'REQ#req_1#CAND#cand_1',
+      type: 'found_candidate_for_requirement',
+      completedBy: 'recruiter_1',
+    });
+  });
+
+  it('resolves the found task when flipping an existing shortlisted entry to not suitable', async () => {
+    mockGetShortlistEntry.mockResolvedValue({ status: 'shortlisted' });
+    const result = await handler(event());
+    expect(result.statusCode).toBe(200);
+    expect(mockUpdateShortlistStatus).toHaveBeenCalled();
+    expect(mockResolveTaskByEntity).toHaveBeenCalledWith({
+      entityRef: 'REQ#req_1#CAND#cand_1',
+      type: 'found_candidate_for_requirement',
+      completedBy: 'recruiter_1',
+    });
+  });
+
+  it('does NOT resolve the found task on the already-not-suitable 409 path', async () => {
+    mockGetShortlistEntry.mockResolvedValue({ status: 'not_suitable' });
+    const result = await handler(event());
+    expect(result.statusCode).toBe(409);
+    expect(mockResolveTaskByEntity).not.toHaveBeenCalled();
+  });
+
+  it('still returns 200 when the found-task resolver hits a DynamoDB error', async () => {
+    mockGetShortlistEntry.mockResolvedValue(null);
+    mockResolveTaskByEntity.mockRejectedValue(new Error('dynamo down'));
+    const result = await handler(event());
+    expect(result.statusCode).toBe(200);
+    expect(JSON.parse(result.body).success).toBe(true);
   });
 });
 

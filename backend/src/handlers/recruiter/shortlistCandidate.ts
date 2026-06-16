@@ -4,7 +4,7 @@ import { validate, formatZodErrors, ShortlistCandidateRequestSchema } from '../.
 import { getRequirementById, getCandidateById, getShortlistEntry, saveShortlist, updateShortlistStatus, listAttachments } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
-import { safeGenerateTask, buildSubmitToClientTask } from '../../lib/recruiterTasks.js';
+import { safeGenerateTask, safeResolveTask, buildSubmitToClientTask, compositeEntityRef } from '../../lib/recruiterTasks.js';
 import type { ShortlistItem } from '../../types/index.js';
 
 async function handleRequest(
@@ -121,6 +121,13 @@ async function handleRequest(
           })
         );
 
+        // The match is now resolved — clear the requirement-bound found task.
+        await safeResolveTask({
+          entityRef: compositeEntityRef(requirementId, candidateId),
+          type: 'found_candidate_for_requirement',
+          completedBy: event.auth.userId,
+        });
+
         const result: Record<string, unknown> = { success: true };
         if (candidate.not_interested) {
           result.warning = 'NOT_INTERESTED';
@@ -171,6 +178,13 @@ async function handleRequest(
         now: new Date(),
       })
     );
+
+    // The match is now resolved — clear the requirement-bound found task.
+    await safeResolveTask({
+      entityRef: compositeEntityRef(requirementId, candidateId),
+      type: 'found_candidate_for_requirement',
+      completedBy: event.auth.userId,
+    });
 
     const result: Record<string, unknown> = { success: true };
     if (candidate.not_interested) {
