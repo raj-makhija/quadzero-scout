@@ -15,6 +15,9 @@ import {
   buildSendOfferTask,
   buildStageTransitionTask,
   buildSweepTasks,
+  selectUnscreenedCandidates,
+  UNSCREENED_WINDOW_DAYS,
+  UNSCREENED_SCAN_CAP,
   buildTaskItem,
   createTaskIfAbsent,
   resolveTaskByEntity,
@@ -197,7 +200,7 @@ describe('buildSweepTasks', () => {
       staleRequirements: [{ requirementId: 'r3' }],
       filledRequirements: [{ requirementId: 'r4' }],
       lowConfidenceImports: [{ candidateId: 'c5', confidence: 0.4 }],
-      ingestedResumes: [{ candidateId: 'c6' }],
+      unscreenedCandidates: [{ candidateId: 'c6' }],
     });
     const types = specs.map((s) => s.type).sort();
     expect(types).toEqual(
@@ -231,15 +234,17 @@ describe('buildSweepTasks', () => {
     expect(specs).toHaveLength(0);
   });
 
-  it('emits screen_candidate (CAND#.. ref, no REQ prefix) for an ingested resume', () => {
-    const specs = buildSweepTasks({ now: NOW, ingestedResumes: [{ candidateId: 'c6' }] });
+  it('emits screen_candidate (CAND#.. ref, no REQ prefix) for an unscreened candidate', () => {
+    const specs = buildSweepTasks({ now: NOW, unscreenedCandidates: [{ candidateId: 'c6' }] });
     expect(specs).toHaveLength(1);
     expect(specs[0].type).toBe('screen_candidate');
     expect(specs[0].entity_ref).toBe('CAND#c6');
     expect(specs[0].action_url).toBe('/recruiter/locate/c6');
+    // due window +2 days (ticket #391 AC)
+    expect(hoursBetween(specs[0].due_date, NOW)).toBe(48);
   });
 
-  it('emits no screen_candidate task when ingestedResumes is absent', () => {
+  it('emits no screen_candidate task when unscreenedCandidates is absent', () => {
     const specs = buildSweepTasks({ now: NOW });
     expect(specs.filter((s) => s.type === 'screen_candidate')).toHaveLength(0);
   });
@@ -251,6 +256,57 @@ describe('buildSweepTasks', () => {
     expect(TASK_PRIORITY.source_candidates).toBe(4);
     expect(TASK_PRIORITY.close_requirement).toBe(4);
     expect(TASK_PRIORITY.review_bulk_import).toBe(4);
+  });
+});
+
+describe('selectUnscreenedCandidates (universal screen scan)', () => {
+  const iso = (daysAgo: number) => new Date(NOW.getTime() - daysAgo * 86_400_000).toISOString();
+
+  it('picks never-screened candidates created within the window', () => {
+    const { candidates, skipped } = selectUnscreenedCandidates(
+      [{ candidate_id: 'c1', full_name: 'Asha', created_at: iso(1) }],
+      NOW
+    );
+    expect(candidates).toEqual([{ candidateId: 'c1', candidateName: 'Asha' }]);
+    expect(skipped).toBe(0);
+  });
+
+  it('drops an already-screened candidate (last_screened_at present)', () => {
+    const { candidates } = selectUnscreenedCandidates(
+      [{ candidate_id: 'c1', created_at: iso(1), last_screened_at: iso(0) }],
+      NOW
+    );
+    expect(candidates).toHaveLength(0);
+  });
+
+  it('drops candidates created outside the N-day window', () => {
+    const { candidates } = selectUnscreenedCandidates(
+      [
+        { candidate_id: 'fresh', created_at: iso(UNSCREENED_WINDOW_DAYS - 1) },
+        { candidate_id: 'stale', created_at: iso(UNSCREENED_WINDOW_DAYS + 1) },
+      ],
+      NOW
+    );
+    expect(candidates.map((c) => c.candidateId)).toEqual(['fresh']);
+  });
+
+  it('caps at K, reports the skipped overflow, and keeps most-recent first', () => {
+    const profiles = Array.from({ length: UNSCREENED_SCAN_CAP + 5 }, (_, i) => ({
+      candidate_id: `c${i}`,
+      created_at: iso(1),
+    }));
+    const { candidates, skipped } = selectUnscreenedCandidates(profiles, NOW);
+    expect(candidates).toHaveLength(UNSCREENED_SCAN_CAP);
+    expect(skipped).toBe(5);
+    expect(candidates[0].candidateId).toBe('c0');
+  });
+
+  it('ignores profiles missing candidate_id or created_at', () => {
+    const { candidates } = selectUnscreenedCandidates(
+      [{ full_name: 'No id', created_at: iso(1) }, { candidate_id: 'c1' }],
+      NOW
+    );
+    expect(candidates).toHaveLength(0);
   });
 });
 
@@ -318,6 +374,16 @@ describe('createTaskIfAbsent (idempotency)', () => {
   it('is a no-op when an active task already exists', async () => {
     const state = installMock({ entityItems: [makeTask({})] });
     const item = await createTaskIfAbsent(SPEC, NOW);
+    expect(item).toBeNull();
+    expect(state.puts).toHaveLength(0);
+  });
+
+  it('dedupes a universal screen_candidate when one is already active for the candidate', async () => {
+    const screenSpec = buildSweepTasks({ now: NOW, unscreenedCandidates: [{ candidateId: 'c1' }] })[0];
+    const state = installMock({
+      entityItems: [makeTask({ type: 'screen_candidate', entity_ref: 'CAND#c1' })],
+    });
+    const item = await createTaskIfAbsent(screenSpec, NOW);
     expect(item).toBeNull();
     expect(state.puts).toHaveLength(0);
   });

@@ -160,6 +160,14 @@ async function processOneResume(
     skills_schema_version: parseResult.promptVersion != null
       ? `v${parseResult.promptVersion}`
       : existingCandidate?.skills_schema_version,
+    // Preserve screening-owned fields on a re-import of an existing candidate so
+    // an expired screening is not wiped back to "Not Screened" (#399).
+    last_screened_at: existingCandidate?.last_screened_at,
+    last_screened_by: existingCandidate?.last_screened_by,
+    last_screened_by_name: existingCandidate?.last_screened_by_name,
+    not_interested: existingCandidate?.not_interested,
+    not_interested_at: existingCandidate?.not_interested_at,
+    not_interested_by: existingCandidate?.not_interested_by,
     ...(preserveFormattedResume || {}),
     created_at: existingCandidate?.created_at || now,
     last_updated: now,
