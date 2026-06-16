@@ -12,6 +12,8 @@ import {
   buildFollowUpClientTask,
   buildScheduleInterviewTask,
   buildRecordInterviewFeedbackTask,
+  buildPreInterviewReminderTask,
+  MORNING_ANCHOR_UTC_HOURS,
   buildSendOfferTask,
   buildStageTransitionTask,
   buildSweepTasks,
@@ -157,6 +159,44 @@ describe('event-driven task builders', () => {
     const t = buildRecordInterviewFeedbackTask({ ...PIPELINE_ARGS, scheduledAt });
     expect(t.priority).toBe(1);
     expect(new Date(t.due_date).toISOString()).toBe('2026-06-03T11:00:00.000Z');
+  });
+
+  it('pre_interview_reminder: P2, due = min(morning anchor, interview − 1h)', () => {
+    expect(MORNING_ANCHOR_UTC_HOURS).toBe(3.5);
+
+    // Mid-afternoon interview: morning anchor (03:30) is earlier than 1h-before (08:30) → anchor wins.
+    const afternoon = buildPreInterviewReminderTask({ ...PIPELINE_ARGS, scheduledAt: '2026-06-03T09:30:00.000Z' });
+    expect(afternoon.type).toBe('pre_interview_reminder');
+    expect(afternoon.priority).toBe(2);
+    expect(new Date(afternoon.due_date).toISOString()).toBe('2026-06-03T03:30:00.000Z');
+
+    // Early-morning interview: 1h-before (03:00) is earlier than morning anchor (03:30) → 1h-before wins.
+    const earlyMorning = buildPreInterviewReminderTask({ ...PIPELINE_ARGS, scheduledAt: '2026-06-03T04:00:00.000Z' });
+    expect(new Date(earlyMorning.due_date).toISOString()).toBe('2026-06-03T03:00:00.000Z');
+
+    // Tie: interview exactly 1h after the anchor → both equal 03:30.
+    const tie = buildPreInterviewReminderTask({ ...PIPELINE_ARGS, scheduledAt: '2026-06-03T04:30:00.000Z' });
+    expect(new Date(tie.due_date).toISOString()).toBe('2026-06-03T03:30:00.000Z');
+
+    // Far-future interview: due on the morning of that specific day, not "now + offset".
+    const farFuture = buildPreInterviewReminderTask({ ...PIPELINE_ARGS, scheduledAt: '2026-07-15T10:00:00.000Z' });
+    expect(new Date(farFuture.due_date).toISOString()).toBe('2026-07-15T03:30:00.000Z');
+  });
+
+  it('pre_interview_reminder: short-notice interview still produces a task with a past due date', () => {
+    // Interview 30 min out → 1h-before is in the past; task is still created (not dropped).
+    const scheduledAt = new Date(NOW.getTime() + 30 * 60_000).toISOString();
+    const t = buildPreInterviewReminderTask({ ...PIPELINE_ARGS, scheduledAt });
+    expect(t).not.toBeNull();
+    expect(t.type).toBe('pre_interview_reminder');
+    expect(new Date(t.due_date).getTime()).toBe(new Date(scheduledAt).getTime() - 3_600_000);
+  });
+
+  it('pre_interview_reminder: same-day booking with a past morning anchor still produces a task', () => {
+    // Interview later today; the morning anchor of today is already in the past at NOW.
+    const t = buildPreInterviewReminderTask({ ...PIPELINE_ARGS, scheduledAt: '2026-06-01T10:00:00.000Z' });
+    expect(t).not.toBeNull();
+    expect(new Date(t.due_date).toISOString()).toBe('2026-06-01T03:30:00.000Z');
   });
 
   it('send_offer: only proceed decision, P2, due +48h', () => {
@@ -376,6 +416,24 @@ describe('createTaskIfAbsent (idempotency)', () => {
     const item = await createTaskIfAbsent(SPEC, NOW);
     expect(item).toBeNull();
     expect(state.puts).toHaveLength(0);
+  });
+
+  it('pre_interview_reminder: re-scheduling is a no-op while an active reminder exists', async () => {
+    const reminderSpec = buildPreInterviewReminderTask({ ...PIPELINE_ARGS, scheduledAt: '2026-06-03T09:30:00.000Z' });
+
+    // First schedule: no active reminder → task is written.
+    const first = installMock({ entityItems: [] });
+    const created = await createTaskIfAbsent(reminderSpec, NOW);
+    expect(created).not.toBeNull();
+    expect(first.puts).toHaveLength(1);
+
+    // Re-schedule for the same req+candidate while the reminder is still active → dedup fires, no Put.
+    const second = installMock({
+      entityItems: [makeTask({ type: 'pre_interview_reminder', entity_ref: 'REQ#r1#CAND#c1' })],
+    });
+    const dup = await createTaskIfAbsent(reminderSpec, NOW);
+    expect(dup).toBeNull();
+    expect(second.puts).toHaveLength(0);
   });
 
   it('dedupes a universal screen_candidate when one is already active for the candidate', async () => {
