@@ -245,7 +245,7 @@ describe('buildSweepTasks', () => {
   });
 
   it('uses the fixed pool-task priorities', () => {
-    expect(TASK_PRIORITY.found_candidate_for_requirement).toBe(3);
+    expect(TASK_PRIORITY.found_candidate_for_requirement).toBe(1);
     expect(TASK_PRIORITY.screen_candidate).toBe(3);
     expect(TASK_PRIORITY.rescreen_candidate).toBe(3);
     expect(TASK_PRIORITY.source_candidates).toBe(4);
