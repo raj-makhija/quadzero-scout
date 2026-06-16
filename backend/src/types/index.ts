@@ -71,6 +71,9 @@ export const CandidateProfileSchema = z.object({
   email: z.string().email(),
   phone: z.string().optional(),
   location: z.string().nullable().optional(),
+  city: z.string().nullable().optional(),
+  state: z.string().nullable().optional(),
+  country: z.string().nullable().optional(),
   primarySkills: z.array(z.string()).min(1),
   primarySkillYears: z.record(z.string(), z.number().min(0).max(50)),
   secondarySkills: z.array(z.string()).optional().default([]),
@@ -101,6 +104,9 @@ export interface CandidateItem {
   email: string;
   phone?: string;
   location?: string;
+  city?: string;
+  state?: string;
+  country?: string;
   primary_skills: string[];
   primary_skill_years: Record<string, number>;
   secondary_skills: string[];
@@ -173,6 +179,9 @@ export const LLMResumeOutputSchema = z.object({
   }),
   phone: z.string().optional().nullable(),
   location: z.string().optional().nullable(),
+  city: z.string().optional().nullable(),
+  state: z.string().optional().nullable(),
+  country: z.string().optional().nullable(),
   primarySkills: z.array(z.string()).nullable().optional().transform(v => v ?? []),
   primarySkillYears: z.record(z.string(), z.number().nullable()).nullable().optional().transform(v => {
     if (!v) return {};
@@ -1327,6 +1336,9 @@ export interface ScreeningProfileData {
   email?: string;
   phone?: string;
   location?: string;
+  city?: string;
+  state?: string;
+  country?: string;
   primary_skills?: string[];
   primary_skill_years?: Record<string, number>;
   secondary_skills?: string[];

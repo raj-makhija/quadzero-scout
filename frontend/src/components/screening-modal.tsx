@@ -55,7 +55,9 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
 
   // Core fields
   const [phone, setPhone] = useState('');
-  const [location, setLocation] = useState('');
+  const [city, setCity] = useState('');
+  const [stateRegion, setStateRegion] = useState('');
+  const [country, setCountry] = useState('');
   const [currentCtc, setCurrentCtc] = useState('');
   const [expectedCtc, setExpectedCtc] = useState('');
   const [expectedCtcMode, setExpectedCtcMode] = useState<'explicit' | 'negotiable'>('explicit');
@@ -155,7 +157,10 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
         setFullName(profile.fullName || '');
         setEmail(profile.email || '');
         setPhone(profile.phone || '');
-        setLocation(profile.location || '');
+        // city falls back to the legacy location for records saved before #396
+        setCity(profile.city || profile.location || '');
+        setStateRegion(profile.state || '');
+        setCountry(profile.country || '');
         setCurrentCtc(profile.currentCtc != null ? String(profile.currentCtc) : '');
         setExpectedCtc(profile.expectedCtc != null ? String(profile.expectedCtc) : '');
         setExpectedCtcMode((profile.expectedCtcType as 'explicit' | 'negotiable') || 'explicit');
@@ -209,7 +214,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
         // Identify empty fields
         const empty = new Set<string>();
         if (!profile.phone) empty.add('phone');
-        if (!profile.location) empty.add('location');
+        if (!profile.city && !profile.location) empty.add('city');
         if (profile.currentCtc == null) empty.add('currentCtc');
         if (profile.expectedCtc == null) empty.add('expectedCtc');
         if (!profile.availability) empty.add('availability');
@@ -222,7 +227,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
         // Fall back to search result data if available
         if (candidate) {
           setFullName(resolvedCandidateName || '');
-          setLocation(candidate.location || '');
+          setCity(candidate.location || '');
           setCurrentCtc(candidate.currentCtc != null ? String(candidate.currentCtc) : '');
           setExpectedCtc(candidate.expectedCtc != null ? String(candidate.expectedCtc) : '');
           setAvailability(candidate.availability || '');
@@ -386,7 +391,11 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
       if (fullName) updatedValues.fullName = fullName;
       if (email) updatedValues.email = email;
       if (phone) updatedValues.phone = phone;
-      updatedValues.location = location || null;
+      updatedValues.city = city || null;
+      updatedValues.state = stateRegion || null;
+      updatedValues.country = country || null;
+      // Keep legacy `location` (city-only) in sync so search/matching is unaffected.
+      updatedValues.location = city || null;
       if (currentCtc !== '') updatedValues.currentCtc = parseFloat(currentCtc);
       else updatedValues.currentCtc = null;
       updatedValues.expectedCtcType = expectedCtcMode;
@@ -541,7 +550,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
         seniority: (seniority as CandidateSearchResult['seniority']) || undefined,
       };
       if (fullName) refreshedFields.fullName = fullName;
-      if (location) refreshedFields.location = location;
+      if (city) refreshedFields.location = city;
       refreshedFields.notInterested = notInterested;
       refreshedFields.notInterestedAt = notInterested ? new Date().toISOString() : undefined;
 
@@ -577,7 +586,7 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
       setLoading(false);
     }
   }, [
-    resolvedCandidateId, fullName, email, phone, location,
+    resolvedCandidateId, fullName, email, phone, city, stateRegion, country,
     currentCtc, expectedCtc, expectedCtcMode, availability, engagementModel,
     totalExperience, seniority, primarySkillsText, secondarySkillsText,
     industries, roles, certifications, summary, notes, notInterested,
@@ -938,15 +947,33 @@ export function ScreeningModal({ candidate, candidateId: candidateIdProp, candid
                     />
                   </FormField>
                   <FormField
-                    label="Location"
-                    htmlFor="location"
-                    className={emptyFields.has('location') && !location ? 'bg-amber-50 dark:bg-amber-900/10 p-2 rounded' : ''}
+                    label="City"
+                    htmlFor="city"
+                    className={emptyFields.has('city') && !city ? 'bg-amber-50 dark:bg-amber-900/10 p-2 rounded' : ''}
                   >
                     <FormInput
-                      id="location"
-                      value={location}
-                      onChange={(e) => setLocation(e.target.value)}
-                      placeholder="e.g. Bangalore, India"
+                      id="city"
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                      placeholder="e.g. Bangalore"
+                    />
+                  </FormField>
+                </div>
+                <div className="grid grid-cols-2 gap-4 mt-3">
+                  <FormField label="State / Province" htmlFor="state">
+                    <FormInput
+                      id="state"
+                      value={stateRegion}
+                      onChange={(e) => setStateRegion(e.target.value)}
+                      placeholder="e.g. Karnataka"
+                    />
+                  </FormField>
+                  <FormField label="Country" htmlFor="country">
+                    <FormInput
+                      id="country"
+                      value={country}
+                      onChange={(e) => setCountry(e.target.value)}
+                      placeholder="e.g. India"
                     />
                   </FormField>
                 </div>

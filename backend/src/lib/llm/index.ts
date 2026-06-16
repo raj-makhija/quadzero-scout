@@ -10,6 +10,7 @@ import { GeminiProvider } from './gemini.js';
 import { isRateLimitError } from './base.js';
 import { LLMResumeOutputSchema, LLMJDOutputSchema, ScreeningQuestionsSchema, LlmRerankOutputSchema } from '../../types/index.js';
 import { normalizeSeniorityArray } from '../seniorityNormalizer.js';
+import { normalizeLocation } from '../locationNormalizer.js';
 import type { LLMResumeOutput, LLMJDOutput, ScreeningQuestion } from '../../types/index.js';
 import { convertToLpa, type RateUnit } from '../ctcConversion.js';
 import { getActivePrompt } from '../dynamodb.js';
@@ -79,7 +80,9 @@ You MUST respond with valid JSON matching this exact schema:
   "fullName": "string - candidate's full name",
   "email": "string or null - email address",
   "phone": "string or null - phone number",
-  "location": "string or null - city name only, no country",
+  "city": "string or null - the city/town the candidate is based in (e.g. 'Bangalore'). For city-states like Singapore, set the city to the city name",
+  "state": "string or null - the state/province/region if present in the resume (e.g. 'Karnataka'). Use null if not stated — do NOT infer or fabricate it",
+  "country": "string or null - the country if present in the resume (e.g. 'India'). Use null if not stated — do NOT infer or fabricate it",
   "primarySkills": ["array of main technical skills, lowercase"],
   "primarySkillYears": {"skill": years_as_number},
   "secondarySkills": ["array of secondary/soft skills, lowercase"],
@@ -110,7 +113,8 @@ Rules:
 7. If supplementary information (email body / cover letter) is provided after the resume, use it to fill in missing fields — especially currentCtc, expectedCtc, and availability (notice period). Resume data takes precedence; supplementary data fills gaps
 8. For linkedinUrl, githubUrl, and hackerrankUrl, extract any LinkedIn, GitHub, or HackerRank profile URLs found in the resume text or supplementary information. Look for patterns like linkedin.com/in/..., github.com/..., hackerrank.com/..., or explicit labels like "LinkedIn:", "GitHub:", "HackerRank:". Return null if not found
 9. For skillSynonyms: generate 2-3 alternative phrasings for each extracted skill (both primarySkills and secondarySkills). Include common abbreviations, longer/shorter forms, and semantically equivalent terms. This helps with matching against job descriptions that may use different terminology
-10. For stack abbreviations: expand MERN (MongoDB → mongodb, Express.js → expressjs, React → react, Node.js → nodejs), MEAN (MongoDB → mongodb, Express.js → expressjs, Angular → angular, Node.js → nodejs), PERN (PostgreSQL → postgresql, Express.js → expressjs, React → react, Node.js → nodejs), LAMP (Linux → linux, Apache → apache, MySQL → mysql, PHP → php) into their individual component technologies. Do NOT emit the abbreviation itself as a skill — emit the components instead`;
+10. For stack abbreviations: expand MERN (MongoDB → mongodb, Express.js → expressjs, React → react, Node.js → nodejs), MEAN (MongoDB → mongodb, Express.js → expressjs, Angular → angular, Node.js → nodejs), PERN (PostgreSQL → postgresql, Express.js → expressjs, React → react, Node.js → nodejs), LAMP (Linux → linux, Apache → apache, MySQL → mysql, PHP → php) into their individual component technologies. Do NOT emit the abbreviation itself as a skill — emit the components instead
+11. For location: split the candidate's location into city, state, and country as separate fields. Only populate a field if it is actually present in the resume — never infer state or country from the city. For a two-segment value like "Bangalore, India" treat the first segment as the city and the second as the country (state stays null); for "Bangalore, Karnataka" the second segment is the state. If a city name itself contains a comma (e.g. "Washington, D.C."), keep the full city name intact in the city field. If no location is present, set all three to null`;
 
 const FALLBACK_RESUME_FORMATTER_PROMPT = `Format the provided resume into a clean, professional Markdown document.
 Use # for the candidate's FIRST NAME ONLY, ## for major sections (Professional Summary, Technical Skills, Work Experience, Education), ### for role titles.
@@ -291,8 +295,21 @@ export async function parseResume(resumeText: string, supplementaryText?: string
     throw new Error(`Invalid LLM output structure: ${validated.error.message}`);
   }
 
-  // Calculate confidence based on completeness
   const output = validated.data;
+
+  // Keep the legacy single `location` (city-only, consumed by search/matching/
+  // notifications) in sync with the new city/state/country fields, in both
+  // directions. This lets the active DB prompt be updated independently: until
+  // it emits city/state/country, we still derive `city` from `location`; and
+  // once it does, `location` stays populated for the unchanged downstream code.
+  if (!output.city && output.location) {
+    output.city = normalizeLocation(output.location) ?? null;
+  }
+  if (output.city) {
+    output.location = output.city;
+  }
+
+  // Calculate confidence based on completeness
   let filledFields = 0;
   let totalFields = 10;
 

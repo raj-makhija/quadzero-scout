@@ -1056,6 +1056,9 @@ export interface ExtractedProfile {
   email?: string | null;
   phone?: string | null;
   location?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
   primarySkills: string[];
   primarySkillYears: Record<string, number>;
   secondarySkills?: string[];
@@ -1739,6 +1742,9 @@ export interface ScreeningUpdatedValues {
   email?: string;
   phone?: string;
   location?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
   primarySkills?: string[];
   primarySkillYears?: Record<string, number>;
   secondarySkills?: string[];
@@ -1788,6 +1794,9 @@ export interface ScreeningProfileData {
   email?: string;
   phone?: string;
   location?: string;
+  city?: string;
+  state?: string;
+  country?: string;
   primary_skills?: string[];
   primary_skill_years?: Record<string, number>;
   secondary_skills?: string[];
