@@ -228,6 +228,72 @@ describe('ShortlistModal', () => {
     expect(btn).toBeDisabled();
   });
 
+  it('shows bypass button when mandatory documents are missing', async () => {
+    mockListAttachments.mockResolvedValue({ attachments: [] });
+    renderModal();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Shortlist without mandatory documents/ })).toBeInTheDocument();
+    });
+  });
+
+  it('does not show bypass button when all documents are present', async () => {
+    mockListAttachments.mockResolvedValue({ attachments: [PAN, AADHAAR] });
+    renderModal();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Shortlist Candidate/ })).toBeEnabled();
+    });
+    expect(screen.queryByRole('button', { name: /Shortlist without mandatory documents/ })).not.toBeInTheDocument();
+  });
+
+  it('does not show bypass button when candidate is already shortlisted', async () => {
+    const shortlistedCandidate = { ...mockCandidate, isShortlisted: true };
+    mockGetProfile.mockResolvedValue({ expectedCtc: 15, currentCtc: 10, totalExperience: 6 });
+    mockListAttachments.mockResolvedValue({ attachments: [] });
+
+    render(
+      <ShortlistModal
+        candidate={shortlistedCandidate}
+        requirementContext={mockRequirementContext}
+        searchCriteria={mockSearchCriteria}
+        onClose={vi.fn()}
+        onShortlisted={vi.fn()}
+        onRescreen={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /Shortlist without mandatory documents/ })).not.toBeInTheDocument();
+    });
+  });
+
+  it('bypass button calls shortlistCandidate with bypassDocumentCheck=true and fires onShortlisted', async () => {
+    mockListAttachments.mockResolvedValue({ attachments: [] });
+    mockShortlistCandidate.mockResolvedValue({ success: true });
+    const onShortlisted = vi.fn();
+    mockGetProfile.mockResolvedValue({ expectedCtc: 15, currentCtc: 10, totalExperience: 6 });
+
+    render(
+      <ShortlistModal
+        candidate={mockCandidate}
+        requirementContext={mockRequirementContext}
+        searchCriteria={mockSearchCriteria}
+        onClose={vi.fn()}
+        onShortlisted={onShortlisted}
+        onRescreen={vi.fn()}
+      />
+    );
+
+    const bypassBtn = await screen.findByRole('button', { name: /Shortlist without mandatory documents/ });
+    fireEvent.click(bypassBtn);
+
+    await waitFor(() => {
+      expect(mockShortlistCandidate).toHaveBeenCalledWith('req_1', 'cand_1', undefined, undefined, true);
+      expect(onShortlisted).toHaveBeenCalledWith('cand_1');
+    });
+  });
+
   it('enables Shortlist when both PAN and Aadhaar are present', async () => {
     mockListAttachments.mockResolvedValue({ attachments: [PAN, AADHAAR] });
     renderModal();

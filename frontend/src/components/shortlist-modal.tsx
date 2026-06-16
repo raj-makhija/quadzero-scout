@@ -65,6 +65,7 @@ export function ShortlistModal({
 }: ShortlistModalProps) {
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingBypass, setLoadingBypass] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [confirmNotInterested, setConfirmNotInterested] = useState(false);
   const [pricingResult, setPricingResult] = useState<PricingOutput | null>(null);
@@ -196,6 +197,15 @@ export function ShortlistModal({
 
   const isShortlistMode = requirementContext != null;
 
+  const rates = pricingResult ? {
+    proposedRateHourly: pricingResult.finalQuotedHourly,
+    proposedRateMonthly: pricingResult.finalQuotedMonthly,
+    proposedRateAnnual: pricingResult.finalQuotedAnnual,
+    internalRateHourly: pricingResult.minimumBillingHourly,
+    internalRateMonthly: pricingResult.minimumBillingMonthly,
+    internalRateAnnual: pricingResult.minimumBillingAnnual,
+  } : undefined;
+
   const handleShortlist = useCallback(async () => {
     if (!requirementContext) return;
     setLoading(true);
@@ -205,14 +215,7 @@ export function ShortlistModal({
         requirementContext.requirementId,
         candidate.candidateId,
         notes || undefined,
-        pricingResult ? {
-          proposedRateHourly: pricingResult.finalQuotedHourly,
-          proposedRateMonthly: pricingResult.finalQuotedMonthly,
-          proposedRateAnnual: pricingResult.finalQuotedAnnual,
-          internalRateHourly: pricingResult.minimumBillingHourly,
-          internalRateMonthly: pricingResult.minimumBillingMonthly,
-          internalRateAnnual: pricingResult.minimumBillingAnnual,
-        } : undefined
+        rates
       );
       onShortlisted(candidate.candidateId);
     } catch (err) {
@@ -228,7 +231,35 @@ export function ShortlistModal({
     } finally {
       setLoading(false);
     }
-  }, [requirementContext, candidate.candidateId, notes, onShortlisted, pricingResult]);
+  }, [requirementContext, candidate.candidateId, notes, onShortlisted, rates]);
+
+  const handleShortlistBypass = useCallback(async () => {
+    if (!requirementContext) return;
+    setLoadingBypass(true);
+    setErrorMessage('');
+    try {
+      await api.shortlistCandidate(
+        requirementContext.requirementId,
+        candidate.candidateId,
+        notes || undefined,
+        rates,
+        true
+      );
+      onShortlisted(candidate.candidateId);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.code === 'VALIDATION_ERROR' && err.message.includes('already shortlisted')) {
+          onShortlisted(candidate.candidateId);
+          return;
+        }
+        setErrorMessage(err.message);
+      } else {
+        setErrorMessage('Failed to shortlist candidate. Please try again.');
+      }
+    } finally {
+      setLoadingBypass(false);
+    }
+  }, [requirementContext, candidate.candidateId, notes, onShortlisted, rates]);
 
   const screeningStatus = getScreeningStatus(candidate.lastScreenedAt, candidate.notInterested);
 
@@ -777,20 +808,38 @@ export function ShortlistModal({
                   Candidate is Not Interested — Shortlist Anyway?
                 </button>
               ) : (
-                <button
-                  onClick={handleShortlist}
-                  disabled={loading || missingDocs.length > 0}
-                  className="btn-primary w-full flex items-center justify-center gap-2"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Shortlisting...
-                    </>
-                  ) : (
-                    'Shortlist Candidate'
+                <>
+                  <button
+                    onClick={handleShortlist}
+                    disabled={loading || loadingBypass || missingDocs.length > 0}
+                    className="btn-primary w-full flex items-center justify-center gap-2"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Shortlisting...
+                      </>
+                    ) : (
+                      'Shortlist Candidate'
+                    )}
+                  </button>
+                  {missingDocs.length > 0 && (
+                    <button
+                      onClick={handleShortlistBypass}
+                      disabled={loadingBypass || loading}
+                      className="w-full btn btn-outline border-amber-500 text-amber-700 hover:bg-amber-50 dark:border-amber-400 dark:text-amber-300 dark:hover:bg-amber-900/20 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {loadingBypass ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Shortlisting...
+                        </>
+                      ) : (
+                        'Shortlist without mandatory documents'
+                      )}
+                    </button>
                   )}
-                </button>
+                </>
               )}
               <div className="text-center">
                 <button

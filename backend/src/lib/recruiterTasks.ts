@@ -51,6 +51,7 @@ export type TaskType =
   | 'follow_up_offer'
   | 'confirm_joining'
   | 'post_placement_checkin'
+  | 'get_mandatory_documents'
   // Scheduled sweep (pool)
   | 'found_candidate_for_requirement'
   | 'screen_candidate'
@@ -105,6 +106,7 @@ export interface RecruiterTask {
 export const TASK_PRIORITY: Record<TaskType, TaskPriority> = {
   record_interview_feedback: 1,
   found_candidate_for_requirement: 1,
+  get_mandatory_documents: 1,
   submit_to_client: 2,
   follow_up_client: 2,
   schedule_interview: 2,
@@ -157,6 +159,7 @@ function actionUrlFor(type: TaskType, requirementId?: string, candidateId?: stri
     case 'screen_candidate':
     case 'rescreen_candidate':
     case 'review_bulk_import':
+    case 'get_mandatory_documents':
       return candidateId ? `/recruiter/locate/${candidateId}` : '/recruiter/search';
     default:
       return requirementId ? `/recruiter/requirements/${requirementId}` : '/recruiter/search';
@@ -242,6 +245,10 @@ interface PipelineSpecArgs {
 
 export function buildSubmitToClientTask(p: PipelineSpecArgs): TaskSpec {
   return spec('submit_to_client', p.ownerId, p.requirementId, p.candidateId, p.context, addHours(p.now, 24));
+}
+
+export function buildGetMandatoryDocumentsTask(p: PipelineSpecArgs): TaskSpec {
+  return spec('get_mandatory_documents', p.ownerId, p.requirementId, p.candidateId, p.context, addHours(p.now, 24));
 }
 
 export function buildFollowUpClientTask(p: PipelineSpecArgs): TaskSpec {

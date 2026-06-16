@@ -282,6 +282,7 @@ export const ShortlistCandidateRequestSchema = z.object({
   internalRateHourly: z.number().positive().optional(),
   internalRateMonthly: z.number().positive().optional(),
   internalRateAnnual: z.number().positive().optional(),
+  bypassDocumentCheck: z.boolean().optional(),
 });
 
 // Mark Not Suitable Request Validation
