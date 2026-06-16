@@ -57,6 +57,7 @@ export function formatSeniority(seniority: string): string {
 export function formatAvailability(availability: string): string {
   const map: Record<string, string> = {
     immediate: 'Immediate',
+    offer_in_hand: 'Offer in Hand',
     '1_week': '1 Week',
     '2_weeks': '2 Weeks',
     '1_month': '1 Month',
@@ -119,6 +120,7 @@ export function calculateNegotiableCtc(currentCtc: number, totalExperience: numb
 
 export const AVAILABILITY_OPTIONS = [
   { value: 'immediate', label: 'Immediate' },
+  { value: 'offer_in_hand', label: 'Offer in Hand' },
   { value: '1_week', label: '1 Week' },
   { value: '2_weeks', label: '2 Weeks' },
   { value: '1_month', label: '1 Month' },

@@ -336,7 +336,7 @@ describe('SaveProfileRequestSchema', () => {
   });
 
   it('accepts all valid availability enum values', () => {
-    const validValues = ['immediate', '1_week', '2_weeks', '1_month', '2_months', '3_months', 'negotiable'];
+    const validValues = ['immediate', 'offer_in_hand', '1_week', '2_weeks', '1_month', '2_months', '3_months', 'negotiable'];
     for (const val of validValues) {
       const result = validate(SaveProfileRequestSchema, {
         profile: { ...validProfile, availability: val },
@@ -922,6 +922,14 @@ describe('UpdateCandidateCustomFieldsRequestSchema', () => {
 });
 
 describe('ScreenCandidateRequestSchema', () => {
+  it('accepts availability "offer_in_hand"', () => {
+    const result = validate(ScreenCandidateRequestSchema, {
+      candidateId: 'cand-123',
+      updatedValues: { availability: 'offer_in_hand' },
+    });
+    expect(result.success).toBe(true);
+  });
+
   it('accepts summary exceeding 2000 characters', () => {
     const result = validate(ScreenCandidateRequestSchema, {
       candidateId: 'cand-123',
