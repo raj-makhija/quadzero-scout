@@ -104,6 +104,7 @@ export interface RecruiterTask {
 /** Fixed priority per task type (ticket #153 priority model). */
 export const TASK_PRIORITY: Record<TaskType, TaskPriority> = {
   record_interview_feedback: 1,
+  found_candidate_for_requirement: 1,
   submit_to_client: 2,
   follow_up_client: 2,
   schedule_interview: 2,
@@ -111,7 +112,6 @@ export const TASK_PRIORITY: Record<TaskType, TaskPriority> = {
   follow_up_offer: 2,
   confirm_joining: 3,
   post_placement_checkin: 3,
-  found_candidate_for_requirement: 3,
   screen_candidate: 3,
   rescreen_candidate: 3,
   source_candidates: 4,
