@@ -488,6 +488,39 @@ describe('POST /candidate/save-profile — skillSynonyms (#281)', () => {
     const savedItem = vi.mocked(saveCandidateProfile).mock.calls[0][0];
     expect(savedItem.skill_synonyms).toEqual({ react: ['reactjs'] });
   });
+
+  // #399 — a re-save must not wipe screening-owned fields. Without this the
+  // PutItem clobbers last_screened_at and an expired screening shows as
+  // "Not Screened".
+  it('preserves screening-owned fields on re-save', async () => {
+    vi.mocked(getCandidateByEmail).mockResolvedValue({
+      candidate_id: 'cand_existing',
+      email: 'john@example.com',
+      last_screened_at: '2026-05-01T00:00:00Z',
+      last_screened_by: 'user_123',
+      last_screened_by_name: 'Jane Recruiter',
+      not_interested: true,
+      not_interested_at: '2026-05-01T00:00:00Z',
+      not_interested_by: 'user_123',
+    } as never);
+
+    const event = makeEvent({
+      body: JSON.stringify({
+        profile: { ...baseProfile },
+        resumeS3Key: 'resumes/2024/01/abc.pdf',
+      }),
+    });
+    const result = await saveProfileHandler(event);
+
+    expect(result.statusCode).toBe(200);
+    const savedItem = vi.mocked(saveCandidateProfile).mock.calls[0][0];
+    expect(savedItem.last_screened_at).toBe('2026-05-01T00:00:00Z');
+    expect(savedItem.last_screened_by).toBe('user_123');
+    expect(savedItem.last_screened_by_name).toBe('Jane Recruiter');
+    expect(savedItem.not_interested).toBe(true);
+    expect(savedItem.not_interested_at).toBe('2026-05-01T00:00:00Z');
+    expect(savedItem.not_interested_by).toBe('user_123');
+  });
 });
 
 // ---------------------------------------------------------------------------
