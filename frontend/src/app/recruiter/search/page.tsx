@@ -69,6 +69,9 @@ export default function RecruiterSearchPage() {
   const [llmPending, setLlmPending] = useState(false);
   const rerankPollCount = useRef(0);
 
+  // Cover letter modal state
+  const [coverLetterCandidate, setCoverLetterCandidate] = useState<CandidateSearchResult | null>(null);
+
   // Shortlisting state
   const [shortlistModalCandidate, setShortlistModalCandidate] = useState<CandidateSearchResult | null>(null);
   const [requirementContext, setRequirementContext] = useState<{
@@ -1409,6 +1412,17 @@ export default function RecruiterSearchPage() {
                         >
                           View Original
                         </button>
+                        {candidate.coverLetter && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCoverLetterCandidate(candidate);
+                            }}
+                            className="text-xs text-primary-600 dark:text-primary-400 hover:underline"
+                          >
+                            View Covering Letter
+                          </button>
+                        )}
                         <span className="text-xs text-gray-400 dark:text-gray-500">
                           Updated {formatRelativeTime(candidate.lastUpdated)}
                         </span>
@@ -1501,6 +1515,39 @@ export default function RecruiterSearchPage() {
           formattingCandidateId={formattingCandidateId}
           onSaveRequirement={() => { setShortlistModalCandidate(null); setViewMode('requirement_details'); }}
         />
+      )}
+
+      {/* Cover Letter Modal */}
+      {coverLetterCandidate && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => setCoverLetterCandidate(null)}
+        >
+          <div
+            className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl mx-4 flex flex-col max-h-[80vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                Covering Letter — {coverLetterCandidate.fullName}
+              </h2>
+              <button
+                onClick={() => setCoverLetterCandidate(null)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                aria-label="Close"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="px-6 py-4 overflow-y-auto flex-1">
+              <pre className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-sans">
+                {coverLetterCandidate.coverLetter}
+              </pre>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
