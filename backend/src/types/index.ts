@@ -14,6 +14,7 @@ export type Seniority = z.infer<typeof SeniorityEnum>;
 
 export const AvailabilityEnum = z.enum([
   'immediate',
+  'offer_in_hand',
   '1_week',
   '2_weeks',
   '1_month',
@@ -349,6 +350,7 @@ export interface CandidateSearchResult {
   subVendorContactPerson?: string;
   subVendorContactPhone?: string;
   subVendorContactEmail?: string;
+  coverLetter?: string;
   // LLM tie-break rationale — present only when an LLM re-rank is applied (#239).
   rationale?: string;
 }

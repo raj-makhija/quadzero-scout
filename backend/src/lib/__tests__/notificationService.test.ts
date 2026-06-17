@@ -67,6 +67,9 @@ vi.mock('../emailService.js', () => ({
 
 vi.mock('../config.js', () => ({
   config: {
+    featureFlags: {
+      recruiterMatchEmailEnabled: true,
+    },
     email: {
       senderEmail: 'notify@example.com',
       frontendBaseUrl: 'https://dev.scout.quadzero.com',
@@ -263,6 +266,74 @@ describe('notifyMatchingRecruiters', () => {
 
     await expect(notifyMatchingRecruiters(['cand_1'])).resolves.toBeUndefined();
     expect(mockSendEmail).toHaveBeenCalledOnce();
+  });
+
+  it('TC-NOTIFY-018: flag off → no email sent, but cache is still updated', async () => {
+    const { config } = await import('../config.js');
+    const original = config.featureFlags.recruiterMatchEmailEnabled;
+    (config.featureFlags as { recruiterMatchEmailEnabled: boolean }).recruiterMatchEmailEnabled = false;
+
+    mockGetCandidateById.mockResolvedValue(candidateA);
+    mockGetAllActiveRequirements.mockResolvedValue([requirementActive]);
+    mockCalculateMatchScore.mockReturnValue(goodMatchScore);
+
+    await notifyMatchingRecruiters(['cand_1']);
+
+    // Flag gate suppresses email regardless of SES config / opted-in recruiters
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    // ...but cache maintenance runs for all active requirements
+    expect(mockUpdateCacheForCandidates).toHaveBeenCalledOnce();
+
+    (config.featureFlags as { recruiterMatchEmailEnabled: boolean }).recruiterMatchEmailEnabled = original;
+  });
+
+  it('TC-NOTIFY-019: flag off AND SES absent → flag gate fires first, cache still updated', async () => {
+    const { config } = await import('../config.js');
+    const originalFlag = config.featureFlags.recruiterMatchEmailEnabled;
+    const originalSender = config.email.senderEmail;
+    (config.featureFlags as { recruiterMatchEmailEnabled: boolean }).recruiterMatchEmailEnabled = false;
+    (config.email as { senderEmail: string }).senderEmail = '';
+
+    mockGetCandidateById.mockResolvedValue(candidateA);
+    mockGetAllActiveRequirements.mockResolvedValue([requirementActive]);
+
+    await notifyMatchingRecruiters(['cand_1']);
+
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(mockUpdateCacheForCandidates).toHaveBeenCalledOnce();
+
+    (config.featureFlags as { recruiterMatchEmailEnabled: boolean }).recruiterMatchEmailEnabled = originalFlag;
+    (config.email as { senderEmail: string }).senderEmail = originalSender;
+  });
+
+  it('TC-NOTIFY-020: flag off with multiple candidates → cache receives all candidates, zero emails', async () => {
+    const { config } = await import('../config.js');
+    const original = config.featureFlags.recruiterMatchEmailEnabled;
+    (config.featureFlags as { recruiterMatchEmailEnabled: boolean }).recruiterMatchEmailEnabled = false;
+
+    const candidateB = { ...candidateA, candidate_id: 'cand_2', full_name: 'Jane Smith' };
+    const candidateC = { ...candidateA, candidate_id: 'cand_3', full_name: 'Bob Lee' };
+    mockGetCandidateById
+      .mockResolvedValueOnce(candidateA)
+      .mockResolvedValueOnce(candidateB)
+      .mockResolvedValueOnce(candidateC);
+    mockGetAllActiveRequirements.mockResolvedValue([requirementActive]);
+    mockCalculateMatchScore.mockReturnValue(goodMatchScore);
+
+    await notifyMatchingRecruiters(['cand_1', 'cand_2', 'cand_3']);
+
+    // No email for any candidate
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    // Cache updated exactly once, receiving all three candidates
+    expect(mockUpdateCacheForCandidates).toHaveBeenCalledOnce();
+    const [candidatesArg] = mockUpdateCacheForCandidates.mock.calls[0];
+    expect((candidatesArg as { candidate_id: string }[]).map((c) => c.candidate_id)).toEqual([
+      'cand_1',
+      'cand_2',
+      'cand_3',
+    ]);
+
+    (config.featureFlags as { recruiterMatchEmailEnabled: boolean }).recruiterMatchEmailEnabled = original;
   });
 
   it('TC-NOTIFY-008: skips recruiter silently if user not found in DB', async () => {

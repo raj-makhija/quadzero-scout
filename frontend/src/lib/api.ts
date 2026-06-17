@@ -667,11 +667,12 @@ class ApiClient {
     rates?: {
       proposedRateHourly: number; proposedRateMonthly: number; proposedRateAnnual: number;
       internalRateHourly: number; internalRateMonthly: number; internalRateAnnual: number;
-    }
+    },
+    bypassDocumentCheck?: boolean
   ) {
     return this.request<{ success: boolean }>('/recruiter/shortlist', {
       method: 'POST',
-      body: JSON.stringify({ requirementId, candidateId, notes, ...rates }),
+      body: JSON.stringify({ requirementId, candidateId, notes, ...rates, bypassDocumentCheck }),
     });
   }
 
@@ -1196,6 +1197,7 @@ export interface CandidateSearchResult {
   subVendorContactPerson?: string;
   subVendorContactPhone?: string;
   subVendorContactEmail?: string;
+  coverLetter?: string;
   // LLM tie-break rationale — present only when an LLM re-rank is applied (#239).
   rationale?: string;
 }

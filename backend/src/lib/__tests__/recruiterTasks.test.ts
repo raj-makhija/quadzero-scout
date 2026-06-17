@@ -12,12 +12,19 @@ import {
   buildFollowUpClientTask,
   buildScheduleInterviewTask,
   buildRecordInterviewFeedbackTask,
+  buildPreInterviewReminderTask,
+  MORNING_ANCHOR_UTC_HOURS,
   buildSendOfferTask,
   buildStageTransitionTask,
   buildSweepTasks,
   selectUnscreenedCandidates,
+  selectStaleScreenedCandidates,
+  selectMatchTasksFromCache,
+  FOUND_MATCHES_PER_REQ,
   UNSCREENED_WINDOW_DAYS,
   UNSCREENED_SCAN_CAP,
+  RESCREEN_SCAN_CAP,
+  SCREENING_MAX_AGE_DAYS,
   buildTaskItem,
   createTaskIfAbsent,
   resolveTaskByEntity,
@@ -159,6 +166,44 @@ describe('event-driven task builders', () => {
     expect(new Date(t.due_date).toISOString()).toBe('2026-06-03T11:00:00.000Z');
   });
 
+  it('pre_interview_reminder: P2, due = min(morning anchor, interview − 1h)', () => {
+    expect(MORNING_ANCHOR_UTC_HOURS).toBe(3.5);
+
+    // Mid-afternoon interview: morning anchor (03:30) is earlier than 1h-before (08:30) → anchor wins.
+    const afternoon = buildPreInterviewReminderTask({ ...PIPELINE_ARGS, scheduledAt: '2026-06-03T09:30:00.000Z' });
+    expect(afternoon.type).toBe('pre_interview_reminder');
+    expect(afternoon.priority).toBe(2);
+    expect(new Date(afternoon.due_date).toISOString()).toBe('2026-06-03T03:30:00.000Z');
+
+    // Early-morning interview: 1h-before (03:00) is earlier than morning anchor (03:30) → 1h-before wins.
+    const earlyMorning = buildPreInterviewReminderTask({ ...PIPELINE_ARGS, scheduledAt: '2026-06-03T04:00:00.000Z' });
+    expect(new Date(earlyMorning.due_date).toISOString()).toBe('2026-06-03T03:00:00.000Z');
+
+    // Tie: interview exactly 1h after the anchor → both equal 03:30.
+    const tie = buildPreInterviewReminderTask({ ...PIPELINE_ARGS, scheduledAt: '2026-06-03T04:30:00.000Z' });
+    expect(new Date(tie.due_date).toISOString()).toBe('2026-06-03T03:30:00.000Z');
+
+    // Far-future interview: due on the morning of that specific day, not "now + offset".
+    const farFuture = buildPreInterviewReminderTask({ ...PIPELINE_ARGS, scheduledAt: '2026-07-15T10:00:00.000Z' });
+    expect(new Date(farFuture.due_date).toISOString()).toBe('2026-07-15T03:30:00.000Z');
+  });
+
+  it('pre_interview_reminder: short-notice interview still produces a task with a past due date', () => {
+    // Interview 30 min out → 1h-before is in the past; task is still created (not dropped).
+    const scheduledAt = new Date(NOW.getTime() + 30 * 60_000).toISOString();
+    const t = buildPreInterviewReminderTask({ ...PIPELINE_ARGS, scheduledAt });
+    expect(t).not.toBeNull();
+    expect(t.type).toBe('pre_interview_reminder');
+    expect(new Date(t.due_date).getTime()).toBe(new Date(scheduledAt).getTime() - 3_600_000);
+  });
+
+  it('pre_interview_reminder: same-day booking with a past morning anchor still produces a task', () => {
+    // Interview later today; the morning anchor of today is already in the past at NOW.
+    const t = buildPreInterviewReminderTask({ ...PIPELINE_ARGS, scheduledAt: '2026-06-01T10:00:00.000Z' });
+    expect(t).not.toBeNull();
+    expect(new Date(t.due_date).toISOString()).toBe('2026-06-01T03:30:00.000Z');
+  });
+
   it('send_offer: only proceed decision, P2, due +48h', () => {
     expect(buildSendOfferTask({ ...PIPELINE_ARGS, decision: 'reject' })).toBeNull();
     expect(buildSendOfferTask({ ...PIPELINE_ARGS, decision: 'hold' })).toBeNull();
@@ -196,7 +241,7 @@ describe('buildSweepTasks', () => {
     const specs = buildSweepTasks({
       now: NOW,
       newMatches: [{ requirementId: 'r1', candidateId: 'c1', matchScore: 82 }],
-      expiredScreenings: [{ requirementId: 'r2', candidateId: 'c2' }],
+      staleScreenedCandidates: [{ candidateId: 'c2' }],
       staleRequirements: [{ requirementId: 'r3' }],
       filledRequirements: [{ requirementId: 'r4' }],
       lowConfidenceImports: [{ candidateId: 'c5', confidence: 0.4 }],
@@ -247,6 +292,21 @@ describe('buildSweepTasks', () => {
   it('emits no screen_candidate task when unscreenedCandidates is absent', () => {
     const specs = buildSweepTasks({ now: NOW });
     expect(specs.filter((s) => s.type === 'screen_candidate')).toHaveLength(0);
+  });
+
+  it('emits rescreen_candidate (CAND#.. ref, no REQ prefix) for a stale-screened candidate', () => {
+    const specs = buildSweepTasks({ now: NOW, staleScreenedCandidates: [{ candidateId: 'c7', candidateName: 'Ravi' }] });
+    expect(specs).toHaveLength(1);
+    expect(specs[0].type).toBe('rescreen_candidate');
+    expect(specs[0].entity_ref).toBe('CAND#c7');
+    expect(specs[0].action_url).toBe('/recruiter/locate/c7');
+    expect(specs[0].context.candidate_name).toBe('Ravi');
+    expect(hoursBetween(specs[0].due_date, NOW)).toBe(48);
+  });
+
+  it('emits no rescreen_candidate task when staleScreenedCandidates is absent', () => {
+    const specs = buildSweepTasks({ now: NOW });
+    expect(specs.filter((s) => s.type === 'rescreen_candidate')).toHaveLength(0);
   });
 
   it('uses the fixed pool-task priorities', () => {
@@ -307,6 +367,107 @@ describe('selectUnscreenedCandidates (universal screen scan)', () => {
       NOW
     );
     expect(candidates).toHaveLength(0);
+  });
+});
+
+describe('selectStaleScreenedCandidates (universal rescreen scan)', () => {
+  const iso = (daysAgo: number) => new Date(NOW.getTime() - daysAgo * 86_400_000).toISOString();
+
+  it('picks candidates screened longer ago than the max age', () => {
+    const { candidates, skipped } = selectStaleScreenedCandidates(
+      [{ candidate_id: 'c1', full_name: 'Asha', last_screened_at: iso(SCREENING_MAX_AGE_DAYS + 1) }],
+      NOW
+    );
+    expect(candidates).toEqual([{ candidateId: 'c1', candidateName: 'Asha' }]);
+    expect(skipped).toBe(0);
+  });
+
+  it('drops a freshly-screened candidate (within the max age)', () => {
+    const { candidates } = selectStaleScreenedCandidates(
+      [{ candidate_id: 'c1', last_screened_at: iso(SCREENING_MAX_AGE_DAYS - 1) }],
+      NOW
+    );
+    expect(candidates).toHaveLength(0);
+  });
+
+  it('drops never-screened candidates (no last_screened_at)', () => {
+    const { candidates } = selectStaleScreenedCandidates(
+      [{ candidate_id: 'c1', created_at: iso(1) }],
+      NOW
+    );
+    expect(candidates).toHaveLength(0);
+  });
+
+  it('orders oldest-screened first', () => {
+    const { candidates } = selectStaleScreenedCandidates(
+      [
+        { candidate_id: 'newer', last_screened_at: iso(SCREENING_MAX_AGE_DAYS + 2) },
+        { candidate_id: 'oldest', last_screened_at: iso(SCREENING_MAX_AGE_DAYS + 30) },
+        { candidate_id: 'middle', last_screened_at: iso(SCREENING_MAX_AGE_DAYS + 10) },
+      ],
+      NOW
+    );
+    expect(candidates.map((c) => c.candidateId)).toEqual(['oldest', 'middle', 'newer']);
+  });
+
+  it('caps at K (oldest first), reports the skipped overflow', () => {
+    const profiles = Array.from({ length: RESCREEN_SCAN_CAP + 5 }, (_, i) => ({
+      candidate_id: `c${i}`,
+      // larger i → screened longer ago → sorts earlier
+      last_screened_at: iso(SCREENING_MAX_AGE_DAYS + 1 + i),
+    }));
+    const { candidates, skipped } = selectStaleScreenedCandidates(profiles, NOW);
+    expect(candidates).toHaveLength(RESCREEN_SCAN_CAP);
+    expect(skipped).toBe(5);
+    expect(candidates[0].candidateId).toBe(`c${RESCREEN_SCAN_CAP + 4}`);
+  });
+
+  it('ignores profiles missing candidate_id', () => {
+    const { candidates } = selectStaleScreenedCandidates(
+      [{ full_name: 'No id', last_screened_at: iso(SCREENING_MAX_AGE_DAYS + 1) }],
+      NOW
+    );
+    expect(candidates).toHaveLength(0);
+  });
+});
+
+describe('selectMatchTasksFromCache (found-candidate match-cache scan)', () => {
+  const entry = (id: string, score: number) => ({ candidate_id: id, rank: 0, score });
+
+  it('includes a cache entry at the inclusive 70 boundary and drops 69', () => {
+    const { matches } = selectMatchTasksFromCache(
+      [entry('c70', 70), entry('c69', 69)],
+      new Set()
+    );
+    expect(matches).toEqual([{ candidateId: 'c70', score: 70 }]);
+  });
+
+  it('excludes already-shortlisted/joined candidates even when above threshold', () => {
+    const { matches } = selectMatchTasksFromCache(
+      [entry('shortlisted', 95), entry('open', 80)],
+      new Set(['shortlisted'])
+    );
+    expect(matches).toEqual([{ candidateId: 'open', score: 80 }]);
+  });
+
+  it('caps at FOUND_MATCHES_PER_REQ and reports the skipped overflow', () => {
+    const ranked = Array.from({ length: FOUND_MATCHES_PER_REQ + 1 }, (_, i) => entry(`c${i}`, 90));
+    const { matches, skipped } = selectMatchTasksFromCache(ranked, new Set());
+    expect(matches).toHaveLength(FOUND_MATCHES_PER_REQ);
+    expect(skipped).toBe(1);
+  });
+
+  it('emits exactly FOUND_MATCHES_PER_REQ with no overflow at the cap', () => {
+    const ranked = Array.from({ length: FOUND_MATCHES_PER_REQ }, (_, i) => entry(`c${i}`, 90));
+    const { matches, skipped } = selectMatchTasksFromCache(ranked, new Set());
+    expect(matches).toHaveLength(FOUND_MATCHES_PER_REQ);
+    expect(skipped).toBe(0);
+  });
+
+  it('returns no matches and no error for an empty ranked list', () => {
+    const { matches, skipped } = selectMatchTasksFromCache([], new Set());
+    expect(matches).toHaveLength(0);
+    expect(skipped).toBe(0);
   });
 });
 
@@ -378,6 +539,24 @@ describe('createTaskIfAbsent (idempotency)', () => {
     expect(state.puts).toHaveLength(0);
   });
 
+  it('pre_interview_reminder: re-scheduling is a no-op while an active reminder exists', async () => {
+    const reminderSpec = buildPreInterviewReminderTask({ ...PIPELINE_ARGS, scheduledAt: '2026-06-03T09:30:00.000Z' });
+
+    // First schedule: no active reminder → task is written.
+    const first = installMock({ entityItems: [] });
+    const created = await createTaskIfAbsent(reminderSpec, NOW);
+    expect(created).not.toBeNull();
+    expect(first.puts).toHaveLength(1);
+
+    // Re-schedule for the same req+candidate while the reminder is still active → dedup fires, no Put.
+    const second = installMock({
+      entityItems: [makeTask({ type: 'pre_interview_reminder', entity_ref: 'REQ#r1#CAND#c1' })],
+    });
+    const dup = await createTaskIfAbsent(reminderSpec, NOW);
+    expect(dup).toBeNull();
+    expect(second.puts).toHaveLength(0);
+  });
+
   it('dedupes a universal screen_candidate when one is already active for the candidate', async () => {
     const screenSpec = buildSweepTasks({ now: NOW, unscreenedCandidates: [{ candidateId: 'c1' }] })[0];
     const state = installMock({
@@ -411,7 +590,7 @@ describe('resolveScreeningTasksForCandidate (auto-complete on screen)', () => {
       ownerItems: {
         POOL: [
           makeTask({ owner_id: POOL_OWNER, task_id: 's1', type: 'screen_candidate', entity_ref: 'CAND#c1' }),
-          makeTask({ owner_id: POOL_OWNER, task_id: 's2', type: 'rescreen_candidate', entity_ref: 'REQ#r2#CAND#c1' }),
+          makeTask({ owner_id: POOL_OWNER, task_id: 's2', type: 'rescreen_candidate', entity_ref: 'CAND#c1' }),
           makeTask({ owner_id: POOL_OWNER, task_id: 'found', type: 'found_candidate_for_requirement', entity_ref: 'REQ#r1#CAND#c1' }),
           makeTask({ owner_id: POOL_OWNER, task_id: 'other-type', type: 'close_requirement', entity_ref: 'REQ#r1#CAND#c1' }),
           makeTask({ owner_id: POOL_OWNER, task_id: 'other-cand', type: 'screen_candidate', entity_ref: 'CAND#c2' }),
