@@ -18,6 +18,8 @@ import {
   buildStageTransitionTask,
   buildSweepTasks,
   selectUnscreenedCandidates,
+  selectMatchTasksFromCache,
+  FOUND_MATCHES_PER_REQ,
   UNSCREENED_WINDOW_DAYS,
   UNSCREENED_SCAN_CAP,
   buildTaskItem,
@@ -347,6 +349,46 @@ describe('selectUnscreenedCandidates (universal screen scan)', () => {
       NOW
     );
     expect(candidates).toHaveLength(0);
+  });
+});
+
+describe('selectMatchTasksFromCache (found-candidate match-cache scan)', () => {
+  const entry = (id: string, score: number) => ({ candidate_id: id, rank: 0, score });
+
+  it('includes a cache entry at the inclusive 70 boundary and drops 69', () => {
+    const { matches } = selectMatchTasksFromCache(
+      [entry('c70', 70), entry('c69', 69)],
+      new Set()
+    );
+    expect(matches).toEqual([{ candidateId: 'c70', score: 70 }]);
+  });
+
+  it('excludes already-shortlisted/joined candidates even when above threshold', () => {
+    const { matches } = selectMatchTasksFromCache(
+      [entry('shortlisted', 95), entry('open', 80)],
+      new Set(['shortlisted'])
+    );
+    expect(matches).toEqual([{ candidateId: 'open', score: 80 }]);
+  });
+
+  it('caps at FOUND_MATCHES_PER_REQ and reports the skipped overflow', () => {
+    const ranked = Array.from({ length: FOUND_MATCHES_PER_REQ + 1 }, (_, i) => entry(`c${i}`, 90));
+    const { matches, skipped } = selectMatchTasksFromCache(ranked, new Set());
+    expect(matches).toHaveLength(FOUND_MATCHES_PER_REQ);
+    expect(skipped).toBe(1);
+  });
+
+  it('emits exactly FOUND_MATCHES_PER_REQ with no overflow at the cap', () => {
+    const ranked = Array.from({ length: FOUND_MATCHES_PER_REQ }, (_, i) => entry(`c${i}`, 90));
+    const { matches, skipped } = selectMatchTasksFromCache(ranked, new Set());
+    expect(matches).toHaveLength(FOUND_MATCHES_PER_REQ);
+    expect(skipped).toBe(0);
+  });
+
+  it('returns no matches and no error for an empty ranked list', () => {
+    const { matches, skipped } = selectMatchTasksFromCache([], new Set());
+    expect(matches).toHaveLength(0);
+    expect(skipped).toBe(0);
   });
 });
 
