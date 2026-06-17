@@ -125,7 +125,13 @@ export async function handler(
       full_name: profile.fullName,
       email: profile.email || existingCandidate?.email || '',
       phone: profile.phone ?? undefined,
-      location: normalizeLocation(profile.location) ?? undefined,
+      // `location` is kept as the city-only value for backward compatibility
+      // with search/matching/notifications. city/state/country are stored as
+      // distinct attributes (#396); city falls back to the legacy location.
+      location: normalizeLocation(profile.location ?? profile.city) ?? undefined,
+      city: (profile.city ?? normalizeLocation(profile.location)) ?? undefined,
+      state: profile.state ?? undefined,
+      country: profile.country ?? undefined,
       primary_skills: normalizedPrimarySkills,
       primary_skill_years: normalizedSkillYears,
       secondary_skills: normalizedSecondarySkills,

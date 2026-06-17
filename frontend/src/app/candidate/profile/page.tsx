@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
@@ -225,13 +225,27 @@ export default function ProfilePage() {
                   {profile.email}
                 </span>
               )}
-              {profile.location && (
-                <span className="flex items-center">
+              {(profile.city || profile.state || profile.country || profile.location) && (
+                <span className="flex items-center gap-2">
                   <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
-                  {profile.location}
+                  {profile.city || profile.state || profile.country ? (
+                    [
+                      profile.city && <span key="city">{profile.city}</span>,
+                      profile.state && <span key="state">{profile.state}</span>,
+                      profile.country && <span key="country">{profile.country}</span>,
+                    ]
+                      .filter(Boolean)
+                      .reduce<ReactNode[]>((acc, el, i) => {
+                        if (i > 0) acc.push(<span key={`sep-${i}`} aria-hidden>·</span>);
+                        acc.push(el);
+                        return acc;
+                      }, [])
+                  ) : (
+                    <span>{profile.location}</span>
+                  )}
                 </span>
               )}
             </div>

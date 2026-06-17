@@ -205,3 +205,77 @@ describe('parseResume() — skillSynonyms (#281)', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// ticket #396 — city / state / country as distinct attributes
+// ---------------------------------------------------------------------------
+
+function resumeJsonWithLocation(fields: Record<string, unknown>): string {
+  return JSON.stringify({
+    fullName: 'Jane Doe',
+    email: 'jane@example.com',
+    primarySkills: ['react'],
+    primarySkillYears: { react: 4 },
+    totalExperience: 5,
+    seniority: 'senior',
+    ...fields,
+  });
+}
+
+describe('parseResume() — city/state/country (#396)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('keeps city, state and country as distinct attributes', async () => {
+    stubProvider.handler = async () => ({
+      content: resumeJsonWithLocation({ city: 'Bangalore', state: 'Karnataka', country: 'India' }),
+    });
+
+    const { output } = await parseResume('resume text');
+
+    expect(output.city).toBe('Bangalore');
+    expect(output.state).toBe('Karnataka');
+    expect(output.country).toBe('India');
+    // legacy location stays populated (= city) for unchanged search/matching
+    expect(output.location).toBe('Bangalore');
+  });
+
+  it('does not fabricate state/country when only a city is present', async () => {
+    stubProvider.handler = async () => ({
+      content: resumeJsonWithLocation({ city: 'Mumbai' }),
+    });
+
+    const { output } = await parseResume('resume text');
+
+    expect(output.city).toBe('Mumbai');
+    expect(output.state ?? null).toBeNull();
+    expect(output.country ?? null).toBeNull();
+  });
+
+  it('derives city from the legacy location field when the model only returns location', async () => {
+    stubProvider.handler = async () => ({
+      content: resumeJsonWithLocation({ location: 'Bangalore, India' }),
+    });
+
+    const { output } = await parseResume('resume text');
+
+    // normalizeLocation strips the country, leaving the city
+    expect(output.city).toBe('Bangalore');
+    expect(output.location).toBe('Bangalore');
+  });
+
+  it('resume parser system prompt instructs the model to emit city, state and country', async () => {
+    let capturedSystemContent = '';
+    stubProvider.handler = async (messages) => {
+      capturedSystemContent = messages.find((m) => m.role === 'system')?.content ?? '';
+      return { content: resumeJsonWithLocation({ city: 'Bangalore' }) };
+    };
+
+    await parseResume('resume text');
+
+    expect(capturedSystemContent).toContain('"city"');
+    expect(capturedSystemContent).toContain('"state"');
+    expect(capturedSystemContent).toContain('"country"');
+  });
+});
