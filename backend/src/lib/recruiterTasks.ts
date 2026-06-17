@@ -20,6 +20,7 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import { config } from './config.js';
 import { getRequirementById, getCandidateById, getRecentProfiles } from './dynamodb.js';
+import type { RankedMatchEntry } from '../types/index.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -34,6 +35,8 @@ export const SCREENING_MAX_AGE_DAYS = 15;
 export const STALE_REQUIREMENT_DAYS = 7;
 /** Match score (0-100) at/above which a new profile becomes a screen-candidate task. */
 export const MATCH_TASK_THRESHOLD = 70;
+/** Found-candidate sweep: max match-cache entries turned into tasks per requirement. */
+export const FOUND_MATCHES_PER_REQ = 10;
 /** Universal screen scan: only consider candidates created within this many days. */
 export const UNSCREENED_WINDOW_DAYS = 30;
 /** Universal screen scan: max never-screened candidates turned into tasks per sweep. */
@@ -778,6 +781,26 @@ export function selectUnscreenedCandidates(
   }
   const candidates = qualifying.slice(0, cap);
   return { candidates, skipped: qualifying.length - candidates.length };
+}
+
+/**
+ * Pure selector: from a requirement's cached ranked match list, pick the
+ * found_candidate_for_requirement matches — entries at/above MATCH_TASK_THRESHOLD,
+ * excluding candidates already shortlisted/joined for the requirement, capped at
+ * `cap` top entries (the list is stored in descending score order). Returns the
+ * picks plus how many qualifying entries were dropped to the cap so the caller
+ * can surface the truncation instead of hiding it.
+ */
+export function selectMatchTasksFromCache(
+  ranked: RankedMatchEntry[],
+  excludeCandidateIds: Set<string>,
+  cap: number = FOUND_MATCHES_PER_REQ
+): { matches: Array<{ candidateId: string; score: number }>; skipped: number } {
+  const qualifying = ranked.filter(
+    (e) => e.score >= MATCH_TASK_THRESHOLD && !excludeCandidateIds.has(e.candidate_id)
+  );
+  const matches = qualifying.slice(0, cap).map((e) => ({ candidateId: e.candidate_id, score: e.score }));
+  return { matches, skipped: qualifying.length - matches.length };
 }
 
 /**
