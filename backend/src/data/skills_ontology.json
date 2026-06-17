@@ -298,8 +298,17 @@
     "ords": "ords",
     "oracle rest data services": "ords",
 
+    "blue yonder": "blue yonder",
+    "blueyonder": "blue yonder",
+    "jda": "blue yonder",
+    "jda software": "blue yonder",
+    "blue yonder esp": "blue yonder",
+
     "servicenow": "servicenow",
     "service now": "servicenow",
+
+    "identity and access management": "iam",
+    "identity & access management": "iam",
 
     "sailpoint iiq": "sailpoint_iiq",
     "sailpoint identityiq": "sailpoint_iiq",
@@ -443,7 +452,7 @@
       "sharepoint", "power_automate"
     ],
     "iam": [
-      "sailpoint", "sailpoint_iiq", "sailpoint_idn"
+      "iam", "sailpoint", "sailpoint_iiq", "sailpoint_idn"
     ]
   },
   "roleTaxonomy": {

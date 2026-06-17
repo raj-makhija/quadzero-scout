@@ -65,7 +65,7 @@ export function isEngagementModelCompatible(reqModel: string, candidateModel: st
 
 /** Availability values in order from shortest to longest notice period. */
 const AVAILABILITY_ORDER: string[] = [
-  'immediate', '1_week', '2_weeks', '1_month', '2_months', '3_months', 'negotiable',
+  'immediate', 'offer_in_hand', '1_week', '2_weeks', '1_month', '2_months', '3_months', 'negotiable',
 ];
 
 export interface MatchScoreResult {

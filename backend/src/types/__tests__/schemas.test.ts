@@ -324,7 +324,7 @@ describe('Enum schemas', () => {
   });
 
   it('AvailabilityEnum accepts all valid values', () => {
-    const valid = ['immediate', '1_week', '2_weeks', '1_month', '2_months', '3_months', 'negotiable'];
+    const valid = ['immediate', 'offer_in_hand', '1_week', '2_weeks', '1_month', '2_months', '3_months', 'negotiable'];
     for (const v of valid) {
       expect(AvailabilityEnum.safeParse(v).success).toBe(true);
     }

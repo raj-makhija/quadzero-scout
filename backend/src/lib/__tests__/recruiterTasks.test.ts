@@ -12,9 +12,14 @@ import {
   buildFollowUpClientTask,
   buildScheduleInterviewTask,
   buildRecordInterviewFeedbackTask,
+  buildPreInterviewReminderTask,
+  MORNING_ANCHOR_UTC_HOURS,
   buildSendOfferTask,
   buildStageTransitionTask,
   buildSweepTasks,
+  selectUnscreenedCandidates,
+  UNSCREENED_WINDOW_DAYS,
+  UNSCREENED_SCAN_CAP,
   buildTaskItem,
   createTaskIfAbsent,
   resolveTaskByEntity,
@@ -156,6 +161,44 @@ describe('event-driven task builders', () => {
     expect(new Date(t.due_date).toISOString()).toBe('2026-06-03T11:00:00.000Z');
   });
 
+  it('pre_interview_reminder: P2, due = min(morning anchor, interview − 1h)', () => {
+    expect(MORNING_ANCHOR_UTC_HOURS).toBe(3.5);
+
+    // Mid-afternoon interview: morning anchor (03:30) is earlier than 1h-before (08:30) → anchor wins.
+    const afternoon = buildPreInterviewReminderTask({ ...PIPELINE_ARGS, scheduledAt: '2026-06-03T09:30:00.000Z' });
+    expect(afternoon.type).toBe('pre_interview_reminder');
+    expect(afternoon.priority).toBe(2);
+    expect(new Date(afternoon.due_date).toISOString()).toBe('2026-06-03T03:30:00.000Z');
+
+    // Early-morning interview: 1h-before (03:00) is earlier than morning anchor (03:30) → 1h-before wins.
+    const earlyMorning = buildPreInterviewReminderTask({ ...PIPELINE_ARGS, scheduledAt: '2026-06-03T04:00:00.000Z' });
+    expect(new Date(earlyMorning.due_date).toISOString()).toBe('2026-06-03T03:00:00.000Z');
+
+    // Tie: interview exactly 1h after the anchor → both equal 03:30.
+    const tie = buildPreInterviewReminderTask({ ...PIPELINE_ARGS, scheduledAt: '2026-06-03T04:30:00.000Z' });
+    expect(new Date(tie.due_date).toISOString()).toBe('2026-06-03T03:30:00.000Z');
+
+    // Far-future interview: due on the morning of that specific day, not "now + offset".
+    const farFuture = buildPreInterviewReminderTask({ ...PIPELINE_ARGS, scheduledAt: '2026-07-15T10:00:00.000Z' });
+    expect(new Date(farFuture.due_date).toISOString()).toBe('2026-07-15T03:30:00.000Z');
+  });
+
+  it('pre_interview_reminder: short-notice interview still produces a task with a past due date', () => {
+    // Interview 30 min out → 1h-before is in the past; task is still created (not dropped).
+    const scheduledAt = new Date(NOW.getTime() + 30 * 60_000).toISOString();
+    const t = buildPreInterviewReminderTask({ ...PIPELINE_ARGS, scheduledAt });
+    expect(t).not.toBeNull();
+    expect(t.type).toBe('pre_interview_reminder');
+    expect(new Date(t.due_date).getTime()).toBe(new Date(scheduledAt).getTime() - 3_600_000);
+  });
+
+  it('pre_interview_reminder: same-day booking with a past morning anchor still produces a task', () => {
+    // Interview later today; the morning anchor of today is already in the past at NOW.
+    const t = buildPreInterviewReminderTask({ ...PIPELINE_ARGS, scheduledAt: '2026-06-01T10:00:00.000Z' });
+    expect(t).not.toBeNull();
+    expect(new Date(t.due_date).toISOString()).toBe('2026-06-01T03:30:00.000Z');
+  });
+
   it('send_offer: only proceed decision, P2, due +48h', () => {
     expect(buildSendOfferTask({ ...PIPELINE_ARGS, decision: 'reject' })).toBeNull();
     expect(buildSendOfferTask({ ...PIPELINE_ARGS, decision: 'hold' })).toBeNull();
@@ -197,7 +240,7 @@ describe('buildSweepTasks', () => {
       staleRequirements: [{ requirementId: 'r3' }],
       filledRequirements: [{ requirementId: 'r4' }],
       lowConfidenceImports: [{ candidateId: 'c5', confidence: 0.4 }],
-      ingestedResumes: [{ candidateId: 'c6' }],
+      unscreenedCandidates: [{ candidateId: 'c6' }],
     });
     const types = specs.map((s) => s.type).sort();
     expect(types).toEqual(
@@ -231,26 +274,79 @@ describe('buildSweepTasks', () => {
     expect(specs).toHaveLength(0);
   });
 
-  it('emits screen_candidate (CAND#.. ref, no REQ prefix) for an ingested resume', () => {
-    const specs = buildSweepTasks({ now: NOW, ingestedResumes: [{ candidateId: 'c6' }] });
+  it('emits screen_candidate (CAND#.. ref, no REQ prefix) for an unscreened candidate', () => {
+    const specs = buildSweepTasks({ now: NOW, unscreenedCandidates: [{ candidateId: 'c6' }] });
     expect(specs).toHaveLength(1);
     expect(specs[0].type).toBe('screen_candidate');
     expect(specs[0].entity_ref).toBe('CAND#c6');
     expect(specs[0].action_url).toBe('/recruiter/locate/c6');
+    // due window +2 days (ticket #391 AC)
+    expect(hoursBetween(specs[0].due_date, NOW)).toBe(48);
   });
 
-  it('emits no screen_candidate task when ingestedResumes is absent', () => {
+  it('emits no screen_candidate task when unscreenedCandidates is absent', () => {
     const specs = buildSweepTasks({ now: NOW });
     expect(specs.filter((s) => s.type === 'screen_candidate')).toHaveLength(0);
   });
 
   it('uses the fixed pool-task priorities', () => {
-    expect(TASK_PRIORITY.found_candidate_for_requirement).toBe(3);
+    expect(TASK_PRIORITY.found_candidate_for_requirement).toBe(1);
     expect(TASK_PRIORITY.screen_candidate).toBe(3);
     expect(TASK_PRIORITY.rescreen_candidate).toBe(3);
     expect(TASK_PRIORITY.source_candidates).toBe(4);
     expect(TASK_PRIORITY.close_requirement).toBe(4);
     expect(TASK_PRIORITY.review_bulk_import).toBe(4);
+  });
+});
+
+describe('selectUnscreenedCandidates (universal screen scan)', () => {
+  const iso = (daysAgo: number) => new Date(NOW.getTime() - daysAgo * 86_400_000).toISOString();
+
+  it('picks never-screened candidates created within the window', () => {
+    const { candidates, skipped } = selectUnscreenedCandidates(
+      [{ candidate_id: 'c1', full_name: 'Asha', created_at: iso(1) }],
+      NOW
+    );
+    expect(candidates).toEqual([{ candidateId: 'c1', candidateName: 'Asha' }]);
+    expect(skipped).toBe(0);
+  });
+
+  it('drops an already-screened candidate (last_screened_at present)', () => {
+    const { candidates } = selectUnscreenedCandidates(
+      [{ candidate_id: 'c1', created_at: iso(1), last_screened_at: iso(0) }],
+      NOW
+    );
+    expect(candidates).toHaveLength(0);
+  });
+
+  it('drops candidates created outside the N-day window', () => {
+    const { candidates } = selectUnscreenedCandidates(
+      [
+        { candidate_id: 'fresh', created_at: iso(UNSCREENED_WINDOW_DAYS - 1) },
+        { candidate_id: 'stale', created_at: iso(UNSCREENED_WINDOW_DAYS + 1) },
+      ],
+      NOW
+    );
+    expect(candidates.map((c) => c.candidateId)).toEqual(['fresh']);
+  });
+
+  it('caps at K, reports the skipped overflow, and keeps most-recent first', () => {
+    const profiles = Array.from({ length: UNSCREENED_SCAN_CAP + 5 }, (_, i) => ({
+      candidate_id: `c${i}`,
+      created_at: iso(1),
+    }));
+    const { candidates, skipped } = selectUnscreenedCandidates(profiles, NOW);
+    expect(candidates).toHaveLength(UNSCREENED_SCAN_CAP);
+    expect(skipped).toBe(5);
+    expect(candidates[0].candidateId).toBe('c0');
+  });
+
+  it('ignores profiles missing candidate_id or created_at', () => {
+    const { candidates } = selectUnscreenedCandidates(
+      [{ full_name: 'No id', created_at: iso(1) }, { candidate_id: 'c1' }],
+      NOW
+    );
+    expect(candidates).toHaveLength(0);
   });
 });
 
@@ -318,6 +414,34 @@ describe('createTaskIfAbsent (idempotency)', () => {
   it('is a no-op when an active task already exists', async () => {
     const state = installMock({ entityItems: [makeTask({})] });
     const item = await createTaskIfAbsent(SPEC, NOW);
+    expect(item).toBeNull();
+    expect(state.puts).toHaveLength(0);
+  });
+
+  it('pre_interview_reminder: re-scheduling is a no-op while an active reminder exists', async () => {
+    const reminderSpec = buildPreInterviewReminderTask({ ...PIPELINE_ARGS, scheduledAt: '2026-06-03T09:30:00.000Z' });
+
+    // First schedule: no active reminder → task is written.
+    const first = installMock({ entityItems: [] });
+    const created = await createTaskIfAbsent(reminderSpec, NOW);
+    expect(created).not.toBeNull();
+    expect(first.puts).toHaveLength(1);
+
+    // Re-schedule for the same req+candidate while the reminder is still active → dedup fires, no Put.
+    const second = installMock({
+      entityItems: [makeTask({ type: 'pre_interview_reminder', entity_ref: 'REQ#r1#CAND#c1' })],
+    });
+    const dup = await createTaskIfAbsent(reminderSpec, NOW);
+    expect(dup).toBeNull();
+    expect(second.puts).toHaveLength(0);
+  });
+
+  it('dedupes a universal screen_candidate when one is already active for the candidate', async () => {
+    const screenSpec = buildSweepTasks({ now: NOW, unscreenedCandidates: [{ candidateId: 'c1' }] })[0];
+    const state = installMock({
+      entityItems: [makeTask({ type: 'screen_candidate', entity_ref: 'CAND#c1' })],
+    });
+    const item = await createTaskIfAbsent(screenSpec, NOW);
     expect(item).toBeNull();
     expect(state.puts).toHaveLength(0);
   });

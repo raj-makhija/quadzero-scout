@@ -193,11 +193,12 @@ export async function getBenchListCandidates(): Promise<{ items: CandidateItem[]
     TableName: config.dynamodb.talentProfilesTable,
     Limit: PAGE_SIZE,
     FilterExpression:
-      '(availability = :a1 OR availability = :a2 OR availability = :a3) AND attribute_exists(last_screened_at)',
+      '(availability = :a1 OR availability = :a2 OR availability = :a3 OR availability = :a4) AND attribute_exists(last_screened_at)',
     ExpressionAttributeValues: {
       ':a1': 'immediate',
       ':a2': '1_week',
       ':a3': '2_weeks',
+      ':a4': 'offer_in_hand',
     },
     ProjectionExpression:
       'candidate_id, full_name, total_experience, #loc, #roles, availability, last_screened_at, not_interested, seniority, primary_skills, engagement_model, expected_ctc, sub_vendor_id, sub_vendor_name, sub_vendor_contact_person, sub_vendor_contact_phone, sub_vendor_contact_email',
