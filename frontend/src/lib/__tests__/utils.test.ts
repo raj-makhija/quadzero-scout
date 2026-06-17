@@ -112,6 +112,7 @@ describe('formatAvailability()', () => {
   // TC-UTIL-007
   it('maps all availability values correctly', () => {
     expect(formatAvailability('immediate')).toBe('Immediate');
+    expect(formatAvailability('offer_in_hand')).toBe('Offer in Hand');
     expect(formatAvailability('1_week')).toBe('1 Week');
     expect(formatAvailability('2_weeks')).toBe('2 Weeks');
     expect(formatAvailability('1_month')).toBe('1 Month');
@@ -237,11 +238,11 @@ describe('SENIORITY_OPTIONS', () => {
 });
 
 describe('AVAILABILITY_OPTIONS', () => {
-  it('has 7 options matching enum values', () => {
-    expect(AVAILABILITY_OPTIONS).toHaveLength(7);
+  it('has 8 options matching enum values', () => {
+    expect(AVAILABILITY_OPTIONS).toHaveLength(8);
     const values = AVAILABILITY_OPTIONS.map((o) => o.value);
     expect(values).toEqual([
-      'immediate', '1_week', '2_weeks', '1_month', '2_months', '3_months', 'negotiable',
+      'immediate', 'offer_in_hand', '1_week', '2_weeks', '1_month', '2_months', '3_months', 'negotiable',
     ]);
   });
 });

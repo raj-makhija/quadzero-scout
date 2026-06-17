@@ -1311,4 +1311,39 @@ describe('generateScreeningQuestions handler', () => {
     expect(body.data.questions).toEqual([]);
     expect(body.data.notice).toBeDefined();
   });
+
+  it('should pass offer-in-hand context to the LLM in the candidate summary', async () => {
+    mockGetCandidateById.mockResolvedValue({
+      ...mockCandidate,
+      last_screened_at: undefined,
+      availability: 'offer_in_hand',
+    });
+    mockGenerateScreeningQuestions.mockResolvedValue(['Q1']);
+
+    const event = makeEvent({ candidateId: 'cand_1' });
+    await handler(event);
+
+    expect(mockGenerateScreeningQuestions).toHaveBeenCalledOnce();
+    const summary = mockGenerateScreeningQuestions.mock.calls[0][0] as string;
+    expect(summary).toContain('Availability:');
+    expect(summary).toContain('competing offer');
+  });
+
+  it('should still bypass the LLM for a re-screened offer-in-hand candidate', async () => {
+    mockGetCandidateById.mockResolvedValue({
+      ...mockCandidate,
+      last_screened_at: '2026-05-01T10:00:00Z',
+      availability: 'offer_in_hand',
+    });
+
+    const event = makeEvent({ candidateId: 'cand_1' });
+    const result = await handler(event);
+    const body = JSON.parse(result.body);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.data.generated).toBe(false);
+    expect(body.data.questions).toEqual([]);
+    expect(body.data.notice).toBe('Re-screening; no additional questions are needed here.');
+    expect(mockGenerateScreeningQuestions).not.toHaveBeenCalled();
+  });
 });

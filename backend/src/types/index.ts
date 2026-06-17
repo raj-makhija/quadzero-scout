@@ -14,6 +14,7 @@ export type Seniority = z.infer<typeof SeniorityEnum>;
 
 export const AvailabilityEnum = z.enum([
   'immediate',
+  'offer_in_hand',
   '1_week',
   '2_weeks',
   '1_month',
