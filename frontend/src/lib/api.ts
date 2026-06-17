@@ -667,11 +667,12 @@ class ApiClient {
     rates?: {
       proposedRateHourly: number; proposedRateMonthly: number; proposedRateAnnual: number;
       internalRateHourly: number; internalRateMonthly: number; internalRateAnnual: number;
-    }
+    },
+    bypassDocumentCheck?: boolean
   ) {
     return this.request<{ success: boolean }>('/recruiter/shortlist', {
       method: 'POST',
-      body: JSON.stringify({ requirementId, candidateId, notes, ...rates }),
+      body: JSON.stringify({ requirementId, candidateId, notes, ...rates, bypassDocumentCheck }),
     });
   }
 
@@ -1056,6 +1057,9 @@ export interface ExtractedProfile {
   email?: string | null;
   phone?: string | null;
   location?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
   primarySkills: string[];
   primarySkillYears: Record<string, number>;
   secondarySkills?: string[];
@@ -1193,6 +1197,7 @@ export interface CandidateSearchResult {
   subVendorContactPerson?: string;
   subVendorContactPhone?: string;
   subVendorContactEmail?: string;
+  coverLetter?: string;
   // LLM tie-break rationale — present only when an LLM re-rank is applied (#239).
   rationale?: string;
 }
@@ -1739,6 +1744,9 @@ export interface ScreeningUpdatedValues {
   email?: string;
   phone?: string;
   location?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
   primarySkills?: string[];
   primarySkillYears?: Record<string, number>;
   secondarySkills?: string[];
@@ -1788,6 +1796,9 @@ export interface ScreeningProfileData {
   email?: string;
   phone?: string;
   location?: string;
+  city?: string;
+  state?: string;
+  country?: string;
   primary_skills?: string[];
   primary_skill_years?: Record<string, number>;
   secondary_skills?: string[];

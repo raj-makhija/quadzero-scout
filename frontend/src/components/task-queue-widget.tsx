@@ -32,12 +32,12 @@ export const TASK_LABELS: Record<string, string> = {
   follow_up_offer: 'Follow up on offer',
   confirm_joining: 'Confirm joining date',
   post_placement_checkin: 'Post-placement check-in',
-  screen_candidate: 'Screen matching candidate',
+  found_candidate_for_requirement: 'Found candidate for requirement',
+  screen_candidate: 'Screen candidate',
   rescreen_candidate: 'Re-screen candidate',
   source_candidates: 'Re-run search for stale requirement',
   close_requirement: 'Close filled requirement',
   review_bulk_import: 'Review bulk-imported profile',
-  review_ingested_resume: 'Review ingested resume',
 };
 
 const SNOOZE_OPTIONS: Array<{ preset: SnoozePreset; label: string }> = [

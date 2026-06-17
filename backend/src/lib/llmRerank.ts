@@ -42,6 +42,7 @@ export function buildRerankCandidates(candidates: CandidateItem[]): RerankCandid
       c.location ? `Location: ${c.location}` : null,
       c.roles?.length ? `Roles: ${c.roles.join(', ')}` : null,
       c.primary_skills?.length ? `Skills: ${c.primary_skills.join(', ')}` : null,
+      c.expected_ctc != null ? `Expected CTC: ${c.expected_ctc} LPA` : null,
     ]
       .filter(Boolean)
       .join('\n'),
@@ -50,7 +51,13 @@ export function buildRerankCandidates(candidates: CandidateItem[]): RerankCandid
 
 /** The requirement's JD text used as the prompt-cached prefix for the re-rank. */
 export function buildRequirementJd(req: RequirementItem): string {
-  return req.jd_text || '';
+  const lines: string[] = [];
+  if (req.jd_text) lines.push(req.jd_text);
+  const location = req.parsed_criteria?.location;
+  if (location) lines.push(`Required Location: ${location}`);
+  const budget = req.budget_max_lpa;
+  if (budget != null) lines.push(`Budget (max): ${budget} LPA`);
+  return lines.join('\n');
 }
 
 /**

@@ -33,7 +33,14 @@ export async function notifyMatchingRecruiters(candidateIds: string[]): Promise<
     console.error('Failed to update match-cache after candidate ingest:', err);
   }
 
-  // ─── Email notifications (gated on SES config + opted-in recruiters) ───
+  // ─── Email notifications (gated on feature flag + SES config + opted-in recruiters) ───
+  // The flag gate is independent of, and runs after, cache maintenance: turning
+  // emails off must never affect the match-cache.
+  if (!config.featureFlags.recruiterMatchEmailEnabled) {
+    console.log('RECRUITER_MATCH_EMAIL_ENABLED is off, skipping recruiter notifications');
+    return;
+  }
+
   if (!config.email.senderEmail) {
     console.log('SES_SENDER_EMAIL not configured, skipping recruiter notifications');
     return;

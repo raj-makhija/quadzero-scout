@@ -69,12 +69,24 @@ vi.mock('../../lib/skillNormalizer.js', () => ({
 }));
 
 const mockSafeResolveScreeningTasks = vi.fn().mockResolvedValue(undefined);
+const mockResolveTaskByEntity = vi.fn().mockResolvedValue(0);
+const mockSafeGenerateTask = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../../lib/recruiterTasks.js', async () => {
   const actual = await vi.importActual('../../lib/recruiterTasks.js') as Record<string, unknown>;
   return {
     ...actual,
     safeResolveScreeningTasks: (...args: unknown[]) => mockSafeResolveScreeningTasks(...args),
+    // Mirror the real fire-and-forget wrapper: delegate to (mocked) resolveTaskByEntity
+    // and swallow any error so a failed resolution never breaks the handler.
+    safeResolveTask: async (args: unknown) => {
+      try {
+        await mockResolveTaskByEntity(args);
+      } catch {
+        // swallowed by design
+      }
+    },
+    safeGenerateTask: (...args: unknown[]) => mockSafeGenerateTask(...args),
   };
 });
 
@@ -612,6 +624,189 @@ describe('shortlistCandidate handler (document gate)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Tests: found_candidate_for_requirement resolver (ticket #390)
+// ---------------------------------------------------------------------------
+
+describe('shortlistCandidate handler (found-task resolver)', () => {
+  let handler: Function;
+  const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockGetRequirementById.mockResolvedValue({ requirement_id: 'req_1', job_title: 'Backend Dev', client_name: 'Acme' });
+    mockGetCandidateById.mockResolvedValue({ ...mockCandidate, last_screened_at: fiveDaysAgo });
+    mockListAttachments.mockResolvedValue(BOTH_DOCS);
+    mockResolveTaskByEntity.mockResolvedValue(0);
+    const mod = await import('../recruiter/shortlistCandidate.js');
+    handler = mod.handler;
+  });
+
+  const event = () => makeEvent({ requirementId: 'req_1', candidateId: 'cand_1' });
+
+  it('resolves the found task on a new shortlist', async () => {
+    mockGetShortlistEntry.mockResolvedValue(null);
+    const result = await handler(event());
+    expect(result.statusCode).toBe(200);
+    expect(mockResolveTaskByEntity).toHaveBeenCalledWith({
+      entityRef: 'REQ#req_1#CAND#cand_1',
+      type: 'found_candidate_for_requirement',
+      completedBy: 'recruiter_1',
+    });
+  });
+
+  it('resolves the found task when re-shortlisting a previously not-suitable candidate', async () => {
+    mockGetShortlistEntry.mockResolvedValue({ status: 'not_suitable' });
+    const result = await handler(event());
+    expect(result.statusCode).toBe(200);
+    expect(mockUpdateShortlistStatus).toHaveBeenCalled();
+    expect(mockResolveTaskByEntity).toHaveBeenCalledWith({
+      entityRef: 'REQ#req_1#CAND#cand_1',
+      type: 'found_candidate_for_requirement',
+      completedBy: 'recruiter_1',
+    });
+  });
+
+  it('still returns 200 when the found-task resolver hits a DynamoDB error', async () => {
+    mockGetShortlistEntry.mockResolvedValue(null);
+    mockResolveTaskByEntity.mockRejectedValue(new Error('dynamo down'));
+    const result = await handler(event());
+    expect(result.statusCode).toBe(200);
+    expect(JSON.parse(result.body).success).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: Bypass Document Check (ticket #405)
+// ---------------------------------------------------------------------------
+
+describe('shortlistCandidate handler (bypass document check)', () => {
+  let handler: Function;
+  const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockGetRequirementById.mockResolvedValue({ requirement_id: 'req_1', job_title: 'Backend Dev', client_name: 'Acme' });
+    mockGetCandidateById.mockResolvedValue({ ...mockCandidate, last_screened_at: fiveDaysAgo });
+    mockGetShortlistEntry.mockResolvedValue(null);
+    mockListAttachments.mockResolvedValue([]); // no docs by default
+    mockResolveTaskByEntity.mockResolvedValue(0);
+    const mod = await import('../recruiter/shortlistCandidate.js');
+    handler = mod.handler;
+  });
+
+  const bypassEvent = () => makeEvent({ requirementId: 'req_1', candidateId: 'cand_1', bypassDocumentCheck: true });
+
+  it('bypasses document check and persists shortlist when bypassDocumentCheck is true', async () => {
+    const result = await handler(bypassEvent());
+    expect(result.statusCode).toBe(200);
+    expect(JSON.parse(result.body).success).toBe(true);
+    expect(mockSaveShortlist).toHaveBeenCalledOnce();
+  });
+
+  it('creates a get_mandatory_documents task assigned to the recruiter with priority 1 and 24h due date', async () => {
+    const before = new Date();
+    const result = await handler(bypassEvent());
+    const after = new Date();
+    expect(result.statusCode).toBe(200);
+
+    const calls = mockSafeGenerateTask.mock.calls;
+    const getMandatoryCall = calls.find(([spec]: any) => spec?.type === 'get_mandatory_documents');
+    expect(getMandatoryCall).toBeDefined();
+    const spec = getMandatoryCall![0] as Record<string, unknown>;
+    expect(spec.owner_id).toBe('recruiter_1');
+    expect(spec.priority).toBe(1);
+    const due = new Date(spec.due_date as string);
+    expect(due.getTime()).toBeGreaterThanOrEqual(before.getTime() + 23 * 3_600_000);
+    expect(due.getTime()).toBeLessThanOrEqual(after.getTime() + 25 * 3_600_000);
+  });
+
+  it('does not create get_mandatory_documents task when docs are present even with bypassDocumentCheck', async () => {
+    mockListAttachments.mockResolvedValue(BOTH_DOCS);
+    const result = await handler(bypassEvent());
+    expect(result.statusCode).toBe(200);
+    const getMandatoryCall = mockSafeGenerateTask.mock.calls.find(([spec]: any) => spec?.type === 'get_mandatory_documents');
+    expect(getMandatoryCall).toBeUndefined();
+  });
+
+  it('still enforces screening freshness gate even when bypassDocumentCheck is true', async () => {
+    const twentyDaysAgo = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString();
+    mockGetCandidateById.mockResolvedValue({ ...mockCandidate, last_screened_at: twentyDaysAgo });
+    const result = await handler(bypassEvent());
+    expect(result.statusCode).toBe(409);
+    expect(JSON.parse(result.body).error.code).toBe('SCREENING_REQUIRED');
+    expect(mockSaveShortlist).not.toHaveBeenCalled();
+  });
+
+  it('creates get_mandatory_documents task after persisting the shortlist entry', async () => {
+    const callOrder: string[] = [];
+    mockSaveShortlist.mockImplementation(async () => { callOrder.push('save'); });
+    mockSafeGenerateTask.mockImplementation(async (spec: unknown) => {
+      callOrder.push((spec as { type: string }).type);
+    });
+    const result = await handler(bypassEvent());
+    expect(result.statusCode).toBe(200);
+    const saveIdx = callOrder.indexOf('save');
+    const taskIdx = callOrder.indexOf('get_mandatory_documents');
+    expect(saveIdx).toBeGreaterThanOrEqual(0);
+    expect(taskIdx).toBeGreaterThan(saveIdx);
+  });
+});
+
+describe('markNotSuitable handler (found-task resolver)', () => {
+  let handler: Function;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockGetRequirementById.mockResolvedValue({ requirement_id: 'req_1' });
+    mockGetCandidateById.mockResolvedValue(mockCandidate);
+    mockResolveTaskByEntity.mockResolvedValue(0);
+    const mod = await import('../recruiter/markNotSuitable.js');
+    handler = mod.handler;
+  });
+
+  const event = () => makeEvent({ requirementId: 'req_1', candidateId: 'cand_1' });
+
+  it('resolves the found task when marking a candidate not suitable (new entry)', async () => {
+    mockGetShortlistEntry.mockResolvedValue(null);
+    const result = await handler(event());
+    expect(result.statusCode).toBe(200);
+    expect(mockSaveShortlist).toHaveBeenCalledOnce();
+    expect(mockResolveTaskByEntity).toHaveBeenCalledWith({
+      entityRef: 'REQ#req_1#CAND#cand_1',
+      type: 'found_candidate_for_requirement',
+      completedBy: 'recruiter_1',
+    });
+  });
+
+  it('resolves the found task when flipping an existing shortlisted entry to not suitable', async () => {
+    mockGetShortlistEntry.mockResolvedValue({ status: 'shortlisted' });
+    const result = await handler(event());
+    expect(result.statusCode).toBe(200);
+    expect(mockUpdateShortlistStatus).toHaveBeenCalled();
+    expect(mockResolveTaskByEntity).toHaveBeenCalledWith({
+      entityRef: 'REQ#req_1#CAND#cand_1',
+      type: 'found_candidate_for_requirement',
+      completedBy: 'recruiter_1',
+    });
+  });
+
+  it('does NOT resolve the found task on the already-not-suitable 409 path', async () => {
+    mockGetShortlistEntry.mockResolvedValue({ status: 'not_suitable' });
+    const result = await handler(event());
+    expect(result.statusCode).toBe(409);
+    expect(mockResolveTaskByEntity).not.toHaveBeenCalled();
+  });
+
+  it('still returns 200 when the found-task resolver hits a DynamoDB error', async () => {
+    mockGetShortlistEntry.mockResolvedValue(null);
+    mockResolveTaskByEntity.mockRejectedValue(new Error('dynamo down'));
+    const result = await handler(event());
+    expect(result.statusCode).toBe(200);
+    expect(JSON.parse(result.body).success).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Tests: Not Interested Candidate Screening
 // ---------------------------------------------------------------------------
 
@@ -1115,5 +1310,40 @@ describe('generateScreeningQuestions handler', () => {
     expect(body.data.generated).toBe(false);
     expect(body.data.questions).toEqual([]);
     expect(body.data.notice).toBeDefined();
+  });
+
+  it('should pass offer-in-hand context to the LLM in the candidate summary', async () => {
+    mockGetCandidateById.mockResolvedValue({
+      ...mockCandidate,
+      last_screened_at: undefined,
+      availability: 'offer_in_hand',
+    });
+    mockGenerateScreeningQuestions.mockResolvedValue(['Q1']);
+
+    const event = makeEvent({ candidateId: 'cand_1' });
+    await handler(event);
+
+    expect(mockGenerateScreeningQuestions).toHaveBeenCalledOnce();
+    const summary = mockGenerateScreeningQuestions.mock.calls[0][0] as string;
+    expect(summary).toContain('Availability:');
+    expect(summary).toContain('competing offer');
+  });
+
+  it('should still bypass the LLM for a re-screened offer-in-hand candidate', async () => {
+    mockGetCandidateById.mockResolvedValue({
+      ...mockCandidate,
+      last_screened_at: '2026-05-01T10:00:00Z',
+      availability: 'offer_in_hand',
+    });
+
+    const event = makeEvent({ candidateId: 'cand_1' });
+    const result = await handler(event);
+    const body = JSON.parse(result.body);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.data.generated).toBe(false);
+    expect(body.data.questions).toEqual([]);
+    expect(body.data.notice).toBe('Re-screening; no additional questions are needed here.');
+    expect(mockGenerateScreeningQuestions).not.toHaveBeenCalled();
   });
 });

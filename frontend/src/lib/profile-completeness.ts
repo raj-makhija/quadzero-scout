@@ -53,7 +53,12 @@ export function calculateProfileCompleteness(
       field: 'location',
       label: 'Location',
       weight: 5,
-      completed: !!profile.location?.trim(),
+      completed: !!(
+        profile.city?.trim() ||
+        profile.state?.trim() ||
+        profile.country?.trim() ||
+        profile.location?.trim()
+      ),
       href: '#basic-info',
     },
     {

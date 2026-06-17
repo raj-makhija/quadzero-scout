@@ -4,7 +4,7 @@ import { validate, formatZodErrors, ShortlistCandidateRequestSchema } from '../.
 import { getRequirementById, getCandidateById, getShortlistEntry, saveShortlist, updateShortlistStatus, listAttachments } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
-import { safeGenerateTask, buildSubmitToClientTask } from '../../lib/recruiterTasks.js';
+import { safeGenerateTask, safeResolveTask, buildSubmitToClientTask, buildGetMandatoryDocumentsTask, compositeEntityRef } from '../../lib/recruiterTasks.js';
 import type { ShortlistItem } from '../../types/index.js';
 
 async function handleRequest(
@@ -31,6 +31,7 @@ async function handleRequest(
       requirementId, candidateId, notes,
       proposedRateHourly, proposedRateMonthly, proposedRateAnnual,
       internalRateHourly, internalRateMonthly, internalRateAnnual,
+      bypassDocumentCheck,
     } = validation.data;
 
     // Verify requirement and candidate exist in parallel
@@ -71,8 +72,9 @@ async function handleRequest(
     const attachments = await listAttachments(candidateId);
     const hasPan = attachments.some((a) => a.tag === 'PAN');
     const hasAadhaar = attachments.some((a) => a.tag === 'Aadhaar');
-    if (!hasPan || !hasAadhaar) {
-      const missing = [!hasPan && 'PAN', !hasAadhaar && 'Aadhaar'].filter(Boolean).join(' and ');
+    const missingDocs = [!hasPan && 'PAN', !hasAadhaar && 'Aadhaar'].filter(Boolean) as string[];
+    if (missingDocs.length > 0 && !bypassDocumentCheck) {
+      const missing = missingDocs.join(' and ');
       return error(
         ErrorCodes.DOCUMENTS_REQUIRED,
         `Required document(s) missing: ${missing}. Please attach the candidate's ${missing} document before shortlisting.`,
@@ -107,19 +109,33 @@ async function handleRequest(
           metadata: { requirementId, candidateId, candidateName: candidate.full_name, previousStatus: 'not_suitable' },
         });
 
+        const taskContext = {
+          candidate_name: candidate.full_name,
+          requirement_title: requirement.job_title,
+          client_name: requirement.client_name,
+        };
+        const now = new Date();
+
         await safeGenerateTask(
-          buildSubmitToClientTask({
-            ownerId: event.auth.userId,
-            requirementId,
-            candidateId,
-            context: {
-              candidate_name: candidate.full_name,
-              requirement_title: requirement.job_title,
-              client_name: requirement.client_name,
-            },
-            now: new Date(),
-          })
+          buildSubmitToClientTask({ ownerId: event.auth.userId, requirementId, candidateId, context: taskContext, now })
         );
+
+        if (bypassDocumentCheck && missingDocs.length > 0) {
+          await safeGenerateTask(
+            buildGetMandatoryDocumentsTask({
+              ownerId: event.auth.userId, requirementId, candidateId,
+              context: { ...taskContext, missing_docs: missingDocs.join(', ') },
+              now,
+            })
+          );
+        }
+
+        // The match is now resolved — clear the requirement-bound found task.
+        await safeResolveTask({
+          entityRef: compositeEntityRef(requirementId, candidateId),
+          type: 'found_candidate_for_requirement',
+          completedBy: event.auth.userId,
+        });
 
         const result: Record<string, unknown> = { success: true };
         if (candidate.not_interested) {
@@ -158,19 +174,33 @@ async function handleRequest(
       metadata: { requirementId, candidateId, candidateName: candidate.full_name },
     });
 
+    const taskContext = {
+      candidate_name: candidate.full_name,
+      requirement_title: requirement.job_title,
+      client_name: requirement.client_name,
+    };
+    const now = new Date();
+
     await safeGenerateTask(
-      buildSubmitToClientTask({
-        ownerId: event.auth.userId,
-        requirementId,
-        candidateId,
-        context: {
-          candidate_name: candidate.full_name,
-          requirement_title: requirement.job_title,
-          client_name: requirement.client_name,
-        },
-        now: new Date(),
-      })
+      buildSubmitToClientTask({ ownerId: event.auth.userId, requirementId, candidateId, context: taskContext, now })
     );
+
+    if (bypassDocumentCheck && missingDocs.length > 0) {
+      await safeGenerateTask(
+        buildGetMandatoryDocumentsTask({
+          ownerId: event.auth.userId, requirementId, candidateId,
+          context: { ...taskContext, missing_docs: missingDocs.join(', ') },
+          now,
+        })
+      );
+    }
+
+    // The match is now resolved — clear the requirement-bound found task.
+    await safeResolveTask({
+      entityRef: compositeEntityRef(requirementId, candidateId),
+      type: 'found_candidate_for_requirement',
+      completedBy: event.auth.userId,
+    });
 
     const result: Record<string, unknown> = { success: true };
     if (candidate.not_interested) {

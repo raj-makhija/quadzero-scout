@@ -77,6 +77,7 @@ function formatSeniority(seniority: string): string {
 function formatAvailability(availability: string): string {
   const map: Record<string, string> = {
     immediate: 'Immediate',
+    offer_in_hand: 'Offer in Hand',
     '1_week': '1 Week',
     '2_weeks': '2 Weeks',
     '1_month': '1 Month',

@@ -19,6 +19,13 @@ function buildCandidateSummary(c: CandidateItem): string {
   if (c.primary_skills?.length) parts.push(`Primary skills: ${c.primary_skills.join(', ')}`);
   if (c.secondary_skills?.length) parts.push(`Secondary skills: ${c.secondary_skills.join(', ')}`);
   if (c.industries?.length) parts.push(`Industries: ${c.industries.join(', ')}`);
+  if (c.availability) {
+    parts.push(
+      c.availability === 'offer_in_hand'
+        ? 'Availability: Offer in hand (candidate has a competing offer) - ask about the offer deadline, the competing CTC, and counter-offer likelihood'
+        : `Availability: ${c.availability}`
+    );
+  }
   if (c.summary) parts.push(`Summary: ${c.summary}`);
   if (c.cover_letter) parts.push(`Cover letter / supplementary text: ${c.cover_letter}`);
   return parts.join('\n');

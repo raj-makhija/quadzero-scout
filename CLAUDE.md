@@ -65,6 +65,53 @@ When the user says "let's work on ticket #N":
 7. Open the PR targeting `develop` with `Closes #<N>` in the body. Get it reviewed but **do not merge it** — the merge to develop happens at `pipeline:qa-approve`.
 8. After review, run `scripts/set-status.sh <N> ready-for-qa` (branch + PR left intact), then `pipeline:qa-deploy` to put it on QA. `pipeline:qa-approve` squash-merges it to develop; `pipeline:qa-reject` resets QA and reworks it.
 
+## Issue Reporting and Ticket-First Workflow
+
+### Default Mode: Log Tickets First, Fix Second
+
+**The default workflow is ticket-first.** When you identify a bug, feature request, or improvement, the first step is to **log a ticket in the issue tracker**, not to start coding immediately.
+
+**Why:**
+- Tickets flow through the autonomous pipeline (tester, developer, pr-reviewer, scribe agents) which provides structured validation, testing, and documentation.
+- Tickets create a permanent audit trail and enable prioritization across the team.
+- Multiple agents reviewing the same work provides better quality assurance than a single developer's fix.
+- The scribe agent generates follow-up docs tickets automatically, preventing docs drift.
+
+### Workflow
+
+When you bring up an issue or idea:
+
+1. **Check the default mode:** I will ask you at the start of each conversation whether to follow the ticket-first approach. The answer is almost always "yes" unless you explicitly say otherwise.
+2. **Create a ticket** with:
+   - Clear title and description.
+   - Acceptance criteria (if a feature or improvement).
+   - Relevant context (error logs, reproduction steps, design notes, etc.).
+   - Any initial thoughts on scope or approach (optional).
+3. **Track through the system:** The ticket then flows through triage, implementation, QA, and deployment via the pipeline.
+4. **Exceptions:** If you explicitly ask to fix something immediately (e.g., "I found a typo, fix it now"), I may skip ticket creation. But this should be rare and explicit.
+
+### Creating a Ticket
+
+Use `gh issue create` from the command line, or create directly on GitHub. Include:
+
+- **Title:** Short, action-oriented (e.g., "Fix auth token expiry not refreshing on API errors").
+- **Labels:** Add `type:` (bug, feature, improvement, docs, refactor) and any relevant area labels.
+- **Body:** Description, acceptance criteria, reproduction steps (if a bug), relevant logs or design notes.
+- **Do NOT add `auto-pipeline`:** The autonomous pipeline will pick it up separately. Your -cowork branches use the manual route.
+
+After a ticket is created, either:
+- **You work it manually** (create a `-cowork` branch, follow the "Working from a ticket number" workflow above).
+- **The autonomous pipeline picks it up** (if you leave it unassigned or explicitly request it).
+
+### When to Skip Tickets
+
+Immediate fixes without a ticket are OK for:
+- Typos in comments or strings (unless they affect user-facing docs).
+- One-line whitespace/formatting fixes.
+- Reverting a known broken commit.
+
+For anything else — a bug, a feature, a refactor, unclear edge cases — log a ticket first.
+
 ## Git Workflow
 
 ### Branching

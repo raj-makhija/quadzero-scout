@@ -125,7 +125,13 @@ export async function handler(
       full_name: profile.fullName,
       email: profile.email || existingCandidate?.email || '',
       phone: profile.phone ?? undefined,
-      location: normalizeLocation(profile.location) ?? undefined,
+      // `location` is kept as the city-only value for backward compatibility
+      // with search/matching/notifications. city/state/country are stored as
+      // distinct attributes (#396); city falls back to the legacy location.
+      location: normalizeLocation(profile.location ?? profile.city) ?? undefined,
+      city: (profile.city ?? normalizeLocation(profile.location)) ?? undefined,
+      state: profile.state ?? undefined,
+      country: profile.country ?? undefined,
       primary_skills: normalizedPrimarySkills,
       primary_skill_years: normalizedSkillYears,
       secondary_skills: normalizedSecondarySkills,
@@ -158,6 +164,16 @@ export async function handler(
       sub_vendor_contact_email: subVendor?.contact_person_email || existingCandidate?.sub_vendor_contact_email,
       skill_synonyms: skillSynonyms || existingCandidate?.skill_synonyms,
       skills_schema_version: skillsSchemaVersion || existingCandidate?.skills_schema_version,
+      // Preserve screening-owned fields from the existing record. These are
+      // written by the screening flow, not this save path; carrying them over
+      // stops a profile re-save (resume re-upload / edit) from wiping screening
+      // state and making an expired screening show as "Not Screened" (#399).
+      last_screened_at: existingCandidate?.last_screened_at,
+      last_screened_by: existingCandidate?.last_screened_by,
+      last_screened_by_name: existingCandidate?.last_screened_by_name,
+      not_interested: existingCandidate?.not_interested,
+      not_interested_at: existingCandidate?.not_interested_at,
+      not_interested_by: existingCandidate?.not_interested_by,
       ...(preserveFormattedResume ? preserveFormattedResume : {}),
       created_at: existingCandidate?.created_at || now,
       last_updated: now,
