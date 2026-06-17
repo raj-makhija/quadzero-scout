@@ -76,6 +76,7 @@ provider:
     GRAPH_MAILBOX_ADDRESS: ${ssm:/quadzero-scout/${self:provider.stage}/GRAPH_MAILBOX_ADDRESS, env:GRAPH_MAILBOX_ADDRESS, ''}
     EMAIL_INGEST_ENABLED: ${ssm:/quadzero-scout/${self:provider.stage}/EMAIL_INGEST_ENABLED, env:EMAIL_INGEST_ENABLED, 'false'}
     EMAIL_INGEST_NOTIFY_ADDRESS: ${ssm:/quadzero-scout/${self:provider.stage}/EMAIL_INGEST_NOTIFY_ADDRESS, env:EMAIL_INGEST_NOTIFY_ADDRESS, ''}
+    RECRUITER_MATCH_EMAIL_ENABLED: ${ssm:/quadzero-scout/${self:provider.stage}/RECRUITER_MATCH_EMAIL_ENABLED, env:RECRUITER_MATCH_EMAIL_ENABLED, 'false'}
 
   httpApi:
     cors:
