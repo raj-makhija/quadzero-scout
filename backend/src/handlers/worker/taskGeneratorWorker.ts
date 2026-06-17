@@ -14,17 +14,17 @@ import {
   SCREENING_MAX_AGE_DAYS,
   STALE_REQUIREMENT_DAYS,
   MATCH_TASK_THRESHOLD,
+  FOUND_MATCHES_PER_REQ,
   type SweepInput,
 } from '../../lib/recruiterTasks.js';
 import {
   getAllActiveRequirements,
   getShortlistsForRequirement,
   getCandidateById,
-  getRecentProfiles,
+  getMatchCache,
+  getCandidatesByIds,
 } from '../../lib/dynamodb.js';
-import { calculateMatchScore, parseSearchLocations } from '../../lib/matchScoring.js';
-import { normalizeSynonymMap } from '../../lib/candidateMatching.js';
-import type { CandidateItem, RequirementItem, ShortlistItem } from '../../types/index.js';
+import type { RequirementItem, ShortlistItem } from '../../types/index.js';
 
 const DAY_MS = 86_400_000;
 const ACTIVE_PROGRESS_STAGES = new Set([
@@ -39,30 +39,6 @@ const TERMINAL_SHORTLIST_STATUSES = new Set(['not_suitable', 'rejected', 'withdr
 function lastActivity(s: ShortlistItem): number {
   const ts = s.last_activity_at || s.stage_entered_at || s.tagged_at;
   return ts ? new Date(ts).getTime() : 0;
-}
-
-function scoreCandidate(candidate: CandidateItem, req: RequirementItem): number {
-  try {
-    const criteria = req.parsed_criteria;
-    if (!criteria) return 0;
-    const { score } = calculateMatchScore(
-      candidate,
-      criteria.mustHaveSkills || [],
-      criteria.goodToHaveSkills || [],
-      criteria.minExperience ?? undefined,
-      criteria.maxExperience ?? undefined,
-      criteria.seniority?.length ? criteria.seniority : undefined,
-      req.budget_max_lpa ?? undefined,
-      parseSearchLocations(criteria.location ?? undefined),
-      criteria.availability,
-      normalizeSynonymMap(criteria.skillSynonyms),
-      normalizeSynonymMap(candidate.skill_synonyms),
-      criteria.roles
-    );
-    return score;
-  } catch {
-    return 0;
-  }
 }
 
 export async function handler(): Promise<void> {
@@ -124,30 +100,49 @@ export async function handler(): Promise<void> {
   input.filledRequirements = filled;
   input.expiredScreenings = expiredScreenings;
 
-  // New profiles matching an active requirement (>= threshold), not yet shortlisted.
-  try {
-    const { items: recent } = await getRecentProfiles(50);
-    const matches: NonNullable<SweepInput['newMatches']> = [];
-    for (const candidate of recent) {
-      for (const req of requirements) {
-        if (shortlistedByReq.get(req.requirement_id)?.has(candidate.candidate_id)) continue;
-        const score = scoreCandidate(candidate, req);
-        if (score >= MATCH_TASK_THRESHOLD) {
-          matches.push({
-            requirementId: req.requirement_id,
-            candidateId: candidate.candidate_id,
-            candidateName: candidate.full_name,
-            requirementTitle: req.job_title,
-            clientName: req.client_name,
-            matchScore: score,
-          });
-        }
+  // Match tasks from RequirementMatchCache — one GetItem per active requirement.
+  const matches: NonNullable<SweepInput['newMatches']> = [];
+  for (const req of requirements) {
+    try {
+      const cached = await getMatchCache(req.requirement_id);
+      if (cached === null) {
+        console.log(`[taskGeneratorWorker] cold cache: ${req.requirement_id}, skipping`);
+        continue;
       }
+      const shortlistedForReq = shortlistedByReq.get(req.requirement_id) ?? new Set<string>();
+      const qualifying = cached.filter(
+        (e) => e.score >= MATCH_TASK_THRESHOLD && !shortlistedForReq.has(e.candidate_id)
+      );
+      const capped = qualifying.slice(0, FOUND_MATCHES_PER_REQ);
+      const skippedCount = qualifying.length - capped.length;
+      if (skippedCount > 0) {
+        console.log(`[taskGeneratorWorker] ${req.requirement_id}: skipping ${skippedCount} matches beyond cap`);
+      }
+      // Best-effort name enrichment for the capped set.
+      const nameMap = new Map<string, string>();
+      try {
+        const enriched = await getCandidatesByIds(capped.map((e) => e.candidate_id));
+        for (const c of enriched) {
+          nameMap.set(c.candidate_id, c.full_name);
+        }
+      } catch {
+        // best-effort; missing names are acceptable
+      }
+      for (const entry of capped) {
+        matches.push({
+          requirementId: req.requirement_id,
+          candidateId: entry.candidate_id,
+          candidateName: nameMap.get(entry.candidate_id),
+          requirementTitle: req.job_title,
+          clientName: req.client_name,
+          matchScore: entry.score,
+        });
+      }
+    } catch (err) {
+      console.error(`[taskGeneratorWorker] match cache sweep for ${req.requirement_id} failed:`, err);
     }
-    input.newMatches = matches;
-  } catch (err) {
-    console.error('[taskGeneratorWorker] match sweep failed:', err);
   }
+  input.newMatches = matches;
 
   try {
     input.lowConfidenceImports = await fetchLowConfidenceImports(now);

@@ -38,6 +38,8 @@ export const MATCH_TASK_THRESHOLD = 70;
 export const UNSCREENED_WINDOW_DAYS = 30;
 /** Universal screen scan: max never-screened candidates turned into tasks per sweep. */
 export const UNSCREENED_SCAN_CAP = 200;
+/** Max found_candidate_for_requirement tasks emitted per requirement per sweep. */
+export const FOUND_MATCHES_PER_REQ = 10;
 /** Pre-interview reminder "morning of the interview day" anchor, in UTC hours (03:30 UTC = 9:00 AM IST). */
 export const MORNING_ANCHOR_UTC_HOURS = 3.5;
 
