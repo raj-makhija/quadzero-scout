@@ -170,6 +170,23 @@ pl_require_clean_tree() {
   fi
 }
 
+# Return 0 if <tip> carries commits NOT reachable from <base> (genuine
+# un-merged work that must not be clobbered). Return 1 if <tip> is empty or
+# already contained in <base> -- merged, identical, or an older state of the
+# same line -- which is safe to reset and reuse.
+#
+# create-branch.sh keys its clobber guard on this. The distinction is
+# ancestry, NOT SHA-equality: develop HEAD advances as other tickets merge,
+# so a leftover attempt branch whose PR already merged is almost never equal
+# to current develop HEAD. The old equality check mis-flagged such stale
+# branches as "real work" and wedged retried tickets at needs-human (#430).
+pl_has_unmerged_commits() {
+  local tip="$1" base="$2"
+  [[ -z "$tip" ]] && return 1
+  git merge-base --is-ancestor "$tip" "$base" 2>/dev/null && return 1
+  return 0
+}
+
 # Generate a kebab-case slug from a free-form title.
 # "Fix: login bug (#42)" -> "fix-login-bug-42"
 pl_slug_from_title() {
