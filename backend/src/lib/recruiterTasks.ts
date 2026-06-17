@@ -41,6 +41,8 @@ export const FOUND_MATCHES_PER_REQ = 10;
 export const UNSCREENED_WINDOW_DAYS = 30;
 /** Universal screen scan: max never-screened candidates turned into tasks per sweep. */
 export const UNSCREENED_SCAN_CAP = 200;
+/** Universal rescreen scan: max stale-screened candidates turned into tasks per sweep. */
+export const RESCREEN_SCAN_CAP = 200;
 /** Pre-interview reminder "morning of the interview day" anchor, in UTC hours (03:30 UTC = 9:00 AM IST). */
 export const MORNING_ANCHOR_UTC_HOURS = 3.5;
 
@@ -322,14 +324,8 @@ export interface SweepInput {
     clientName?: string;
     matchScore: number;
   }>;
-  /** Candidates whose screening expired while still progressing in a shortlist. */
-  expiredScreenings?: Array<{
-    requirementId: string;
-    candidateId: string;
-    candidateName?: string;
-    requirementTitle?: string;
-    clientName?: string;
-  }>;
+  /** Candidates whose screening went stale (older than the max age), pool-wide. */
+  staleScreenedCandidates?: Array<{ candidateId: string; candidateName?: string }>;
   /** Active requirements with no shortlist activity for 7+ days. */
   staleRequirements?: Array<{ requirementId: string; requirementTitle?: string; clientName?: string }>;
   /** Active requirements that already have a joined candidate. */
@@ -373,14 +369,14 @@ export function buildSweepTasks(input: SweepInput): TaskSpec[] {
     );
   }
 
-  for (const s of input.expiredScreenings ?? []) {
+  for (const c of input.staleScreenedCandidates ?? []) {
     out.push(
       poolSpec(
         'rescreen_candidate',
-        s.requirementId,
-        s.candidateId,
-        { candidate_name: s.candidateName, requirement_title: s.requirementTitle, client_name: s.clientName },
-        addDays(now, 1)
+        undefined,
+        c.candidateId,
+        { candidate_name: c.candidateName },
+        addDays(now, 2)
       )
     );
   }
@@ -830,6 +826,63 @@ export async function fetchUnscreenedCandidates(
   if (skipped > 0) {
     console.log(
       `[recruiterTasks] unscreened scan cap ${cap} hit; ${skipped} candidate(s) skipped this sweep`
+    );
+  }
+  return candidates;
+}
+
+/**
+ * Pure selector: from profiles, pick candidates whose screening has gone stale
+ * (`last_screened_at` present and older than `maxAgeDays`), oldest-screened
+ * first, capped at `cap`. Returns the picks plus how many qualifying candidates
+ * were dropped because the cap was hit — so the caller can surface the
+ * truncation instead of hiding it.
+ */
+export function selectStaleScreenedCandidates(
+  profiles: ProfileForScan[],
+  now: Date,
+  maxAgeDays: number = SCREENING_MAX_AGE_DAYS,
+  cap: number = RESCREEN_SCAN_CAP
+): { candidates: NonNullable<SweepInput['staleScreenedCandidates']>; skipped: number } {
+  const cutoff = now.getTime() - maxAgeDays * 86_400_000;
+  const qualifying: Array<{ candidateId: string; candidateName?: string; screenedAt: number }> = [];
+  for (const p of profiles) {
+    if (!p.candidate_id || !p.last_screened_at) continue;
+    const screenedAt = new Date(p.last_screened_at).getTime();
+    if (Number.isNaN(screenedAt) || screenedAt >= cutoff) continue;
+    qualifying.push({ candidateId: p.candidate_id, candidateName: p.full_name, screenedAt });
+  }
+  qualifying.sort((a, b) => a.screenedAt - b.screenedAt);
+  const picked = qualifying.slice(0, cap);
+  const candidates = picked.map(({ candidateId, candidateName }) => ({ candidateId, candidateName }));
+  return { candidates, skipped: qualifying.length - candidates.length };
+}
+
+/**
+ * Universal rescreen gatherer: stale-screened candidates (`last_screened_at`
+ * older than the max age), oldest-screened first, capped at K per sweep. Unlike
+ * the never-screened scan this cannot early-stop while paging the
+ * RecentProfilesIndex (sorted by `last_updated` desc) — a stale-screened
+ * candidate can sit arbitrarily deep, and "oldest-screened first" requires the
+ * full set before sort + cap — so it pages the whole index.
+ */
+export async function fetchStaleScreenedCandidates(
+  now: Date = new Date(),
+  maxAgeDays: number = SCREENING_MAX_AGE_DAYS,
+  cap: number = RESCREEN_SCAN_CAP
+): Promise<NonNullable<SweepInput['staleScreenedCandidates']>> {
+  const profiles: ProfileForScan[] = [];
+  let lastKey: Record<string, unknown> | undefined;
+  do {
+    const { items, lastKey: next } = await getRecentProfiles(100, lastKey);
+    profiles.push(...items);
+    lastKey = next;
+  } while (lastKey);
+
+  const { candidates, skipped } = selectStaleScreenedCandidates(profiles, now, maxAgeDays, cap);
+  if (skipped > 0) {
+    console.log(
+      `[recruiterTasks] rescreen scan cap ${cap} hit; ${skipped} candidate(s) skipped this sweep`
     );
   }
   return candidates;
