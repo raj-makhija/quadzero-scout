@@ -1408,7 +1408,7 @@ export default function RecruiterSearchPage() {
                             e.stopPropagation();
                             handleViewOriginalResume(candidate.candidateId);
                           }}
-                          className="text-xs text-primary-600 dark:text-primary-400 hover:underline"
+                          className="btn-outline text-sm whitespace-nowrap"
                         >
                           View Original
                         </button>
@@ -1418,7 +1418,7 @@ export default function RecruiterSearchPage() {
                               e.stopPropagation();
                               setCoverLetterCandidate(candidate);
                             }}
-                            className="text-xs text-primary-600 dark:text-primary-400 hover:underline"
+                            className="btn-outline text-sm whitespace-nowrap"
                           >
                             View Covering Letter
                           </button>
