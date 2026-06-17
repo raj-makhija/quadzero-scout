@@ -11,8 +11,8 @@ import {
   expireStaleTasks,
   fetchLowConfidenceImports,
   fetchUnscreenedCandidates,
+  fetchStaleScreenedCandidates,
   selectMatchTasksFromCache,
-  SCREENING_MAX_AGE_DAYS,
   STALE_REQUIREMENT_DAYS,
   FOUND_MATCHES_PER_REQ,
   type SweepInput,
@@ -20,21 +20,12 @@ import {
 import {
   getAllActiveRequirements,
   getShortlistsForRequirement,
-  getCandidateById,
   getCandidatesByIds,
   getMatchCache,
 } from '../../lib/dynamodb.js';
 import type { RequirementItem, ShortlistItem } from '../../types/index.js';
 
 const DAY_MS = 86_400_000;
-const ACTIVE_PROGRESS_STAGES = new Set([
-  'shortlisted',
-  'submitted_to_client',
-  'client_reviewed',
-  'interview_scheduled',
-  'interview_completed',
-]);
-const TERMINAL_SHORTLIST_STATUSES = new Set(['not_suitable', 'rejected', 'withdrawn']);
 
 function lastActivity(s: ShortlistItem): number {
   const ts = s.last_activity_at || s.stage_entered_at || s.tagged_at;
@@ -56,7 +47,6 @@ export async function handler(): Promise<void> {
 
   const stale: NonNullable<SweepInput['staleRequirements']> = [];
   const filled: NonNullable<SweepInput['filledRequirements']> = [];
-  const expiredScreenings: NonNullable<SweepInput['expiredScreenings']> = [];
   const shortlistedByReq = new Map<string, Set<string>>();
 
   for (const req of requirements) {
@@ -74,31 +64,12 @@ export async function handler(): Promise<void> {
       if (shortlists.some((s) => s.pipeline_stage === 'joined')) {
         filled.push({ requirementId: req.requirement_id, requirementTitle: req.job_title, clientName: req.client_name });
       }
-
-      for (const s of shortlists) {
-        const stage = s.pipeline_stage || s.status;
-        if (TERMINAL_SHORTLIST_STATUSES.has(s.status)) continue;
-        if (stage && !ACTIVE_PROGRESS_STAGES.has(stage)) continue;
-        const candidate = await getCandidateById(s.candidate_id);
-        if (!candidate?.last_screened_at) continue;
-        const ageDays = (now.getTime() - new Date(candidate.last_screened_at).getTime()) / DAY_MS;
-        if (ageDays > SCREENING_MAX_AGE_DAYS) {
-          expiredScreenings.push({
-            requirementId: req.requirement_id,
-            candidateId: s.candidate_id,
-            candidateName: candidate.full_name,
-            requirementTitle: req.job_title,
-            clientName: req.client_name,
-          });
-        }
-      }
     } catch (err) {
       console.error(`[taskGeneratorWorker] requirement ${req.requirement_id} sweep failed:`, err);
     }
   }
   input.staleRequirements = stale;
   input.filledRequirements = filled;
-  input.expiredScreenings = expiredScreenings;
 
   // Strong candidates for active requirements, sourced from the precomputed
   // RequirementMatchCache (one GetItem per requirement) rather than re-scoring
@@ -163,6 +134,12 @@ export async function handler(): Promise<void> {
     input.unscreenedCandidates = await fetchUnscreenedCandidates(now);
   } catch (err) {
     console.error('[taskGeneratorWorker] unscreened-candidate sweep failed:', err);
+  }
+
+  try {
+    input.staleScreenedCandidates = await fetchStaleScreenedCandidates(now);
+  } catch (err) {
+    console.error('[taskGeneratorWorker] stale-screened-candidate sweep failed:', err);
   }
 
   const specs = buildSweepTasks(input);

@@ -18,10 +18,13 @@ import {
   buildStageTransitionTask,
   buildSweepTasks,
   selectUnscreenedCandidates,
+  selectStaleScreenedCandidates,
   selectMatchTasksFromCache,
   FOUND_MATCHES_PER_REQ,
   UNSCREENED_WINDOW_DAYS,
   UNSCREENED_SCAN_CAP,
+  RESCREEN_SCAN_CAP,
+  SCREENING_MAX_AGE_DAYS,
   buildTaskItem,
   createTaskIfAbsent,
   resolveTaskByEntity,
@@ -238,7 +241,7 @@ describe('buildSweepTasks', () => {
     const specs = buildSweepTasks({
       now: NOW,
       newMatches: [{ requirementId: 'r1', candidateId: 'c1', matchScore: 82 }],
-      expiredScreenings: [{ requirementId: 'r2', candidateId: 'c2' }],
+      staleScreenedCandidates: [{ candidateId: 'c2' }],
       staleRequirements: [{ requirementId: 'r3' }],
       filledRequirements: [{ requirementId: 'r4' }],
       lowConfidenceImports: [{ candidateId: 'c5', confidence: 0.4 }],
@@ -289,6 +292,21 @@ describe('buildSweepTasks', () => {
   it('emits no screen_candidate task when unscreenedCandidates is absent', () => {
     const specs = buildSweepTasks({ now: NOW });
     expect(specs.filter((s) => s.type === 'screen_candidate')).toHaveLength(0);
+  });
+
+  it('emits rescreen_candidate (CAND#.. ref, no REQ prefix) for a stale-screened candidate', () => {
+    const specs = buildSweepTasks({ now: NOW, staleScreenedCandidates: [{ candidateId: 'c7', candidateName: 'Ravi' }] });
+    expect(specs).toHaveLength(1);
+    expect(specs[0].type).toBe('rescreen_candidate');
+    expect(specs[0].entity_ref).toBe('CAND#c7');
+    expect(specs[0].action_url).toBe('/recruiter/locate/c7');
+    expect(specs[0].context.candidate_name).toBe('Ravi');
+    expect(hoursBetween(specs[0].due_date, NOW)).toBe(48);
+  });
+
+  it('emits no rescreen_candidate task when staleScreenedCandidates is absent', () => {
+    const specs = buildSweepTasks({ now: NOW });
+    expect(specs.filter((s) => s.type === 'rescreen_candidate')).toHaveLength(0);
   });
 
   it('uses the fixed pool-task priorities', () => {
@@ -346,6 +364,67 @@ describe('selectUnscreenedCandidates (universal screen scan)', () => {
   it('ignores profiles missing candidate_id or created_at', () => {
     const { candidates } = selectUnscreenedCandidates(
       [{ full_name: 'No id', created_at: iso(1) }, { candidate_id: 'c1' }],
+      NOW
+    );
+    expect(candidates).toHaveLength(0);
+  });
+});
+
+describe('selectStaleScreenedCandidates (universal rescreen scan)', () => {
+  const iso = (daysAgo: number) => new Date(NOW.getTime() - daysAgo * 86_400_000).toISOString();
+
+  it('picks candidates screened longer ago than the max age', () => {
+    const { candidates, skipped } = selectStaleScreenedCandidates(
+      [{ candidate_id: 'c1', full_name: 'Asha', last_screened_at: iso(SCREENING_MAX_AGE_DAYS + 1) }],
+      NOW
+    );
+    expect(candidates).toEqual([{ candidateId: 'c1', candidateName: 'Asha' }]);
+    expect(skipped).toBe(0);
+  });
+
+  it('drops a freshly-screened candidate (within the max age)', () => {
+    const { candidates } = selectStaleScreenedCandidates(
+      [{ candidate_id: 'c1', last_screened_at: iso(SCREENING_MAX_AGE_DAYS - 1) }],
+      NOW
+    );
+    expect(candidates).toHaveLength(0);
+  });
+
+  it('drops never-screened candidates (no last_screened_at)', () => {
+    const { candidates } = selectStaleScreenedCandidates(
+      [{ candidate_id: 'c1', created_at: iso(1) }],
+      NOW
+    );
+    expect(candidates).toHaveLength(0);
+  });
+
+  it('orders oldest-screened first', () => {
+    const { candidates } = selectStaleScreenedCandidates(
+      [
+        { candidate_id: 'newer', last_screened_at: iso(SCREENING_MAX_AGE_DAYS + 2) },
+        { candidate_id: 'oldest', last_screened_at: iso(SCREENING_MAX_AGE_DAYS + 30) },
+        { candidate_id: 'middle', last_screened_at: iso(SCREENING_MAX_AGE_DAYS + 10) },
+      ],
+      NOW
+    );
+    expect(candidates.map((c) => c.candidateId)).toEqual(['oldest', 'middle', 'newer']);
+  });
+
+  it('caps at K (oldest first), reports the skipped overflow', () => {
+    const profiles = Array.from({ length: RESCREEN_SCAN_CAP + 5 }, (_, i) => ({
+      candidate_id: `c${i}`,
+      // larger i → screened longer ago → sorts earlier
+      last_screened_at: iso(SCREENING_MAX_AGE_DAYS + 1 + i),
+    }));
+    const { candidates, skipped } = selectStaleScreenedCandidates(profiles, NOW);
+    expect(candidates).toHaveLength(RESCREEN_SCAN_CAP);
+    expect(skipped).toBe(5);
+    expect(candidates[0].candidateId).toBe(`c${RESCREEN_SCAN_CAP + 4}`);
+  });
+
+  it('ignores profiles missing candidate_id', () => {
+    const { candidates } = selectStaleScreenedCandidates(
+      [{ full_name: 'No id', last_screened_at: iso(SCREENING_MAX_AGE_DAYS + 1) }],
       NOW
     );
     expect(candidates).toHaveLength(0);
@@ -511,7 +590,7 @@ describe('resolveScreeningTasksForCandidate (auto-complete on screen)', () => {
       ownerItems: {
         POOL: [
           makeTask({ owner_id: POOL_OWNER, task_id: 's1', type: 'screen_candidate', entity_ref: 'CAND#c1' }),
-          makeTask({ owner_id: POOL_OWNER, task_id: 's2', type: 'rescreen_candidate', entity_ref: 'REQ#r2#CAND#c1' }),
+          makeTask({ owner_id: POOL_OWNER, task_id: 's2', type: 'rescreen_candidate', entity_ref: 'CAND#c1' }),
           makeTask({ owner_id: POOL_OWNER, task_id: 'found', type: 'found_candidate_for_requirement', entity_ref: 'REQ#r1#CAND#c1' }),
           makeTask({ owner_id: POOL_OWNER, task_id: 'other-type', type: 'close_requirement', entity_ref: 'REQ#r1#CAND#c1' }),
           makeTask({ owner_id: POOL_OWNER, task_id: 'other-cand', type: 'screen_candidate', entity_ref: 'CAND#c2' }),
