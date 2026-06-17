@@ -8,11 +8,12 @@
 # <type>/ticket-<N>-<slug>, pushes it to origin, and writes the Base SHA
 # (develop HEAD at branch time) to the ticket's "Base SHA" field.
 #
-# Idempotent for orphan branches: if a branch with this name already
-# exists (locally or on origin) and its tip equals the current develop
-# HEAD, it's adopted as if just created -- no real commits are on it,
-# so re-using it is safe. If the branch exists with commits beyond
-# develop HEAD, the script refuses (real work in progress; needs human).
+# Idempotent for stale branches: if a branch with this name already
+# exists (locally or on origin) and its tip is already contained in
+# develop -- merged, identical, or an older develop state -- it's reset to
+# develop HEAD and reused; no un-merged commits are lost. The script
+# refuses only when an existing tip carries commits NOT yet in develop
+# (real work in progress; needs human).
 #
 # Prints the branch name to stdout; everything else goes to stderr so
 # callers can safely do BRANCH=$(scripts/create-branch.sh ...).
@@ -56,19 +57,26 @@ if git show-ref --verify --quiet "refs/heads/$BRANCH"; then
   LOCAL_TIP="$(git rev-parse "refs/heads/$BRANCH")"
 fi
 
-# Refuse if any tip has commits beyond develop HEAD -- that's real work.
-if [[ -n "$REMOTE_TIP" && "$REMOTE_TIP" != "$BASE_SHA" ]]; then
-  echo "error: branch '$BRANCH' exists on origin at $REMOTE_TIP (beyond develop HEAD $BASE_SHA); refusing to clobber real work" >&2
+# Refuse only if a tip carries commits NOT yet merged into develop -- that's
+# real work. A tip already contained in develop (merged, identical, or an
+# older develop state) is stale: fall through and reset it to develop HEAD.
+# Keying on ancestry not SHA-equality is deliberate -- develop HEAD advances
+# as other tickets merge, so a merged leftover branch rarely equals current
+# HEAD, and an equality check would mis-flag it as work (#430).
+if [[ -n "$REMOTE_TIP" ]] && pl_has_unmerged_commits "$REMOTE_TIP" "$BASE_SHA"; then
+  echo "error: branch '$BRANCH' exists on origin at $REMOTE_TIP with commits not in develop ($BASE_SHA); refusing to clobber unmerged work" >&2
   exit 1
 fi
-if [[ -n "$LOCAL_TIP" && "$LOCAL_TIP" != "$BASE_SHA" ]]; then
-  echo "error: branch '$BRANCH' exists locally at $LOCAL_TIP (beyond develop HEAD $BASE_SHA); refusing to clobber real work" >&2
+if [[ -n "$LOCAL_TIP" ]] && pl_has_unmerged_commits "$LOCAL_TIP" "$BASE_SHA"; then
+  echo "error: branch '$BRANCH' exists locally at $LOCAL_TIP with commits not in develop ($BASE_SHA); refusing to clobber unmerged work" >&2
   exit 1
 fi
 
-# Either nothing exists, or every tip equals develop HEAD. Adopt or create.
+# Either nothing exists, or every tip is already merged into develop. The
+# `-B` reset below points the branch at develop HEAD; a stale remote tip is
+# an ancestor of HEAD, so the subsequent push fast-forwards (no force).
 if [[ -n "$REMOTE_TIP" || -n "$LOCAL_TIP" ]]; then
-  echo "adopting orphan branch '$BRANCH' (tip == develop HEAD)" >&2
+  echo "reusing branch '$BRANCH' (prior tip already in develop; resetting to HEAD)" >&2
 fi
 
 # `-B` is the unified create-or-reset path: works for new, adopts orphan,
