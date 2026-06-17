@@ -72,6 +72,7 @@ function toSearchResult(
     subVendorContactPerson: candidate.sub_vendor_contact_person,
     subVendorContactPhone: candidate.sub_vendor_contact_phone,
     subVendorContactEmail: candidate.sub_vendor_contact_email,
+    coverLetter: candidate.cover_letter,
   };
 }
 
