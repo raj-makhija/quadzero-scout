@@ -1229,6 +1229,14 @@ export default function RecruiterSearchPage() {
                         <span className={`badge ${getMatchScoreBgColor(candidate.matchScore)} ${getMatchScoreColor(candidate.matchScore)}`}>
                           {Math.min(100, candidate.matchScore)}% Match
                         </span>
+                        {candidate.matchDetails.coreSkillUnconfirmed && (
+                          <span
+                            className="badge text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
+                            title="Passes every other gate but the core skill could not be confirmed — review before shortlisting."
+                          >
+                            Core skill unconfirmed — review
+                          </span>
+                        )}
                         {isAuthenticated && (() => {
                           const status = getScreeningStatus(candidate.lastScreenedAt, candidate.notInterested);
                           return (

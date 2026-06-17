@@ -331,6 +331,9 @@ export interface CandidateSearchResult {
     locationMatch: 'full' | 'partial' | 'none';
     availabilityMatch: 'full' | 'partial' | 'none';
     roleMatch: 'full' | 'partial' | 'none';
+    /** #418: true when the candidate passed every other gate but did not
+     *  satisfy the requirement's coreSkill — surfaced for review, not excluded. */
+    coreSkillUnconfirmed?: boolean;
   };
   lastUpdated: string;
   lastScreenedAt?: string;

@@ -1178,6 +1178,9 @@ export interface CandidateSearchResult {
     locationMatch: 'full' | 'partial' | 'none';
     availabilityMatch: 'full' | 'partial' | 'none';
     roleMatch?: 'full' | 'partial' | 'none';
+    /** #418: candidate passed every other gate but did not satisfy the
+     *  requirement's coreSkill — surfaced for review, not excluded. */
+    coreSkillUnconfirmed?: boolean;
   };
   lastUpdated: string;
   lastScreenedAt?: string;
@@ -2175,6 +2178,9 @@ export interface MatchDebugResponse {
   };
   wouldBeExcluded: boolean;
   excludedBy: string[];
+  /** #418: coreSkill was the only failing gate and the score cleared the floor,
+   *  so the candidate is surfaced for review rather than hard-excluded. */
+  coreSkillUnconfirmed?: boolean;
   score: number;
   matchDetails: {
     mustHaveMatched: string[];
@@ -2190,6 +2196,7 @@ export interface MatchDebugResponse {
     locationMatch: string;
     availabilityMatch: string;
     roleMatch?: string;
+    coreSkillUnconfirmed?: boolean;
   };
 }
 

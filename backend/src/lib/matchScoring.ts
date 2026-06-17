@@ -42,6 +42,16 @@ export const SKILL_YEARS_WEIGHT = 4;
 /** Maximum score penalty applied when a candidate's expected CTC exceeds the budget ceiling. */
 export const CTC_OVER_BUDGET_MAX_PENALTY = 20;
 
+/** Recall safety net (#418): a candidate who passes every other gate but does
+ *  NOT satisfy the requirement's coreSkill is surfaced for review (rather than
+ *  hard-excluded) only when its raw match score clears this floor. Below it, a
+ *  non-core match is too weak to be worth a recruiter's attention. */
+export const CORESKILL_UNCONFIRMED_SCORE_FLOOR = 40;
+
+/** Score multiplier applied to a surfaced coreSkill-unconfirmed candidate so it
+ *  ranks below confirmed matches — surfaced, but clearly secondary (#418). */
+export const CORESKILL_UNCONFIRMED_PENALTY = 0.5;
+
 /** Tolerance (in years) for partial experience match outside the specified range. */
 const EXPERIENCE_PARTIAL_TOLERANCE = 2;
 

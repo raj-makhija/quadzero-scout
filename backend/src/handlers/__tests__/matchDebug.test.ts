@@ -102,7 +102,7 @@ describe('matchDebug handler — MERN stack coreSkill filter reporting', () => {
     expect(body.data.wouldBeExcluded).toBe(false);
   });
 
-  it('reports coreSkill failed and excludedBy coreSkill when candidate is missing one component', async () => {
+  it('reports coreSkill failed but surfaces for review (not excluded) when coreSkill is the only miss (#418)', async () => {
     (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(
       makeCandidate(['mongodb', 'react', 'nodejs']) // missing expressjs
     );
@@ -113,9 +113,14 @@ describe('matchDebug handler — MERN stack coreSkill filter reporting', () => {
     const response = await handler(makeEvent('cand_test', 'req_1'));
     const body = JSON.parse((response as { body: string }).body);
 
+    // coreSkill is still reported as failed in the filter breakdown...
     expect(body.data.filters.coreSkill.passed).toBe(false);
     expect(body.data.excludedBy).toContain('coreSkill');
-    expect(body.data.wouldBeExcluded).toBe(true);
+    // ...but because it is the ONLY failing gate and the score clears the floor,
+    // the recall safety net surfaces it for review rather than excluding it (#418).
+    expect(body.data.coreSkillUnconfirmed).toBe(true);
+    expect(body.data.wouldBeExcluded).toBe(false);
+    expect(body.data.matchDetails.coreSkillUnconfirmed).toBe(true);
   });
 
   it('reports coreSkill passed with exact match detail for non-stack coreSkill with matching candidate', async () => {
@@ -185,6 +190,26 @@ describe('matchDebug handler — role-qualified compound coreSkill filter', () =
 
     expect(body.data.filters.coreSkill.passed).toBe(false);
     expect(body.data.excludedBy).toContain('coreSkill');
+    // coreSkill-only miss above the floor → surfaced for review, not excluded (#418).
+    expect(body.data.coreSkillUnconfirmed).toBe(true);
+    expect(body.data.wouldBeExcluded).toBe(false);
+  });
+
+  it('keeps hard exclusion (no review) when coreSkill miss coincides with a discipline failure (#418)', async () => {
+    (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeCandidate(['react', 'nodejs', 'python'], ['QA Engineer'])
+    );
+    (getRequirementById as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeRequirement('AWS Architect', ['Software Engineer'])
+    );
+
+    const response = await handler(makeEvent('cand_test', 'req_1'));
+    const body = JSON.parse((response as { body: string }).body);
+
+    // Two failing gates (coreSkill + discipline) → no recall benefit, stays excluded.
+    expect(body.data.excludedBy).toContain('coreSkill');
+    expect(body.data.excludedBy).toContain('discipline');
+    expect(body.data.coreSkillUnconfirmed).toBe(false);
     expect(body.data.wouldBeExcluded).toBe(true);
   });
 });

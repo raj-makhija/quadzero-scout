@@ -64,6 +64,7 @@ function toCandidateSearchResult(
       locationMatch: md.locationMatch as 'full' | 'partial' | 'none',
       availabilityMatch: md.availabilityMatch as 'full' | 'partial' | 'none',
       roleMatch: md.roleMatch as 'full' | 'partial' | 'none' | undefined,
+      coreSkillUnconfirmed: debug.coreSkillUnconfirmed,
     },
     lastUpdated: new Date().toISOString(),
     lastScreenedAt: screening?.lastScreenedAt,
@@ -503,8 +504,13 @@ function MatchDebugPanel({ result }: { result: MatchDebugResponse }) {
   const [expanded, setExpanded] = useState(false);
   const { filters, score, wouldBeExcluded, excludedBy, matchDetails } = result;
 
+  // Three distinct verdict states (#418): hard exclusion, review (coreSkill
+  // unconfirmed but every other gate passed), and a clean match.
+  const isReview = !wouldBeExcluded && !!result.coreSkillUnconfirmed;
+
   const scoreColor = wouldBeExcluded
     ? 'text-red-600 dark:text-red-400'
+    : isReview ? 'text-amber-600 dark:text-amber-400'
     : score >= 60 ? 'text-green-600 dark:text-green-400'
     : score >= 40 ? 'text-amber-600 dark:text-amber-400'
     : 'text-gray-600 dark:text-gray-400';
@@ -515,19 +521,34 @@ function MatchDebugPanel({ result }: { result: MatchDebugResponse }) {
       <div className={`px-4 py-3 flex items-center justify-between ${
         wouldBeExcluded
           ? 'bg-red-50 dark:bg-red-900/20'
-          : 'bg-green-50 dark:bg-green-900/20'
+          : isReview
+            ? 'bg-amber-50 dark:bg-amber-900/20'
+            : 'bg-green-50 dark:bg-green-900/20'
       }`}>
         <div className="flex items-center gap-2">
           {wouldBeExcluded
             ? <XCircle className="w-5 h-5 text-red-500" />
-            : <CheckCircle className="w-5 h-5 text-green-500" />
+            : isReview
+              ? <AlertTriangle className="w-5 h-5 text-amber-500" />
+              : <CheckCircle className="w-5 h-5 text-green-500" />
           }
-          <span className={`font-semibold ${wouldBeExcluded ? 'text-red-700 dark:text-red-300' : 'text-green-700 dark:text-green-300'}`}>
-            {wouldBeExcluded ? 'No Match' : 'Match'}
+          <span className={`font-semibold ${
+            wouldBeExcluded
+              ? 'text-red-700 dark:text-red-300'
+              : isReview
+                ? 'text-amber-700 dark:text-amber-300'
+                : 'text-green-700 dark:text-green-300'
+          }`}>
+            {wouldBeExcluded ? 'No Match' : isReview ? 'Review' : 'Match'}
           </span>
           {wouldBeExcluded && excludedBy.length > 0 && (
             <span className="text-sm text-red-600 dark:text-red-400">
               &mdash; excluded by: {excludedBy.join(', ')}
+            </span>
+          )}
+          {isReview && (
+            <span className="text-sm text-amber-600 dark:text-amber-400">
+              &mdash; core skill unconfirmed
             </span>
           )}
         </div>
