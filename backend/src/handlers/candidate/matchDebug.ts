@@ -5,6 +5,8 @@ import { getCandidateById, getRequirementById } from '../../lib/dynamodb.js';
 import { normalizeSkill, normalizeSkills, coreSkillMatchResult, disciplinesIncompatible } from '../../lib/skillNormalizer.js';
 import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, FUZZY_MATCH_WEIGHT, MUST_HAVE_SECONDARY_WEIGHT, parseSearchLocations, isEngagementModelCompatible } from '../../lib/matchScoring.js';
 import { isCandidateWithinBudget } from '../../lib/ctcConversion.js';
+import { rerankTopN } from '../../lib/llm/index.js';
+import { buildRerankCandidates, buildRequirementJd } from '../../lib/llmRerank.js';
 
 /** Normalize a synonym map: lowercase keys and values. Returns undefined if input is null/undefined. */
 function normalizeSynonymMap(
@@ -120,6 +122,28 @@ export async function handler(
     if (!engagementPassed) excludedBy.push('engagementModel');
     if (disciplineExcluded) excludedBy.push('discipline');
 
+    // AI scoring — fires only when deterministic score strictly exceeds 50 and the
+    // requirement has JD text for context. Errors are swallowed so the response
+    // always returns HTTP 200 with the deterministic score.
+    let aiScore: number | undefined;
+    let aiRationale: string | undefined;
+    if (score > 50 && requirement.jd_text) {
+      try {
+        const rerankResult = await rerankTopN({
+          jobDescription: buildRequirementJd(requirement),
+          candidates: buildRerankCandidates([candidate]),
+          topNHash: 'matchdebug',
+        });
+        const entry = rerankResult.entries[0];
+        if (entry) {
+          aiScore = entry.llmScore;
+          aiRationale = entry.rationale;
+        }
+      } catch (aiErr) {
+        console.warn('AI scoring failed for matchDebug, returning deterministic score only:', aiErr);
+      }
+    }
+
     return success({
       candidate: {
         candidateId: candidate.candidate_id,
@@ -195,6 +219,7 @@ export async function handler(
       excludedBy,
       score,
       matchDetails: details,
+      ...(aiScore !== undefined ? { aiScore, aiRationale } : {}),
     });
   } catch (err) {
     console.error('Error in match debug:', err);

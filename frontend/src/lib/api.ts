@@ -2191,6 +2191,8 @@ export interface MatchDebugResponse {
     availabilityMatch: string;
     roleMatch?: string;
   };
+  aiScore?: number;
+  aiRationale?: string;
 }
 
 // ─── Recruiter Task Queue (ticket #153) ──────────────────────────────────────
