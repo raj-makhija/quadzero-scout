@@ -41,6 +41,7 @@ interface Config {
   };
   featureFlags: {
     llmRerankEnabled: boolean;
+    recruiterMatchEmailEnabled: boolean;
   };
   email: {
     senderEmail: string;
@@ -117,6 +118,7 @@ export const config: Config = {
   },
   featureFlags: {
     llmRerankEnabled: getEnvVar('LLM_RERANK_ENABLED', 'false') === 'true',
+    recruiterMatchEmailEnabled: getEnvVar('RECRUITER_MATCH_EMAIL_ENABLED', 'false') === 'true',
   },
   email: {
     senderEmail: getEnvVar('SES_SENDER_EMAIL', ''),
