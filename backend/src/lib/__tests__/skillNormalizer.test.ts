@@ -1440,3 +1440,122 @@ describe('IAM normalization and matching', () => {
     expect(related).not.toContain('iam');
   });
 });
+
+// ---------------------------------------------------------------------------
+// TC-BY-001 through TC-BY-016: Blue Yonder / JDA vendor-rebrand + domain-acronym
+// ---------------------------------------------------------------------------
+
+describe('Blue Yonder / JDA normalization and matching', () => {
+  // TC-BY-001: core fix — the reproduction case from the issue
+  it('coreSkillMatchResult passes "Blue Yonder ESP" for a candidate with jda + blueyonder aliases', () => {
+    const result = coreSkillMatchResult('Blue Yonder ESP', [
+      'jda', 'blueyonder', 'demand planning', 'fulfillment', 'demand360',
+      'enterprise supply planning', 'sql', 'pl/sql', 'oracle',
+    ]);
+    expect(result.passed).toBe(true);
+  });
+
+  // TC-BY-002: jda alias normalizes to canonical vendor name
+  it('normalizes "jda" to "blue yonder"', () => {
+    expect(normalizeSkill('jda')).toBe('blue yonder');
+  });
+
+  // TC-BY-003: jda software (full historical name) normalizes to canonical
+  it('normalizes "jda software" to "blue yonder"', () => {
+    expect(normalizeSkill('jda software')).toBe('blue yonder');
+  });
+
+  // TC-BY-004: one-word spacing variant normalizes to canonical
+  it('normalizes "blueyonder" to "blue yonder"', () => {
+    expect(normalizeSkill('blueyonder')).toBe('blue yonder');
+  });
+
+  // TC-BY-005: domain-acronym phrase collapses to vendor canonical
+  it('normalizes "blue yonder esp" to "blue yonder"', () => {
+    expect(normalizeSkill('blue yonder esp')).toBe('blue yonder');
+  });
+
+  // TC-BY-006: all four aliases collapse to the same canonical value
+  it('all four aliases normalize to the same "blue yonder" canonical', () => {
+    const c = 'blue yonder';
+    expect(normalizeSkill('jda')).toBe(c);
+    expect(normalizeSkill('blueyonder')).toBe(c);
+    expect(normalizeSkill('blue yonder esp')).toBe(c);
+    expect(normalizeSkill('blue yonder')).toBe(c);
+  });
+
+  // TC-BY-007: JDA-only path (no other Blue Yonder form)
+  it('candidate with only "jda" passes coreSkill "Blue Yonder ESP"', () => {
+    expect(coreSkillSatisfiedBy('Blue Yonder ESP', ['jda', 'sql', 'oracle'])).toBe(true);
+  });
+
+  // TC-BY-008: blueyonder-only path (no JDA)
+  it('candidate with only "blueyonder" passes coreSkill "Blue Yonder ESP"', () => {
+    expect(coreSkillSatisfiedBy('Blue Yonder ESP', ['blueyonder', 'demand planning'])).toBe(true);
+  });
+
+  // TC-BY-009: sub-skills remain distinct — NOT collapsed into the vendor name
+  it('sub-skill "demand planning" does NOT normalize to "blue yonder"', () => {
+    expect(normalizeSkill('demand planning')).not.toBe('blue yonder');
+  });
+
+  it('sub-skill "enterprise supply planning" does NOT normalize to "blue yonder"', () => {
+    expect(normalizeSkill('enterprise supply planning')).not.toBe('blue yonder');
+  });
+
+  it('sub-skill "fulfillment" does NOT normalize to "blue yonder"', () => {
+    expect(normalizeSkill('fulfillment')).not.toBe('blue yonder');
+  });
+
+  it('sub-skill "demand360" does NOT normalize to "blue yonder"', () => {
+    expect(normalizeSkill('demand360')).not.toBe('blue yonder');
+  });
+
+  // TC-BY-010: bare "esp" acronym is NOT mapped to Blue Yonder (collision risk)
+  it('bare acronym "esp" does NOT normalize to "blue yonder"', () => {
+    expect(normalizeSkill('esp')).not.toBe('blue yonder');
+  });
+
+  // TC-BY-011: case-insensitive aliases
+  it('"JDA" (uppercase) normalizes to "blue yonder"', () => {
+    expect(normalizeSkill('JDA')).toBe('blue yonder');
+  });
+
+  it('"JDA Software" (mixed case) normalizes to "blue yonder"', () => {
+    expect(normalizeSkill('JDA Software')).toBe('blue yonder');
+  });
+
+  it('"BlueYonder" (mixed case) normalizes to "blue yonder"', () => {
+    expect(normalizeSkill('BlueYonder')).toBe('blue yonder');
+  });
+
+  // TC-BY-012: deduplication — both aliases produce a single "blue yonder" entry
+  it('normalizeSkills(["jda","blueyonder"]) deduplicates to ["blue yonder"]', () => {
+    expect(normalizeSkills(['jda', 'blueyonder'])).toEqual(['blue yonder']);
+  });
+
+  // TC-BY-013: shorter coreSkill form "Blue Yonder" (without ESP) also resolves
+  it('candidate with "jda" passes coreSkill "Blue Yonder" (short form)', () => {
+    expect(coreSkillSatisfiedBy('Blue Yonder', ['jda', 'sql'])).toBe(true);
+  });
+
+  it('candidate with "blueyonder" passes coreSkill "Blue Yonder" (short form)', () => {
+    expect(coreSkillSatisfiedBy('Blue Yonder', ['blueyonder'])).toBe(true);
+  });
+
+  // TC-BY-014: verbatim "blue yonder esp" passes via exact-match fast path
+  it('candidate listing "blue yonder esp" verbatim passes coreSkill "Blue Yonder ESP"', () => {
+    const result = coreSkillMatchResult('Blue Yonder ESP', ['blue yonder esp']);
+    expect(result.passed).toBe(true);
+    expect(result.matchType).toBe('exact');
+  });
+
+  // TC-BY-015: whitespace-padded inputs normalize correctly
+  it('" jda " (padded) normalizes to "blue yonder"', () => {
+    expect(normalizeSkill(' jda ')).toBe('blue yonder');
+  });
+
+  it('" blueyonder " (padded) normalizes to "blue yonder"', () => {
+    expect(normalizeSkill(' blueyonder ')).toBe('blue yonder');
+  });
+});

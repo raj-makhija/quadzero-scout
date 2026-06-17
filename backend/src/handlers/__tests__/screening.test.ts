@@ -70,6 +70,7 @@ vi.mock('../../lib/skillNormalizer.js', () => ({
 
 const mockSafeResolveScreeningTasks = vi.fn().mockResolvedValue(undefined);
 const mockResolveTaskByEntity = vi.fn().mockResolvedValue(0);
+const mockSafeGenerateTask = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../../lib/recruiterTasks.js', async () => {
   const actual = await vi.importActual('../../lib/recruiterTasks.js') as Record<string, unknown>;
@@ -85,6 +86,7 @@ vi.mock('../../lib/recruiterTasks.js', async () => {
         // swallowed by design
       }
     },
+    safeGenerateTask: (...args: unknown[]) => mockSafeGenerateTask(...args),
   };
 });
 
@@ -670,6 +672,83 @@ describe('shortlistCandidate handler (found-task resolver)', () => {
     const result = await handler(event());
     expect(result.statusCode).toBe(200);
     expect(JSON.parse(result.body).success).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: Bypass Document Check (ticket #405)
+// ---------------------------------------------------------------------------
+
+describe('shortlistCandidate handler (bypass document check)', () => {
+  let handler: Function;
+  const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockGetRequirementById.mockResolvedValue({ requirement_id: 'req_1', job_title: 'Backend Dev', client_name: 'Acme' });
+    mockGetCandidateById.mockResolvedValue({ ...mockCandidate, last_screened_at: fiveDaysAgo });
+    mockGetShortlistEntry.mockResolvedValue(null);
+    mockListAttachments.mockResolvedValue([]); // no docs by default
+    mockResolveTaskByEntity.mockResolvedValue(0);
+    const mod = await import('../recruiter/shortlistCandidate.js');
+    handler = mod.handler;
+  });
+
+  const bypassEvent = () => makeEvent({ requirementId: 'req_1', candidateId: 'cand_1', bypassDocumentCheck: true });
+
+  it('bypasses document check and persists shortlist when bypassDocumentCheck is true', async () => {
+    const result = await handler(bypassEvent());
+    expect(result.statusCode).toBe(200);
+    expect(JSON.parse(result.body).success).toBe(true);
+    expect(mockSaveShortlist).toHaveBeenCalledOnce();
+  });
+
+  it('creates a get_mandatory_documents task assigned to the recruiter with priority 1 and 24h due date', async () => {
+    const before = new Date();
+    const result = await handler(bypassEvent());
+    const after = new Date();
+    expect(result.statusCode).toBe(200);
+
+    const calls = mockSafeGenerateTask.mock.calls;
+    const getMandatoryCall = calls.find(([spec]: any) => spec?.type === 'get_mandatory_documents');
+    expect(getMandatoryCall).toBeDefined();
+    const spec = getMandatoryCall![0] as Record<string, unknown>;
+    expect(spec.owner_id).toBe('recruiter_1');
+    expect(spec.priority).toBe(1);
+    const due = new Date(spec.due_date as string);
+    expect(due.getTime()).toBeGreaterThanOrEqual(before.getTime() + 23 * 3_600_000);
+    expect(due.getTime()).toBeLessThanOrEqual(after.getTime() + 25 * 3_600_000);
+  });
+
+  it('does not create get_mandatory_documents task when docs are present even with bypassDocumentCheck', async () => {
+    mockListAttachments.mockResolvedValue(BOTH_DOCS);
+    const result = await handler(bypassEvent());
+    expect(result.statusCode).toBe(200);
+    const getMandatoryCall = mockSafeGenerateTask.mock.calls.find(([spec]: any) => spec?.type === 'get_mandatory_documents');
+    expect(getMandatoryCall).toBeUndefined();
+  });
+
+  it('still enforces screening freshness gate even when bypassDocumentCheck is true', async () => {
+    const twentyDaysAgo = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString();
+    mockGetCandidateById.mockResolvedValue({ ...mockCandidate, last_screened_at: twentyDaysAgo });
+    const result = await handler(bypassEvent());
+    expect(result.statusCode).toBe(409);
+    expect(JSON.parse(result.body).error.code).toBe('SCREENING_REQUIRED');
+    expect(mockSaveShortlist).not.toHaveBeenCalled();
+  });
+
+  it('creates get_mandatory_documents task after persisting the shortlist entry', async () => {
+    const callOrder: string[] = [];
+    mockSaveShortlist.mockImplementation(async () => { callOrder.push('save'); });
+    mockSafeGenerateTask.mockImplementation(async (spec: unknown) => {
+      callOrder.push((spec as { type: string }).type);
+    });
+    const result = await handler(bypassEvent());
+    expect(result.statusCode).toBe(200);
+    const saveIdx = callOrder.indexOf('save');
+    const taskIdx = callOrder.indexOf('get_mandatory_documents');
+    expect(saveIdx).toBeGreaterThanOrEqual(0);
+    expect(taskIdx).toBeGreaterThan(saveIdx);
   });
 });
 

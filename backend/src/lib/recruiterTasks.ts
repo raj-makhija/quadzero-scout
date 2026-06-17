@@ -38,6 +38,8 @@ export const MATCH_TASK_THRESHOLD = 70;
 export const UNSCREENED_WINDOW_DAYS = 30;
 /** Universal screen scan: max never-screened candidates turned into tasks per sweep. */
 export const UNSCREENED_SCAN_CAP = 200;
+/** Pre-interview reminder "morning of the interview day" anchor, in UTC hours (03:30 UTC = 9:00 AM IST). */
+export const MORNING_ANCHOR_UTC_HOURS = 3.5;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -46,11 +48,13 @@ export type TaskType =
   | 'submit_to_client'
   | 'follow_up_client'
   | 'schedule_interview'
+  | 'pre_interview_reminder'
   | 'record_interview_feedback'
   | 'send_offer'
   | 'follow_up_offer'
   | 'confirm_joining'
   | 'post_placement_checkin'
+  | 'get_mandatory_documents'
   // Scheduled sweep (pool)
   | 'found_candidate_for_requirement'
   | 'screen_candidate'
@@ -105,9 +109,11 @@ export interface RecruiterTask {
 export const TASK_PRIORITY: Record<TaskType, TaskPriority> = {
   record_interview_feedback: 1,
   found_candidate_for_requirement: 1,
+  get_mandatory_documents: 1,
   submit_to_client: 2,
   follow_up_client: 2,
   schedule_interview: 2,
+  pre_interview_reminder: 2,
   send_offer: 2,
   follow_up_offer: 2,
   confirm_joining: 3,
@@ -157,6 +163,7 @@ function actionUrlFor(type: TaskType, requirementId?: string, candidateId?: stri
     case 'screen_candidate':
     case 'rescreen_candidate':
     case 'review_bulk_import':
+    case 'get_mandatory_documents':
       return candidateId ? `/recruiter/locate/${candidateId}` : '/recruiter/search';
     default:
       return requirementId ? `/recruiter/requirements/${requirementId}` : '/recruiter/search';
@@ -244,6 +251,10 @@ export function buildSubmitToClientTask(p: PipelineSpecArgs): TaskSpec {
   return spec('submit_to_client', p.ownerId, p.requirementId, p.candidateId, p.context, addHours(p.now, 24));
 }
 
+export function buildGetMandatoryDocumentsTask(p: PipelineSpecArgs): TaskSpec {
+  return spec('get_mandatory_documents', p.ownerId, p.requirementId, p.candidateId, p.context, addHours(p.now, 24));
+}
+
 export function buildFollowUpClientTask(p: PipelineSpecArgs): TaskSpec {
   return spec('follow_up_client', p.ownerId, p.requirementId, p.candidateId, p.context, addDays(p.now, 5));
 }
@@ -258,6 +269,28 @@ export function buildScheduleInterviewTask(p: PipelineSpecArgs & { rating: strin
 export function buildRecordInterviewFeedbackTask(p: PipelineSpecArgs & { scheduledAt: string }): TaskSpec {
   const due = addHours(new Date(p.scheduledAt), 1);
   return spec('record_interview_feedback', p.ownerId, p.requirementId, p.candidateId, p.context, due);
+}
+
+/**
+ * Pre-interview reminder, due at the earlier of (a) the "morning" of the
+ * interview day (MORNING_ANCHOR_UTC_HOURS UTC) and (b) one hour before the
+ * interview start. Always returns a spec — past due dates (short-notice or
+ * same-day bookings) are kept and handled by the expiry grace window.
+ */
+export function buildPreInterviewReminderTask(p: PipelineSpecArgs & { scheduledAt: string }): TaskSpec {
+  const interview = new Date(p.scheduledAt);
+  const anchorHours = Math.floor(MORNING_ANCHOR_UTC_HOURS);
+  const anchorMinutes = Math.round((MORNING_ANCHOR_UTC_HOURS - anchorHours) * 60);
+  const morningMs = Date.UTC(
+    interview.getUTCFullYear(),
+    interview.getUTCMonth(),
+    interview.getUTCDate(),
+    anchorHours,
+    anchorMinutes
+  );
+  const oneHourBeforeMs = interview.getTime() - 3_600_000;
+  const due = new Date(Math.min(morningMs, oneHourBeforeMs)).toISOString();
+  return spec('pre_interview_reminder', p.ownerId, p.requirementId, p.candidateId, p.context, due);
 }
 
 /** Only a "proceed" interview decision generates a send-offer task. */
