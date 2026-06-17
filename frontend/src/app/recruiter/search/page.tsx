@@ -1370,15 +1370,15 @@ export default function RecruiterSearchPage() {
                     </div>
 
                     {isAuthenticated && (
-                      <div className="flex flex-col items-end gap-1">
+                      <div className="flex flex-col gap-3 sm:w-44 sm:shrink-0">
                         {sourceRequirementId && !candidate.isShortlisted && !candidate.isNotSuitable && (
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-col gap-2">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleShortlistClick(candidate);
                               }}
-                              className="btn-primary text-sm whitespace-nowrap"
+                              className="btn-primary text-sm w-full"
                             >
                               Shortlist
                             </button>
@@ -1387,43 +1387,45 @@ export default function RecruiterSearchPage() {
                                 e.stopPropagation();
                                 handleMarkNotSuitable(candidate.candidateId);
                               }}
-                              className="btn-outline text-sm whitespace-nowrap text-orange-600 border-orange-300 hover:bg-orange-50 dark:text-orange-400 dark:border-orange-700 dark:hover:bg-orange-950/30"
+                              className="btn-outline text-sm w-full text-orange-600 border-orange-300 hover:bg-orange-50 dark:text-orange-400 dark:border-orange-700 dark:hover:bg-orange-950/30"
                             >
                               Not Suitable
                             </button>
                           </div>
                         )}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleViewResume(candidate.candidateId);
-                          }}
-                          disabled={formattingCandidateId === candidate.candidateId}
-                          className="btn-outline text-sm self-start whitespace-nowrap"
-                        >
-                          {formattingCandidateId === candidate.candidateId ? 'Formatting...' : 'View Resume'}
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleViewOriginalResume(candidate.candidateId);
-                          }}
-                          className="text-xs text-primary-600 dark:text-primary-400 hover:underline"
-                        >
-                          View Original
-                        </button>
-                        {candidate.coverLetter && (
+                        <div className="flex flex-col gap-2">
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              setCoverLetterCandidate(candidate);
+                              handleViewResume(candidate.candidateId);
                             }}
-                            className="text-xs text-primary-600 dark:text-primary-400 hover:underline"
+                            disabled={formattingCandidateId === candidate.candidateId}
+                            className="btn-secondary text-sm w-full"
                           >
-                            View Covering Letter
+                            {formattingCandidateId === candidate.candidateId ? 'Formatting...' : 'View Resume'}
                           </button>
-                        )}
-                        <span className="text-xs text-gray-400 dark:text-gray-500">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleViewOriginalResume(candidate.candidateId);
+                            }}
+                            className="btn-secondary text-sm w-full"
+                          >
+                            View Original
+                          </button>
+                          {candidate.coverLetter && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCoverLetterCandidate(candidate);
+                              }}
+                              className="btn-secondary text-sm w-full"
+                            >
+                              View Covering Letter
+                            </button>
+                          )}
+                        </div>
+                        <span className="text-xs text-gray-400 dark:text-gray-500 text-center">
                           Updated {formatRelativeTime(candidate.lastUpdated)}
                         </span>
                       </div>
