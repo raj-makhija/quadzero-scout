@@ -702,6 +702,44 @@ export async function safeResolveScreeningTasks(args: {
   }
 }
 
+/**
+ * Resolve all active `found_candidate_for_requirement` tasks for a requirement
+ * when it is closed/put on-hold. Queries the POOL partition (all sweep-generated
+ * tasks are POOL-owned) and filters to the requirement prefix — avoids a full
+ * table scan. Returns the count resolved.
+ */
+export async function resolveFoundTasksForRequirement(
+  args: { requirementId: string; completedBy: string },
+  now: Date = new Date()
+): Promise<number> {
+  const pool = await queryActiveByOwner(POOL_OWNER);
+  const prefix = `REQ#${args.requirementId}#`;
+  const targets = pool.filter(
+    (t) =>
+      t.type === 'found_candidate_for_requirement' &&
+      t.entity_ref.startsWith(prefix)
+  );
+  for (const t of targets) {
+    try {
+      await markCompleted(t.owner_id, t.task_id, args.completedBy, now);
+    } catch {
+      // Conditional check failed (already terminal) — ignore.
+    }
+  }
+  return targets.length;
+}
+
+export async function safeResolveFoundTasksForRequirement(args: {
+  requirementId: string;
+  completedBy: string;
+}): Promise<void> {
+  try {
+    await resolveFoundTasksForRequirement(args);
+  } catch (err) {
+    console.error('[recruiterTasks] found-candidate task cleanup failed:', err);
+  }
+}
+
 /** Best-effort display context for a pipeline task (candidate + requirement names). */
 export async function loadTaskContext(requirementId?: string, candidateId?: string): Promise<TaskContext> {
   try {
