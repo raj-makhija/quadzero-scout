@@ -9,8 +9,22 @@ vi.mock('../../lib/dynamodb.js', () => ({
   getRequirementById: vi.fn(),
 }));
 
+vi.mock('../../lib/llm/index.js', () => ({
+  rerankTopN: vi.fn(),
+}));
+
+vi.mock('../../lib/matchScoring.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/matchScoring.js')>();
+  return {
+    ...actual,
+    calculateMatchScore: vi.fn().mockImplementation(actual.calculateMatchScore),
+  };
+});
+
 import { handler } from '../candidate/matchDebug.js';
 import { getCandidateById, getRequirementById } from '../../lib/dynamodb.js';
+import { rerankTopN } from '../../lib/llm/index.js';
+import { calculateMatchScore } from '../../lib/matchScoring.js';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -263,5 +277,164 @@ describe('matchDebug handler — discipline filter reporting', () => {
 
     expect(body.data.filters.discipline.passed).toBe(true);
     expect(body.data.excludedBy).not.toContain('discipline');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Helpers shared by the AI scoring tests
+// ---------------------------------------------------------------------------
+
+const mockMatchDetails = {
+  mustHaveMatched: [] as string[],
+  mustHaveFuzzy: [] as string[],
+  mustHaveSecondary: [] as string[],
+  mustHaveRelated: [] as string[],
+  mustHaveMissing: [] as string[],
+  goodToHaveMatched: [] as string[],
+  goodToHaveFuzzy: [] as string[],
+  goodToHaveRelated: [] as string[],
+  experienceMatch: 'full' as const,
+  seniorityMatch: true,
+  ctcMatch: true,
+  locationMatch: 'full' as const,
+  availabilityMatch: 'full' as const,
+  roleMatch: 'full' as const,
+};
+
+function makeRequirementWithJd(jdText: string) {
+  return {
+    requirement_id: 'req_jd',
+    client_name: 'TechCorp',
+    end_client: null,
+    job_title: 'Developer',
+    engagement_model: null,
+    payroll: null,
+    budget_min_lpa: null,
+    budget_max_lpa: null,
+    jd_text: jdText,
+    created_at: '2024-01-01T00:00:00Z',
+    parsed_criteria: {
+      coreSkill: null,
+      mustHaveSkills: [],
+      goodToHaveSkills: [],
+      location: null,
+      minExperience: null,
+      maxExperience: null,
+      seniority: [],
+      availability: [],
+      engagementModel: null,
+      skillSynonyms: null,
+      roles: [],
+    },
+  };
+}
+
+describe('matchDebug handler — AI scoring', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Reset rerankTopN to return a valid result by default
+    (rerankTopN as ReturnType<typeof vi.fn>).mockResolvedValue({
+      entries: [{ candidate_id: 'cand_test', llmScore: 82, rationale: 'Strong React background.' }],
+      model: 'claude-sonnet-4-6',
+      promptVersion: 1,
+      topNHash: 'matchdebug',
+    });
+    // Reset calculateMatchScore to call the real implementation by default
+    vi.mocked(calculateMatchScore).mockRestore?.();
+  });
+
+  it('fires AI scoring and includes aiScore/aiRationale when score > 50 and jd_text is present', async () => {
+    vi.mocked(calculateMatchScore).mockReturnValueOnce({ score: 75, details: mockMatchDetails });
+    (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(makeCandidate(['react']));
+    (getRequirementById as ReturnType<typeof vi.fn>).mockResolvedValue(makeRequirementWithJd('React developer needed'));
+
+    const response = await handler(makeEvent('cand_test', 'req_jd'));
+    const body = JSON.parse((response as { body: string }).body);
+
+    expect(rerankTopN).toHaveBeenCalledOnce();
+    expect(body.data.aiScore).toBe(82);
+    expect(body.data.aiRationale).toBe('Strong React background.');
+  });
+
+  it('does NOT fire AI scoring when score is exactly 50', async () => {
+    vi.mocked(calculateMatchScore).mockReturnValueOnce({ score: 50, details: mockMatchDetails });
+    (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(makeCandidate(['java']));
+    (getRequirementById as ReturnType<typeof vi.fn>).mockResolvedValue(makeRequirementWithJd('Java developer needed'));
+
+    const response = await handler(makeEvent('cand_test', 'req_jd'));
+    const body = JSON.parse((response as { body: string }).body);
+
+    expect(rerankTopN).not.toHaveBeenCalled();
+    expect(body.data.aiScore).toBeUndefined();
+    expect(body.data.aiRationale).toBeUndefined();
+  });
+
+  it('does NOT fire AI scoring when score is below 50', async () => {
+    vi.mocked(calculateMatchScore).mockReturnValueOnce({ score: 30, details: mockMatchDetails });
+    (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(makeCandidate(['java']));
+    (getRequirementById as ReturnType<typeof vi.fn>).mockResolvedValue(makeRequirementWithJd('React developer needed'));
+
+    const response = await handler(makeEvent('cand_test', 'req_jd'));
+    const body = JSON.parse((response as { body: string }).body);
+
+    expect(rerankTopN).not.toHaveBeenCalled();
+    expect(body.data.aiScore).toBeUndefined();
+  });
+
+  it('does NOT fire AI scoring when score > 50 but jd_text is empty', async () => {
+    vi.mocked(calculateMatchScore).mockReturnValueOnce({ score: 75, details: mockMatchDetails });
+    (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(makeCandidate(['react']));
+    (getRequirementById as ReturnType<typeof vi.fn>).mockResolvedValue(makeRequirementWithJd(''));
+
+    const response = await handler(makeEvent('cand_test', 'req_jd'));
+    const body = JSON.parse((response as { body: string }).body);
+
+    expect(rerankTopN).not.toHaveBeenCalled();
+    expect(body.data.aiScore).toBeUndefined();
+  });
+
+  it('returns HTTP 200 with deterministic score and no AI fields when AI call throws', async () => {
+    vi.mocked(calculateMatchScore).mockReturnValueOnce({ score: 75, details: mockMatchDetails });
+    (rerankTopN as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('LLM timeout'));
+    (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(makeCandidate(['react']));
+    (getRequirementById as ReturnType<typeof vi.fn>).mockResolvedValue(makeRequirementWithJd('React developer needed'));
+
+    const response = await handler(makeEvent('cand_test', 'req_jd'));
+    const body = JSON.parse((response as { body: string }).body);
+
+    expect((response as { statusCode: number }).statusCode).toBe(200);
+    expect(body.data.score).toBe(75);
+    expect(body.data.aiScore).toBeUndefined();
+    expect(body.data.aiRationale).toBeUndefined();
+  });
+
+  it('returns HTTP 200 with no AI fields when AI call returns empty entries (rerankTopN throws)', async () => {
+    vi.mocked(calculateMatchScore).mockReturnValueOnce({ score: 75, details: mockMatchDetails });
+    (rerankTopN as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('Candidate re-rank LLM returned no usable entries')
+    );
+    (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(makeCandidate(['react']));
+    (getRequirementById as ReturnType<typeof vi.fn>).mockResolvedValue(makeRequirementWithJd('React developer needed'));
+
+    const response = await handler(makeEvent('cand_test', 'req_jd'));
+    const body = JSON.parse((response as { body: string }).body);
+
+    expect((response as { statusCode: number }).statusCode).toBe(200);
+    expect(body.data.score).toBe(75);
+    expect(body.data.aiScore).toBeUndefined();
+  });
+
+  it('passes the requirement jd_text and candidate profile to rerankTopN', async () => {
+    vi.mocked(calculateMatchScore).mockReturnValueOnce({ score: 75, details: mockMatchDetails });
+    (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(makeCandidate(['react', 'typescript']));
+    (getRequirementById as ReturnType<typeof vi.fn>).mockResolvedValue(makeRequirementWithJd('Senior React TypeScript developer'));
+
+    await handler(makeEvent('cand_test', 'req_jd'));
+
+    expect(rerankTopN).toHaveBeenCalledOnce();
+    const callArg = (rerankTopN as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(callArg.jobDescription).toBe('Senior React TypeScript developer');
+    expect(callArg.candidates).toHaveLength(1);
+    expect(callArg.candidates[0].candidate_id).toBe('cand_test');
   });
 });

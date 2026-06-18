@@ -500,7 +500,7 @@ function ShortlistAction({
 
 // ─── Shared Debug Result Panel ────────────────────────────────────────────────
 
-function MatchDebugPanel({ result }: { result: MatchDebugResponse }) {
+export function MatchDebugPanel({ result }: { result: MatchDebugResponse }) {
   const [expanded, setExpanded] = useState(false);
   const { filters, score, wouldBeExcluded, excludedBy, matchDetails } = result;
 
@@ -563,6 +563,22 @@ function MatchDebugPanel({ result }: { result: MatchDebugResponse }) {
         <FilterRow label="Engagement Model" filter={filters.engagementModel} />
         <FilterRow label="Budget Fit" filter={filters.budgetFit} />
       </div>
+
+      {/* AI scoring — shown only when score > 50 and JD text is available.
+          Uses the violet AI-findings palette consistent with the AI-ranked search results. */}
+      {result.aiScore !== undefined && (
+        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-violet-50 dark:bg-violet-900/20">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-sm font-medium text-violet-800 dark:text-violet-300">✨ AI Score</span>
+            <span className="text-sm font-bold text-violet-700 dark:text-violet-300">{result.aiScore}/100</span>
+          </div>
+          {result.aiRationale && (
+            <p className="text-sm text-violet-700 dark:text-violet-300">
+              <span className="font-medium">AI: </span>{result.aiRationale}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Expandable details */}
       <button

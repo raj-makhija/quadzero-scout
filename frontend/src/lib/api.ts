@@ -2198,6 +2198,8 @@ export interface MatchDebugResponse {
     roleMatch?: string;
     coreSkillUnconfirmed?: boolean;
   };
+  aiScore?: number;
+  aiRationale?: string;
 }
 
 // ─── Recruiter Task Queue (ticket #153) ──────────────────────────────────────
