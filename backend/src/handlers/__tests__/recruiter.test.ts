@@ -494,7 +494,7 @@ describe('POST /recruiter/search', () => {
     expect(body.data.candidates[0].candidateId).toBe('cand_mern');
   });
 
-  it('coreSkill filter expands MERN stack — excludes candidate missing a component', async () => {
+  it('coreSkill filter expands MERN stack — surfaces candidate missing a component as unconfirmed (#418)', async () => {
     (searchCandidates as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       items: [
         {
@@ -532,8 +532,13 @@ describe('POST /recruiter/search', () => {
     const result = await searchHandler(event);
     const body = parseBody(result);
 
+    // Recall safety net (#418): the candidate passes the must-have ratio and
+    // every other gate, missing only the (compound) coreSkill, so it is surfaced
+    // for review with a flag rather than hard-excluded.
     expect(result.statusCode).toBe(200);
-    expect(body.data.candidates).toHaveLength(0);
+    expect(body.data.candidates).toHaveLength(1);
+    expect(body.data.candidates[0].candidateId).toBe('cand_partial');
+    expect(body.data.candidates[0].matchDetails.coreSkillUnconfirmed).toBe(true);
   });
 
   it('rejects empty body', async () => {

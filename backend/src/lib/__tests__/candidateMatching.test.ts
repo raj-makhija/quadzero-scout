@@ -19,6 +19,8 @@ vi.mock('../matchScoring.js', () => {
     MIN_MUST_HAVE_MATCH_RATIO: 0,
     FUZZY_MATCH_WEIGHT: 0.85,
     MUST_HAVE_SECONDARY_WEIGHT: 0.5,
+    CORESKILL_UNCONFIRMED_SCORE_FLOOR: 40,
+    CORESKILL_UNCONFIRMED_PENALTY: 0.5,
     parseSearchLocations: (loc?: string) =>
       loc ? loc.split(/[,;]/).map((s: string) => s.trim().toLowerCase()).filter(Boolean) : [],
     isEngagementModelCompatible: (reqModel: string, candModel: string) => {
@@ -415,21 +417,109 @@ describe('matchAndRankCandidates', () => {
   // coreSkill filter
   // ---------------------------------------------------------------------------
 
-  it('excludes MERN candidate missing expressjs in primary skills (only 3 of 4 components)', () => {
+  it('surfaces MERN candidate missing expressjs as coreSkill-unconfirmed (recall safety net #418)', () => {
     const partialMernCandidate: CandidateItem = {
       ...baseCandidate,
       primary_skills: ['mongodb', 'react', 'nodejs'],
       secondary_skills: ['expressjs'], // expressjs only in secondary
     };
-    mockCalculateMatchScore.mockReturnValue({ score: 80, details: goodDetails });
+    // Score (80) clears the floor (40) and every other gate passes, so the
+    // coreSkill miss surfaces for review instead of hard-excluding (#418).
+    mockCalculateMatchScore.mockReturnValue({ score: 80, details: { ...goodDetails } });
 
     const result = matchAndRankCandidates(
       [partialMernCandidate],
       { coreSkill: 'mern stack', mustHaveSkills: [] }
     );
 
+    expect(result).toHaveLength(1);
+    expect(result[0].coreSkillUnconfirmed).toBe(true);
+    expect(result[0].details.coreSkillUnconfirmed).toBe(true);
+    // Score is demoted by the unconfirmed penalty (80 * 0.5 = 40).
+    expect(result[0].score).toBe(40);
+  });
+
+  // ---------------------------------------------------------------------------
+  // coreSkill recall safety net (#418)
+  // ---------------------------------------------------------------------------
+
+  it('#418: confirmed coreSkill match is not flagged and keeps its full score', () => {
+    const candidate: CandidateItem = {
+      ...baseCandidate,
+      primary_skills: ['react', 'typescript'],
+    };
+    mockCalculateMatchScore.mockReturnValue({ score: 75, details: { ...goodDetails } });
+
+    const result = matchAndRankCandidates(
+      [candidate],
+      { coreSkill: 'react', mustHaveSkills: [] }
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0].coreSkillUnconfirmed).toBe(false);
+    expect(result[0].score).toBe(75);
+  });
+
+  it('#418: coreSkill-only miss BELOW the score floor stays excluded (too weak to surface)', () => {
+    const weakCandidate: CandidateItem = {
+      ...baseCandidate,
+      primary_skills: ['python'],
+    };
+    mockCalculateMatchScore.mockReturnValue({ score: 30, details: { ...goodDetails } });
+
+    const result = matchAndRankCandidates(
+      [weakCandidate],
+      { coreSkill: 'react', mustHaveSkills: [] }
+    );
+
     expect(result).toHaveLength(0);
-    expect(mockCalculateMatchScore).not.toHaveBeenCalled();
+  });
+
+  it('#418: coreSkill miss combined with a discipline failure stays excluded', () => {
+    const testerCandidate: CandidateItem = {
+      ...baseCandidate,
+      primary_skills: ['python'],
+      roles: ['QA Engineer'],
+    };
+    mockCalculateMatchScore.mockReturnValue({ score: 90, details: { ...goodDetails } });
+
+    const result = matchAndRankCandidates(
+      [testerCandidate],
+      { coreSkill: 'react', mustHaveSkills: [], roles: ['Software Engineer'] }
+    );
+
+    expect(result).toHaveLength(0);
+  });
+
+  it('#418: confirmed matches rank above coreSkill-unconfirmed ones even with a lower raw score', () => {
+    const confirmed: CandidateItem = {
+      ...baseCandidate,
+      candidate_id: 'confirmed',
+      primary_skills: ['react'],
+    };
+    const unconfirmed: CandidateItem = {
+      ...baseCandidate,
+      candidate_id: 'unconfirmed',
+      primary_skills: ['python'],
+    };
+    // Unconfirmed has a much higher raw score, but the penalty + confirmed-first
+    // sort keeps it below the confirmed match.
+    mockCalculateMatchScore.mockImplementation((c: CandidateItem) =>
+      c.candidate_id === 'unconfirmed'
+        ? { score: 95, details: { ...goodDetails } }
+        : { score: 50, details: { ...goodDetails } }
+    );
+
+    const result = matchAndRankCandidates(
+      [unconfirmed, confirmed],
+      { coreSkill: 'react', mustHaveSkills: [] }
+    );
+
+    expect(result).toHaveLength(2);
+    expect(result[0].candidate.candidate_id).toBe('confirmed');
+    expect(result[0].coreSkillUnconfirmed).toBe(false);
+    expect(result[1].candidate.candidate_id).toBe('unconfirmed');
+    expect(result[1].coreSkillUnconfirmed).toBe(true);
   });
 
   // ---------------------------------------------------------------------------

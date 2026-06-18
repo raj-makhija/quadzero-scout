@@ -36,6 +36,8 @@ vi.mock('../matchScoring.js', () => {
     MIN_MUST_HAVE_MATCH_RATIO: 0,
     FUZZY_MATCH_WEIGHT: 0.85,
     MUST_HAVE_SECONDARY_WEIGHT: 0.5,
+    CORESKILL_UNCONFIRMED_SCORE_FLOOR: 40,
+    CORESKILL_UNCONFIRMED_PENALTY: 0.5,
     parseSearchLocations: (loc?: string) => loc ? loc.split(/[,;]/).map((s: string) => s.trim().toLowerCase()).filter(Boolean) : [],
     isEngagementModelCompatible: (reqModel: string, candidateModel: string) => {
       if (!reqModel || reqModel === 'either' || candidateModel === 'either') return true;
@@ -374,7 +376,7 @@ describe('notifyMatchingRecruiters', () => {
     expect(mockSendEmail).not.toHaveBeenCalled();
   });
 
-  it('TC-NOTIFY-011: skips candidate when requirement has coreSkill and candidate lacks it', async () => {
+  it('TC-NOTIFY-011: surfaces candidate lacking coreSkill as unconfirmed when score clears the floor (#418)', async () => {
     const candidateNoCoreSkill = {
       ...candidateA,
       primary_skills: ['angular'],
@@ -389,10 +391,34 @@ describe('notifyMatchingRecruiters', () => {
     };
     mockGetCandidateById.mockResolvedValue(candidateNoCoreSkill);
     mockGetAllActiveRequirements.mockResolvedValue([reqWithCoreSkill]);
+    // Recall safety net (#418): coreSkill is now the only failing gate and the
+    // score (80) clears the floor, so the candidate is surfaced, not excluded.
     mockCalculateMatchScore.mockReturnValue(goodMatchScore);
 
     await notifyMatchingRecruiters(['cand_1']);
-    expect(mockCalculateMatchScore).not.toHaveBeenCalled();
+    expect(mockCalculateMatchScore).toHaveBeenCalled();
+    expect(mockSendEmail).toHaveBeenCalledOnce();
+  });
+
+  it('TC-NOTIFY-011a: excludes candidate lacking coreSkill when score is below the floor (#418)', async () => {
+    const candidateNoCoreSkill = {
+      ...candidateA,
+      primary_skills: ['angular'],
+      secondary_skills: ['css'],
+    };
+    const reqWithCoreSkill = {
+      ...requirementActive,
+      parsed_criteria: {
+        ...requirementActive.parsed_criteria,
+        coreSkill: 'react',
+      },
+    };
+    mockGetCandidateById.mockResolvedValue(candidateNoCoreSkill);
+    mockGetAllActiveRequirements.mockResolvedValue([reqWithCoreSkill]);
+    // Weak non-core match (score 20 < floor 40) stays excluded — no recall benefit.
+    mockCalculateMatchScore.mockReturnValue({ ...goodMatchScore, score: 20 });
+
+    await notifyMatchingRecruiters(['cand_1']);
     expect(mockSendEmail).not.toHaveBeenCalled();
   });
 
@@ -433,7 +459,7 @@ describe('notifyMatchingRecruiters', () => {
     expect(mockSendEmail).toHaveBeenCalledOnce();
   });
 
-  it('TC-NOTIFY-012b: excludes candidate when coreSkill is MERN stack and candidate is missing a component', async () => {
+  it('TC-NOTIFY-012b: surfaces MERN candidate missing a component as coreSkill-unconfirmed (#418)', async () => {
     const candidatePartial = {
       ...candidateA,
       primary_skills: ['mongodb', 'react', 'nodejs'],
@@ -447,11 +473,13 @@ describe('notifyMatchingRecruiters', () => {
     };
     mockGetCandidateById.mockResolvedValue(candidatePartial);
     mockGetAllActiveRequirements.mockResolvedValue([reqMern]);
+    // Score (80) clears the floor and every other gate passes, so the compound
+    // coreSkill miss now surfaces for review rather than hard-excluding (#418).
     mockCalculateMatchScore.mockReturnValue(goodMatchScore);
 
     await notifyMatchingRecruiters(['cand_1']);
-    expect(mockCalculateMatchScore).not.toHaveBeenCalled();
-    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(mockCalculateMatchScore).toHaveBeenCalled();
+    expect(mockSendEmail).toHaveBeenCalledOnce();
   });
 
   it('TC-NOTIFY-013: includes candidate even when budget exceeds max (CTC is soft indicator)', async () => {

@@ -3,7 +3,7 @@ import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, MatchDebugRequestSchema } from '../../lib/validation.js';
 import { getCandidateById, getRequirementById } from '../../lib/dynamodb.js';
 import { normalizeSkill, normalizeSkills, coreSkillMatchResult, disciplinesIncompatible } from '../../lib/skillNormalizer.js';
-import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, FUZZY_MATCH_WEIGHT, MUST_HAVE_SECONDARY_WEIGHT, parseSearchLocations, isEngagementModelCompatible } from '../../lib/matchScoring.js';
+import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, FUZZY_MATCH_WEIGHT, MUST_HAVE_SECONDARY_WEIGHT, CORESKILL_UNCONFIRMED_SCORE_FLOOR, parseSearchLocations, isEngagementModelCompatible } from '../../lib/matchScoring.js';
 import { isCandidateWithinBudget } from '../../lib/ctcConversion.js';
 
 /** Normalize a synonym map: lowercase keys and values. Returns undefined if input is null/undefined. */
@@ -120,6 +120,15 @@ export async function handler(
     if (!engagementPassed) excludedBy.push('engagementModel');
     if (disciplineExcluded) excludedBy.push('discipline');
 
+    // Recall safety net (#418): coreSkill the ONLY failing gate + score clears
+    // the floor → surfaced for review (flagged) rather than hard-excluded. This
+    // mirrors matchAndRankCandidates so the debug verdict matches search results.
+    const coreSkillUnconfirmed =
+      excludedBy.length === 1 &&
+      excludedBy[0] === 'coreSkill' &&
+      score >= CORESKILL_UNCONFIRMED_SCORE_FLOOR;
+    const wouldBeExcluded = excludedBy.length > 0 && !coreSkillUnconfirmed;
+
     return success({
       candidate: {
         candidateId: candidate.candidate_id,
@@ -191,10 +200,11 @@ export async function handler(
           detail: `candidate expectedCtc=${candidate.expected_ctc ?? 'null'}, requirement budgetMaxLpa=${requirement.budget_max_lpa ?? 'null'}`,
         },
       },
-      wouldBeExcluded: excludedBy.length > 0,
+      wouldBeExcluded,
       excludedBy,
+      coreSkillUnconfirmed,
       score,
-      matchDetails: details,
+      matchDetails: { ...details, coreSkillUnconfirmed },
     });
   } catch (err) {
     console.error('Error in match debug:', err);
