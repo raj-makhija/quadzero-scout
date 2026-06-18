@@ -21,7 +21,6 @@ import {
   selectStaleScreenedCandidates,
   selectMatchTasksFromCache,
   FOUND_MATCHES_PER_REQ,
-  UNSCREENED_WINDOW_DAYS,
   UNSCREENED_SCAN_CAP,
   RESCREEN_SCAN_CAP,
   SCREENING_MAX_AGE_DAYS,
@@ -323,50 +322,55 @@ describe('buildSweepTasks', () => {
 describe('selectUnscreenedCandidates (universal screen scan)', () => {
   const iso = (daysAgo: number) => new Date(NOW.getTime() - daysAgo * 86_400_000).toISOString();
 
-  it('picks never-screened candidates created within the window', () => {
-    const { candidates, skipped } = selectUnscreenedCandidates(
-      [{ candidate_id: 'c1', full_name: 'Asha', created_at: iso(1) }],
-      NOW
-    );
+  it('picks never-screened candidates regardless of creation age', () => {
+    const { candidates, skipped } = selectUnscreenedCandidates([
+      { candidate_id: 'c1', full_name: 'Asha', created_at: iso(1) },
+    ]);
     expect(candidates).toEqual([{ candidateId: 'c1', candidateName: 'Asha' }]);
     expect(skipped).toBe(0);
   });
 
   it('drops an already-screened candidate (last_screened_at present)', () => {
-    const { candidates } = selectUnscreenedCandidates(
-      [{ candidate_id: 'c1', created_at: iso(1), last_screened_at: iso(0) }],
-      NOW
-    );
+    const { candidates } = selectUnscreenedCandidates([
+      { candidate_id: 'c1', created_at: iso(1), last_screened_at: iso(0) },
+    ]);
     expect(candidates).toHaveLength(0);
   });
 
-  it('drops candidates created outside the N-day window', () => {
-    const { candidates } = selectUnscreenedCandidates(
-      [
-        { candidate_id: 'fresh', created_at: iso(UNSCREENED_WINDOW_DAYS - 1) },
-        { candidate_id: 'stale', created_at: iso(UNSCREENED_WINDOW_DAYS + 1) },
-      ],
-      NOW
-    );
-    expect(candidates.map((c) => c.candidateId)).toEqual(['fresh']);
+  it('includes a never-screened candidate created more than 30 days ago (no window)', () => {
+    const { candidates } = selectUnscreenedCandidates([
+      { candidate_id: 'fresh', created_at: iso(1) },
+      { candidate_id: 'old', created_at: iso(400) },
+    ]);
+    expect(candidates.map((c) => c.candidateId).sort()).toEqual(['fresh', 'old']);
   });
 
-  it('caps at K, reports the skipped overflow, and keeps most-recent first', () => {
+  it('orders oldest-created first so the backlog drains deterministically', () => {
+    const { candidates } = selectUnscreenedCandidates([
+      { candidate_id: 'newer', created_at: iso(5) },
+      { candidate_id: 'oldest', created_at: iso(100) },
+      { candidate_id: 'middle', created_at: iso(20) },
+    ]);
+    expect(candidates.map((c) => c.candidateId)).toEqual(['oldest', 'middle', 'newer']);
+  });
+
+  it('caps at K (oldest first), reports the skipped overflow', () => {
     const profiles = Array.from({ length: UNSCREENED_SCAN_CAP + 5 }, (_, i) => ({
       candidate_id: `c${i}`,
-      created_at: iso(1),
+      // c0 oldest … last entry newest
+      created_at: iso(UNSCREENED_SCAN_CAP + 5 - i),
     }));
-    const { candidates, skipped } = selectUnscreenedCandidates(profiles, NOW);
+    const { candidates, skipped } = selectUnscreenedCandidates(profiles);
     expect(candidates).toHaveLength(UNSCREENED_SCAN_CAP);
     expect(skipped).toBe(5);
     expect(candidates[0].candidateId).toBe('c0');
   });
 
   it('ignores profiles missing candidate_id or created_at', () => {
-    const { candidates } = selectUnscreenedCandidates(
-      [{ full_name: 'No id', created_at: iso(1) }, { candidate_id: 'c1' }],
-      NOW
-    );
+    const { candidates } = selectUnscreenedCandidates([
+      { full_name: 'No id', created_at: iso(1) },
+      { candidate_id: 'c1' },
+    ]);
     expect(candidates).toHaveLength(0);
   });
 });

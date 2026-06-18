@@ -131,7 +131,7 @@ export async function handler(): Promise<void> {
   }
 
   try {
-    input.unscreenedCandidates = await fetchUnscreenedCandidates(now);
+    input.unscreenedCandidates = await fetchUnscreenedCandidates();
   } catch (err) {
     console.error('[taskGeneratorWorker] unscreened-candidate sweep failed:', err);
   }

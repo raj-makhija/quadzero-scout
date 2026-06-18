@@ -37,8 +37,6 @@ export const STALE_REQUIREMENT_DAYS = 7;
 export const MATCH_TASK_THRESHOLD = 70;
 /** Found-candidate sweep: max match-cache entries turned into tasks per requirement. */
 export const FOUND_MATCHES_PER_REQ = 10;
-/** Universal screen scan: only consider candidates created within this many days. */
-export const UNSCREENED_WINDOW_DAYS = 30;
 /** Universal screen scan: max never-screened candidates turned into tasks per sweep. */
 export const UNSCREENED_SCAN_CAP = 200;
 /** Universal rescreen scan: max stale-screened candidates turned into tasks per sweep. */
@@ -332,7 +330,7 @@ export interface SweepInput {
   filledRequirements?: Array<{ requirementId: string; requirementTitle?: string; clientName?: string }>;
   /** Bulk-imported profiles parsed with low confidence. */
   lowConfidenceImports?: Array<{ candidateId: string; candidateName?: string; confidence: number }>;
-  /** Never-screened candidates within the creation window (universal screening). */
+  /** Never-screened candidates, pool-wide (universal screening). */
   unscreenedCandidates?: Array<{ candidateId: string; candidateName?: string }>;
 }
 
@@ -795,25 +793,28 @@ interface ProfileForScan {
 }
 
 /**
- * Pure selector: from most-recent-first profiles, pick never-screened candidates
- * (`last_screened_at` absent) created within the window, capped at `cap`. Returns
- * the picks plus how many qualifying candidates were dropped because the cap was
- * hit — so the caller can surface the truncation instead of hiding it.
+ * Pure selector: from profiles, pick never-screened candidates
+ * (`last_screened_at` absent), oldest-created first, capped at `cap`. There is no
+ * creation-date window — every never-screened candidate is eligible, and the
+ * oldest-first ordering drains the backlog deterministically over successive
+ * sweeps. Returns the picks plus how many qualifying candidates were dropped
+ * because the cap was hit — so the caller can surface the truncation instead of
+ * hiding it.
  */
 export function selectUnscreenedCandidates(
   profiles: ProfileForScan[],
-  now: Date,
-  windowDays: number = UNSCREENED_WINDOW_DAYS,
   cap: number = UNSCREENED_SCAN_CAP
 ): { candidates: NonNullable<SweepInput['unscreenedCandidates']>; skipped: number } {
-  const cutoff = now.getTime() - windowDays * 86_400_000;
-  const qualifying: NonNullable<SweepInput['unscreenedCandidates']> = [];
+  const qualifying: Array<{ candidateId: string; candidateName?: string; createdAt: number }> = [];
   for (const p of profiles) {
     if (!p.candidate_id || p.last_screened_at || !p.created_at) continue;
-    if (new Date(p.created_at).getTime() < cutoff) continue;
-    qualifying.push({ candidateId: p.candidate_id, candidateName: p.full_name });
+    const createdAt = new Date(p.created_at).getTime();
+    if (Number.isNaN(createdAt)) continue;
+    qualifying.push({ candidateId: p.candidate_id, candidateName: p.full_name, createdAt });
   }
-  const candidates = qualifying.slice(0, cap);
+  qualifying.sort((a, b) => a.createdAt - b.createdAt);
+  const picked = qualifying.slice(0, cap);
+  const candidates = picked.map(({ candidateId, candidateName }) => ({ candidateId, candidateName }));
   return { candidates, skipped: qualifying.length - candidates.length };
 }
 
@@ -838,29 +839,26 @@ export function selectMatchTasksFromCache(
 }
 
 /**
- * Universal screening gatherer: never-screened candidates created within the
- * window, most-recent first, capped at K per sweep. Pages the RecentProfilesIndex
- * (sorted by `last_updated` desc); since `created_at` ≤ `last_updated`, once a
- * page's oldest `last_updated` falls below the window every later profile is out
- * of range, so paging stops there.
+ * Universal screening gatherer: never-screened candidates, oldest-created first,
+ * capped at K per sweep. There is no creation-date window, so — like the rescreen
+ * gatherer — it cannot early-stop while paging the RecentProfilesIndex: a
+ * never-screened candidate can sit arbitrarily deep, and "oldest-created first"
+ * requires the full set before sort + cap, so it pages the whole index. The cap +
+ * `createTaskIfAbsent` idempotency keep per-sweep volume bounded; the backlog
+ * drains over successive sweeps.
  */
 export async function fetchUnscreenedCandidates(
-  now: Date = new Date(),
-  windowDays: number = UNSCREENED_WINDOW_DAYS,
   cap: number = UNSCREENED_SCAN_CAP
 ): Promise<NonNullable<SweepInput['unscreenedCandidates']>> {
-  const cutoff = now.getTime() - windowDays * 86_400_000;
   const profiles: ProfileForScan[] = [];
   let lastKey: Record<string, unknown> | undefined;
   do {
     const { items, lastKey: next } = await getRecentProfiles(100, lastKey);
     profiles.push(...items);
-    const oldest = items[items.length - 1] as { last_updated?: string } | undefined;
-    if (oldest?.last_updated && new Date(oldest.last_updated).getTime() < cutoff) break;
     lastKey = next;
   } while (lastKey);
 
-  const { candidates, skipped } = selectUnscreenedCandidates(profiles, now, windowDays, cap);
+  const { candidates, skipped } = selectUnscreenedCandidates(profiles, cap);
   if (skipped > 0) {
     console.log(
       `[recruiterTasks] unscreened scan cap ${cap} hit; ${skipped} candidate(s) skipped this sweep`
