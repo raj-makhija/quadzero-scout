@@ -28,6 +28,7 @@ import {
   createTaskIfAbsent,
   resolveTaskByEntity,
   resolveScreeningTasksForCandidate,
+  resolveFoundTasksForRequirement,
   listActiveTasksForRecruiter,
   snoozeTaskById,
   completeTaskById,
@@ -614,6 +615,84 @@ describe('resolveScreeningTasksForCandidate (auto-complete on screen)', () => {
     const count = await resolveScreeningTasksForCandidate({ candidateId: 'c1', completedBy: 'rec-2' }, NOW);
     expect(count).toBe(0);
     expect(state.updates).toHaveLength(0);
+  });
+});
+
+describe('resolveFoundTasksForRequirement (close/on-hold cleanup)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('resolves all found-candidate tasks for the requirement using a QueryCommand on the POOL partition', async () => {
+    const state = installMock({
+      ownerItems: {
+        POOL: [
+          makeTask({ owner_id: POOL_OWNER, task_id: 'fc1', type: 'found_candidate_for_requirement', entity_ref: 'REQ#req-1#CAND#c1' }),
+          makeTask({ owner_id: POOL_OWNER, task_id: 'fc2', type: 'found_candidate_for_requirement', entity_ref: 'REQ#req-1#CAND#c2' }),
+        ],
+      },
+    });
+    const count = await resolveFoundTasksForRequirement({ requirementId: 'req-1', completedBy: 'rec-2' }, NOW);
+    expect(count).toBe(2);
+    expect(state.updates).toHaveLength(2);
+    expect(state.updates.every((u) => (u.ExpressionAttributeValues as Record<string, unknown>)[':c'] === 'completed')).toBe(true);
+    expect(state.updates.every((u) => (u.ExpressionAttributeValues as Record<string, unknown>)[':cb'] === 'rec-2')).toBe(true);
+  });
+
+  it('does not resolve found-candidate tasks belonging to a different requirement', async () => {
+    const state = installMock({
+      ownerItems: {
+        POOL: [
+          makeTask({ owner_id: POOL_OWNER, task_id: 'fc-target', type: 'found_candidate_for_requirement', entity_ref: 'REQ#req-1#CAND#c1' }),
+          makeTask({ owner_id: POOL_OWNER, task_id: 'fc-other', type: 'found_candidate_for_requirement', entity_ref: 'REQ#req-2#CAND#c1' }),
+        ],
+      },
+    });
+    const count = await resolveFoundTasksForRequirement({ requirementId: 'req-1', completedBy: 'rec-2' }, NOW);
+    expect(count).toBe(1);
+    expect(state.updates).toHaveLength(1);
+    const updatedKey = (state.updates[0].Key as Record<string, unknown>)['task_id'];
+    expect(updatedKey).toBe('fc-target');
+  });
+
+  it('does not resolve other task types bound to the same requirement', async () => {
+    const state = installMock({
+      ownerItems: {
+        POOL: [
+          makeTask({ owner_id: POOL_OWNER, task_id: 'fc', type: 'found_candidate_for_requirement', entity_ref: 'REQ#req-1#CAND#c1' }),
+          makeTask({ owner_id: POOL_OWNER, task_id: 'src', type: 'source_candidates', entity_ref: 'REQ#req-1' }),
+          makeTask({ owner_id: POOL_OWNER, task_id: 'cl', type: 'close_requirement', entity_ref: 'REQ#req-1' }),
+        ],
+      },
+    });
+    const count = await resolveFoundTasksForRequirement({ requirementId: 'req-1', completedBy: 'rec-2' }, NOW);
+    expect(count).toBe(1);
+    expect(state.updates).toHaveLength(1);
+  });
+
+  it('is a no-op when there are no open found-candidate tasks', async () => {
+    const state = installMock({ ownerItems: { POOL: [] } });
+    const count = await resolveFoundTasksForRequirement({ requirementId: 'req-1', completedBy: 'rec-2' }, NOW);
+    expect(count).toBe(0);
+    expect(state.updates).toHaveLength(0);
+  });
+
+  it('uses a QueryCommand keyed on the POOL owner partition, not a ScanCommand', async () => {
+    const commands: string[] = [];
+    const send = vi.fn(async (cmd: { constructor: { name: string }; input: Record<string, unknown> }) => {
+      commands.push(cmd.constructor.name);
+      if (cmd.constructor.name === 'QueryCommand') return { Items: [] };
+      return {};
+    });
+    __setDocClientForTests({ send });
+    await resolveFoundTasksForRequirement({ requirementId: 'req-1', completedBy: 'rec-2' }, NOW);
+    expect(commands).not.toContain('ScanCommand');
+    expect(commands).toContain('QueryCommand');
+    const query = send.mock.calls.find(
+      ([cmd]) => cmd.constructor.name === 'QueryCommand'
+    );
+    expect(query).toBeDefined();
+    const input = query![0].input as Record<string, unknown>;
+    const vals = input.ExpressionAttributeValues as Record<string, unknown>;
+    expect(vals[':o']).toBe(POOL_OWNER);
   });
 });
 
