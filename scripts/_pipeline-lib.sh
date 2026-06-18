@@ -237,22 +237,81 @@ pl_set_status() {
   gh issue edit "$issue" --add-label "$new_status" 2>/dev/null >&2 || true
 }
 
+# Given PR candidate data on stdin (one per line, tab-separated:
+# number<TAB>state<TAB>headRefName<TAB>createdAt), select the best open PR:
+#   1. Only OPEN entries (CLOSED/MERGED/null are skipped).
+#   2. Branch-name rank: -cowork (1) > -attempt-* (2) > other (3).
+#   3. Tie-break: most recently created (lexicographic ISO-8601 createdAt).
+# Prints the winning PR number, or empty if no OPEN PR.
+_pl_pick_best_pr() {
+  local best_pr="" best_rank=99 best_created="" num state head created rank
+  while IFS=$'\t' read -r num state head created; do
+    [[ "$state" != "OPEN" ]] && continue
+    rank=3
+    if [[ "$head" == *"-cowork" ]]; then rank=1
+    elif [[ "$head" == *"-attempt-"* ]]; then rank=2
+    fi
+    if [[ $rank -lt $best_rank ]] || \
+       [[ $rank -eq $best_rank && "$created" > "$best_created" ]]; then
+      best_pr="$num"
+      best_rank=$rank
+      best_created="$created"
+    fi
+  done
+  printf '%s' "$best_pr"
+}
+
 # Resolve the PR number for a ticket. Prefers the "PR Number" project field
-# (set by the autonomous open-pr.sh); falls back to an OPEN pull request the
-# issue links via "Closes #N" (covers the manual -cowork route, which does
-# not populate the field). Prints the PR number, or empty if none found.
+# (set by the autonomous open-pr.sh); falls back to resolving the open PR via
+# the issue's closedByPullRequestsReferences (covers the manual -cowork route,
+# which does not populate the field). The state field in that API is always
+# null (verified live on #308), so each candidate is confirmed OPEN via a
+# separate gh pr view call. When resolved via fallback, writes the number back
+# to the "PR Number" field so downstream steps and re-runs are stable.
+# Prints the PR number, or empty if none found.
+#
+# Set _PL_LIBDIR to override the helper-script directory (for tests).
 pl_pr_for_ticket() {
-  local ticket="$1" libdir pr
-  libdir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local ticket="$1"
+  local libdir
+  libdir="${_PL_LIBDIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+  local pr
   pr="$("$libdir/get-field.sh" "$ticket" "PR Number" 2>/dev/null || true)"
-  if [[ -z "$pr" ]]; then
-    # Fallback used by the manual -cowork route (no "PR Number" field). Run it
-    # under the project PAT too: the App token may not resolve the issue->PR
-    # link, and this is a read with no attribution impact. No-op locally.
-    pr="$(GH_TOKEN="${PL_PROJECT_TOKEN:-${GH_TOKEN:-}}" gh issue view "$ticket" --json closedByPullRequestsReferences \
-      -q '[.closedByPullRequestsReferences[] | select(.state == "OPEN") | .number][0] // empty' \
-      2>/dev/null || true)"
+  if [[ -n "$pr" ]]; then
+    printf '%s' "$pr"
+    return
   fi
+
+  # Fallback: derive candidate PR numbers from the issue's linked PRs, then
+  # confirm each candidate's state via gh pr view (the closedByPullRequestsReferences
+  # state field is null in the GitHub API -- do not filter on it).
+  local refs
+  refs="$(GH_TOKEN="${PL_PROJECT_TOKEN:-${GH_TOKEN:-}}" gh issue view "$ticket" \
+    --json closedByPullRequestsReferences \
+    -q '[.closedByPullRequestsReferences[].number] | unique[]' \
+    2>/dev/null || true)"
+
+  if [[ -z "$refs" ]]; then
+    printf ''
+    return
+  fi
+
+  local pr_table="" num info row
+  while IFS= read -r num; do
+    [[ -z "$num" ]] && continue
+    info="$(gh pr view "$num" --json number,state,headRefName,createdAt 2>/dev/null || true)"
+    [[ -z "$info" ]] && continue
+    row="$(printf '%s' "$info" | jq -r '[.number,.state,.headRefName,.createdAt] | @tsv')"
+    pr_table="${pr_table}${row}"$'\n'
+  done <<< "$refs"
+
+  pr="$(printf '%s' "$pr_table" | _pl_pick_best_pr)"
+
+  if [[ -n "$pr" ]]; then
+    # Persist so downstream steps and re-runs don't re-resolve. Best-effort.
+    "$libdir/set-field.sh" "$ticket" "PR Number" "$pr" 2>/dev/null || true
+  fi
+
   printf '%s' "$pr"
 }
 
