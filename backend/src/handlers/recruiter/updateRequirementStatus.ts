@@ -5,6 +5,7 @@ import { getRequirementById, updateRequirementStatus } from '../../lib/dynamodb.
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
 import { rebuildCacheForRequirement, deleteMatchCache } from '../../lib/matchCacheService.js';
+import { safeResolveFoundTasksForRequirement } from '../../lib/recruiterTasks.js';
 import type { StatusHistoryEntry } from '../../types/index.js';
 
 async function handleRequest(
@@ -82,6 +83,16 @@ async function handleRequest(
       }
     } catch (cacheErr) {
       console.error('Failed to update match-cache after status change:', cacheErr);
+    }
+
+    // Expire open found-candidate tasks when closing/putting on-hold.
+    // Best-effort — failure must not block the status update.
+    if (newStatus === 'closed_on_hold') {
+      try {
+        await safeResolveFoundTasksForRequirement({ requirementId, completedBy: event.auth.userId });
+      } catch (cleanupErr) {
+        console.error('Failed to expire found-candidate tasks after status change:', cleanupErr);
+      }
     }
 
     logAuditEvent(event.auth, event, {
