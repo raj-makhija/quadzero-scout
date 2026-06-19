@@ -267,13 +267,24 @@ describe('linkedinStatus handler', () => {
     expect(body.data.needsReconnect).toBe(false);
   });
 
-  it('returns needsReconnect: true when within 7-day refresh window', async () => {
+  it('returns connected:true, needsReconnect:false, refreshSoon:true within 7-day refresh window', async () => {
     mockGetLinkedInToken.mockResolvedValue({ access_token: 'tok', expires_at: nowSeconds() + 60 * 60 * 24 * 5 });
     const { handler } = await import('../../handlers/recruiter/linkedinStatus.js');
     const result = await handler(makeEvent() as APIGatewayProxyEventV2, {} as never);
     const body = JSON.parse((result as { body: string }).body);
+    // Within the window the token is still valid: connected stays true and the
+    // recruiter is NOT shown a reconnect prompt; refreshSoon drives silent re-auth.
     expect(body.data.connected).toBe(true);
-    expect(body.data.needsReconnect).toBe(true);
+    expect(body.data.needsReconnect).toBe(false);
+    expect(body.data.refreshSoon).toBe(true);
+  });
+
+  it('returns refreshSoon:false for a healthy (far-from-expiry) token', async () => {
+    mockGetLinkedInToken.mockResolvedValue({ access_token: 'tok', expires_at: nowSeconds() + 60 * 60 * 24 * 30 });
+    const { handler } = await import('../../handlers/recruiter/linkedinStatus.js');
+    const result = await handler(makeEvent() as APIGatewayProxyEventV2, {} as never);
+    const body = JSON.parse((result as { body: string }).body);
+    expect(body.data.refreshSoon).toBe(false);
   });
 });
 
