@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 
-export default function LinkedInCallbackPage() {
+function LinkedInCallbackInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
@@ -58,5 +58,21 @@ export default function LinkedInCallbackPage() {
         <p className="text-gray-600 dark:text-gray-400">Connecting LinkedIn…</p>
       </div>
     </div>
+  );
+}
+
+export default function LinkedInCallbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center p-4">
+          <div className="text-center">
+            <p className="text-gray-600 dark:text-gray-400">Connecting LinkedIn…</p>
+          </div>
+        </div>
+      }
+    >
+      <LinkedInCallbackInner />
+    </Suspense>
   );
 }
