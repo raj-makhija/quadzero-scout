@@ -22,9 +22,13 @@ async function handleRequest(event: AuthenticatedEvent): Promise<APIGatewayProxy
     }
 
     const expiresAtIso = new Date(expiresAt * 1000).toISOString();
-    const needsReconnect = (expiresAt - nowSeconds) < REFRESH_WINDOW_SECONDS;
+    // Token is still valid here (not yet expired). A token within the refresh
+    // window is reported as connected with needsReconnect:false; `refreshSoon`
+    // tells the frontend to transparently re-run the OAuth redirect (silent
+    // re-auth) to mint a fresh 60-day token without prompting the recruiter.
+    const refreshSoon = (expiresAt - nowSeconds) < REFRESH_WINDOW_SECONDS;
 
-    return success({ connected: true, expiresAt: expiresAtIso, needsReconnect });
+    return success({ connected: true, expiresAt: expiresAtIso, needsReconnect: false, refreshSoon });
   } catch (err) {
     console.error('Error fetching LinkedIn status:', err);
     return error(ErrorCodes.INTERNAL_ERROR, 'Failed to fetch LinkedIn status', 500);

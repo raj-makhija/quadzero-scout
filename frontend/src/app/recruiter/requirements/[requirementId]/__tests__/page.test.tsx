@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import RequirementDetailPage from '../page';
 
@@ -21,6 +21,7 @@ const mockGetRequirement = vi.fn();
 const mockGetShortlistedCandidates = vi.fn();
 const mockUpdateRequirement = vi.fn();
 const mockGetLinkedInStatus = vi.fn();
+const mockGetLinkedInAuthUrl = vi.fn();
 
 vi.mock('@/lib/api', () => ({
   api: {
@@ -28,6 +29,7 @@ vi.mock('@/lib/api', () => ({
     getShortlistedCandidates: (...args: any[]) => mockGetShortlistedCandidates(...args),
     updateRequirement: (...args: any[]) => mockUpdateRequirement(...args),
     getLinkedInStatus: (...args: any[]) => mockGetLinkedInStatus(...args),
+    getLinkedInAuthUrl: (...args: any[]) => mockGetLinkedInAuthUrl(...args),
   },
 }));
 
@@ -134,5 +136,43 @@ describe('RequirementDetailPage — core skill editing', () => {
     await waitFor(() => expect(mockUpdateRequirement).toHaveBeenCalled());
     const [, payload] = mockUpdateRequirement.mock.calls[0];
     expect(payload.parsedCriteria.coreSkill).toBeNull();
+  });
+});
+
+describe('RequirementDetailPage — LinkedIn silent re-auth', () => {
+  const originalLocation = window.location;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.sessionStorage.clear();
+    mockGetShortlistedCandidates.mockResolvedValue({ candidates: [] });
+    mockGetRequirement.mockResolvedValue(baseRequirement);
+    mockGetLinkedInAuthUrl.mockResolvedValue({ authUrl: 'https://www.linkedin.com/oauth/v2/authorization?x=1' });
+    // jsdom forbids real navigation; swap in a writable location stub.
+    delete (window as any).location;
+    (window as any).location = { pathname: '/recruiter/requirements/req-1', href: '' };
+  });
+
+  afterEach(() => {
+    (window as any).location = originalLocation;
+  });
+
+  it('transparently redirects through OAuth when the token is within the refresh window', async () => {
+    mockGetLinkedInStatus.mockResolvedValue({ connected: true, needsReconnect: false, refreshSoon: true });
+    render(<RequirementDetailPage />);
+
+    await waitFor(() => expect(mockGetLinkedInAuthUrl).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(window.location.href).toBe('https://www.linkedin.com/oauth/v2/authorization?x=1')
+    );
+  });
+
+  it('does NOT redirect for a healthy token outside the refresh window', async () => {
+    mockGetLinkedInStatus.mockResolvedValue({ connected: true, needsReconnect: false, refreshSoon: false });
+    render(<RequirementDetailPage />);
+
+    await screen.findByTitle('Edit requirement details');
+    expect(mockGetLinkedInAuthUrl).not.toHaveBeenCalled();
+    expect(window.location.href).toBe('');
   });
 });

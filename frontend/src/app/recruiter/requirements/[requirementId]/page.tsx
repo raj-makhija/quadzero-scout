@@ -104,7 +104,7 @@ export default function RequirementDetailPage() {
   }, [requirementId]);
 
   // LinkedIn state
-  const [linkedinStatus, setLinkedinStatus] = useState<{ connected: boolean; needsReconnect: boolean } | null>(null);
+  const [linkedinStatus, setLinkedinStatus] = useState<{ connected: boolean; needsReconnect: boolean; refreshSoon?: boolean } | null>(null);
   const [showLinkedinModal, setShowLinkedinModal] = useState(false);
   const [linkedinGenerating, setLinkedinGenerating] = useState(false);
   const [linkedinPosting, setLinkedinPosting] = useState(false);
@@ -297,6 +297,18 @@ export default function RequirementDetailPage() {
     return null;
   }
 
+  // Kick off the LinkedIn 3-legged OAuth redirect. Reused by the explicit
+  // Connect/Reconnect button and by the silent re-auth path below.
+  const startLinkedInOAuth = useCallback(async () => {
+    try {
+      const { authUrl } = await api.getLinkedInAuthUrl();
+      sessionStorage.setItem('linkedin_return_to', window.location.pathname);
+      window.location.href = authUrl;
+    } catch {
+      setError('Failed to start LinkedIn connection');
+    }
+  }, []);
+
   useEffect(() => {
     if (status !== 'authenticated' || !requirementId) return;
 
@@ -314,8 +326,24 @@ export default function RequirementDetailPage() {
 
     fetchData();
     fetchCandidates();
-    api.getLinkedInStatus().then(setLinkedinStatus).catch(() => {});
-  }, [status, requirementId, fetchCandidates]);
+    api
+      .getLinkedInStatus()
+      .then((s) => {
+        setLinkedinStatus(s);
+        // Silent re-auth: a connected recruiter whose token is within the refresh
+        // window gets transparently bounced through the OAuth redirect (consent is
+        // bypassed by LinkedIn while they remain logged in) to mint a fresh 60-day
+        // token. This only fires here, on an active page load — never from status
+        // polling alone. Guard against re-triggering within the same session.
+        if (s.connected && s.refreshSoon && !s.needsReconnect) {
+          if (!sessionStorage.getItem('linkedin_silent_reauth')) {
+            sessionStorage.setItem('linkedin_silent_reauth', '1');
+            startLinkedInOAuth();
+          }
+        }
+      })
+      .catch(() => {});
+  }, [status, requirementId, fetchCandidates, startLinkedInOAuth]);
 
   const handleMarkNotSuitable = async (candidateId: string) => {
     try {
@@ -500,15 +528,7 @@ export default function RequirementDetailPage() {
                         if (!linkedinStatus?.connected || linkedinStatus?.needsReconnect) {
                           return (
                             <button
-                              onClick={async () => {
-                                try {
-                                  const { authUrl } = await api.getLinkedInAuthUrl();
-                                  sessionStorage.setItem('linkedin_return_to', window.location.pathname);
-                                  window.location.href = authUrl;
-                                } catch {
-                                  setError('Failed to start LinkedIn connection');
-                                }
-                              }}
+                              onClick={startLinkedInOAuth}
                               className="flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-white/10 text-white hover:bg-white/20 transition-colors"
                             >
                               <Linkedin size={14} />
