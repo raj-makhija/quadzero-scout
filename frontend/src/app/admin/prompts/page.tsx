@@ -129,10 +129,10 @@ export default function PromptsPage() {
   };
 
   const activeVersion = versions.find((v) => v.isActive);
-  const hasChanges =
-    activeVersion &&
-    (editContent !== activeVersion.content ||
-      (editDescription || '') !== (activeVersion.description || ''));
+  const hasChanges = activeVersion
+    ? editContent !== activeVersion.content ||
+      (editDescription || '') !== (activeVersion.description || '')
+    : editContent.trim().length > 0;
 
   return (
     <div>
