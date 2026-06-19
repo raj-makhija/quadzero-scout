@@ -103,6 +103,12 @@ async function handleRequest(
       isRateGstInclusive: item.is_rate_gst_inclusive ?? false,
       changeHistory,
       maxResourceBudgetLpa,
+      linkedinPost: item.linkedin_post ? {
+        postUrl: item.linkedin_post.post_url,
+        postUrn: item.linkedin_post.post_urn,
+        postedAt: item.linkedin_post.posted_at,
+        postedByRecruiterId: item.linkedin_post.posted_by_recruiter_id,
+      } : undefined,
     });
   } catch (err) {
     console.error('Error fetching requirement:', err);

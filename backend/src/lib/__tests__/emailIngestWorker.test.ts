@@ -83,6 +83,11 @@ vi.mock('../dynamodb.js', () => ({
   getCandidateByEmail: (...args: unknown[]) => mockGetCandidateByEmail(...args),
   saveCandidateProfile: (...args: unknown[]) => mockSaveCandidateProfile(...args),
   getExperienceBucket: (years: number) => (years <= 5 ? '3-5' : '6-10'),
+  saveLinkedInToken: vi.fn().mockResolvedValue(undefined),
+  getLinkedInToken: vi.fn().mockResolvedValue(null),
+  savePendingLinkedInState: vi.fn().mockResolvedValue(undefined),
+  markLinkedInTokenExpired: vi.fn().mockResolvedValue(undefined),
+  writeLinkedInPost: vi.fn().mockResolvedValue(undefined),
 }));
 
 const mockInvokeLambdaAsync = vi.fn();
