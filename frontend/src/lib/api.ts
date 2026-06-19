@@ -527,6 +527,41 @@ class ApiClient {
     );
   }
 
+  // LinkedIn endpoints
+  async getLinkedInAuthUrl() {
+    return this.request<{ authUrl: string }>('/recruiter/linkedin/auth-url');
+  }
+
+  async exchangeLinkedInCode(code: string, state: string) {
+    return this.request<{ connected: boolean }>('/recruiter/linkedin/exchange', {
+      method: 'POST',
+      body: JSON.stringify({ code, state }),
+    });
+  }
+
+  async getLinkedInStatus() {
+    return this.request<{ connected: boolean; expiresAt?: string; needsReconnect: boolean }>(
+      '/recruiter/linkedin/status'
+    );
+  }
+
+  async generateLinkedInPost(requirementId: string) {
+    return this.request<{ text: string; hashtags: string; imageBase64: string }>(
+      `/recruiter/requirements/${requirementId}/linkedin/generate`,
+      { method: 'POST' }
+    );
+  }
+
+  async publishLinkedInPost(requirementId: string, text: string, imageBase64: string) {
+    return this.request<{ postUrl: string }>(
+      `/recruiter/requirements/${requirementId}/linkedin/post`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ text, imageBase64 }),
+      }
+    );
+  }
+
   // Admin endpoints
   async listPendingRecruiters() {
     return this.request<{
@@ -1455,6 +1490,13 @@ export interface ContributingRecruiter {
   email?: string;
 }
 
+export interface LinkedInPost {
+  postUrl: string;
+  postUrn: string;
+  postedAt: string;
+  postedByRecruiterId: string;
+}
+
 export interface RequirementDetail extends RequirementSummary {
   recruiterId: string;
   jdText: string;
@@ -1466,6 +1508,7 @@ export interface RequirementDetail extends RequirementSummary {
   changeHistory?: ChangeHistoryEntry[];
   lastRequestedAt?: string;
   contributingRecruiters?: ContributingRecruiter[];
+  linkedinPost?: LinkedInPost;
 }
 
 export interface ConsolidatePayload {

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { Bell, Pencil, ChevronDown, ChevronRight, History } from 'lucide-react';
+import { Bell, Pencil, ChevronDown, ChevronRight, History, Linkedin, ExternalLink, X } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { CustomFieldsModal } from '@/components/custom-fields-modal';
 import { CheckCandidateMatch } from '@/components/MatchExplainer';
@@ -102,6 +102,15 @@ export default function RequirementDetailPage() {
       setCandidatesLoading(false);
     }
   }, [requirementId]);
+
+  // LinkedIn state
+  const [linkedinStatus, setLinkedinStatus] = useState<{ connected: boolean; needsReconnect: boolean } | null>(null);
+  const [showLinkedinModal, setShowLinkedinModal] = useState(false);
+  const [linkedinGenerating, setLinkedinGenerating] = useState(false);
+  const [linkedinPosting, setLinkedinPosting] = useState(false);
+  const [linkedinPreview, setLinkedinPreview] = useState<{ text: string; hashtags: string; imageBase64: string } | null>(null);
+  const [linkedinEditText, setLinkedinEditText] = useState('');
+  const [linkedinError, setLinkedinError] = useState<string | null>(null);
 
   const [viewMode, setViewMode] = useState<'list' | 'pipeline'>('pipeline');
   const [historyExpanded, setHistoryExpanded] = useState(false);
@@ -305,6 +314,7 @@ export default function RequirementDetailPage() {
 
     fetchData();
     fetchCandidates();
+    api.getLinkedInStatus().then(setLinkedinStatus).catch(() => {});
   }, [status, requirementId, fetchCandidates]);
 
   const handleMarkNotSuitable = async (candidateId: string) => {
@@ -472,6 +482,55 @@ export default function RequirementDetailPage() {
                           Edit
                         </button>
                       )}
+                      {/* LinkedIn button state machine */}
+                      {(() => {
+                        if (requirement.linkedinPost?.postUrl) {
+                          return (
+                            <a
+                              href={requirement.linkedinPost.postUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-blue-600/30 text-blue-100 hover:bg-blue-600/50 transition-colors"
+                            >
+                              <ExternalLink size={14} />
+                              View LinkedIn post
+                            </a>
+                          );
+                        }
+                        if (!linkedinStatus?.connected || linkedinStatus?.needsReconnect) {
+                          return (
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const { authUrl } = await api.getLinkedInAuthUrl();
+                                  sessionStorage.setItem('linkedin_return_to', window.location.pathname);
+                                  window.location.href = authUrl;
+                                } catch {
+                                  setError('Failed to start LinkedIn connection');
+                                }
+                              }}
+                              className="flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-white/10 text-white hover:bg-white/20 transition-colors"
+                            >
+                              <Linkedin size={14} />
+                              {linkedinStatus?.needsReconnect ? 'Reconnect LinkedIn' : 'Connect LinkedIn'}
+                            </button>
+                          );
+                        }
+                        return (
+                          <button
+                            onClick={() => {
+                              setLinkedinPreview(null);
+                              setLinkedinEditText('');
+                              setLinkedinError(null);
+                              setShowLinkedinModal(true);
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-blue-600/30 text-blue-100 hover:bg-blue-600/50 transition-colors"
+                          >
+                            <Linkedin size={14} />
+                            Post to LinkedIn
+                          </button>
+                        );
+                      })()}
                       {/* Notify Me bell */}
                       {(() => {
                         const isNotified = requirement.notifyRecruiterIds?.includes(currentUserId) ?? false;
@@ -1254,6 +1313,126 @@ export default function RequirementDetailPage() {
                 {statusLoading ? 'Updating...' : 'Confirm'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* LinkedIn Preview Modal */}
+      {showLinkedinModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-2xl w-full shadow-xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                <Linkedin size={18} className="text-blue-600" />
+                Post to LinkedIn
+              </h3>
+              <button
+                onClick={() => setShowLinkedinModal(false)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            {linkedinError && (
+              <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-sm text-red-700 dark:text-red-300">
+                {linkedinError}
+              </div>
+            )}
+            {!linkedinPreview ? (
+              <div className="text-center py-8">
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                  Generate an AI-crafted post with a custom image for this requirement.
+                </p>
+                <button
+                  onClick={async () => {
+                    setLinkedinGenerating(true);
+                    setLinkedinError(null);
+                    try {
+                      const result = await api.generateLinkedInPost(requirementId);
+                      setLinkedinPreview(result);
+                      setLinkedinEditText(result.text + (result.hashtags ? '\n\n' + result.hashtags : ''));
+                    } catch (err) {
+                      setLinkedinError(err instanceof Error ? err.message : 'Failed to generate post');
+                    } finally {
+                      setLinkedinGenerating(false);
+                    }
+                  }}
+                  disabled={linkedinGenerating}
+                  className="btn-primary"
+                >
+                  {linkedinGenerating ? 'Generating…' : 'Generate Post'}
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {linkedinPreview.imageBase64 && (
+                  <img
+                    src={`data:image/png;base64,${linkedinPreview.imageBase64}`}
+                    alt="Generated post image"
+                    className="w-full rounded-lg object-cover max-h-64"
+                  />
+                )}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Post text (editable)
+                  </label>
+                  <textarea
+                    value={linkedinEditText}
+                    onChange={(e) => setLinkedinEditText(e.target.value)}
+                    className="input w-full"
+                    rows={8}
+                    maxLength={3000}
+                  />
+                  <p className="mt-1 text-xs text-gray-400">{linkedinEditText.length}/3000 characters</p>
+                </div>
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={() => {
+                      setLinkedinPreview(null);
+                      setLinkedinEditText('');
+                    }}
+                    className="btn-secondary"
+                  >
+                    Regenerate
+                  </button>
+                  <button
+                    onClick={async () => {
+                      setLinkedinPosting(true);
+                      setLinkedinError(null);
+                      try {
+                        const { postUrl } = await api.publishLinkedInPost(
+                          requirementId,
+                          linkedinEditText,
+                          linkedinPreview.imageBase64
+                        );
+                        setShowLinkedinModal(false);
+                        setRequirement(prev => prev ? {
+                          ...prev,
+                          linkedinPost: {
+                            postUrl,
+                            postUrn: '',
+                            postedAt: new Date().toISOString(),
+                            postedByRecruiterId: currentUserId,
+                          },
+                        } : prev);
+                      } catch (err) {
+                        const message = err instanceof Error ? err.message : 'Failed to post';
+                        setLinkedinError(message);
+                        if (message.toLowerCase().includes('reconnect') || message.toLowerCase().includes('unauthorized')) {
+                          setLinkedinStatus({ connected: false, needsReconnect: true });
+                        }
+                      } finally {
+                        setLinkedinPosting(false);
+                      }
+                    }}
+                    disabled={linkedinPosting || !linkedinEditText.trim()}
+                    className="btn-primary"
+                  >
+                    {linkedinPosting ? 'Posting…' : 'Post to LinkedIn'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -20,12 +20,14 @@ vi.mock('next-auth/react', () => ({
 const mockGetRequirement = vi.fn();
 const mockGetShortlistedCandidates = vi.fn();
 const mockUpdateRequirement = vi.fn();
+const mockGetLinkedInStatus = vi.fn();
 
 vi.mock('@/lib/api', () => ({
   api: {
     getRequirement: (...args: any[]) => mockGetRequirement(...args),
     getShortlistedCandidates: (...args: any[]) => mockGetShortlistedCandidates(...args),
     updateRequirement: (...args: any[]) => mockUpdateRequirement(...args),
+    getLinkedInStatus: (...args: any[]) => mockGetLinkedInStatus(...args),
   },
 }));
 
@@ -87,6 +89,7 @@ describe('RequirementDetailPage — core skill editing', () => {
     vi.clearAllMocks();
     mockGetShortlistedCandidates.mockResolvedValue({ candidates: [] });
     mockUpdateRequirement.mockResolvedValue({});
+    mockGetLinkedInStatus.mockResolvedValue({ connected: false, needsReconnect: false });
   });
 
   it('pre-populates the core skill field with the existing value when editing begins', async () => {

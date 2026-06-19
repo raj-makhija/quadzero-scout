@@ -13,6 +13,11 @@ const mockPutLlmRerankMetric = vi.fn();
 vi.mock('../dynamodb.js', () => ({
   getLlmRerank: (...a: unknown[]) => mockGetLlmRerank(...a),
   claimLlmRerankComputation: (...a: unknown[]) => mockClaimLlmRerank(...a),
+  saveLinkedInToken: vi.fn().mockResolvedValue(undefined),
+  getLinkedInToken: vi.fn().mockResolvedValue(null),
+  savePendingLinkedInState: vi.fn().mockResolvedValue(undefined),
+  markLinkedInTokenExpired: vi.fn().mockResolvedValue(undefined),
+  writeLinkedInPost: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../lambdaInvoke.js', () => ({
