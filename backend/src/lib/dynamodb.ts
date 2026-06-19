@@ -10,7 +10,7 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { config } from './config.js';
-import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, StatusHistoryEntry, RequirementChangeEntry, PricingConfig, PricingConfigItem, SessionSettings, SessionSettingsItem, ShortlistItem, ClientItem, SubVendorItem, ScreeningItem, ScreeningLockItem, AuditLogItem, AuditLogEntry, PipelineActivityItem, AttachmentItem, RankedMatchEntry, RequirementMatchCacheItem, RequirementLlmRerankItem, CloneJobItem } from '../types/index.js';
+import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, StatusHistoryEntry, RequirementChangeEntry, PricingConfig, PricingConfigItem, SessionSettings, SessionSettingsItem, ShortlistItem, ClientItem, SubVendorItem, ScreeningItem, ScreeningLockItem, AuditLogItem, AuditLogEntry, PipelineActivityItem, AttachmentItem, RankedMatchEntry, RequirementMatchCacheItem, RequirementLlmRerankItem, CloneJobItem, LinkedInTokenItem } from '../types/index.js';
 import { DEFAULT_SESSION_TIMEOUT_SECONDS } from '../types/index.js';
 
 const client = new DynamoDBClient({ region: config.region });
@@ -2769,4 +2769,78 @@ export async function claimLlmRerankComputation(
     }
     throw err;
   }
+}
+
+// ─── LinkedIn Token Operations ────────────────────────────────────────────────
+
+export async function saveLinkedInToken(item: LinkedInTokenItem): Promise<void> {
+  const now = new Date().toISOString();
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.linkedInTokensTable,
+      Key: { recruiter_id: item.recruiter_id },
+      UpdateExpression:
+        'SET access_token = :at, member_urn = :mu, #sc = :sc, expires_at = :ea, created_at = if_not_exists(created_at, :now), updated_at = :now REMOVE pending_state',
+      ExpressionAttributeNames: { '#sc': 'scope' },
+      ExpressionAttributeValues: {
+        ':at': item.access_token,
+        ':mu': item.member_urn,
+        ':sc': item.scope,
+        ':ea': item.expires_at,
+        ':now': now,
+      },
+    })
+  );
+}
+
+export async function getLinkedInToken(recruiterId: string): Promise<LinkedInTokenItem | null> {
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: config.dynamodb.linkedInTokensTable,
+      Key: { recruiter_id: recruiterId },
+    })
+  );
+  return (result.Item as LinkedInTokenItem) || null;
+}
+
+export async function savePendingLinkedInState(recruiterId: string, state: string): Promise<void> {
+  const now = new Date().toISOString();
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.linkedInTokensTable,
+      Key: { recruiter_id: recruiterId },
+      UpdateExpression: 'SET pending_state = :s, updated_at = :now',
+      ExpressionAttributeValues: { ':s': state, ':now': now },
+    })
+  );
+}
+
+export async function markLinkedInTokenExpired(recruiterId: string): Promise<void> {
+  const now = new Date().toISOString();
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.linkedInTokensTable,
+      Key: { recruiter_id: recruiterId },
+      UpdateExpression: 'SET expires_at = :zero, updated_at = :now',
+      ExpressionAttributeValues: { ':zero': 0, ':now': now },
+    })
+  );
+}
+
+export async function writeLinkedInPost(
+  requirementId: string,
+  post: { post_url: string; post_urn: string; posted_at: string; posted_by_recruiter_id: string }
+): Promise<void> {
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.requirementsTable,
+      Key: { requirement_id: requirementId },
+      UpdateExpression: 'SET linkedin_post = :lp, last_updated = :now',
+      ConditionExpression: 'attribute_exists(requirement_id) AND attribute_not_exists(linkedin_post)',
+      ExpressionAttributeValues: {
+        ':lp': post,
+        ':now': new Date().toISOString(),
+      },
+    })
+  );
 }

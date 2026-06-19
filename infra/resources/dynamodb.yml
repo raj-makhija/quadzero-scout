@@ -612,6 +612,26 @@ Resources:
         - Key: Project
           Value: quadzero-scout
 
+  # LinkedInTokens Table (ticket #442 — one item per recruiter, stores OAuth token)
+  LinkedInTokensTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    UpdateReplacePolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    Properties:
+      TableName: ${self:custom.linkedInTokensTable}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: recruiter_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: recruiter_id
+          KeyType: HASH
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Project
+          Value: quadzero-scout
+
 Outputs:
   TalentProfilesTableArn:
     Description: TalentProfiles table ARN
@@ -726,3 +746,9 @@ Outputs:
     Value: !GetAtt RequirementLlmRerankTable.Arn
     Export:
       Name: ${self:provider.stage}-RequirementLlmRerankTableArn
+
+  LinkedInTokensTableArn:
+    Description: LinkedInTokens table ARN
+    Value: !GetAtt LinkedInTokensTable.Arn
+    Export:
+      Name: ${self:provider.stage}-LinkedInTokensTableArn
