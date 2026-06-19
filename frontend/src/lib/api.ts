@@ -540,7 +540,7 @@ class ApiClient {
   }
 
   async getLinkedInStatus() {
-    return this.request<{ connected: boolean; expiresAt?: string; needsReconnect: boolean }>(
+    return this.request<{ connected: boolean; expiresAt?: string; needsReconnect: boolean; refreshSoon?: boolean }>(
       '/recruiter/linkedin/status'
     );
   }
