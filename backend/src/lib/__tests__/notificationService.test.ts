@@ -15,6 +15,11 @@ vi.mock('../dynamodb.js', () => ({
   getCandidateById: (...args: unknown[]) => mockGetCandidateById(...args),
   getAllActiveRequirements: (...args: unknown[]) => mockGetAllActiveRequirements(...args),
   getUserById: (...args: unknown[]) => mockGetUserById(...args),
+  saveLinkedInToken: vi.fn().mockResolvedValue(undefined),
+  getLinkedInToken: vi.fn().mockResolvedValue(null),
+  savePendingLinkedInState: vi.fn().mockResolvedValue(undefined),
+  markLinkedInTokenExpired: vi.fn().mockResolvedValue(undefined),
+  writeLinkedInPost: vi.fn().mockResolvedValue(undefined),
 }));
 
 const mockUpdateCacheForCandidates = vi.fn();

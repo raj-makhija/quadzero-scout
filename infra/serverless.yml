@@ -77,6 +77,13 @@ provider:
     EMAIL_INGEST_ENABLED: ${ssm:/quadzero-scout/${self:provider.stage}/EMAIL_INGEST_ENABLED, env:EMAIL_INGEST_ENABLED, 'false'}
     EMAIL_INGEST_NOTIFY_ADDRESS: ${ssm:/quadzero-scout/${self:provider.stage}/EMAIL_INGEST_NOTIFY_ADDRESS, env:EMAIL_INGEST_NOTIFY_ADDRESS, ''}
     RECRUITER_MATCH_EMAIL_ENABLED: ${ssm:/quadzero-scout/${self:provider.stage}/RECRUITER_MATCH_EMAIL_ENABLED, env:RECRUITER_MATCH_EMAIL_ENABLED, 'false'}
+    DYNAMODB_TABLE_LINKEDIN_TOKENS: ${self:custom.linkedInTokensTable}
+    LINKEDIN_CLIENT_ID: ${ssm:/quadzero-scout/${self:provider.stage}/LINKEDIN_CLIENT_ID, env:LINKEDIN_CLIENT_ID, ''}
+    LINKEDIN_CLIENT_SECRET: ${ssm:/quadzero-scout/${self:provider.stage}/LINKEDIN_CLIENT_SECRET, env:LINKEDIN_CLIENT_SECRET, ''}
+    LINKEDIN_REDIRECT_URI: ${ssm:/quadzero-scout/${self:provider.stage}/LINKEDIN_REDIRECT_URI, env:LINKEDIN_REDIRECT_URI, ''}
+    LINKEDIN_API_VERSION: ${ssm:/quadzero-scout/${self:provider.stage}/LINKEDIN_API_VERSION, env:LINKEDIN_API_VERSION, '202505'}
+    IMAGE_GEN_MODEL: ${ssm:/quadzero-scout/${self:provider.stage}/IMAGE_GEN_MODEL, env:IMAGE_GEN_MODEL, 'gpt-image-1'}
+    IMAGE_GEN_SIZE: ${ssm:/quadzero-scout/${self:provider.stage}/IMAGE_GEN_SIZE, env:IMAGE_GEN_SIZE, '1024x1024'}
 
   httpApi:
     cors:
@@ -139,6 +146,7 @@ custom:
   requirementMatchCacheTable: RequirementMatchCache-${self:provider.stage}
   requirementLlmRerankTable: RequirementLlmRerank-${self:provider.stage}
   cloneJobsTable: CloneJobs-${self:provider.stage}
+  linkedInTokensTable: LinkedInTokens-${self:provider.stage}
 
   dotenv:
     include:
@@ -647,6 +655,26 @@ functions:
           method: POST
       - httpApi:
           path: /recruiter/tasks/{taskId}/complete
+          method: POST
+
+  # LinkedIn Posting (ticket #442)
+  recruiterLinkedIn:
+    handler: src/handlers/recruiter/linkedinRouter.handler
+    events:
+      - httpApi:
+          path: /recruiter/linkedin/auth-url
+          method: GET
+      - httpApi:
+          path: /recruiter/linkedin/exchange
+          method: POST
+      - httpApi:
+          path: /recruiter/linkedin/status
+          method: GET
+      - httpApi:
+          path: /recruiter/requirements/{requirementId}/linkedin/generate
+          method: POST
+      - httpApi:
+          path: /recruiter/requirements/{requirementId}/linkedin/post
           method: POST
 
   # Pricing Endpoints
