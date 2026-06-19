@@ -2,8 +2,8 @@ Resources:
   # TalentProfiles Table
   TalentProfilesTable:
     Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    DeletionPolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    UpdateReplacePolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
     Properties:
       TableName: ${self:custom.talentProfilesTable}
       BillingMode: PAY_PER_REQUEST
@@ -71,8 +71,8 @@ Resources:
   # Users Table
   UsersTable:
     Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    DeletionPolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    UpdateReplacePolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
     Properties:
       TableName: ${self:custom.usersTable}
       BillingMode: PAY_PER_REQUEST
@@ -100,8 +100,8 @@ Resources:
   # Prompts Table (Admin Interface)
   PromptsTable:
     Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    DeletionPolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    UpdateReplacePolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
     Properties:
       TableName: ${self:custom.promptsTable}
       BillingMode: PAY_PER_REQUEST
@@ -124,8 +124,8 @@ Resources:
   # SavedSearches Table (Phase 2)
   SavedSearchesTable:
     Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    DeletionPolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    UpdateReplacePolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
     Properties:
       TableName: ${self:custom.savedSearchesTable}
       BillingMode: PAY_PER_REQUEST
@@ -148,8 +148,8 @@ Resources:
   # BulkImportBatches Table
   BulkImportBatchesTable:
     Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    DeletionPolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    UpdateReplacePolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
     Properties:
       TableName: ${self:custom.bulkImportBatchesTable}
       BillingMode: PAY_PER_REQUEST
@@ -171,8 +171,8 @@ Resources:
   # Clone Prod Data jobs (ticket #303) — one item per admin-triggered clone run
   CloneJobsTable:
     Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    DeletionPolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    UpdateReplacePolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
     Properties:
       TableName: ${self:custom.cloneJobsTable}
       BillingMode: PAY_PER_REQUEST
@@ -194,8 +194,8 @@ Resources:
   # Requirements Table
   RequirementsTable:
     Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    DeletionPolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    UpdateReplacePolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
     Properties:
       TableName: ${self:custom.requirementsTable}
       BillingMode: PAY_PER_REQUEST
@@ -237,8 +237,8 @@ Resources:
   # Shortlists Table
   ShortlistsTable:
     Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    DeletionPolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    UpdateReplacePolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
     Properties:
       TableName: ${self:custom.shortlistsTable}
       BillingMode: PAY_PER_REQUEST
@@ -270,8 +270,8 @@ Resources:
   # Clients Table (Client Master)
   ClientsTable:
     Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    DeletionPolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    UpdateReplacePolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
     Properties:
       TableName: ${self:custom.clientsTable}
       BillingMode: PAY_PER_REQUEST
@@ -299,8 +299,8 @@ Resources:
   # SubVendors Table (Sub-Vendor Master)
   SubVendorsTable:
     Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    DeletionPolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    UpdateReplacePolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
     Properties:
       TableName: ${self:custom.subVendorsTable}
       BillingMode: PAY_PER_REQUEST
@@ -328,8 +328,8 @@ Resources:
   # PricingConfig Table
   PricingConfigTable:
     Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    DeletionPolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    UpdateReplacePolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
     Properties:
       TableName: ${self:custom.pricingConfigTable}
       BillingMode: PAY_PER_REQUEST
@@ -352,8 +352,8 @@ Resources:
   # CandidateScreenings Table
   CandidateScreeningsTable:
     Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    DeletionPolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    UpdateReplacePolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
     Properties:
       TableName: ${self:custom.candidateScreeningsTable}
       BillingMode: PAY_PER_REQUEST
@@ -376,8 +376,8 @@ Resources:
   # AuditLog Table (centralized activity audit trail)
   AuditLogTable:
     Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    DeletionPolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    UpdateReplacePolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
     Properties:
       TableName: ${self:custom.auditLogTable}
       BillingMode: PAY_PER_REQUEST
@@ -434,8 +434,8 @@ Resources:
   # ScreeningLocks Table (distributed lock for candidate screening)
   ScreeningLocksTable:
     Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    DeletionPolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    UpdateReplacePolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
     Properties:
       TableName: ${self:custom.screeningLocksTable}
       BillingMode: PAY_PER_REQUEST
@@ -457,8 +457,8 @@ Resources:
   # EmailIngestLog Table (idempotency log for email-based resume ingestion)
   EmailIngestLogTable:
     Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    DeletionPolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    UpdateReplacePolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
     Properties:
       TableName: ${self:custom.emailIngestLogTable}
       BillingMode: PAY_PER_REQUEST
@@ -480,8 +480,8 @@ Resources:
   # PipelineActivity Table (tracks all pipeline events per candidate+requirement)
   PipelineActivityTable:
     Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    DeletionPolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    UpdateReplacePolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
     Properties:
       TableName: ${self:custom.pipelineActivityTable}
       BillingMode: PAY_PER_REQUEST
@@ -507,8 +507,8 @@ Resources:
   # CandidateAttachments Table (document attachments per candidate)
   CandidateAttachmentsTable:
     Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    DeletionPolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    UpdateReplacePolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
     Properties:
       TableName: ${self:custom.candidateAttachmentsTable}
       BillingMode: PAY_PER_REQUEST
@@ -531,8 +531,8 @@ Resources:
   # RecruiterTasks Table (ticket #153 — intelligent task queue)
   RecruiterTasksTable:
     Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    DeletionPolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    UpdateReplacePolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
     Properties:
       TableName: ${self:custom.recruiterTasksTable}
       BillingMode: PAY_PER_REQUEST
@@ -572,8 +572,8 @@ Resources:
   # One item per requirement: the ranked list of { candidate_id, rank, score }.
   RequirementMatchCacheTable:
     Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    DeletionPolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    UpdateReplacePolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
     Properties:
       TableName: ${self:custom.requirementMatchCacheTable}
       BillingMode: PAY_PER_REQUEST
@@ -595,8 +595,8 @@ Resources:
   # cache so per-entry rationales stay under the 400KB single-item limit.
   RequirementLlmRerankTable:
     Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    DeletionPolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    UpdateReplacePolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
     Properties:
       TableName: ${self:custom.requirementLlmRerankTable}
       BillingMode: PAY_PER_REQUEST
