@@ -139,6 +139,9 @@ custom:
   requirementMatchCacheTable: RequirementMatchCache-${self:provider.stage}
   requirementLlmRerankTable: RequirementLlmRerank-${self:provider.stage}
   cloneJobsTable: CloneJobs-${self:provider.stage}
+  retentionPolicy:
+    prod: Retain
+    default: Delete
 
   dotenv:
     include:
