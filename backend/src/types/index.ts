@@ -560,6 +560,23 @@ export interface RequirementItem {
   additional_fields?: AdditionalFieldDefinition[];
   contact_person_name?: string;
   is_rate_gst_inclusive?: boolean;
+  linkedin_post?: {
+    post_url: string;
+    post_urn: string;
+    posted_at: string;
+    posted_by_recruiter_id: string;
+  };
+}
+
+export interface LinkedInTokenItem {
+  recruiter_id: string;
+  access_token?: string;
+  member_urn?: string;
+  scope?: string;
+  expires_at?: number;
+  created_at?: string;
+  updated_at?: string;
+  pending_state?: string;
 }
 
 // Requirement API types

@@ -26,6 +26,11 @@ const { mockGetActivePrompt } = vi.hoisted(() => ({
 
 vi.mock('../dynamodb.js', () => ({
   getActivePrompt: (...args: unknown[]) => mockGetActivePrompt(...args),
+  saveLinkedInToken: vi.fn().mockResolvedValue(undefined),
+  getLinkedInToken: vi.fn().mockResolvedValue(null),
+  savePendingLinkedInState: vi.fn().mockResolvedValue(undefined),
+  markLinkedInTokenExpired: vi.fn().mockResolvedValue(undefined),
+  writeLinkedInPost: vi.fn().mockResolvedValue(undefined),
 }));
 
 class StubProvider extends BaseLLMProvider {
