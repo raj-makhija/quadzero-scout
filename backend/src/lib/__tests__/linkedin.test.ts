@@ -359,6 +359,27 @@ describe('linkedinGenerate handler', () => {
     expect(JSON.stringify(body)).not.toContain('tok');
   });
 
+  it('uses admin-edited linkedin_image_generator prompt for the image', async () => {
+    mockGetActivePrompt.mockImplementation((key: string) =>
+      key === 'linkedin_image_generator'
+        ? Promise.resolve({ content: 'CUSTOM BRAND STYLE PROMPT', version: 1 })
+        : Promise.resolve(null)
+    );
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ predictions: [{ bytesBase64Encoded: 'base64imagedata' }] }),
+    });
+
+    const { handler } = await import('../../handlers/recruiter/linkedinGenerate.js');
+    const event = makeEvent({ rawPath: '/recruiter/requirements/req-1/linkedin/generate', pathParameters: { requirementId: 'req-1' } });
+    await handler(event as APIGatewayProxyEventV2, {} as never);
+
+    // The image request body must carry the admin-edited style prompt
+    const imageCallBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(imageCallBody.instances[0].prompt).toContain('CUSTOM BRAND STYLE PROMPT');
+  });
+
   it('returns 404 if requirement not found', async () => {
     mockGetRequirementById.mockResolvedValue(null);
     const { handler } = await import('../../handlers/recruiter/linkedinGenerate.js');

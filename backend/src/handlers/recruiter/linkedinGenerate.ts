@@ -4,6 +4,7 @@ import { getRequirementById, getLinkedInToken, getActivePrompt } from '../../lib
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { getLLMProvider } from '../../lib/llm/index.js';
 import { config } from '../../lib/config.js';
+import { LINKEDIN_POST_PROMPT_DEFAULT, LINKEDIN_IMAGE_PROMPT_DEFAULT } from '../../lib/linkedinPrompts.js';
 
 const MAX_JD_CHARS = 1500;
 
@@ -33,12 +34,9 @@ async function handleRequest(event: AuthenticatedEvent): Promise<APIGatewayProxy
     const clientName = requirement.client_name;
     const jdSnippet = (requirement.jd_text || '').slice(0, MAX_JD_CHARS);
 
-    // Fetch or fall back to a default text-generation prompt
+    // Fetch or fall back to a default text-generation prompt (admin-editable)
     const promptItem = await getActivePrompt('linkedin_post_generator');
-    const systemPrompt = promptItem?.content || `You are a LinkedIn post writer for a tech recruitment firm.
-Write a compelling LinkedIn post for a ${coreSkill} opportunity.
-Return ONLY valid JSON: {"text": "post text here", "hashtags": "#tag1 #tag2"}
-Keep the text under 3000 characters. Do not include the hashtags in the text field.`;
+    const systemPrompt = promptItem?.content || LINKEDIN_POST_PROMPT_DEFAULT;
 
     const provider = getLLMProvider();
     const userContent = `Client: ${clientName}
@@ -68,7 +66,10 @@ ${jdSnippet ? `Job description excerpt:\n${jdSnippet}` : ''}`;
     }
 
     // Generate image via Gemini (Imagen) — uses the already-provisioned GEMINI_API_KEY.
-    const imagePrompt = `Professional branded recruitment image for a ${coreSkill} role. Clean modern tech company aesthetic, blue gradient background, abstract geometric shapes. No text.`;
+    // Image style/brand prompt is admin-editable; the role context is appended per requirement.
+    const imagePromptItem = await getActivePrompt('linkedin_image_generator');
+    const imageStyle = imagePromptItem?.content || LINKEDIN_IMAGE_PROMPT_DEFAULT;
+    const imagePrompt = `${imageStyle}\n\nRole focus: ${coreSkill || roles}.`;
 
     const imageResponse = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${config.imageGen.model}:predict?key=${config.llm.geminiApiKey}`,
