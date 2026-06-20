@@ -39,7 +39,7 @@ vi.mock('../config.js', () => ({
       apiVersion: '202505',
     },
     imageGen: {
-      model: 'gpt-image-1',
+      model: 'imagen-3.0-generate-002',
       size: '1024x1024',
     },
     llm: {
@@ -49,7 +49,7 @@ vi.mock('../config.js', () => ({
       openrouterApiKey: '',
       openrouterModel: '',
       openrouterReferer: '',
-      geminiApiKey: '',
+      geminiApiKey: 'test-gemini-key',
       geminiModel: '',
       maxRetries: 1,
       fallbackProvider: '',
@@ -344,10 +344,10 @@ describe('linkedinGenerate handler', () => {
       }),
     }));
 
-    // Image gen call
+    // Image gen call (Gemini Imagen :predict)
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ data: [{ b64_json: 'base64imagedata' }] }),
+      json: async () => ({ predictions: [{ bytesBase64Encoded: 'base64imagedata' }] }),
     });
 
     const { handler } = await import('../../handlers/recruiter/linkedinGenerate.js');

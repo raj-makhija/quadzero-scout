@@ -67,23 +67,22 @@ ${jdSnippet ? `Job description excerpt:\n${jdSnippet}` : ''}`;
       text = response.content;
     }
 
-    // Generate image via OpenAI images API
-    const imagePrompt = `Professional branded recruitment image for a ${coreSkill} role. Clean modern tech company aesthetic, blue gradient background, abstract geometric shapes. No text. 1024x1024.`;
+    // Generate image via Gemini (Imagen) — uses the already-provisioned GEMINI_API_KEY.
+    const imagePrompt = `Professional branded recruitment image for a ${coreSkill} role. Clean modern tech company aesthetic, blue gradient background, abstract geometric shapes. No text.`;
 
-    const imageResponse = await fetch('https://api.openai.com/v1/images/generations', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${config.llm.openaiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: config.imageGen.model,
-        prompt: imagePrompt,
-        n: 1,
-        size: config.imageGen.size,
-        response_format: 'b64_json',
-      }),
-    });
+    const imageResponse = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${config.imageGen.model}:predict?key=${config.llm.geminiApiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          instances: [{ prompt: imagePrompt }],
+          parameters: { sampleCount: 1, aspectRatio: '1:1' },
+        }),
+      }
+    );
 
     if (!imageResponse.ok) {
       const errText = await imageResponse.text();
@@ -91,8 +90,8 @@ ${jdSnippet ? `Job description excerpt:\n${jdSnippet}` : ''}`;
       return error(ErrorCodes.INTERNAL_ERROR, 'Image generation failed', 502);
     }
 
-    const imageData = await imageResponse.json() as { data: Array<{ b64_json: string }> };
-    const imageBase64 = imageData.data[0]?.b64_json || '';
+    const imageData = await imageResponse.json() as { predictions: Array<{ bytesBase64Encoded: string }> };
+    const imageBase64 = imageData.predictions[0]?.bytesBase64Encoded || '';
 
     return success({ text, hashtags, imageBase64 });
   } catch (err) {
