@@ -7,6 +7,8 @@ import { config } from '../../lib/config.js';
 import { LINKEDIN_POST_PROMPT_DEFAULT, LINKEDIN_IMAGE_PROMPT_DEFAULT } from '../../lib/linkedinPrompts.js';
 
 const MAX_JD_CHARS = 1500;
+// Keep the post excerpt fed into the image prompt under Imagen's prompt-length cap.
+const MAX_IMAGE_POST_CHARS = 600;
 
 async function handleRequest(event: AuthenticatedEvent): Promise<APIGatewayProxyResultV2> {
   try {
@@ -66,10 +68,13 @@ ${jdSnippet ? `Job description excerpt:\n${jdSnippet}` : ''}`;
     }
 
     // Generate image via Gemini (Imagen) — uses the already-provisioned GEMINI_API_KEY.
-    // Image style/brand prompt is admin-editable; the role context is appended per requirement.
+    // Chained generation: the admin-editable image prompt is the framing instruction,
+    // and the post text generated above is fed in as its input (truncated to stay
+    // under Imagen's prompt-length cap). Falls back to role context if text is empty.
     const imagePromptItem = await getActivePrompt('linkedin_image_generator');
     const imageStyle = imagePromptItem?.content || LINKEDIN_IMAGE_PROMPT_DEFAULT;
-    const imagePrompt = `${imageStyle}\n\nRole focus: ${coreSkill || roles}.`;
+    const postContext = text.trim() ? text.slice(0, MAX_IMAGE_POST_CHARS) : `Role focus: ${coreSkill || roles}.`;
+    const imagePrompt = `${imageStyle}\n\nPost:\n${postContext}`;
 
     const imageResponse = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${config.imageGen.model}:predict?key=${config.llm.geminiApiKey}`,

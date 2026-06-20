@@ -376,8 +376,10 @@ describe('linkedinGenerate handler', () => {
     await handler(event as APIGatewayProxyEventV2, {} as never);
 
     // The image request body must carry the admin-edited style prompt
+    // AND the generated post text chained in as its input.
     const imageCallBody = JSON.parse(mockFetch.mock.calls[0][1].body);
     expect(imageCallBody.instances[0].prompt).toContain('CUSTOM BRAND STYLE PROMPT');
+    expect(imageCallBody.instances[0].prompt).toContain('Post text');
   });
 
   it('returns 404 if requirement not found', async () => {
