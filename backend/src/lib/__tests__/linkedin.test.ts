@@ -93,6 +93,15 @@ vi.mock('../auth.js', () => ({
   },
 }));
 
+// Mock the LLM provider with a stable spy so call options can be asserted.
+const { mockCompleteWithRetry } = vi.hoisted(() => ({ mockCompleteWithRetry: vi.fn() }));
+vi.mock('../llm/index.js', () => ({
+  getLLMProvider: () => ({
+    completeWithRetry: mockCompleteWithRetry,
+    parseJsonResponse: (raw: string) => JSON.parse(raw),
+  }),
+}));
+
 // Mock fetch globally
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
@@ -328,6 +337,7 @@ describe('linkedinGenerate handler', () => {
     mockGetLinkedInToken.mockResolvedValue({ access_token: 'tok', member_urn: 'urn:li:person:x' });
     mockGetRequirementById.mockResolvedValue(baseRequirement);
     mockGetActivePrompt.mockResolvedValue(null);
+    mockCompleteWithRetry.mockResolvedValue({ content: '🚀 Hiring: React Developer\nJoin our team. #React #Hiring' });
   });
 
   it('uses linkedin_post_generator prompt from DB when available', async () => {
@@ -335,14 +345,6 @@ describe('linkedinGenerate handler', () => {
     mockGetActivePrompt.mockImplementation((key: string) =>
       key === 'linkedin_post_generator' ? Promise.resolve({ content: customPrompt, version: 1 }) : Promise.resolve(null)
     );
-
-    // LLM returns the finished post text directly (no JSON envelope)
-    vi.mock('../llm/index.js', () => ({
-      getLLMProvider: () => ({
-        completeWithRetry: vi.fn().mockResolvedValue({ content: '🚀 Hiring: React Developer\nJoin our team. #React #Hiring' }),
-        parseJsonResponse: (raw: string) => JSON.parse(raw),
-      }),
-    }));
 
     // Image gen call (Gemini image model :generateContent)
     mockFetch.mockResolvedValueOnce({
@@ -359,6 +361,12 @@ describe('linkedinGenerate handler', () => {
     expect(JSON.stringify(body)).toContain('Hiring: React Developer');
     // Response must not contain access_token
     expect(JSON.stringify(body)).not.toContain('tok');
+    // Text must be requested as plain text, or Gemini wraps the post in JSON
+    expect(mockCompleteWithRetry).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ responseFormat: 'text' }),
+      expect.anything()
+    );
   });
 
   it('uses admin-edited image prompt and feeds in the requirement JD', async () => {

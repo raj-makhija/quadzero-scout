@@ -54,7 +54,9 @@ ${jdSnippet ? `Job description excerpt:\n${jdSnippet}` : ''}`;
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userContent },
       ],
-      { temperature: 0.7, maxTokens: 1024 },
+      // 'text' is required: the Gemini provider defaults to application/json,
+      // which would wrap the post in a JSON object. We want the raw post.
+      { temperature: 0.7, maxTokens: 1024, responseFormat: 'text' },
       config.llm.maxRetries
     );
 
