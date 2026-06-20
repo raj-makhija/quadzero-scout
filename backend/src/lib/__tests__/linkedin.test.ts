@@ -39,7 +39,7 @@ vi.mock('../config.js', () => ({
       apiVersion: '202505',
     },
     imageGen: {
-      model: 'imagen-3.0-generate-002',
+      model: 'imagen-4.0-generate-001',
       size: '1024x1024',
     },
     llm: {
