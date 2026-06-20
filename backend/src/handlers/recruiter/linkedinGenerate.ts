@@ -7,8 +7,9 @@ import { config } from '../../lib/config.js';
 import { LINKEDIN_POST_PROMPT_DEFAULT, LINKEDIN_IMAGE_PROMPT_DEFAULT } from '../../lib/linkedinPrompts.js';
 
 const MAX_JD_CHARS = 1500;
-// Keep the post excerpt fed into the image prompt under Imagen's prompt-length cap.
-const MAX_IMAGE_POST_CHARS = 600;
+// JD fed into the image prompt for the infographic (Gemini image models accept large prompts).
+const MAX_IMAGE_JD_CHARS = 4000;
+const JD_PLACEHOLDER = '{{raw_job_description}}';
 
 async function handleRequest(event: AuthenticatedEvent): Promise<APIGatewayProxyResultV2> {
   try {
@@ -67,25 +68,26 @@ ${jdSnippet ? `Job description excerpt:\n${jdSnippet}` : ''}`;
       text = response.content;
     }
 
-    // Generate image via Gemini (Imagen) — uses the already-provisioned GEMINI_API_KEY.
-    // Chained generation: the admin-editable image prompt is the framing instruction,
-    // and the post text generated above is fed in as its input (truncated to stay
-    // under Imagen's prompt-length cap). Falls back to role context if text is empty.
+    // Generate the recruitment infographic via a Gemini image model (generateContent).
+    // The admin-editable prompt drives layout/style; {{raw_job_description}} is filled
+    // with the requirement's JD. Gemini image models render legible text (Imagen does not).
     const imagePromptItem = await getActivePrompt('linkedin_image_generator');
     const imageStyle = imagePromptItem?.content || LINKEDIN_IMAGE_PROMPT_DEFAULT;
-    const postContext = text.trim() ? text.slice(0, MAX_IMAGE_POST_CHARS) : `Role focus: ${coreSkill || roles}.`;
-    const imagePrompt = `${imageStyle}\n\nPost:\n${postContext}`;
+    const jdForImage = (requirement.jd_text || '').slice(0, MAX_IMAGE_JD_CHARS);
+    const imagePrompt = imageStyle.includes(JD_PLACEHOLDER)
+      ? imageStyle.split(JD_PLACEHOLDER).join(jdForImage)
+      : `${imageStyle}\n\n--- JOB DESCRIPTION ---\n${jdForImage}`;
 
     const imageResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${config.imageGen.model}:predict?key=${config.llm.geminiApiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${config.imageGen.model}:generateContent?key=${config.llm.geminiApiKey}`,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          instances: [{ prompt: imagePrompt }],
-          parameters: { sampleCount: 1, aspectRatio: '1:1' },
+          contents: [{ parts: [{ text: imagePrompt }] }],
+          generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
         }),
       }
     );
@@ -96,8 +98,16 @@ ${jdSnippet ? `Job description excerpt:\n${jdSnippet}` : ''}`;
       return error(ErrorCodes.INTERNAL_ERROR, 'Image generation failed', 502);
     }
 
-    const imageData = await imageResponse.json() as { predictions: Array<{ bytesBase64Encoded: string }> };
-    const imageBase64 = imageData.predictions[0]?.bytesBase64Encoded || '';
+    const imageData = await imageResponse.json() as {
+      candidates?: Array<{ content?: { parts?: Array<{ inlineData?: { data?: string } }> } }>;
+    };
+    const imageBase64 =
+      imageData.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data)?.inlineData?.data || '';
+
+    if (!imageBase64) {
+      console.error('Image generation returned no image:', JSON.stringify(imageData).slice(0, 500));
+      return error(ErrorCodes.INTERNAL_ERROR, 'Image generation failed', 502);
+    }
 
     return success({ text, hashtags, imageBase64 });
   } catch (err) {

@@ -39,7 +39,7 @@ vi.mock('../config.js', () => ({
       apiVersion: '202505',
     },
     imageGen: {
-      model: 'imagen-4.0-generate-001',
+      model: 'gemini-3-pro-image',
       size: '1024x1024',
     },
     llm: {
@@ -344,10 +344,10 @@ describe('linkedinGenerate handler', () => {
       }),
     }));
 
-    // Image gen call (Gemini Imagen :predict)
+    // Image gen call (Gemini image model :generateContent)
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ predictions: [{ bytesBase64Encoded: 'base64imagedata' }] }),
+      json: async () => ({ candidates: [{ content: { parts: [{ inlineData: { data: 'base64imagedata' } }] } }] }),
     });
 
     const { handler } = await import('../../handlers/recruiter/linkedinGenerate.js');
@@ -359,27 +359,48 @@ describe('linkedinGenerate handler', () => {
     expect(JSON.stringify(body)).not.toContain('tok');
   });
 
-  it('uses admin-edited linkedin_image_generator prompt for the image', async () => {
+  it('uses admin-edited image prompt and feeds in the requirement JD', async () => {
     mockGetActivePrompt.mockImplementation((key: string) =>
       key === 'linkedin_image_generator'
-        ? Promise.resolve({ content: 'CUSTOM BRAND STYLE PROMPT', version: 1 })
+        ? Promise.resolve({ content: 'CUSTOM INFOGRAPHIC PROMPT', version: 1 })
         : Promise.resolve(null)
     );
 
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ predictions: [{ bytesBase64Encoded: 'base64imagedata' }] }),
+      json: async () => ({ candidates: [{ content: { parts: [{ inlineData: { data: 'base64imagedata' } }] } }] }),
     });
 
     const { handler } = await import('../../handlers/recruiter/linkedinGenerate.js');
     const event = makeEvent({ rawPath: '/recruiter/requirements/req-1/linkedin/generate', pathParameters: { requirementId: 'req-1' } });
     await handler(event as APIGatewayProxyEventV2, {} as never);
 
-    // The image request body must carry the admin-edited style prompt
-    // AND the generated post text chained in as its input.
+    // The image request body must carry the admin-edited prompt AND the requirement's JD.
     const imageCallBody = JSON.parse(mockFetch.mock.calls[0][1].body);
-    expect(imageCallBody.instances[0].prompt).toContain('CUSTOM BRAND STYLE PROMPT');
-    expect(imageCallBody.instances[0].prompt).toContain('Post text');
+    const sentPrompt = imageCallBody.contents[0].parts[0].text;
+    expect(sentPrompt).toContain('CUSTOM INFOGRAPHIC PROMPT');
+    expect(sentPrompt).toContain('Looking for a React developer');
+  });
+
+  it('substitutes {{raw_job_description}} in the image prompt with the JD', async () => {
+    mockGetActivePrompt.mockImplementation((key: string) =>
+      key === 'linkedin_image_generator'
+        ? Promise.resolve({ content: 'Infographic. JD: {{raw_job_description}} END', version: 1 })
+        : Promise.resolve(null)
+    );
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ candidates: [{ content: { parts: [{ inlineData: { data: 'base64imagedata' } }] } }] }),
+    });
+
+    const { handler } = await import('../../handlers/recruiter/linkedinGenerate.js');
+    const event = makeEvent({ rawPath: '/recruiter/requirements/req-1/linkedin/generate', pathParameters: { requirementId: 'req-1' } });
+    await handler(event as APIGatewayProxyEventV2, {} as never);
+
+    const sentPrompt = JSON.parse(mockFetch.mock.calls[0][1].body).contents[0].parts[0].text;
+    expect(sentPrompt).not.toContain('{{raw_job_description}}');
+    expect(sentPrompt).toContain('JD: Looking for a React developer');
   });
 
   it('returns 404 if requirement not found', async () => {
