@@ -336,10 +336,10 @@ describe('linkedinGenerate handler', () => {
       key === 'linkedin_post_generator' ? Promise.resolve({ content: customPrompt, version: 1 }) : Promise.resolve(null)
     );
 
-    // LLM call returns JSON
+    // LLM returns the finished post text directly (no JSON envelope)
     vi.mock('../llm/index.js', () => ({
       getLLMProvider: () => ({
-        completeWithRetry: vi.fn().mockResolvedValue({ content: JSON.stringify({ text: 'Post text', hashtags: '#React' }) }),
+        completeWithRetry: vi.fn().mockResolvedValue({ content: '🚀 Hiring: React Developer\nJoin our team. #React #Hiring' }),
         parseJsonResponse: (raw: string) => JSON.parse(raw),
       }),
     }));
@@ -355,6 +355,8 @@ describe('linkedinGenerate handler', () => {
     const result = await handler(event as APIGatewayProxyEventV2, {} as never);
     const body = JSON.parse((result as { body: string }).body);
     expect(body.success).toBe(true);
+    // The finished post text is returned as-is (not an empty JSON-extraction)
+    expect(JSON.stringify(body)).toContain('Hiring: React Developer');
     // Response must not contain access_token
     expect(JSON.stringify(body)).not.toContain('tok');
   });

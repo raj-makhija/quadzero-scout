@@ -54,19 +54,14 @@ ${jdSnippet ? `Job description excerpt:\n${jdSnippet}` : ''}`;
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userContent },
       ],
-      { temperature: 0.7, maxTokens: 1024, responseFormat: 'json' },
+      { temperature: 0.7, maxTokens: 1024 },
       config.llm.maxRetries
     );
 
-    let text = '';
-    let hashtags = '';
-    try {
-      const parsed = provider.parseJsonResponse<{ text?: string; hashtags?: string }>(response.content);
-      text = parsed.text || '';
-      hashtags = parsed.hashtags || '';
-    } catch {
-      text = response.content;
-    }
+    // The prompt produces the finished post text directly (hashtags inline),
+    // so the model output IS the post — no JSON envelope to unwrap.
+    const text = response.content.trim();
+    const hashtags = '';
 
     // Generate the recruitment infographic via a Gemini image model (generateContent).
     // The admin-editable prompt drives layout/style; {{raw_job_description}} is filled

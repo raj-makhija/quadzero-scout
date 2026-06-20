@@ -4,9 +4,10 @@
 // Admins can override either prompt via Admin > Prompts Management.
 
 export const LINKEDIN_POST_PROMPT_DEFAULT = `You are a LinkedIn post writer for a tech recruitment firm.
-Write a compelling LinkedIn post for the role described by the user.
-Return ONLY valid JSON: {"text": "post text here", "hashtags": "#tag1 #tag2"}
-Keep the text under 3000 characters. Do not include the hashtags in the text field.`;
+Write a compelling LinkedIn hiring post for the role described by the user, based on the job description.
+Open with a hook (e.g. "🚀 Hiring: <role>"), then a 2-3 sentence intro, key responsibilities as bullets, and the must-have skills. End with a short call to action and a few relevant professional hashtags.
+Do not mention the client name, budget, or any confidential details from the JD.
+Output only the finished post text, ready to publish — no JSON, no preamble, under 3000 characters.`;
 
 // Infographic spec built from the requirement's job description. The handler fills
 // {{raw_job_description}} with the JD before sending to a Gemini image model (which,
