@@ -19,6 +19,8 @@ export const handler = async (
     module = await import('./linkedinExchange.js');
   } else if (method === 'GET' && path.endsWith('/linkedin/status')) {
     module = await import('./linkedinStatus.js');
+  } else if (method === 'GET' && path.includes('/linkedin/generate/')) {
+    module = await import('./linkedinGenerateStatus.js');
   } else if (method === 'POST' && path.includes('/linkedin/generate')) {
     module = await import('./linkedinGenerate.js');
   } else if (method === 'POST' && path.includes('/linkedin/post')) {

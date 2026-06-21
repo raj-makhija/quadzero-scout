@@ -546,18 +546,24 @@ class ApiClient {
   }
 
   async generateLinkedInPost(requirementId: string) {
-    return this.request<{ text: string; hashtags: string; imageBase64: string }>(
+    return this.request<{ jobId: string }>(
       `/recruiter/requirements/${requirementId}/linkedin/generate`,
       { method: 'POST' }
     );
   }
 
-  async publishLinkedInPost(requirementId: string, text: string, imageBase64: string) {
+  async getLinkedInPostStatus(requirementId: string, jobId: string) {
+    return this.request<{ status: 'pending' | 'processing' | 'done' | 'failed'; text?: string; hashtags?: string; imageUrl?: string; error?: string }>(
+      `/recruiter/requirements/${requirementId}/linkedin/generate/${jobId}`
+    );
+  }
+
+  async publishLinkedInPost(requirementId: string, text: string, jobId: string) {
     return this.request<{ postUrl: string }>(
       `/recruiter/requirements/${requirementId}/linkedin/post`,
       {
         method: 'POST',
-        body: JSON.stringify({ text, imageBase64 }),
+        body: JSON.stringify({ text, jobId }),
       }
     );
   }

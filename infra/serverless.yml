@@ -78,11 +78,13 @@ provider:
     EMAIL_INGEST_NOTIFY_ADDRESS: ${ssm:/quadzero-scout/${self:provider.stage}/EMAIL_INGEST_NOTIFY_ADDRESS, env:EMAIL_INGEST_NOTIFY_ADDRESS, ''}
     RECRUITER_MATCH_EMAIL_ENABLED: ${ssm:/quadzero-scout/${self:provider.stage}/RECRUITER_MATCH_EMAIL_ENABLED, env:RECRUITER_MATCH_EMAIL_ENABLED, 'false'}
     DYNAMODB_TABLE_LINKEDIN_TOKENS: ${self:custom.linkedInTokensTable}
+    DYNAMODB_TABLE_LINKEDIN_POST_JOBS: ${self:custom.linkedInPostJobsTable}
+    LINKEDIN_GENERATE_WORKER_NAME: ${self:service}-${self:provider.stage}-recruiterLinkedInGenerateWorker
     LINKEDIN_CLIENT_ID: ${ssm:/quadzero-scout/${self:provider.stage}/LINKEDIN_CLIENT_ID, env:LINKEDIN_CLIENT_ID, ''}
     LINKEDIN_CLIENT_SECRET: ${ssm:/quadzero-scout/${self:provider.stage}/LINKEDIN_CLIENT_SECRET, env:LINKEDIN_CLIENT_SECRET, ''}
     LINKEDIN_REDIRECT_URI: ${ssm:/quadzero-scout/${self:provider.stage}/LINKEDIN_REDIRECT_URI, env:LINKEDIN_REDIRECT_URI, ''}
     LINKEDIN_API_VERSION: ${ssm:/quadzero-scout/${self:provider.stage}/LINKEDIN_API_VERSION, env:LINKEDIN_API_VERSION, '202606'}
-    IMAGE_GEN_MODEL: ${ssm:/quadzero-scout/${self:provider.stage}/IMAGE_GEN_MODEL, env:IMAGE_GEN_MODEL, 'gpt-image-1'}
+    IMAGE_GEN_MODEL: ${ssm:/quadzero-scout/${self:provider.stage}/IMAGE_GEN_MODEL, env:IMAGE_GEN_MODEL, 'gemini-3-pro-image'}
     IMAGE_GEN_SIZE: ${ssm:/quadzero-scout/${self:provider.stage}/IMAGE_GEN_SIZE, env:IMAGE_GEN_SIZE, '1024x1024'}
 
   httpApi:
@@ -150,6 +152,7 @@ custom:
     prod: Retain
     default: Delete
   linkedInTokensTable: LinkedInTokens-${self:provider.stage}
+  linkedInPostJobsTable: LinkedInPostJobs-${self:provider.stage}
 
   dotenv:
     include:
@@ -575,6 +578,13 @@ functions:
     timeout: 120
     memorySize: 1024
 
+  # Async LinkedIn post generation (#442) — no HTTP events. Runs text + the slow
+  # gemini-3-pro-image infographic off the request path (not bound by the 30s API GW cap).
+  recruiterLinkedInGenerateWorker:
+    handler: src/handlers/worker/linkedinGenerateWorker.handler
+    timeout: 120
+    memorySize: 1024
+
   # Admin Clone Prod Data (ticket #303) — DEV/QA only. The start/status handlers
   # are deployed on all stages but return 403 on prod (API guard). The worker
   # Lambda below is conditioned out of the prod stack (see resources/clone-data.yml).
@@ -676,6 +686,9 @@ functions:
       - httpApi:
           path: /recruiter/requirements/{requirementId}/linkedin/generate
           method: POST
+      - httpApi:
+          path: /recruiter/requirements/{requirementId}/linkedin/generate/{jobId}
+          method: GET
       - httpApi:
           path: /recruiter/requirements/{requirementId}/linkedin/post
           method: POST

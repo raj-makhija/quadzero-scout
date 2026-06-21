@@ -632,6 +632,30 @@ Resources:
         - Key: Project
           Value: quadzero-scout
 
+  # Async LinkedIn post generation jobs (#442). One row per generate request;
+  # the worker writes the result (text + S3 image key). TTL auto-expires rows.
+  LinkedInPostJobsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    UpdateReplacePolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    Properties:
+      TableName: ${self:custom.linkedInPostJobsTable}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: job_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: job_id
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Project
+          Value: quadzero-scout
+
 Outputs:
   TalentProfilesTableArn:
     Description: TalentProfiles table ARN

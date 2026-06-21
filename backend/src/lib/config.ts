@@ -25,6 +25,7 @@ interface Config {
     requirementLlmRerankTable: string;
     cloneJobsTable: string;
     linkedInTokensTable: string;
+    linkedInPostJobsTable: string;
   };
   s3: {
     resumesBucket: string;
@@ -39,6 +40,7 @@ interface Config {
     notifyWorkerName: string;
     llmRerankWorkerName: string;
     cloneDataWorkerName: string;
+    linkedinGenerateWorkerName: string;
   };
   featureFlags: {
     llmRerankEnabled: boolean;
@@ -113,6 +115,7 @@ export const config: Config = {
     requirementLlmRerankTable: getEnvVar('DYNAMODB_TABLE_REQUIREMENT_LLM_RERANK', 'RequirementLlmRerank-dev'),
     cloneJobsTable: getEnvVar('DYNAMODB_TABLE_CLONE_JOBS', 'CloneJobs-dev'),
     linkedInTokensTable: getEnvVar('DYNAMODB_TABLE_LINKEDIN_TOKENS', 'LinkedInTokens-dev'),
+    linkedInPostJobsTable: getEnvVar('DYNAMODB_TABLE_LINKEDIN_POST_JOBS', 'LinkedInPostJobs-dev'),
   },
   s3: {
     resumesBucket: getEnvVar('S3_BUCKET_RESUMES', 'quadzero-scout-resumes-dev'),
@@ -127,6 +130,7 @@ export const config: Config = {
     notifyWorkerName: getEnvVar('NOTIFY_WORKER_NAME', ''),
     llmRerankWorkerName: getEnvVar('LLM_RERANK_WORKER_NAME', ''),
     cloneDataWorkerName: getEnvVar('CLONE_DATA_WORKER_NAME', ''),
+    linkedinGenerateWorkerName: getEnvVar('LINKEDIN_GENERATE_WORKER_NAME', ''),
   },
   featureFlags: {
     llmRerankEnabled: getEnvVar('LLM_RERANK_ENABLED', 'false') === 'true',

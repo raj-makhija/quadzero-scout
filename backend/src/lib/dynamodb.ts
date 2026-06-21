@@ -10,7 +10,7 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { config } from './config.js';
-import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, StatusHistoryEntry, RequirementChangeEntry, PricingConfig, PricingConfigItem, SessionSettings, SessionSettingsItem, ShortlistItem, ClientItem, SubVendorItem, ScreeningItem, ScreeningLockItem, AuditLogItem, AuditLogEntry, PipelineActivityItem, AttachmentItem, RankedMatchEntry, RequirementMatchCacheItem, RequirementLlmRerankItem, CloneJobItem, LinkedInTokenItem } from '../types/index.js';
+import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, StatusHistoryEntry, RequirementChangeEntry, PricingConfig, PricingConfigItem, SessionSettings, SessionSettingsItem, ShortlistItem, ClientItem, SubVendorItem, ScreeningItem, ScreeningLockItem, AuditLogItem, AuditLogEntry, PipelineActivityItem, AttachmentItem, RankedMatchEntry, RequirementMatchCacheItem, RequirementLlmRerankItem, CloneJobItem, LinkedInTokenItem, LinkedInPostJobItem } from '../types/index.js';
 import { DEFAULT_SESSION_TIMEOUT_SECONDS } from '../types/index.js';
 
 const client = new DynamoDBClient({ region: config.region });
@@ -470,6 +470,53 @@ export async function getBulkImportBatch(batchId: string): Promise<BulkImportBat
     })
   );
   return (result.Item as BulkImportBatchItem) || null;
+}
+
+// --- LinkedIn post generation jobs (#442, async) ---
+
+export async function createLinkedInPostJob(job: LinkedInPostJobItem): Promise<void> {
+  await docClient.send(
+    new PutCommand({
+      TableName: config.dynamodb.linkedInPostJobsTable,
+      Item: job,
+    })
+  );
+}
+
+export async function getLinkedInPostJob(jobId: string): Promise<LinkedInPostJobItem | null> {
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: config.dynamodb.linkedInPostJobsTable,
+      Key: { job_id: jobId },
+    })
+  );
+  return (result.Item as LinkedInPostJobItem) || null;
+}
+
+export async function updateLinkedInPostJob(
+  jobId: string,
+  updates: Partial<Pick<LinkedInPostJobItem, 'status' | 'text' | 'hashtags' | 'image_s3_key' | 'error'>>
+): Promise<void> {
+  const sets: string[] = ['updated_at = :now'];
+  const names: Record<string, string> = {};
+  const values: Record<string, unknown> = { ':now': new Date().toISOString() };
+  for (const [key, val] of Object.entries(updates)) {
+    if (val === undefined) continue;
+    const nameKey = `#${key}`;
+    const valKey = `:${key}`;
+    names[nameKey] = key;
+    values[valKey] = val;
+    sets.push(`${nameKey} = ${valKey}`);
+  }
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.linkedInPostJobsTable,
+      Key: { job_id: jobId },
+      UpdateExpression: `SET ${sets.join(', ')}`,
+      ExpressionAttributeNames: names,
+      ExpressionAttributeValues: values,
+    })
+  );
 }
 
 export async function updateBulkImportFileStatus(

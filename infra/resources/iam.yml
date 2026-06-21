@@ -49,6 +49,9 @@ dynamoDbPolicy:
     # token read/writes) get AccessDenied at runtime, surfacing as a 500 — the
     # "Failed to start LinkedIn connection" error on the Connect click.
     - !GetAtt LinkedInTokensTable.Arn
+    # Async LinkedIn post generation jobs (#442). The kickoff/worker/status/publish
+    # handlers read & write job rows here; without this grant they 500 at runtime.
+    - !GetAtt LinkedInPostJobsTable.Arn
 
 # S3 Policy
 s3Policy:

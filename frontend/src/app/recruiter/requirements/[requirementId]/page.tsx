@@ -108,7 +108,7 @@ export default function RequirementDetailPage() {
   const [showLinkedinModal, setShowLinkedinModal] = useState(false);
   const [linkedinGenerating, setLinkedinGenerating] = useState(false);
   const [linkedinPosting, setLinkedinPosting] = useState(false);
-  const [linkedinPreview, setLinkedinPreview] = useState<{ text: string; hashtags: string; imageBase64: string } | null>(null);
+  const [linkedinPreview, setLinkedinPreview] = useState<{ jobId: string; text: string; hashtags: string; imageUrl: string } | null>(null);
   const [linkedinEditText, setLinkedinEditText] = useState('');
   const [linkedinError, setLinkedinError] = useState<string | null>(null);
 
@@ -1368,9 +1368,20 @@ export default function RequirementDetailPage() {
                     setLinkedinGenerating(true);
                     setLinkedinError(null);
                     try {
-                      const result = await api.generateLinkedInPost(requirementId);
-                      setLinkedinPreview(result);
-                      setLinkedinEditText(result.text + (result.hashtags ? '\n\n' + result.hashtags : ''));
+                      // Generation runs async in a worker (the pro image model is slow);
+                      // kick it off, then poll for the result.
+                      const { jobId } = await api.generateLinkedInPost(requirementId);
+                      const deadline = Date.now() + 90_000;
+                      let done: { text?: string; hashtags?: string; imageUrl?: string } | null = null;
+                      while (Date.now() < deadline) {
+                        await new Promise((r) => setTimeout(r, 2500));
+                        const status = await api.getLinkedInPostStatus(requirementId, jobId);
+                        if (status.status === 'done') { done = status; break; }
+                        if (status.status === 'failed') { throw new Error(status.error || 'Generation failed'); }
+                      }
+                      if (!done) throw new Error('Generation timed out. Please try again.');
+                      setLinkedinPreview({ jobId, text: done.text || '', hashtags: done.hashtags || '', imageUrl: done.imageUrl || '' });
+                      setLinkedinEditText((done.text || '') + (done.hashtags ? '\n\n' + done.hashtags : ''));
                     } catch (err) {
                       setLinkedinError(err instanceof Error ? err.message : 'Failed to generate post');
                     } finally {
@@ -1385,9 +1396,9 @@ export default function RequirementDetailPage() {
               </div>
             ) : (
               <div className="space-y-4">
-                {linkedinPreview.imageBase64 && (
+                {linkedinPreview.imageUrl && (
                   <img
-                    src={`data:image/png;base64,${linkedinPreview.imageBase64}`}
+                    src={linkedinPreview.imageUrl}
                     alt="Generated post image"
                     className="w-full h-auto rounded-lg"
                   />
@@ -1423,7 +1434,7 @@ export default function RequirementDetailPage() {
                         const { postUrl } = await api.publishLinkedInPost(
                           requirementId,
                           linkedinEditText,
-                          linkedinPreview.imageBase64
+                          linkedinPreview.jobId
                         );
                         setShowLinkedinModal(false);
                         setRequirement(prev => prev ? {

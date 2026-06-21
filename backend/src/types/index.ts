@@ -448,6 +448,25 @@ export interface BulkImportBatchItem {
   ttl?: number;
 }
 
+// Async LinkedIn post generation job (#442) — text + infographic image are
+// produced by a background worker so the slow pro image model isn't bound by
+// the 30s API Gateway/Lambda request timeout. The image is stored in S3.
+export type LinkedInPostJobStatus = 'pending' | 'processing' | 'done' | 'failed';
+
+export interface LinkedInPostJobItem {
+  job_id: string;
+  recruiter_id: string;
+  requirement_id: string;
+  status: LinkedInPostJobStatus;
+  text?: string;
+  hashtags?: string;
+  image_s3_key?: string;
+  error?: string;
+  created_at: string;
+  updated_at: string;
+  ttl: number;
+}
+
 // Clone Prod Data job (admin-triggered prod → dev/qa clone, ticket #303)
 export type CloneJobStatus = 'processing' | 'completed' | 'partial' | 'error';
 

@@ -11,6 +11,7 @@ vi.mock('../config.js', () => ({
     region: 'ap-south-1',
     dynamodb: {
       linkedInTokensTable: 'LinkedInTokens-dev',
+      linkedInPostJobsTable: 'LinkedInPostJobs-dev',
       requirementsTable: 'Requirements-dev',
       promptsTable: 'Prompts-dev',
       talentProfilesTable: 'TalentProfiles-dev',
@@ -58,7 +59,7 @@ vi.mock('../config.js', () => ({
     auth: { nextAuthSecret: 'secret' },
     email: { senderEmail: '', frontendBaseUrl: '', ingestNotifyAddress: '' },
     graph: { tenantId: '', clientId: '', clientSecret: '', mailboxAddress: '', enabled: false },
-    lambda: { formatResumeWorkerName: '', bulkImportWorkerName: '', notifyWorkerName: '', llmRerankWorkerName: '', cloneDataWorkerName: '' },
+    lambda: { formatResumeWorkerName: '', bulkImportWorkerName: '', notifyWorkerName: '', llmRerankWorkerName: '', cloneDataWorkerName: '', linkedinGenerateWorkerName: 'gen-worker' },
     featureFlags: { llmRerankEnabled: false, recruiterMatchEmailEnabled: false },
   },
 }));
@@ -70,6 +71,9 @@ const mockMarkLinkedInTokenExpired = vi.fn();
 const mockWriteLinkedInPost = vi.fn();
 const mockGetRequirementById = vi.fn();
 const mockGetActivePrompt = vi.fn();
+const mockCreateLinkedInPostJob = vi.fn();
+const mockGetLinkedInPostJob = vi.fn();
+const mockUpdateLinkedInPostJob = vi.fn();
 
 vi.mock('../dynamodb.js', () => ({
   getLinkedInToken: (...args: unknown[]) => mockGetLinkedInToken(...args),
@@ -79,9 +83,26 @@ vi.mock('../dynamodb.js', () => ({
   writeLinkedInPost: (...args: unknown[]) => mockWriteLinkedInPost(...args),
   getRequirementById: (...args: unknown[]) => mockGetRequirementById(...args),
   getActivePrompt: (...args: unknown[]) => mockGetActivePrompt(...args),
+  createLinkedInPostJob: (...args: unknown[]) => mockCreateLinkedInPostJob(...args),
+  getLinkedInPostJob: (...args: unknown[]) => mockGetLinkedInPostJob(...args),
+  updateLinkedInPostJob: (...args: unknown[]) => mockUpdateLinkedInPostJob(...args),
   getLlmRerank: vi.fn().mockResolvedValue(null),
   putLlmRerank: vi.fn().mockResolvedValue(undefined),
   deleteLlmRerank: vi.fn().mockResolvedValue(undefined),
+}));
+
+const mockInvokeLambdaAsync = vi.fn();
+vi.mock('../lambdaInvoke.js', () => ({
+  invokeLambdaAsync: (...args: unknown[]) => mockInvokeLambdaAsync(...args),
+}));
+
+const mockGetObject = vi.fn();
+const mockPutObject = vi.fn();
+const mockGenerateDownloadUrl = vi.fn();
+vi.mock('../s3.js', () => ({
+  getObject: (...args: unknown[]) => mockGetObject(...args),
+  putObject: (...args: unknown[]) => mockPutObject(...args),
+  generateDownloadUrl: (...args: unknown[]) => mockGenerateDownloadUrl(...args),
 }));
 
 vi.mock('../auth.js', () => ({
@@ -318,78 +339,100 @@ describe('linkedinStatus handler', () => {
 // generate handler
 // ---------------------------------------------------------------------------
 
-describe('linkedinGenerate handler', () => {
-  const baseRequirement = {
-    requirement_id: 'req-1',
-    recruiter_id: 'rec-1',
-    client_name: 'Acme Corp',
-    jd_text: 'Looking for a React developer...',
-    parsed_criteria: {
-      coreSkill: 'React',
-      roles: ['Frontend Developer'],
-      mustHaveSkills: ['react', 'typescript'],
-      minExperience: 4,
-    },
-  };
+const baseRequirement = {
+  requirement_id: 'req-1',
+  recruiter_id: 'rec-1',
+  client_name: 'Acme Corp',
+  jd_text: 'Looking for a React developer...',
+  parsed_criteria: {
+    coreSkill: 'React',
+    roles: ['Frontend Developer'],
+    mustHaveSkills: ['react', 'typescript'],
+    minExperience: 4,
+  },
+};
 
+describe('linkedinGenerate kickoff handler', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetLinkedInToken.mockResolvedValue({ access_token: 'tok', member_urn: 'urn:li:person:x' });
     mockGetRequirementById.mockResolvedValue(baseRequirement);
-    mockGetActivePrompt.mockResolvedValue(null);
-    mockCompleteWithRetry.mockResolvedValue({ content: '🚀 Hiring: React Developer\nJoin our team. #React #Hiring' });
+    mockCreateLinkedInPostJob.mockResolvedValue(undefined);
+    mockInvokeLambdaAsync.mockResolvedValue(undefined);
   });
 
-  it('uses linkedin_post_generator prompt from DB when available', async () => {
-    const customPrompt = 'Custom system prompt for LinkedIn posts.';
-    mockGetActivePrompt.mockImplementation((key: string) =>
-      key === 'linkedin_post_generator' ? Promise.resolve({ content: customPrompt, version: 1 }) : Promise.resolve(null)
-    );
+  it('creates a job, invokes the worker, and returns a jobId', async () => {
+    const { handler } = await import('../../handlers/recruiter/linkedinGenerate.js');
+    const event = makeEvent({ rawPath: '/recruiter/requirements/req-1/linkedin/generate', pathParameters: { requirementId: 'req-1' } });
+    const result = await handler(event as APIGatewayProxyEventV2, {} as never);
+    const body = JSON.parse((result as { body: string }).body);
 
-    // Image gen call (Gemini image model :generateContent)
+    expect(body.success).toBe(true);
+    expect(body.data.jobId).toBeTruthy();
+    expect(mockCreateLinkedInPostJob).toHaveBeenCalledWith(
+      expect.objectContaining({ requirement_id: 'req-1', recruiter_id: 'rec-1', status: 'pending' })
+    );
+    expect(mockInvokeLambdaAsync).toHaveBeenCalledWith('gen-worker', { jobId: body.data.jobId });
+    // The worker name in the job and the invoke must match; no token must leak.
+    expect(JSON.stringify(body)).not.toContain('tok');
+  });
+
+  it('returns 404 if requirement not found', async () => {
+    mockGetRequirementById.mockResolvedValue(null);
+    const { handler } = await import('../../handlers/recruiter/linkedinGenerate.js');
+    const event = makeEvent({ rawPath: '/recruiter/requirements/req-1/linkedin/generate', pathParameters: { requirementId: 'req-1' } });
+    const result = await handler(event as APIGatewayProxyEventV2, {} as never);
+    expect((result as { statusCode: number }).statusCode).toBe(404);
+    expect(mockInvokeLambdaAsync).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 if LinkedIn not connected', async () => {
+    mockGetLinkedInToken.mockResolvedValue(null);
+    const { handler } = await import('../../handlers/recruiter/linkedinGenerate.js');
+    const event = makeEvent({ rawPath: '/recruiter/requirements/req-1/linkedin/generate', pathParameters: { requirementId: 'req-1' } });
+    const result = await handler(event as APIGatewayProxyEventV2, {} as never);
+    expect((result as { statusCode: number }).statusCode).toBe(400);
+    expect(mockCreateLinkedInPostJob).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// generation worker
+// ---------------------------------------------------------------------------
+
+describe('linkedinGenerateWorker', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetLinkedInPostJob.mockResolvedValue({ job_id: 'job-1', recruiter_id: 'rec-1', requirement_id: 'req-1', status: 'pending' });
+    mockGetRequirementById.mockResolvedValue(baseRequirement);
+    mockGetActivePrompt.mockResolvedValue(null);
+    mockCompleteWithRetry.mockResolvedValue({ content: '🚀 Hiring: React Developer\nJoin our team. #React #Hiring' });
+    mockPutObject.mockResolvedValue(undefined);
+    mockUpdateLinkedInPostJob.mockResolvedValue(undefined);
+  });
+
+  it('generates text + image, uploads the image to S3, and marks the job done', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ candidates: [{ content: { parts: [{ inlineData: { data: 'base64imagedata' } }] } }] }),
     });
 
-    const { handler } = await import('../../handlers/recruiter/linkedinGenerate.js');
-    const event = makeEvent({ rawPath: '/recruiter/requirements/req-1/linkedin/generate', pathParameters: { requirementId: 'req-1' } });
-    const result = await handler(event as APIGatewayProxyEventV2, {} as never);
-    const body = JSON.parse((result as { body: string }).body);
-    expect(body.success).toBe(true);
-    // The finished post text is returned as-is (not an empty JSON-extraction)
-    expect(JSON.stringify(body)).toContain('Hiring: React Developer');
-    // Response must not contain access_token
-    expect(JSON.stringify(body)).not.toContain('tok');
+    const { handler } = await import('../../handlers/worker/linkedinGenerateWorker.js');
+    await handler({ jobId: 'job-1' });
+
     // Text must be requested as plain text, or Gemini wraps the post in JSON
     expect(mockCompleteWithRetry).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ responseFormat: 'text' }),
       expect.anything()
     );
-  });
-
-  it('uses admin-edited image prompt and feeds in the requirement JD', async () => {
-    mockGetActivePrompt.mockImplementation((key: string) =>
-      key === 'linkedin_image_generator'
-        ? Promise.resolve({ content: 'CUSTOM INFOGRAPHIC PROMPT', version: 1 })
-        : Promise.resolve(null)
+    // Image uploaded to S3 under the job key
+    expect(mockPutObject).toHaveBeenCalledWith('linkedin-posts/job-1.png', expect.any(Buffer), 'image/png');
+    // Job finalized with the post text + image key
+    expect(mockUpdateLinkedInPostJob).toHaveBeenCalledWith(
+      'job-1',
+      expect.objectContaining({ status: 'done', image_s3_key: 'linkedin-posts/job-1.png', text: expect.stringContaining('Hiring: React Developer') })
     );
-
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ candidates: [{ content: { parts: [{ inlineData: { data: 'base64imagedata' } }] } }] }),
-    });
-
-    const { handler } = await import('../../handlers/recruiter/linkedinGenerate.js');
-    const event = makeEvent({ rawPath: '/recruiter/requirements/req-1/linkedin/generate', pathParameters: { requirementId: 'req-1' } });
-    await handler(event as APIGatewayProxyEventV2, {} as never);
-
-    // The image request body must carry the admin-edited prompt AND the requirement's JD.
-    const imageCallBody = JSON.parse(mockFetch.mock.calls[0][1].body);
-    const sentPrompt = imageCallBody.contents[0].parts[0].text;
-    expect(sentPrompt).toContain('CUSTOM INFOGRAPHIC PROMPT');
-    expect(sentPrompt).toContain('Looking for a React developer');
   });
 
   it('substitutes {{raw_job_description}} in the image prompt with the JD', async () => {
@@ -398,15 +441,13 @@ describe('linkedinGenerate handler', () => {
         ? Promise.resolve({ content: 'Infographic. JD: {{raw_job_description}} END', version: 1 })
         : Promise.resolve(null)
     );
-
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ candidates: [{ content: { parts: [{ inlineData: { data: 'base64imagedata' } }] } }] }),
     });
 
-    const { handler } = await import('../../handlers/recruiter/linkedinGenerate.js');
-    const event = makeEvent({ rawPath: '/recruiter/requirements/req-1/linkedin/generate', pathParameters: { requirementId: 'req-1' } });
-    await handler(event as APIGatewayProxyEventV2, {} as never);
+    const { handler } = await import('../../handlers/worker/linkedinGenerateWorker.js');
+    await handler({ jobId: 'job-1' });
 
     const sentPrompt = JSON.parse(mockFetch.mock.calls[0][1].body).contents[0].parts[0].text;
     expect(sentPrompt).not.toContain('{{raw_job_description}}');
@@ -418,30 +459,58 @@ describe('linkedinGenerate handler', () => {
       .mockResolvedValueOnce({ ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: '{"job_title":"x"}' }] } }] }) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ candidates: [{ content: { parts: [{ inlineData: { data: 'realimage' } }] } }] }) });
 
-    const { handler } = await import('../../handlers/recruiter/linkedinGenerate.js');
-    const event = makeEvent({ rawPath: '/recruiter/requirements/req-1/linkedin/generate', pathParameters: { requirementId: 'req-1' } });
-    const result = await handler(event as APIGatewayProxyEventV2, {} as never);
+    const { handler } = await import('../../handlers/worker/linkedinGenerateWorker.js');
+    await handler({ jobId: 'job-1' });
 
-    const body = JSON.parse((result as { body: string }).body);
-    expect(body.success).toBe(true);
-    expect(JSON.stringify(body)).toContain('realimage');
     expect(mockFetch).toHaveBeenCalledTimes(2); // retried once after the no-image response
+    expect(mockUpdateLinkedInPostJob).toHaveBeenCalledWith('job-1', expect.objectContaining({ status: 'done' }));
   });
 
-  it('returns 404 if requirement not found', async () => {
-    mockGetRequirementById.mockResolvedValue(null);
-    const { handler } = await import('../../handlers/recruiter/linkedinGenerate.js');
-    const event = makeEvent({ rawPath: '/recruiter/requirements/req-1/linkedin/generate', pathParameters: { requirementId: 'req-1' } });
+  it('marks the job failed when image generation never returns an image', async () => {
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: 'no image' }] } }] }) });
+
+    const { handler } = await import('../../handlers/worker/linkedinGenerateWorker.js');
+    await handler({ jobId: 'job-1' });
+
+    expect(mockPutObject).not.toHaveBeenCalled();
+    expect(mockUpdateLinkedInPostJob).toHaveBeenCalledWith('job-1', expect.objectContaining({ status: 'failed' }));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// generation status handler
+// ---------------------------------------------------------------------------
+
+describe('linkedinGenerateStatus handler', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns pending while the job is processing', async () => {
+    mockGetLinkedInPostJob.mockResolvedValue({ job_id: 'job-1', recruiter_id: 'rec-1', status: 'processing' });
+    const { handler } = await import('../../handlers/recruiter/linkedinGenerateStatus.js');
+    const event = makeEvent({ rawPath: '/recruiter/requirements/req-1/linkedin/generate/job-1', pathParameters: { requirementId: 'req-1', jobId: 'job-1' } });
+    const body = JSON.parse((await handler(event as APIGatewayProxyEventV2, {} as never) as { body: string }).body);
+    expect(body.data.status).toBe('processing');
+  });
+
+  it('returns text + a presigned image URL when done', async () => {
+    mockGetLinkedInPostJob.mockResolvedValue({ job_id: 'job-1', recruiter_id: 'rec-1', status: 'done', text: 'My post', hashtags: '', image_s3_key: 'linkedin-posts/job-1.png' });
+    mockGenerateDownloadUrl.mockResolvedValue({ url: 'https://signed-url', key: 'linkedin-posts/job-1.png', expiresIn: 300 });
+    const { handler } = await import('../../handlers/recruiter/linkedinGenerateStatus.js');
+    const event = makeEvent({ rawPath: '/recruiter/requirements/req-1/linkedin/generate/job-1', pathParameters: { requirementId: 'req-1', jobId: 'job-1' } });
+    const body = JSON.parse((await handler(event as APIGatewayProxyEventV2, {} as never) as { body: string }).body);
+    expect(body.data.status).toBe('done');
+    expect(body.data.text).toBe('My post');
+    expect(body.data.imageUrl).toBe('https://signed-url');
+  });
+
+  it('returns 404 for a job owned by another recruiter', async () => {
+    mockGetLinkedInPostJob.mockResolvedValue({ job_id: 'job-1', recruiter_id: 'rec-2', status: 'done' });
+    const { handler } = await import('../../handlers/recruiter/linkedinGenerateStatus.js');
+    const event = makeEvent({ rawPath: '/recruiter/requirements/req-1/linkedin/generate/job-1', pathParameters: { requirementId: 'req-1', jobId: 'job-1' } });
     const result = await handler(event as APIGatewayProxyEventV2, {} as never);
     expect((result as { statusCode: number }).statusCode).toBe(404);
-  });
-
-  it('returns 400 if LinkedIn not connected', async () => {
-    mockGetLinkedInToken.mockResolvedValue(null);
-    const { handler } = await import('../../handlers/recruiter/linkedinGenerate.js');
-    const event = makeEvent({ rawPath: '/recruiter/requirements/req-1/linkedin/generate', pathParameters: { requirementId: 'req-1' } });
-    const result = await handler(event as APIGatewayProxyEventV2, {} as never);
-    expect((result as { statusCode: number }).statusCode).toBe(400);
   });
 });
 
@@ -465,6 +534,8 @@ describe('linkedinPublish handler', () => {
     mockGetRequirementById.mockResolvedValue(baseRequirement);
     mockGetLinkedInToken.mockResolvedValue(tokenA);
     mockWriteLinkedInPost.mockResolvedValue(undefined);
+    mockGetLinkedInPostJob.mockResolvedValue({ job_id: 'job-1', recruiter_id: 'rec-1', status: 'done', image_s3_key: 'linkedin-posts/job-1.png' });
+    mockGetObject.mockResolvedValue(Buffer.from('imagebytes'));
   });
 
   it('returns 409 if requirement already has linkedin_post', async () => {
@@ -476,7 +547,7 @@ describe('linkedinPublish handler', () => {
     const event = makeEvent({
       rawPath: '/recruiter/requirements/req-1/linkedin/post',
       pathParameters: { requirementId: 'req-1' },
-      body: JSON.stringify({ text: 'hello', imageBase64: 'abc' }),
+      body: JSON.stringify({ text: 'hello', jobId: 'job-1' }),
     });
     const result = await handler(event as APIGatewayProxyEventV2, {} as never);
     expect((result as { statusCode: number }).statusCode).toBe(409);
@@ -503,7 +574,7 @@ describe('linkedinPublish handler', () => {
     const event = makeEvent({
       rawPath: '/recruiter/requirements/req-1/linkedin/post',
       pathParameters: { requirementId: 'req-1' },
-      body: JSON.stringify({ text: 'Great opportunity!', imageBase64: 'base64data' }),
+      body: JSON.stringify({ text: 'Great opportunity!', jobId: 'job-1' }),
     });
     const result = await handler(event as APIGatewayProxyEventV2, {} as never);
     const body = JSON.parse((result as { body: string }).body);
@@ -534,7 +605,7 @@ describe('linkedinPublish handler', () => {
     const event = makeEvent({
       rawPath: '/recruiter/requirements/req-1/linkedin/post',
       pathParameters: { requirementId: 'req-1' },
-      body: JSON.stringify({ text: 'Test', imageBase64: 'img' }),
+      body: JSON.stringify({ text: 'Test', jobId: 'job-1' }),
     });
     await handler(event as APIGatewayProxyEventV2, {} as never);
 
@@ -554,7 +625,7 @@ describe('linkedinPublish handler', () => {
     const event = makeEvent({
       rawPath: '/recruiter/requirements/req-1/linkedin/post',
       pathParameters: { requirementId: 'req-1' },
-      body: JSON.stringify({ text: 'Test', imageBase64: 'img' }),
+      body: JSON.stringify({ text: 'Test', jobId: 'job-1' }),
     });
     const result = await handler(event as APIGatewayProxyEventV2, {} as never);
     expect((result as { statusCode: number }).statusCode).toBe(401);
@@ -575,7 +646,7 @@ describe('linkedinPublish handler', () => {
     const event = makeEvent({
       rawPath: '/recruiter/requirements/req-1/linkedin/post',
       pathParameters: { requirementId: 'req-1' },
-      body: JSON.stringify({ text: 'Test', imageBase64: 'img' }),
+      body: JSON.stringify({ text: 'Test', jobId: 'job-1' }),
     });
     const result = await handler(event as APIGatewayProxyEventV2, {} as never);
     expect((result as { statusCode: number }).statusCode).toBe(409);

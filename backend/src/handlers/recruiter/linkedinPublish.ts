@@ -1,7 +1,8 @@
 import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
-import { getRequirementById, getLinkedInToken, writeLinkedInPost, markLinkedInTokenExpired } from '../../lib/dynamodb.js';
+import { getRequirementById, getLinkedInToken, writeLinkedInPost, markLinkedInTokenExpired, getLinkedInPostJob } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import { getObject } from '../../lib/s3.js';
 import { config } from '../../lib/config.js';
 
 async function handleRequest(event: AuthenticatedEvent): Promise<APIGatewayProxyResultV2> {
@@ -22,16 +23,22 @@ async function handleRequest(event: AuthenticatedEvent): Promise<APIGatewayProxy
       return error('ALREADY_POSTED', 'This requirement has already been posted to LinkedIn', 409);
     }
 
-    let body: { text?: string; imageBase64?: string };
+    let body: { text?: string; jobId?: string };
     try {
       body = JSON.parse(event.body || '{}');
     } catch {
       return error(ErrorCodes.VALIDATION_ERROR, 'Invalid JSON body', 400);
     }
 
-    const { text, imageBase64 } = body;
-    if (!text || !imageBase64) {
-      return error(ErrorCodes.VALIDATION_ERROR, 'text and imageBase64 are required', 400);
+    const { text, jobId } = body;
+    if (!text || !jobId) {
+      return error(ErrorCodes.VALIDATION_ERROR, 'text and jobId are required', 400);
+    }
+
+    // The generated image lives in S3, keyed by a completed job owned by this recruiter.
+    const job = await getLinkedInPostJob(jobId);
+    if (!job || job.recruiter_id !== recruiterId || job.status !== 'done' || !job.image_s3_key) {
+      return error(ErrorCodes.VALIDATION_ERROR, 'Generated image not available for this job', 400);
     }
 
     // Fetch the authenticated recruiter's token (never another recruiter's)
@@ -69,8 +76,8 @@ async function handleRequest(event: AuthenticatedEvent): Promise<APIGatewayProxy
     const initData = await initResponse.json() as { value: { uploadUrl: string; image: string } };
     const { uploadUrl, image: imageUrn } = initData.value;
 
-    // Step 2: Upload image bytes
-    const imageBytes = Buffer.from(imageBase64, 'base64');
+    // Step 2: Upload image bytes (read from S3 where the worker stored them)
+    const imageBytes = await getObject(job.image_s3_key);
     const uploadResponse = await fetch(uploadUrl, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${accessToken}` },
