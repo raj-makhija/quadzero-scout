@@ -44,6 +44,14 @@ dynamoDbPolicy:
     # start handler's createCloneJob (and the worker's get/updateCloneJob) get
     # AccessDenied at runtime, surfacing as a 500 in the admin UI.
     - !GetAtt CloneJobsTable.Arn
+    # LinkedIn per-recruiter OAuth tokens (ticket #442). Without this grant the
+    # auth-url handler's savePendingLinkedInState (and exchange/status/publish
+    # token read/writes) get AccessDenied at runtime, surfacing as a 500 — the
+    # "Failed to start LinkedIn connection" error on the Connect click.
+    - !GetAtt LinkedInTokensTable.Arn
+    # Async LinkedIn post generation jobs (#442). The kickoff/worker/status/publish
+    # handlers read & write job rows here; without this grant they 500 at runtime.
+    - !GetAtt LinkedInPostJobsTable.Arn
 
 # S3 Policy
 s3Policy:
@@ -69,6 +77,7 @@ lambdaInvokePolicy:
     - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-notifyWorker'
     - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-llmRerankWorker'
     - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-cloneDataWorker'
+    - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-recruiterLinkedInGenerateWorker'
 
 # SES Policy (for sending notification emails)
 sesPolicy:

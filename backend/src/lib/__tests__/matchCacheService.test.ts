@@ -21,6 +21,11 @@ vi.mock('../dynamodb.js', () => ({
   getMatchCache: (...a: unknown[]) => mockGetMatchCache(...a),
   putMatchCache: (...a: unknown[]) => mockPutMatchCache(...a),
   deleteMatchCache: (...a: unknown[]) => mockDeleteMatchCache(...a),
+  saveLinkedInToken: vi.fn().mockResolvedValue(undefined),
+  getLinkedInToken: vi.fn().mockResolvedValue(null),
+  savePendingLinkedInState: vi.fn().mockResolvedValue(undefined),
+  markLinkedInTokenExpired: vi.fn().mockResolvedValue(undefined),
+  writeLinkedInPost: vi.fn().mockResolvedValue(undefined),
 }));
 
 const mockMatchAndRank = vi.fn();

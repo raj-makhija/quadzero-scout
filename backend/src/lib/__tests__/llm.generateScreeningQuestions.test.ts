@@ -21,6 +21,11 @@ vi.mock('../dynamodb.js', () => ({
   putLlmRerank: vi.fn().mockResolvedValue(undefined),
   deleteLlmRerank: vi.fn().mockResolvedValue(undefined),
   getActivePrompt: vi.fn().mockResolvedValue(null), // forces fallback prompt path
+  saveLinkedInToken: vi.fn().mockResolvedValue(undefined),
+  getLinkedInToken: vi.fn().mockResolvedValue(null),
+  savePendingLinkedInState: vi.fn().mockResolvedValue(undefined),
+  markLinkedInTokenExpired: vi.fn().mockResolvedValue(undefined),
+  writeLinkedInPost: vi.fn().mockResolvedValue(undefined),
 }));
 
 class StubClaudeProvider extends BaseLLMProvider {

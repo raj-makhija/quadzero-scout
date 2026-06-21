@@ -24,6 +24,8 @@ interface Config {
     requirementMatchCacheTable: string;
     requirementLlmRerankTable: string;
     cloneJobsTable: string;
+    linkedInTokensTable: string;
+    linkedInPostJobsTable: string;
   };
   s3: {
     resumesBucket: string;
@@ -38,6 +40,7 @@ interface Config {
     notifyWorkerName: string;
     llmRerankWorkerName: string;
     cloneDataWorkerName: string;
+    linkedinGenerateWorkerName: string;
   };
   featureFlags: {
     llmRerankEnabled: boolean;
@@ -54,6 +57,16 @@ interface Config {
     clientSecret: string;
     mailboxAddress: string;
     enabled: boolean;
+  };
+  linkedin: {
+    clientId: string;
+    clientSecret: string;
+    redirectUri: string;
+    apiVersion: string;
+  };
+  imageGen: {
+    model: string;
+    size: string;
   };
   llm: {
     provider: LLMProvider;
@@ -101,6 +114,8 @@ export const config: Config = {
     requirementMatchCacheTable: getEnvVar('DYNAMODB_TABLE_REQUIREMENT_MATCH_CACHE', 'RequirementMatchCache-dev'),
     requirementLlmRerankTable: getEnvVar('DYNAMODB_TABLE_REQUIREMENT_LLM_RERANK', 'RequirementLlmRerank-dev'),
     cloneJobsTable: getEnvVar('DYNAMODB_TABLE_CLONE_JOBS', 'CloneJobs-dev'),
+    linkedInTokensTable: getEnvVar('DYNAMODB_TABLE_LINKEDIN_TOKENS', 'LinkedInTokens-dev'),
+    linkedInPostJobsTable: getEnvVar('DYNAMODB_TABLE_LINKEDIN_POST_JOBS', 'LinkedInPostJobs-dev'),
   },
   s3: {
     resumesBucket: getEnvVar('S3_BUCKET_RESUMES', 'quadzero-scout-resumes-dev'),
@@ -115,6 +130,7 @@ export const config: Config = {
     notifyWorkerName: getEnvVar('NOTIFY_WORKER_NAME', ''),
     llmRerankWorkerName: getEnvVar('LLM_RERANK_WORKER_NAME', ''),
     cloneDataWorkerName: getEnvVar('CLONE_DATA_WORKER_NAME', ''),
+    linkedinGenerateWorkerName: getEnvVar('LINKEDIN_GENERATE_WORKER_NAME', ''),
   },
   featureFlags: {
     llmRerankEnabled: getEnvVar('LLM_RERANK_ENABLED', 'false') === 'true',
@@ -131,6 +147,16 @@ export const config: Config = {
     clientSecret: getEnvVar('GRAPH_CLIENT_SECRET', ''),
     mailboxAddress: getEnvVar('GRAPH_MAILBOX_ADDRESS', ''),
     enabled: getEnvVar('EMAIL_INGEST_ENABLED', 'false') === 'true',
+  },
+  linkedin: {
+    clientId: getEnvVar('LINKEDIN_CLIENT_ID', ''),
+    clientSecret: getEnvVar('LINKEDIN_CLIENT_SECRET', ''),
+    redirectUri: getEnvVar('LINKEDIN_REDIRECT_URI', ''),
+    apiVersion: getEnvVar('LINKEDIN_API_VERSION', '202505'),
+  },
+  imageGen: {
+    model: getEnvVar('IMAGE_GEN_MODEL', 'gpt-image-1'),
+    size: getEnvVar('IMAGE_GEN_SIZE', '1024x1024'),
   },
   llm: {
     provider: (getEnvVar('LLM_PROVIDER', 'claude') as LLMProvider),

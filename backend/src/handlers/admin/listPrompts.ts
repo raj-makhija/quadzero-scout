@@ -5,7 +5,7 @@ import { getAllPromptKeys, getActivePrompt } from '../../lib/dynamodb.js';
 
 // Prompt keys the app manages via fallbacks. These always appear in the admin
 // list even before an admin has saved a DB version, so they can be created.
-const MANAGED_PROMPT_KEYS = ['resume_parser', 'jd_parser', 'resume_formatter', 'screening_questions'];
+const MANAGED_PROMPT_KEYS = ['resume_parser', 'jd_parser', 'resume_formatter', 'screening_questions', 'linkedin_post_generator', 'linkedin_image_generator'];
 
 async function handleRequest(_event: AuthenticatedEvent): Promise<APIGatewayProxyResultV2> {
   try {

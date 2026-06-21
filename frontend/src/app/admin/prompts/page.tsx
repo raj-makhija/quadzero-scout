@@ -10,6 +10,8 @@ const PROMPT_LABELS: Record<string, string> = {
   jd_parser: 'Job Description Parser',
   resume_formatter: 'Resume Formatter',
   screening_questions: 'Screening Questions',
+  linkedin_post_generator: 'LinkedIn Post — Text',
+  linkedin_image_generator: 'LinkedIn Post — Image',
 };
 
 export default function PromptsPage() {
