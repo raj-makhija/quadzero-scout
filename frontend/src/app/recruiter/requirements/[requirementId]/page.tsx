@@ -1389,7 +1389,7 @@ export default function RequirementDetailPage() {
                   <img
                     src={`data:image/png;base64,${linkedinPreview.imageBase64}`}
                     alt="Generated post image"
-                    className="w-full rounded-lg object-cover max-h-64"
+                    className="w-full h-auto rounded-lg"
                   />
                 )}
                 <div>

@@ -74,9 +74,12 @@ ${jdSnippet ? `Job description excerpt:\n${jdSnippet}` : ''}`;
     const imagePromptItem = await getActivePrompt('linkedin_image_generator');
     const imageStyle = imagePromptItem?.content || LINKEDIN_IMAGE_PROMPT_DEFAULT;
     const jdForImage = (requirement.jd_text || '').slice(0, MAX_IMAGE_JD_CHARS);
-    const imagePrompt = imageStyle.includes(JD_PLACEHOLDER)
+    const composedImagePrompt = imageStyle.includes(JD_PLACEHOLDER)
       ? imageStyle.split(JD_PLACEHOLDER).join(jdForImage)
       : `${imageStyle}\n\n--- JOB DESCRIPTION ---\n${jdForImage}`;
+    // Guardrail: image models frequently misspell rendered text. Remind it to proofread
+    // and copy names verbatim from the JD (e.g. "ServiceNow", "JavaScript", "Terraform").
+    const imagePrompt = `${composedImagePrompt}\n\nIMPORTANT: Every word rendered in the image must be spelled correctly. Proofread all text — the job title, skill names, and section labels — before finalizing, and copy technology and skill names exactly as written in the job description above.`;
 
     const imageUrl = `https://generativelanguage.googleapis.com/v1beta/models/${config.imageGen.model}:generateContent?key=${config.llm.geminiApiKey}`;
     let imageBase64 = '';
