@@ -10,6 +10,9 @@ const MAX_JD_CHARS = 1500;
 // JD fed into the image prompt for the infographic (Gemini image models accept large prompts).
 const MAX_IMAGE_JD_CHARS = 4000;
 const JD_PLACEHOLDER = '{{raw_job_description}}';
+// Flash image models occasionally return text instead of an image; misses fail
+// fast (~1s) so a few retries stay well within the Lambda/API-gateway 30s budget.
+const IMAGE_GEN_ATTEMPTS = 3;
 
 async function handleRequest(event: AuthenticatedEvent): Promise<APIGatewayProxyResultV2> {
   try {
@@ -75,34 +78,38 @@ ${jdSnippet ? `Job description excerpt:\n${jdSnippet}` : ''}`;
       ? imageStyle.split(JD_PLACEHOLDER).join(jdForImage)
       : `${imageStyle}\n\n--- JOB DESCRIPTION ---\n${jdForImage}`;
 
-    const imageResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${config.imageGen.model}:generateContent?key=${config.llm.geminiApiKey}`,
-      {
+    const imageUrl = `https://generativelanguage.googleapis.com/v1beta/models/${config.imageGen.model}:generateContent?key=${config.llm.geminiApiKey}`;
+    let imageBase64 = '';
+    for (let attempt = 1; attempt <= IMAGE_GEN_ATTEMPTS && !imageBase64; attempt++) {
+      const imageResponse = await fetch(imageUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           contents: [{ parts: [{ text: imagePrompt }] }],
-          generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
+          generationConfig: { responseModalities: ['IMAGE'] },
         }),
-      }
-    );
+      });
 
-    if (!imageResponse.ok) {
-      const errText = await imageResponse.text();
-      console.error('Image generation failed:', errText);
-      return error(ErrorCodes.INTERNAL_ERROR, 'Image generation failed', 502);
+      if (!imageResponse.ok) {
+        const errText = await imageResponse.text();
+        console.error('Image generation failed:', errText);
+        return error(ErrorCodes.INTERNAL_ERROR, 'Image generation failed', 502);
+      }
+
+      const imageData = await imageResponse.json() as {
+        candidates?: Array<{ content?: { parts?: Array<{ inlineData?: { data?: string } }> } }>;
+      };
+      imageBase64 =
+        imageData.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data)?.inlineData?.data || '';
+      if (!imageBase64) {
+        console.warn(`Image generation attempt ${attempt}/${IMAGE_GEN_ATTEMPTS} returned no image`);
+      }
     }
 
-    const imageData = await imageResponse.json() as {
-      candidates?: Array<{ content?: { parts?: Array<{ inlineData?: { data?: string } }> } }>;
-    };
-    const imageBase64 =
-      imageData.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data)?.inlineData?.data || '';
-
     if (!imageBase64) {
-      console.error('Image generation returned no image:', JSON.stringify(imageData).slice(0, 500));
+      console.error('Image generation returned no image after retries');
       return error(ErrorCodes.INTERNAL_ERROR, 'Image generation failed', 502);
     }
 

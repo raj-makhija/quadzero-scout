@@ -413,6 +413,21 @@ describe('linkedinGenerate handler', () => {
     expect(sentPrompt).toContain('JD: Looking for a React developer');
   });
 
+  it('retries image generation when the model returns text instead of an image', async () => {
+    mockFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: '{"job_title":"x"}' }] } }] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ candidates: [{ content: { parts: [{ inlineData: { data: 'realimage' } }] } }] }) });
+
+    const { handler } = await import('../../handlers/recruiter/linkedinGenerate.js');
+    const event = makeEvent({ rawPath: '/recruiter/requirements/req-1/linkedin/generate', pathParameters: { requirementId: 'req-1' } });
+    const result = await handler(event as APIGatewayProxyEventV2, {} as never);
+
+    const body = JSON.parse((result as { body: string }).body);
+    expect(body.success).toBe(true);
+    expect(JSON.stringify(body)).toContain('realimage');
+    expect(mockFetch).toHaveBeenCalledTimes(2); // retried once after the no-image response
+  });
+
   it('returns 404 if requirement not found', async () => {
     mockGetRequirementById.mockResolvedValue(null);
     const { handler } = await import('../../handlers/recruiter/linkedinGenerate.js');
