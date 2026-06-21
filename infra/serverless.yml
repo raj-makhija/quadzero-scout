@@ -81,7 +81,7 @@ provider:
     LINKEDIN_CLIENT_ID: ${ssm:/quadzero-scout/${self:provider.stage}/LINKEDIN_CLIENT_ID, env:LINKEDIN_CLIENT_ID, ''}
     LINKEDIN_CLIENT_SECRET: ${ssm:/quadzero-scout/${self:provider.stage}/LINKEDIN_CLIENT_SECRET, env:LINKEDIN_CLIENT_SECRET, ''}
     LINKEDIN_REDIRECT_URI: ${ssm:/quadzero-scout/${self:provider.stage}/LINKEDIN_REDIRECT_URI, env:LINKEDIN_REDIRECT_URI, ''}
-    LINKEDIN_API_VERSION: ${ssm:/quadzero-scout/${self:provider.stage}/LINKEDIN_API_VERSION, env:LINKEDIN_API_VERSION, '202505'}
+    LINKEDIN_API_VERSION: ${ssm:/quadzero-scout/${self:provider.stage}/LINKEDIN_API_VERSION, env:LINKEDIN_API_VERSION, '202606'}
     IMAGE_GEN_MODEL: ${ssm:/quadzero-scout/${self:provider.stage}/IMAGE_GEN_MODEL, env:IMAGE_GEN_MODEL, 'gpt-image-1'}
     IMAGE_GEN_SIZE: ${ssm:/quadzero-scout/${self:provider.stage}/IMAGE_GEN_SIZE, env:IMAGE_GEN_SIZE, '1024x1024'}
 
