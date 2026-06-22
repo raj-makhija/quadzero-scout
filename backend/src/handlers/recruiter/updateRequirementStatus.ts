@@ -5,6 +5,7 @@ import { getRequirementById, updateRequirementStatus } from '../../lib/dynamodb.
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
 import { rebuildCacheForRequirement, deleteMatchCache } from '../../lib/matchCacheService.js';
+import { putMatchCacheFailureMetric } from '../../lib/cloudwatchMetrics.js';
 import { safeResolveFoundTasksForRequirement } from '../../lib/recruiterTasks.js';
 import type { StatusHistoryEntry } from '../../types/index.js';
 
@@ -74,15 +75,23 @@ async function handleRequest(
 
     // Reopen (→ active) rebuilds the cache from a full scan; any other
     // transition (close / on-hold / duplicate) drops the cache entry.
-    // Non-fatal — cache failure must not fail the status change.
-    try {
-      if (newStatus === 'active') {
+    // Non-fatal — cache failure must not fail the status change. The reopen
+    // path is observable (ticket #447): a failed rebuild leaves an empty cache,
+    // so it is logged with the requirement ID and emits a CloudWatch metric.
+    // The drop path is best-effort log-only (a failed delete is self-healing).
+    if (newStatus === 'active') {
+      try {
         await rebuildCacheForRequirement({ ...existing, status: newStatus });
-      } else {
-        await deleteMatchCache(requirementId);
+      } catch (cacheErr) {
+        console.error(`[matchCache] Failed to build cache for requirement ${requirementId}:`, cacheErr);
+        await putMatchCacheFailureMetric(requirementId);
       }
-    } catch (cacheErr) {
-      console.error('Failed to update match-cache after status change:', cacheErr);
+    } else {
+      try {
+        await deleteMatchCache(requirementId);
+      } catch (cacheErr) {
+        console.error(`[matchCache] Failed to delete cache for requirement ${requirementId}:`, cacheErr);
+      }
     }
 
     // Expire open found-candidate tasks when closing/putting on-hold.
