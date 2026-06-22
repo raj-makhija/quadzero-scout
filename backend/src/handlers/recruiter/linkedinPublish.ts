@@ -5,6 +5,13 @@ import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { getObject } from '../../lib/s3.js';
 import { config } from '../../lib/config.js';
 
+// LinkedIn "little text" format requires backslash-escaping these reserved chars.
+// Escape \ first so subsequently added backslashes are not double-escaped.
+const LINKEDIN_RESERVED = /[()[\]{}<>@#*_~|]/g;
+export function escapeLinkedInCommentary(text: string): string {
+  return text.replace(/\\/g, '\\\\').replace(LINKEDIN_RESERVED, (c) => `\\${c}`);
+}
+
 async function handleRequest(event: AuthenticatedEvent): Promise<APIGatewayProxyResultV2> {
   try {
     const recruiterId = event.auth.userId;
@@ -91,7 +98,7 @@ async function handleRequest(event: AuthenticatedEvent): Promise<APIGatewayProxy
     // Step 3: Create post
     const postBody = {
       author: memberUrn,
-      commentary: text,
+      commentary: escapeLinkedInCommentary(text),
       visibility: 'PUBLIC',
       distribution: { feedDistribution: 'MAIN_FEED', targetEntities: [], thirdPartyDistributionChannels: [] },
       content: { media: { id: imageUrn, altText: 'Job opportunity image' } },
