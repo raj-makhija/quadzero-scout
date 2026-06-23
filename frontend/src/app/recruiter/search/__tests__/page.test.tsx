@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -27,12 +27,14 @@ vi.mock('next-auth/react', () => ({
 const mockSearchCandidates = vi.fn();
 const mockGetClientNames = vi.fn();
 const mockGetRequirement = vi.fn();
+const mockParseJobDescription = vi.fn();
 
 vi.mock('@/lib/api', () => ({
   api: {
     searchCandidates: (...args: any[]) => mockSearchCandidates(...args),
     getClientNames: (...args: any[]) => mockGetClientNames(...args),
     getRequirement: (...args: any[]) => mockGetRequirement(...args),
+    parseJobDescription: (...args: any[]) => mockParseJobDescription(...args),
   },
   ApiError: class extends Error {
     code: string;
@@ -86,8 +88,25 @@ vi.mock('@/lib/utils', () => ({
   formatRelativeTime: () => 'recently',
   formatEngagementModel: (s: string) => s,
   generateJobTitle: () => 'Developer',
-  SENIORITY_OPTIONS: [],
-  AVAILABILITY_OPTIONS: [],
+  SENIORITY_OPTIONS: [
+    { value: 'intern', label: 'Intern' },
+    { value: 'junior', label: 'Junior' },
+    { value: 'mid', label: 'Mid-Level' },
+    { value: 'senior', label: 'Senior' },
+    { value: 'lead', label: 'Lead' },
+    { value: 'principal', label: 'Principal' },
+    { value: 'executive', label: 'Executive' },
+  ],
+  AVAILABILITY_OPTIONS: [
+    { value: 'immediate', label: 'Immediate' },
+    { value: 'offer_in_hand', label: 'Offer in Hand' },
+    { value: '1_week', label: '1 Week' },
+    { value: '2_weeks', label: '2 Weeks' },
+    { value: '1_month', label: '1 Month' },
+    { value: '2_months', label: '2 Months' },
+    { value: '3_months', label: '3 Months' },
+    { value: 'negotiable', label: 'Negotiable' },
+  ],
   ENGAGEMENT_MODEL_OPTIONS: [],
   PAYROLL_OPTIONS: [],
 }));
@@ -409,5 +428,130 @@ describe('RecruiterSearchPage — LLM tie-break overlay', () => {
     });
     expect(screen.queryByTestId('llm-rank-indicator')).not.toBeInTheDocument();
     expect(screen.queryByTestId('llm-rationale')).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Skip & Search fixes (#464)
+// ---------------------------------------------------------------------------
+describe('RecruiterSearchPage — Skip & Search (#464)', () => {
+  function makeParsedCriteria(overrides = {}) {
+    return {
+      mustHaveSkills: ['react'],
+      goodToHaveSkills: ['typescript'],
+      minExperience: 3,
+      maxExperience: 8,
+      seniority: ['senior'],
+      availability: ['immediate'],
+      location: 'Bangalore',
+      roles: ['frontend'],
+      rateLpa: null,
+      coreSkill: 'React',
+      skillSynonyms: null,
+      ...overrides,
+    };
+  }
+
+  function makeSearchResponse() {
+    return {
+      candidates: [],
+      pagination: { count: 0, hasMore: false },
+      totalMatches: 0,
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetClientNames.mockResolvedValue({ clientNames: [], endClients: [] });
+    mockParseJobDescription.mockResolvedValue({
+      parsedCriteria: makeParsedCriteria(),
+      suggestions: [],
+    });
+    mockSearchCandidates.mockResolvedValue(makeSearchResponse());
+    vi.spyOn(Storage.prototype, 'getItem').mockReturnValue(null);
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {});
+  });
+
+  // Helper: drive the component through Parse JD → Skip & Search → Search Candidates
+  async function doSkipAndSearch() {
+    render(<RecruiterSearchPage />);
+
+    // Enter JD text and parse
+    const textarea = screen.getByPlaceholderText(/paste the full job description/i);
+    fireEvent.change(textarea, { target: { value: 'We need a React developer' } });
+    fireEvent.click(screen.getByText('Extract Requirements'));
+
+    // Wait for requirement_details view (authenticated path)
+    await waitFor(() => {
+      expect(screen.getByText('Skip & Search')).toBeInTheDocument();
+    });
+
+    // Click "Skip & Search"
+    fireEvent.click(screen.getByText('Skip & Search'));
+
+    // Wait for criteria view
+    await waitFor(() => {
+      expect(screen.getByText('Search Candidates')).toBeInTheDocument();
+    });
+
+    // Click "Search Candidates"
+    fireEvent.click(screen.getByText('Search Candidates'));
+
+    await waitFor(() => {
+      expect(mockSearchCandidates).toHaveBeenCalled();
+    });
+  }
+
+  it('does not pass a stale requirementId when skipping save after navigating from a requirement', async () => {
+    // Simulate arriving from a requirement detail page — prefilled requirementId
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation((key) => {
+      if (key === STORAGE_KEY) return JSON.stringify({ requirementId: 'req-old-123' });
+      return null;
+    });
+
+    await doSkipAndSearch();
+
+    // requirementId (4th arg) must be undefined — ad-hoc search, not cached
+    const callArgs = mockSearchCandidates.mock.calls[0];
+    expect(callArgs[3]).toBeUndefined();
+  });
+
+  it('sends valid seniority values only — invalid LLM enum strings are dropped', async () => {
+    mockParseJobDescription.mockResolvedValue({
+      parsedCriteria: makeParsedCriteria({ seniority: ['senior', 'mid-level', 'Staff'] }),
+      suggestions: [],
+    });
+
+    await doSkipAndSearch();
+
+    const criteria = mockSearchCandidates.mock.calls[0][0];
+    // 'mid-level' and 'Staff' are not in the allowed enum; only 'senior' passes
+    expect(criteria.seniority).toEqual(['senior']);
+  });
+
+  it('sends valid availability values only — invalid LLM enum strings are dropped', async () => {
+    mockParseJobDescription.mockResolvedValue({
+      parsedCriteria: makeParsedCriteria({ availability: ['immediate', 'ASAP', 'open'] }),
+      suggestions: [],
+    });
+
+    await doSkipAndSearch();
+
+    const criteria = mockSearchCandidates.mock.calls[0][0];
+    // 'ASAP' and 'open' are not in the allowed enum; only 'immediate' passes
+    expect(criteria.availability).toEqual(['immediate']);
+  });
+
+  it('succeeds with no seniority filter when LLM returns only invalid enum values', async () => {
+    mockParseJobDescription.mockResolvedValue({
+      parsedCriteria: makeParsedCriteria({ seniority: ['Staff Engineer', 'Entry Level'] }),
+      suggestions: [],
+    });
+
+    await doSkipAndSearch();
+
+    const criteria = mockSearchCandidates.mock.calls[0][0];
+    // All values invalid → empty array; backend treats this as "no seniority filter"
+    expect(criteria.seniority).toEqual([]);
   });
 });
