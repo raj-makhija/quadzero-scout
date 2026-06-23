@@ -41,6 +41,7 @@ interface Config {
     llmRerankWorkerName: string;
     cloneDataWorkerName: string;
     linkedinGenerateWorkerName: string;
+    matchCacheRebuildWorkerName: string;
   };
   featureFlags: {
     llmRerankEnabled: boolean;
@@ -131,6 +132,7 @@ export const config: Config = {
     llmRerankWorkerName: getEnvVar('LLM_RERANK_WORKER_NAME', ''),
     cloneDataWorkerName: getEnvVar('CLONE_DATA_WORKER_NAME', ''),
     linkedinGenerateWorkerName: getEnvVar('LINKEDIN_GENERATE_WORKER_NAME', ''),
+    matchCacheRebuildWorkerName: getEnvVar('MATCH_CACHE_REBUILD_WORKER_NAME', ''),
   },
   featureFlags: {
     llmRerankEnabled: getEnvVar('LLM_RERANK_ENABLED', 'false') === 'true',

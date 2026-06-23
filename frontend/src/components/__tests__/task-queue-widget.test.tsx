@@ -10,6 +10,7 @@ import {
   TASK_REFRESH_EVENT,
 } from '../task-queue-widget';
 import type { RecruiterTask } from '@/lib/api';
+import { toast } from '@/hooks/use-toast';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────---
 vi.mock('next-auth/react', () => ({
@@ -191,5 +192,54 @@ describe('TaskQueueWidget', () => {
     });
     render(<TaskQueueWidget />);
     expect(document.documentElement.style.getPropertyValue('--task-widget-clearance')).toBe('');
+  });
+
+  it('shows no error toast when snoozeTask succeeds', async () => {
+    render(<TaskQueueWidget />);
+    fireEvent.click(await screen.findByText('Snooze'));
+    fireEvent.click(screen.getByText('1 hour'));
+    await waitFor(() => expect(mockSnoozeTask).toHaveBeenCalled());
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it('shows error toast and reloads tasks when snoozeTask rejects', async () => {
+    mockSnoozeTask.mockRejectedValue(new Error('network failure'));
+    render(<TaskQueueWidget />);
+    fireEvent.click(await screen.findByText('Snooze'));
+    fireEvent.click(screen.getByText('1 hour'));
+    await waitFor(() => expect(toast).toHaveBeenCalledWith({ variant: 'error', title: 'Could not snooze task' }));
+    // getTasks called once on mount, once in the catch reload
+    expect(mockGetTasks).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows no error toast when snoozeing a POOL task succeeds', async () => {
+    mockGetTasks.mockResolvedValue({ tasks: [task({ owner_id: 'POOL', type: 'source_candidates' })] });
+    render(<TaskQueueWidget />);
+    fireEvent.click(await screen.findByText('Snooze'));
+    fireEvent.click(screen.getByText('Tomorrow'));
+    await waitFor(() => expect(mockSnoozeTask).toHaveBeenCalledWith('t1', 'tomorrow', { customDate: undefined, pool: true }));
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it('shows no error toast for a custom-date snooze that resolves successfully', async () => {
+    render(<TaskQueueWidget />);
+    fireEvent.click(await screen.findByText('Snooze'));
+    const input = screen.getByLabelText('Custom snooze date');
+    fireEvent.change(input, { target: { value: '2026-07-01T09:00' } });
+    fireEvent.click(screen.getByText('Snooze until…'));
+    await waitFor(() => expect(mockSnoozeTask).toHaveBeenCalled());
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it('shows no error toast when a subsequent getTasks refresh returns an empty list after a successful snooze', async () => {
+    render(<TaskQueueWidget />);
+    fireEvent.click(await screen.findByText('Snooze'));
+    fireEvent.click(screen.getByText('Next week'));
+    await waitFor(() => expect(mockSnoozeTask).toHaveBeenCalled());
+    // Fire the refresh event; getTasks returns empty list — should not trigger the catch branch
+    mockGetTasks.mockResolvedValueOnce({ tasks: [] });
+    fireEvent(window, new Event(TASK_REFRESH_EVENT));
+    await waitFor(() => expect(mockGetTasks).toHaveBeenCalledTimes(2));
+    expect(toast).not.toHaveBeenCalled();
   });
 });

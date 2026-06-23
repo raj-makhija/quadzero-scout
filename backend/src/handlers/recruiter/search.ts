@@ -160,7 +160,7 @@ async function handleRequest(
     let totalMatches: number;
     let llmRerank: { ranked: boolean; pending: boolean } | undefined;
 
-    if (requirementId && cached) {
+    if (requirementId && cached && cached.length > 0) {
       // ── Cache read path ───────────────────────────────────────────────────
       // The cache stores the matchScore ranking (rank asc == score desc).
       const ranked = [...cached].sort((a, b) => a.rank - b.rank);
