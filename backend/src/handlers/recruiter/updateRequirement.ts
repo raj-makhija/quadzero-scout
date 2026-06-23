@@ -6,7 +6,10 @@ import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
 import { slugifyFieldKey } from '../../lib/slugify.js';
 import { normalizeLocation } from '../../lib/locationNormalizer.js';
-import type { RequirementChangeEntry, RequirementChangeDetail } from '../../types/index.js';
+import { rebuildCacheForRequirement } from '../../lib/matchCacheService.js';
+import type { RequirementChangeEntry, RequirementChangeDetail, RequirementItem } from '../../types/index.js';
+
+const MATCH_AFFECTING_FIELDS = new Set(['parsedCriteria', 'engagementModel', 'budgetMaxLpa']);
 
 // Maps camelCase request fields to snake_case DynamoDB attribute names
 const FIELD_MAP: Record<string, string> = {
@@ -144,6 +147,15 @@ async function handleRequest(
     };
 
     await updateRequirementFields(requirementId, fieldsToUpdate, changeEntry);
+
+    const matchAffected = changes.some(c => MATCH_AFFECTING_FIELDS.has(c.field));
+    if (matchAffected && existing.status === 'active') {
+      try {
+        await rebuildCacheForRequirement({ ...existing, ...fieldsToUpdate } as unknown as RequirementItem);
+      } catch (cacheErr) {
+        console.error(`Failed to rebuild match-cache for requirement ${requirementId}:`, cacheErr);
+      }
+    }
 
     logAuditEvent(event.auth, event, {
       action: 'REQUIREMENT_UPDATE',
