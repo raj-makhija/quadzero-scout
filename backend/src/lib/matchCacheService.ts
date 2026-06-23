@@ -151,6 +151,39 @@ export async function rebuildCacheForRequirement(req: RequirementItem): Promise<
 }
 
 /**
+ * Chunk size for the nightly full-rebuild fan-out (ticket #462). Each Lambda
+ * invocation processes at most this many requirements to stay within the
+ * per-invocation timeout budget.
+ */
+export const REBUILD_CHUNK_SIZE = 5;
+
+/**
+ * Rebuild match caches for a bounded list of requirements. Fetches all active
+ * candidates once and processes each requirement in sequence. A per-requirement
+ * error is logged and does not prevent the remaining requirements from being
+ * processed. Used by the chunked nightly rebuild worker (ticket #462).
+ */
+export async function rebuildMatchCachesForRequirements(reqs: RequirementItem[]): Promise<void> {
+  if (reqs.length === 0) return;
+  const candidates = await getAllActiveCandidates();
+  for (const req of reqs) {
+    try {
+      const scored = matchAndRankCandidates(candidates, criteriaForRequirement(req), {
+        notifyInclusion: true,
+      });
+      const ranked: RankedMatchEntry[] = scored.map((s, i) => ({
+        candidate_id: s.candidate.candidate_id,
+        rank: i + 1,
+        score: s.score,
+      }));
+      await putMatchCache(req.requirement_id, ranked);
+    } catch (err) {
+      console.error(`[matchCache] chunk rebuild failed for ${req.requirement_id}:`, err);
+    }
+  }
+}
+
+/**
  * Full rebuild of every active-requirement cache in one pass.
  *
  * Candidates are fetched once and reused across all requirements. No existing
