@@ -1575,6 +1575,55 @@ describe('POST /recruiter/search — match-cache read path', () => {
     expect(body.data.candidates.map((c: { candidateId: string }) => c.candidateId)).toEqual(['live1']);
   });
 
+  // Bug #460: empty ranked list (cached = []) must fall back to live scan, not serve 0 candidates.
+  it('falls back to a live scan when the cache returns an empty ranked list ([])', async () => {
+    vi.mocked(getMatchCache).mockResolvedValue([]);
+    vi.mocked(searchCandidates).mockResolvedValue({ items: [makeCandidate('live1')], lastKey: undefined });
+
+    const body = parseBody(
+      await searchHandler(makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] }, requirementId: REQ_ID }) }))
+    );
+
+    expect(vi.mocked(searchCandidates)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(getCandidatesByIds)).not.toHaveBeenCalled();
+    expect(body.data.candidates.map((c: { candidateId: string }) => c.candidateId)).toEqual(['live1']);
+    expect(body.data.totalMatches).toBe(1);
+  });
+
+  // Bug #460 edge: empty ranked list + live scan finds zero candidates -> totalMatches 0, no error.
+  it('returns totalMatches 0 without error when empty cache falls back and live scan also finds nothing', async () => {
+    vi.mocked(getMatchCache).mockResolvedValue([]);
+    vi.mocked(searchCandidates).mockResolvedValue({ items: [], lastKey: undefined });
+
+    const body = parseBody(
+      await searchHandler(makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] }, requirementId: REQ_ID }) }))
+    );
+
+    expect(vi.mocked(searchCandidates)).toHaveBeenCalledTimes(1);
+    expect(body.data.candidates).toEqual([]);
+    expect(body.data.totalMatches).toBe(0);
+    expect(body.data.pagination.hasMore).toBe(false);
+  });
+
+  // Bug #460 regression guard: non-empty cache filtered to 0 by placed overlay stays on cache path.
+  it('stays on cache path (searchCandidates not called) when non-empty cache filters to zero via placed overlay', async () => {
+    vi.mocked(getMatchCache).mockResolvedValue([
+      { candidate_id: 'c1', rank: 1, score: 90 },
+      { candidate_id: 'c2', rank: 2, score: 80 },
+    ]);
+    serveCorpus([makeCandidate('c1'), makeCandidate('c2')]);
+    vi.mocked(getPlacedCandidateIds).mockResolvedValue(new Set(['c1', 'c2']));
+
+    const body = parseBody(
+      await searchHandler(makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] }, requirementId: REQ_ID }) }))
+    );
+
+    expect(vi.mocked(searchCandidates)).not.toHaveBeenCalled();
+    expect(body.data.candidates).toEqual([]);
+    expect(body.data.totalMatches).toBe(0);
+    expect(body.data.pagination.hasMore).toBe(false);
+  });
+
   // Edge: every cached candidate is placed -> empty page, totalMatches 0.
   it('returns an empty page (totalMatches 0) when every cached candidate is placed', async () => {
     vi.mocked(getMatchCache).mockResolvedValue([
