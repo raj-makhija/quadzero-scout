@@ -37,6 +37,8 @@ import {
   updateCacheForCandidates,
   rebuildCacheForRequirement,
   rebuildAllMatchCaches,
+  auditMatchCacheHealth,
+  CACHE_DELTA_THRESHOLD,
   deleteMatchCache,
 } from '../matchCacheService.js';
 import { getLlmRerank, putLlmRerank } from '../dynamodb.js';
@@ -203,6 +205,165 @@ describe('rebuildCacheForRequirement', () => {
     expect(mockPutMatchCache).toHaveBeenCalledWith('req_1', [
       { candidate_id: 'cand_1', rank: 1, score: 0.4 },
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// rebuildCacheForRequirement — bounded retry (ticket #447)
+// ---------------------------------------------------------------------------
+
+describe('rebuildCacheForRequirement retry', () => {
+  it('retries and succeeds after a transient putMatchCache failure', async () => {
+    mockGetAllActiveCandidates.mockResolvedValue([cand('c1')]);
+    mockMatchAndRank.mockReturnValue(scored([['c1', 0.7]]));
+    mockPutMatchCache.mockRejectedValueOnce(new Error('throttle')).mockResolvedValueOnce(undefined);
+
+    await rebuildCacheForRequirement(req('req_1'));
+
+    expect(mockPutMatchCache).toHaveBeenCalledTimes(2);
+    expect(mockPutMatchCache).toHaveBeenLastCalledWith('req_1', [
+      { candidate_id: 'c1', rank: 1, score: 0.7 },
+    ]);
+  });
+
+  it('retries and succeeds after a transient getAllActiveCandidates failure', async () => {
+    mockGetAllActiveCandidates
+      .mockRejectedValueOnce(new Error('scan failed'))
+      .mockResolvedValue([cand('c1')]);
+    mockMatchAndRank.mockReturnValue(scored([['c1', 0.5]]));
+
+    await rebuildCacheForRequirement(req('req_1'));
+
+    expect(mockPutMatchCache).toHaveBeenCalledWith('req_1', [
+      { candidate_id: 'c1', rank: 1, score: 0.5 },
+    ]);
+  });
+
+  it('succeeds on the third attempt when the first two fail', async () => {
+    mockGetAllActiveCandidates
+      .mockRejectedValueOnce(new Error('e1'))
+      .mockRejectedValueOnce(new Error('e2'))
+      .mockResolvedValue([cand('c1')]);
+    mockMatchAndRank.mockReturnValue(scored([['c1', 0.9]]));
+
+    await rebuildCacheForRequirement(req('req_1'));
+
+    expect(mockGetAllActiveCandidates).toHaveBeenCalledTimes(3);
+    expect(mockPutMatchCache).toHaveBeenCalledWith('req_1', [
+      { candidate_id: 'c1', rank: 1, score: 0.9 },
+    ]);
+  });
+
+  it('throws after exhausting 3 bounded attempts on persistent failure', async () => {
+    mockGetAllActiveCandidates.mockRejectedValue(new Error('table down'));
+
+    await expect(rebuildCacheForRequirement(req('req_1'))).rejects.toThrow('table down');
+    expect(mockGetAllActiveCandidates).toHaveBeenCalledTimes(3);
+    expect(mockPutMatchCache).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// auditMatchCacheHealth — scheduled cache-health audit (ticket #447)
+// ---------------------------------------------------------------------------
+
+function cacheEntries(n: number) {
+  return Array.from({ length: n }, (_, i) => ({ candidate_id: `c${i}`, rank: i + 1, score: 1 }));
+}
+function scoredN(n: number) {
+  return Array.from({ length: n }, (_, i) => ({
+    candidate: cand(`c${i}`),
+    score: 1,
+    details: {},
+    budgetFit: true,
+  }));
+}
+
+describe('auditMatchCacheHealth', () => {
+  it('exposes a delta threshold of 20', () => {
+    expect(CACHE_DELTA_THRESHOLD).toBe(20);
+  });
+
+  it('warns EMPTY_CACHE when cached is 0 but a fresh re-score returns matches', async () => {
+    mockGetAllActiveRequirements.mockResolvedValue([req('req_1')]);
+    mockGetAllActiveCandidates.mockResolvedValue([cand('c0'), cand('c1')]);
+    mockGetMatchCache.mockResolvedValue([]); // cached = 0
+    mockMatchAndRank.mockReturnValue(scoredN(5)); // fresh = 5
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await auditMatchCacheHealth();
+
+    expect(warn).toHaveBeenCalledOnce();
+    expect(String(warn.mock.calls[0][0])).toContain('EMPTY_CACHE');
+    expect(String(warn.mock.calls[0][0])).toContain('req_1');
+    warn.mockRestore();
+  });
+
+  it('does NOT trigger an inline rebuild — never writes the cache', async () => {
+    mockGetAllActiveRequirements.mockResolvedValue([req('req_1')]);
+    mockGetAllActiveCandidates.mockResolvedValue([cand('c0')]);
+    mockGetMatchCache.mockResolvedValue([]);
+    mockMatchAndRank.mockReturnValue(scoredN(5));
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await auditMatchCacheHealth();
+
+    expect(mockPutMatchCache).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('does not warn when both cached and fresh are zero (genuinely matchless)', async () => {
+    mockGetAllActiveRequirements.mockResolvedValue([req('req_1')]);
+    mockGetAllActiveCandidates.mockResolvedValue([]);
+    mockGetMatchCache.mockResolvedValue([]);
+    mockMatchAndRank.mockReturnValue([]);
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await auditMatchCacheHealth();
+
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('warns LARGE_DELTA on over-count drift beyond the threshold (50 vs 10)', async () => {
+    mockGetAllActiveRequirements.mockResolvedValue([req('req_1')]);
+    mockGetAllActiveCandidates.mockResolvedValue([cand('c0')]);
+    mockGetMatchCache.mockResolvedValue(cacheEntries(50));
+    mockMatchAndRank.mockReturnValue(scoredN(10));
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await auditMatchCacheHealth();
+
+    expect(warn).toHaveBeenCalledOnce();
+    expect(String(warn.mock.calls[0][0])).toContain('LARGE_DELTA');
+    warn.mockRestore();
+  });
+
+  it('warns LARGE_DELTA on under-count drift beyond the threshold (5 vs 30)', async () => {
+    mockGetAllActiveRequirements.mockResolvedValue([req('req_1')]);
+    mockGetAllActiveCandidates.mockResolvedValue([cand('c0')]);
+    mockGetMatchCache.mockResolvedValue(cacheEntries(5));
+    mockMatchAndRank.mockReturnValue(scoredN(30));
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await auditMatchCacheHealth();
+
+    expect(warn).toHaveBeenCalledOnce();
+    expect(String(warn.mock.calls[0][0])).toContain('LARGE_DELTA');
+    warn.mockRestore();
+  });
+
+  it('does not warn when the delta is within the threshold (15 vs 10)', async () => {
+    mockGetAllActiveRequirements.mockResolvedValue([req('req_1')]);
+    mockGetAllActiveCandidates.mockResolvedValue([cand('c0')]);
+    mockGetMatchCache.mockResolvedValue(cacheEntries(15));
+    mockMatchAndRank.mockReturnValue(scoredN(10));
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await auditMatchCacheHealth();
+
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 });
 

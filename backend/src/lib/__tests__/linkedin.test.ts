@@ -515,6 +515,65 @@ describe('linkedinGenerateStatus handler', () => {
 });
 
 // ---------------------------------------------------------------------------
+// escapeLinkedInCommentary helper
+// ---------------------------------------------------------------------------
+
+describe('escapeLinkedInCommentary', () => {
+  it('is a no-op when text contains no reserved characters', async () => {
+    const { escapeLinkedInCommentary } = await import('../../handlers/recruiter/linkedinPublish.js');
+    expect(escapeLinkedInCommentary('Hello World! No reserved chars here.')).toBe('Hello World! No reserved chars here.');
+  });
+
+  it('escapes all 14 LinkedIn reserved characters', async () => {
+    const { escapeLinkedInCommentary } = await import('../../handlers/recruiter/linkedinPublish.js');
+    expect(escapeLinkedInCommentary('(')).toBe('\\(');
+    expect(escapeLinkedInCommentary(')')).toBe('\\)');
+    expect(escapeLinkedInCommentary('[')).toBe('\\[');
+    expect(escapeLinkedInCommentary(']')).toBe('\\]');
+    expect(escapeLinkedInCommentary('{')).toBe('\\{');
+    expect(escapeLinkedInCommentary('}')).toBe('\\}');
+    expect(escapeLinkedInCommentary('<')).toBe('\\<');
+    expect(escapeLinkedInCommentary('>')).toBe('\\>');
+    expect(escapeLinkedInCommentary('@')).toBe('\\@');
+    expect(escapeLinkedInCommentary('#')).toBe('\\#');
+    expect(escapeLinkedInCommentary('*')).toBe('\\*');
+    expect(escapeLinkedInCommentary('_')).toBe('\\_');
+    expect(escapeLinkedInCommentary('~')).toBe('\\~');
+    expect(escapeLinkedInCommentary('\\')).toBe('\\\\');
+    expect(escapeLinkedInCommentary('|')).toBe('\\|');
+  });
+
+  it('escapes \\ before other chars so a literal backslash is not double-escaped', async () => {
+    const { escapeLinkedInCommentary } = await import('../../handlers/recruiter/linkedinPublish.js');
+    // input in memory: foo\(bar  — one backslash + one paren
+    // expected in memory: foo\\\(bar — backslash escaped to \\, paren escaped to \(
+    expect(escapeLinkedInCommentary('foo\\(bar')).toBe('foo\\\\\\(bar');
+    // input: single backslash → double backslash
+    expect(escapeLinkedInCommentary('\\')).toBe('\\\\');
+    // input: a\b(c — backslash between letters, paren at end
+    expect(escapeLinkedInCommentary('a\\b(c')).toBe('a\\\\b\\(c');
+  });
+
+  it('escapes reserved chars at the start and end of the string', async () => {
+    const { escapeLinkedInCommentary } = await import('../../handlers/recruiter/linkedinPublish.js');
+    expect(escapeLinkedInCommentary('(Senior Developer)')).toBe('\\(Senior Developer\\)');
+  });
+
+  it('escapes consecutive reserved characters', async () => {
+    const { escapeLinkedInCommentary } = await import('../../handlers/recruiter/linkedinPublish.js');
+    expect(escapeLinkedInCommentary('()')).toBe('\\(\\)');
+    expect(escapeLinkedInCommentary('()*@#')).toBe('\\(\\)\\*\\@\\#');
+  });
+
+  it('escapes every occurrence in a realistic post text', async () => {
+    const { escapeLinkedInCommentary } = await import('../../handlers/recruiter/linkedinPublish.js');
+    const raw = 'Senior Developer (5 years) with *expertise* needed @corp #hiring';
+    const escaped = escapeLinkedInCommentary(raw);
+    expect(escaped).toBe('Senior Developer \\(5 years\\) with \\*expertise\\* needed \\@corp \\#hiring');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // publish handler
 // ---------------------------------------------------------------------------
 
@@ -587,6 +646,55 @@ describe('linkedinPublish handler', () => {
       post_urn: 'urn:li:ugcPost:123',
       posted_by_recruiter_id: 'rec-1',
     }));
+  });
+
+  it('escapes reserved chars in commentary sent to LinkedIn but does not mutate the stored requirement', async () => {
+    mockFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ value: { uploadUrl: 'https://u', image: 'urn:li:image:y' } }), headers: new Headers() })
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce({ ok: true, headers: new Headers({ 'x-restli-id': 'urn:post:esc' }) });
+
+    const rawText = 'GCP Data Engineer (Advanced/Next) — 99.99% SLA *required* @corp';
+    const { handler } = await import('../../handlers/recruiter/linkedinPublish.js');
+    const event = makeEvent({
+      rawPath: '/recruiter/requirements/req-1/linkedin/post',
+      pathParameters: { requirementId: 'req-1' },
+      body: JSON.stringify({ text: rawText, jobId: 'job-1' }),
+    });
+    await handler(event as APIGatewayProxyEventV2, {} as never);
+
+    // Third fetch is POST /rest/posts — commentary must have reserved chars escaped
+    const postBody = JSON.parse(mockFetch.mock.calls[2][1].body);
+    expect(postBody.commentary).toBe(
+      'GCP Data Engineer \\(Advanced/Next\\) — 99.99% SLA \\*required\\* \\@corp'
+    );
+    // The original text must not appear in commentary
+    expect(postBody.commentary).not.toContain('(Advanced/Next)');
+
+    // writeLinkedInPost stores post URL/URN for the requirement — it never receives the text
+    expect(mockWriteLinkedInPost).toHaveBeenCalledWith('req-1', expect.objectContaining({
+      post_urn: 'urn:post:esc',
+      posted_by_recruiter_id: 'rec-1',
+    }));
+  });
+
+  it('sends commentary unchanged when text contains no reserved characters', async () => {
+    mockFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ value: { uploadUrl: 'https://u', image: 'urn:li:image:y' } }), headers: new Headers() })
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce({ ok: true, headers: new Headers({ 'x-restli-id': 'urn:post:plain' }) });
+
+    const plainText = 'Hiring a Senior Engineer. Join us today and grow your career.';
+    const { handler } = await import('../../handlers/recruiter/linkedinPublish.js');
+    const event = makeEvent({
+      rawPath: '/recruiter/requirements/req-1/linkedin/post',
+      pathParameters: { requirementId: 'req-1' },
+      body: JSON.stringify({ text: plainText, jobId: 'job-1' }),
+    });
+    await handler(event as APIGatewayProxyEventV2, {} as never);
+
+    const postBody = JSON.parse(mockFetch.mock.calls[2][1].body);
+    expect(postBody.commentary).toBe(plainText);
   });
 
   it('uses token of authenticated recruiter (recruiter A never uses recruiter B token)', async () => {
