@@ -37,8 +37,10 @@ import {
   updateCacheForCandidates,
   rebuildCacheForRequirement,
   rebuildAllMatchCaches,
+  rebuildMatchCachesForRequirements,
   auditMatchCacheHealth,
   CACHE_DELTA_THRESHOLD,
+  REBUILD_CHUNK_SIZE,
   deleteMatchCache,
 } from '../matchCacheService.js';
 import { getLlmRerank, putLlmRerank } from '../dynamodb.js';
@@ -433,6 +435,87 @@ describe('rebuildAllMatchCaches', () => {
     expect(mockPutMatchCache).toHaveBeenCalledWith('req_1', [
       { candidate_id: 'cand_1', rank: 1, score: 0.42 },
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// rebuildMatchCachesForRequirements (chunked nightly rebuild — ticket #462)
+// ---------------------------------------------------------------------------
+
+describe('rebuildMatchCachesForRequirements', () => {
+  it('exposes a positive REBUILD_CHUNK_SIZE constant', () => {
+    expect(REBUILD_CHUNK_SIZE).toBeGreaterThan(0);
+  });
+
+  it('fetches candidates once and writes a cache per requirement', async () => {
+    mockGetAllActiveCandidates.mockResolvedValue([cand('c1'), cand('c2')]);
+    mockMatchAndRank
+      .mockReturnValueOnce(scored([['c1', 0.9]]))
+      .mockReturnValueOnce(scored([['c2', 0.7]]));
+
+    await rebuildMatchCachesForRequirements([req('req_1'), req('req_2')]);
+
+    expect(mockGetAllActiveCandidates).toHaveBeenCalledOnce();
+    expect(mockPutMatchCache).toHaveBeenCalledTimes(2);
+    expect(mockPutMatchCache).toHaveBeenCalledWith('req_1', [
+      { candidate_id: 'c1', rank: 1, score: 0.9 },
+    ]);
+    expect(mockPutMatchCache).toHaveBeenCalledWith('req_2', [
+      { candidate_id: 'c2', rank: 1, score: 0.7 },
+    ]);
+  });
+
+  it('returns immediately without scanning candidates when given an empty list', async () => {
+    await rebuildMatchCachesForRequirements([]);
+
+    expect(mockGetAllActiveCandidates).not.toHaveBeenCalled();
+    expect(mockPutMatchCache).not.toHaveBeenCalled();
+  });
+
+  it('writes an empty cache for a requirement whose candidate pool produces no matches', async () => {
+    mockGetAllActiveCandidates.mockResolvedValue([cand('c1')]);
+    mockMatchAndRank.mockReturnValue([]);
+
+    await rebuildMatchCachesForRequirements([req('req_1')]);
+
+    expect(mockPutMatchCache).toHaveBeenCalledWith('req_1', []);
+  });
+
+  it('is idempotent: writing the same requirement twice produces the same final cache', async () => {
+    mockGetAllActiveCandidates.mockResolvedValue([cand('c1')]);
+    mockMatchAndRank.mockReturnValue(scored([['c1', 0.5]]));
+
+    await rebuildMatchCachesForRequirements([req('req_1')]);
+    await rebuildMatchCachesForRequirements([req('req_1')]);
+
+    const calls = mockPutMatchCache.mock.calls.filter(([id]) => id === 'req_1');
+    expect(calls).toHaveLength(2);
+    expect(calls[0][1]).toEqual(calls[1][1]);
+  });
+
+  it('logs and continues when putMatchCache fails for one requirement', async () => {
+    mockGetAllActiveCandidates.mockResolvedValue([cand('c1')]);
+    mockMatchAndRank.mockReturnValue(scored([['c1', 0.6]]));
+    mockPutMatchCache
+      .mockRejectedValueOnce(new Error('throttle'))
+      .mockResolvedValueOnce(undefined);
+
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await rebuildMatchCachesForRequirements([req('req_1'), req('req_2')]);
+
+    expect(errSpy).toHaveBeenCalledOnce();
+    expect(mockPutMatchCache).toHaveBeenCalledTimes(2);
+    errSpy.mockRestore();
+  });
+
+  it('never reads getMatchCache (authoritative write, no read-modify-write)', async () => {
+    mockGetAllActiveCandidates.mockResolvedValue([cand('c1')]);
+    mockMatchAndRank.mockReturnValue(scored([['c1', 0.7]]));
+
+    await rebuildMatchCachesForRequirements([req('req_1')]);
+
+    expect(mockGetMatchCache).not.toHaveBeenCalled();
   });
 });
 
