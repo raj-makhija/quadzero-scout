@@ -6,12 +6,22 @@ import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 // ---------------------------------------------------------------------------
 
 const mockSaveRequirement = vi.fn();
+const mockRebuildCacheForRequirement = vi.fn();
+const mockPutMatchCacheFailureMetric = vi.fn();
 
 vi.mock('../../lib/dynamodb.js', () => ({
   getLlmRerank: vi.fn().mockResolvedValue(null),
   putLlmRerank: vi.fn().mockResolvedValue(undefined),
   deleteLlmRerank: vi.fn().mockResolvedValue(undefined),
   saveRequirement: (...args: unknown[]) => mockSaveRequirement(...args),
+}));
+
+vi.mock('../../lib/matchCacheService.js', () => ({
+  rebuildCacheForRequirement: (...args: unknown[]) => mockRebuildCacheForRequirement(...args),
+}));
+
+vi.mock('../../lib/cloudwatchMetrics.js', () => ({
+  putMatchCacheFailureMetric: (...args: unknown[]) => mockPutMatchCacheFailureMetric(...args),
 }));
 
 vi.mock('../../lib/auth.js', () => ({
@@ -104,6 +114,8 @@ describe('saveRequirement handler', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSaveRequirement.mockResolvedValue(undefined);
+    mockRebuildCacheForRequirement.mockResolvedValue(undefined);
+    mockPutMatchCacheFailureMetric.mockResolvedValue(undefined);
   });
 
   it('TC-SAVEREQ-001: sets notify_recruiter_ids to [recruiterId] by default on new requirement', async () => {
@@ -174,5 +186,42 @@ describe('saveRequirement handler', () => {
       react: ['reactjs', 'react.js'],
       typescript: ['ts'],
     });
+  });
+
+  // ticket #447 — a failed cache build on create must be non-fatal + observable
+  it('TC-SAVEREQ-447-a: returns success even when the cache build throws', async () => {
+    mockRebuildCacheForRequirement.mockRejectedValue(new Error('scan failed'));
+    const result = await handler(makeEvent(validBody) as never);
+    const body = parseBody(result as { body?: string });
+
+    expect(body.success).toBe(true);
+    expect(body.data.requirementId).toBeDefined();
+    expect(mockSaveRequirement).toHaveBeenCalledOnce();
+  });
+
+  it('TC-SAVEREQ-447-b: logs the requirement ID at error level when the cache build fails', async () => {
+    mockRebuildCacheForRequirement.mockRejectedValue(new Error('scan failed'));
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await handler(makeEvent(validBody) as never);
+    const body = parseBody(result as { body?: string });
+
+    expect(errSpy.mock.calls.some((c) => String(c[0]).includes(body.data.requirementId))).toBe(true);
+    errSpy.mockRestore();
+  });
+
+  it('TC-SAVEREQ-447-c: emits the cache-build failure metric once when the cache build fails', async () => {
+    mockRebuildCacheForRequirement.mockRejectedValue(new Error('scan failed'));
+    const result = await handler(makeEvent(validBody) as never);
+    const body = parseBody(result as { body?: string });
+
+    expect(mockPutMatchCacheFailureMetric).toHaveBeenCalledOnce();
+    expect(mockPutMatchCacheFailureMetric).toHaveBeenCalledWith(body.data.requirementId);
+  });
+
+  it('TC-SAVEREQ-447-d: does not emit the failure metric on a successful cache build', async () => {
+    await handler(makeEvent(validBody) as never);
+    expect(mockRebuildCacheForRequirement).toHaveBeenCalledOnce();
+    expect(mockPutMatchCacheFailureMetric).not.toHaveBeenCalled();
   });
 });
