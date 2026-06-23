@@ -579,7 +579,45 @@ export async function listActiveTasksForRecruiter(
     queryActiveByOwner(recruiterId),
     queryActiveByOwner(POOL_OWNER),
   ]);
-  return sortTasks([...owned, ...pool].filter((t) => isTaskVisible(t, now)));
+
+  const visible = [...owned, ...pool].filter((t) => isTaskVisible(t, now));
+
+  // Collect unique requirement IDs referenced by found_candidate tasks.
+  const reqIds = new Set<string>();
+  for (const t of visible) {
+    if (t.type !== 'found_candidate_for_requirement') continue;
+    // entity_ref format: "REQ#<requirementId>#CAND#<candidateId>"
+    const reqId = /^REQ#([^#]+)/.exec(t.entity_ref)?.[1];
+    if (reqId) reqIds.add(reqId);
+  }
+
+  // Filter out found_candidate tasks whose requirement is closed/on-hold.
+  // This covers historical orphans and race-window tasks (sweep read requirement
+  // as active just before a status change ran its cleanup).
+  if (reqIds.size > 0) {
+    const closedReqIds = new Set<string>(
+      (
+        await Promise.all(
+          Array.from(reqIds).map(async (id) => {
+            const req = await getRequirementById(id);
+            return req?.status === 'closed_on_hold' ? id : null;
+          })
+        )
+      ).filter((id): id is string => id !== null)
+    );
+
+    if (closedReqIds.size > 0) {
+      return sortTasks(
+        visible.filter((t) => {
+          if (t.type !== 'found_candidate_for_requirement') return true;
+          const reqId = /^REQ#([^#]+)/.exec(t.entity_ref)?.[1];
+          return !reqId || !closedReqIds.has(reqId);
+        })
+      );
+    }
+  }
+
+  return sortTasks(visible);
 }
 
 /** Snooze a task; increments snooze_count with no cap. Returns the new snoozed_until. */

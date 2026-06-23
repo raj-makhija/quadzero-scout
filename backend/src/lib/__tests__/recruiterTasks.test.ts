@@ -1,4 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+// ---------------------------------------------------------------------------
+// Mock dynamodb.js so getRequirementById (used by listActiveTasksForRecruiter)
+// doesn't make real DynamoDB calls in unit tests.
+// ---------------------------------------------------------------------------
+const mockGetRequirementById = vi.fn();
+vi.mock('../dynamodb.js', () => ({
+  getRequirementById: (...args: unknown[]) => mockGetRequirementById(...args),
+  getCandidateById: vi.fn(),
+  getRecentProfiles: vi.fn(),
+}));
+
 import {
   TASK_PRIORITY,
   POOL_OWNER,
@@ -697,7 +709,11 @@ describe('resolveFoundTasksForRequirement (close/on-hold cleanup)', () => {
 });
 
 describe('listActiveTasksForRecruiter', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Default: getRequirementById returns active requirement
+    mockGetRequirementById.mockResolvedValue({ status: 'active' });
+  });
 
   it('merges owned + pool tasks, drops snoozed, and sorts', async () => {
     installMock({
@@ -711,6 +727,142 @@ describe('listActiveTasksForRecruiter', () => {
     });
     const tasks = await listActiveTasksForRecruiter('rec-1', NOW);
     expect(tasks.map((t) => t.task_id)).toEqual(['pool-p1', 'owned-p2']);
+  });
+
+  it('includes found_candidate_for_requirement tasks for active requirements', async () => {
+    mockGetRequirementById.mockResolvedValue({ status: 'active' });
+    installMock({
+      ownerItems: {
+        'rec-1': [],
+        POOL: [
+          makeTask({
+            task_id: 'fc1',
+            owner_id: POOL_OWNER,
+            type: 'found_candidate_for_requirement',
+            priority: 1,
+            entity_ref: 'REQ#req-active#CAND#c1',
+            due_date: '2026-06-03T00:00:00Z',
+          }),
+        ],
+      },
+    });
+    const tasks = await listActiveTasksForRecruiter('rec-1', NOW);
+    expect(tasks.map((t) => t.task_id)).toEqual(['fc1']);
+  });
+
+  it('excludes found_candidate_for_requirement tasks for closed_on_hold requirements', async () => {
+    mockGetRequirementById.mockResolvedValue({ status: 'closed_on_hold' });
+    installMock({
+      ownerItems: {
+        'rec-1': [],
+        POOL: [
+          makeTask({
+            task_id: 'fc-orphan',
+            owner_id: POOL_OWNER,
+            type: 'found_candidate_for_requirement',
+            priority: 1,
+            entity_ref: 'REQ#req-closed#CAND#c1',
+            due_date: '2026-06-03T00:00:00Z',
+          }),
+        ],
+      },
+    });
+    const tasks = await listActiveTasksForRecruiter('rec-1', NOW);
+    expect(tasks).toHaveLength(0);
+  });
+
+  it('shows found_candidate tasks for active requirements and hides them for closed ones in mixed list', async () => {
+    mockGetRequirementById.mockImplementation((id: string) =>
+      Promise.resolve({ status: id === 'req-closed' ? 'closed_on_hold' : 'active' })
+    );
+    installMock({
+      ownerItems: {
+        'rec-1': [],
+        POOL: [
+          makeTask({
+            task_id: 'fc-active',
+            owner_id: POOL_OWNER,
+            type: 'found_candidate_for_requirement',
+            priority: 1,
+            entity_ref: 'REQ#req-active#CAND#c1',
+            due_date: '2026-06-03T00:00:00Z',
+          }),
+          makeTask({
+            task_id: 'fc-closed',
+            owner_id: POOL_OWNER,
+            type: 'found_candidate_for_requirement',
+            priority: 1,
+            entity_ref: 'REQ#req-closed#CAND#c2',
+            due_date: '2026-06-03T00:00:00Z',
+          }),
+        ],
+      },
+    });
+    const tasks = await listActiveTasksForRecruiter('rec-1', NOW);
+    const ids = tasks.map((t) => t.task_id);
+    expect(ids).toContain('fc-active');
+    expect(ids).not.toContain('fc-closed');
+  });
+
+  it('deduplicates requirement lookups (only one getRequirementById call per unique requirement)', async () => {
+    mockGetRequirementById.mockResolvedValue({ status: 'closed_on_hold' });
+    installMock({
+      ownerItems: {
+        'rec-1': [],
+        POOL: [
+          makeTask({
+            task_id: 'fc1',
+            owner_id: POOL_OWNER,
+            type: 'found_candidate_for_requirement',
+            priority: 1,
+            entity_ref: 'REQ#req-1#CAND#c1',
+          }),
+          makeTask({
+            task_id: 'fc2',
+            owner_id: POOL_OWNER,
+            type: 'found_candidate_for_requirement',
+            priority: 1,
+            entity_ref: 'REQ#req-1#CAND#c2',
+          }),
+        ],
+      },
+    });
+    await listActiveTasksForRecruiter('rec-1', NOW);
+    // Both tasks reference req-1, so only one lookup should occur
+    expect(mockGetRequirementById).toHaveBeenCalledTimes(1);
+    expect(mockGetRequirementById).toHaveBeenCalledWith('req-1');
+  });
+
+  it('includes found_candidate task when getRequirementById returns null (requirement deleted)', async () => {
+    mockGetRequirementById.mockResolvedValue(null);
+    installMock({
+      ownerItems: {
+        'rec-1': [],
+        POOL: [
+          makeTask({
+            task_id: 'fc-orphan',
+            owner_id: POOL_OWNER,
+            type: 'found_candidate_for_requirement',
+            priority: 1,
+            entity_ref: 'REQ#req-deleted#CAND#c1',
+          }),
+        ],
+      },
+    });
+    const tasks = await listActiveTasksForRecruiter('rec-1', NOW);
+    // If requirement doesn't exist, task is not filtered (status unknown, not closed_on_hold)
+    expect(tasks.map((t) => t.task_id)).toEqual(['fc-orphan']);
+  });
+
+  it('does not call getRequirementById when there are no found_candidate tasks', async () => {
+    installMock({
+      ownerItems: {
+        'rec-1': [makeTask({ task_id: 'owned', type: 'submit_to_client' })],
+        POOL: [],
+      },
+    });
+    await listActiveTasksForRecruiter('rec-1', NOW);
+    expect(mockGetRequirementById).not.toHaveBeenCalled();
   });
 });
 
