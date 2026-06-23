@@ -130,6 +130,13 @@ async function handleRequest(
       }
     }
 
+    // Keep parsed_criteria.budgetMaxLpa in sync with budget_max_lpa to prevent desync (#461)
+    if ('budget_max_lpa' in fieldsToUpdate) {
+      const newBudget = fieldsToUpdate['budget_max_lpa'] as number | null;
+      const baseCriteria = (fieldsToUpdate['parsed_criteria'] ?? existing.parsed_criteria ?? {}) as Record<string, unknown>;
+      fieldsToUpdate['parsed_criteria'] = { ...baseCriteria, budgetMaxLpa: newBudget };
+    }
+
     if (changes.length === 0) {
       return success({
         requirementId,
