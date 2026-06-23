@@ -295,4 +295,70 @@ describe('updateRequirement handler', () => {
     const rebuiltReq = mockRebuildCacheForRequirement.mock.calls[0][0];
     expect(rebuiltReq.budget_max_lpa).toBeNull();
   });
+
+  // ---------------------------------------------------------------------------
+  // parsed_criteria.budgetMaxLpa sync tests (#461)
+  // ---------------------------------------------------------------------------
+
+  it('writes parsed_criteria.budgetMaxLpa in sync with budget_max_lpa on budget-only update', async () => {
+    const result = parseResponse(await handler(makeEvent({ budgetMaxLpa: 35 })));
+    expect(result.statusCode).toBe(200);
+    const dbCall = mockUpdateRequirementFields.mock.calls[0];
+    const fieldsWritten = dbCall[1] as Record<string, unknown>;
+    expect(fieldsWritten['budget_max_lpa']).toBe(35);
+    expect((fieldsWritten['parsed_criteria'] as Record<string, unknown>)['budgetMaxLpa']).toBe(35);
+    // Other existing criteria fields should be preserved
+    const pc = fieldsWritten['parsed_criteria'] as Record<string, unknown>;
+    expect(pc['mustHaveSkills']).toEqual(['react']);
+  });
+
+  it('cache rebuild req has matching budget_max_lpa and parsed_criteria.budgetMaxLpa', async () => {
+    const result = parseResponse(await handler(makeEvent({ budgetMaxLpa: 35 })));
+    expect(result.statusCode).toBe(200);
+    const rebuiltReq = mockRebuildCacheForRequirement.mock.calls[0][0];
+    expect(rebuiltReq.budget_max_lpa).toBe(35);
+    expect(rebuiltReq.parsed_criteria.budgetMaxLpa).toBe(35);
+  });
+
+  it('does not write parsed_criteria when only non-budget fields change', async () => {
+    const result = parseResponse(await handler(makeEvent({ clientName: 'Other Corp', contactPersonName: 'Jane' })));
+    expect(result.statusCode).toBe(200);
+    const dbCall = mockUpdateRequirementFields.mock.calls[0];
+    const fieldsWritten = dbCall[1] as Record<string, unknown>;
+    expect('parsed_criteria' in fieldsWritten).toBe(false);
+  });
+
+  it('overrides parsed_criteria.budgetMaxLpa with explicit budgetMaxLpa when both sent simultaneously', async () => {
+    const newCriteria = { mustHaveSkills: ['vue'], goodToHaveSkills: [], minExperience: 2, maxExperience: null, seniority: ['senior'], location: null, remote: true, budgetMaxLpa: 999 };
+    const result = parseResponse(await handler(makeEvent({ budgetMaxLpa: 40, parsedCriteria: newCriteria })));
+    expect(result.statusCode).toBe(200);
+    // Only one cache rebuild despite two match-affecting fields
+    expect(mockRebuildCacheForRequirement).toHaveBeenCalledTimes(1);
+    const dbCall = mockUpdateRequirementFields.mock.calls[0];
+    const fieldsWritten = dbCall[1] as Record<string, unknown>;
+    const pc = fieldsWritten['parsed_criteria'] as Record<string, unknown>;
+    expect(pc['budgetMaxLpa']).toBe(40);
+    expect(pc['mustHaveSkills']).toEqual(['vue']);
+  });
+
+  it('sets parsed_criteria.budgetMaxLpa to null when budgetMaxLpa is set to null', async () => {
+    mockGetRequirementById.mockResolvedValue({ ...existingRequirement, budget_max_lpa: 20, parsed_criteria: { ...existingRequirement.parsed_criteria, budgetMaxLpa: 20 } });
+    const result = parseResponse(await handler(makeEvent({ budgetMaxLpa: null })));
+    expect(result.statusCode).toBe(200);
+    const dbCall = mockUpdateRequirementFields.mock.calls[0];
+    const fieldsWritten = dbCall[1] as Record<string, unknown>;
+    expect(fieldsWritten['budget_max_lpa']).toBeNull();
+    expect((fieldsWritten['parsed_criteria'] as Record<string, unknown>)['budgetMaxLpa']).toBeNull();
+  });
+
+  it('writes both budget fields in sync even for inactive requirement (no cache rebuild)', async () => {
+    mockGetRequirementById.mockResolvedValue({ ...existingRequirement, status: 'closed' });
+    const result = parseResponse(await handler(makeEvent({ budgetMaxLpa: 35 })));
+    expect(result.statusCode).toBe(200);
+    expect(mockRebuildCacheForRequirement).not.toHaveBeenCalled();
+    const dbCall = mockUpdateRequirementFields.mock.calls[0];
+    const fieldsWritten = dbCall[1] as Record<string, unknown>;
+    expect(fieldsWritten['budget_max_lpa']).toBe(35);
+    expect((fieldsWritten['parsed_criteria'] as Record<string, unknown>)['budgetMaxLpa']).toBe(35);
+  });
 });
