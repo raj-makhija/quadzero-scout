@@ -91,6 +91,16 @@ export async function updateCacheForCandidates(
       // still qualify with their fresh score. Candidates that no longer match
       // (dropped by the scorer) are simply not re-added — stale scores cannot
       // persist.
+      //
+      // Over-count drift policy (ticket #447): this upsert only re-scores the
+      // *changed* candidates. Entries retained here for *unchanged* candidates
+      // are NOT re-validated against the requirement's current criteria, so an
+      // active candidate that no longer qualifies after a criteria edit can
+      // linger in the cache (cached > fresh). This drift is accepted as
+      // cosmetic and bounded: the nightly full rebuild (`rebuildAllMatchCaches`)
+      // writes authoritative caches from scratch and heals it within ≤24h. Do
+      // not add a full re-score here — that would defeat the hot-path design of
+      // this incremental upsert.
       const retained = existing
         .filter((e) => !changedIds.has(e.candidate_id))
         .map((e) => ({ candidate_id: e.candidate_id, score: e.score }));
@@ -104,21 +114,40 @@ export async function updateCacheForCandidates(
   );
 }
 
+/** Bounded retry count for a requirement-driven cache rebuild (ticket #447). */
+const CACHE_REBUILD_MAX_ATTEMPTS = 3;
+
 /**
  * Rebuild one requirement's cache from a full scan of all active candidates.
  * Used on requirement create, criteria edit, and reopen.
+ *
+ * Retries up to `CACHE_REBUILD_MAX_ATTEMPTS` times so a transient DynamoDB
+ * throttle / scan failure does not leave a newly-created requirement with an
+ * empty cache (ticket #447). The retry is bounded so a persistently unavailable
+ * table cannot block the Lambda invocation indefinitely; after the last attempt
+ * the underlying error is rethrown for the caller's observability handler to
+ * log + emit a metric.
  */
 export async function rebuildCacheForRequirement(req: RequirementItem): Promise<void> {
-  const candidates = await getAllActiveCandidates();
-  const scored = matchAndRankCandidates(candidates, criteriaForRequirement(req), {
-    notifyInclusion: true,
-  });
-  const ranked: RankedMatchEntry[] = scored.map((s, i) => ({
-    candidate_id: s.candidate.candidate_id,
-    rank: i + 1,
-    score: s.score,
-  }));
-  await putMatchCache(req.requirement_id, ranked);
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= CACHE_REBUILD_MAX_ATTEMPTS; attempt++) {
+    try {
+      const candidates = await getAllActiveCandidates();
+      const scored = matchAndRankCandidates(candidates, criteriaForRequirement(req), {
+        notifyInclusion: true,
+      });
+      const ranked: RankedMatchEntry[] = scored.map((s, i) => ({
+        candidate_id: s.candidate.candidate_id,
+        rank: i + 1,
+        score: s.score,
+      }));
+      await putMatchCache(req.requirement_id, ranked);
+      return;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr;
 }
 
 /**
@@ -147,4 +176,43 @@ export async function rebuildAllMatchCaches(): Promise<void> {
       await putMatchCache(req.requirement_id, ranked);
     })
   );
+}
+
+/**
+ * Delta (cached vs fresh count) above which the cache-health audit raises a
+ * LARGE_DELTA warning. Tunable if the alert proves too noisy.
+ */
+export const CACHE_DELTA_THRESHOLD = 20;
+
+/**
+ * Lightweight cache-health audit (ticket #447). For each active requirement it
+ * compares the *cached* match count against a *fresh* in-memory re-score and
+ * emits an observable warn-level signal when:
+ *  - EMPTY_CACHE: cached = 0 while a fresh re-score returns > 0 matches
+ *    (recruiters would see no candidates — the severe case).
+ *  - LARGE_DELTA: |cached − fresh| exceeds `CACHE_DELTA_THRESHOLD` (drift).
+ *
+ * It only *signals* — it never writes/rebuilds inline. Triggering a full rebuild
+ * here would add unbounded latency; the nightly `rebuildAllMatchCaches` (which
+ * runs right after this in the worker) is the authoritative heal.
+ */
+export async function auditMatchCacheHealth(): Promise<void> {
+  const reqs = await getAllActiveRequirements();
+  if (reqs.length === 0) return;
+  const candidates = await getAllActiveCandidates();
+
+  for (const req of reqs) {
+    const cachedCount = ((await getMatchCache(req.requirement_id)) ?? []).length;
+    const freshCount = scoreAgainstRequirement(req, candidates).size;
+
+    if (cachedCount === 0 && freshCount > 0) {
+      console.warn(
+        `[matchCache] EMPTY_CACHE: requirement ${req.requirement_id} cached=0 fresh=${freshCount}`
+      );
+    } else if (Math.abs(cachedCount - freshCount) > CACHE_DELTA_THRESHOLD) {
+      console.warn(
+        `[matchCache] LARGE_DELTA: requirement ${req.requirement_id} cached=${cachedCount} fresh=${freshCount}`
+      );
+    }
+  }
 }
