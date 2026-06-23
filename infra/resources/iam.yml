@@ -78,6 +78,7 @@ lambdaInvokePolicy:
     - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-llmRerankWorker'
     - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-cloneDataWorker'
     - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-recruiterLinkedInGenerateWorker'
+    - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-matchCacheRebuildWorker'
 
 # SES Policy (for sending notification emails)
 sesPolicy:

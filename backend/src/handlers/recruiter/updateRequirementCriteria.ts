@@ -6,6 +6,7 @@ import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { normalizeLocation } from '../../lib/locationNormalizer.js';
 import { logAuditEvent } from '../../lib/audit.js';
 import { rebuildCacheForRequirement } from '../../lib/matchCacheService.js';
+import { putMatchCacheFailureMetric } from '../../lib/cloudwatchMetrics.js';
 import type { LLMJDOutput } from '../../types/index.js';
 
 async function handleRequest(
@@ -72,7 +73,10 @@ async function handleRequest(
           budget_max_lpa: data.maxBudgetLpa ?? existing.budget_max_lpa,
         });
       } catch (cacheErr) {
-        console.error('Failed to rebuild match-cache after criteria update:', cacheErr);
+        // Non-fatal but observable (ticket #447): log with the requirement ID
+        // and emit a CloudWatch metric so a silent empty cache is alarmable.
+        console.error(`[matchCache] Failed to build cache for requirement ${requirementId}:`, cacheErr);
+        await putMatchCacheFailureMetric(requirementId);
       }
     }
 
