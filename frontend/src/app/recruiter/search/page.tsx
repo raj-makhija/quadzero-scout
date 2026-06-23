@@ -292,15 +292,19 @@ export default function RecruiterSearchPage() {
       setParsedCriteria(response.parsedCriteria);
       setSuggestions(response.suggestions);
 
-      // Convert to search criteria
+      // Convert to search criteria; filter seniority/availability to the allowed
+      // enum values so an LLM that returns a non-standard string (e.g. "mid-level"
+      // instead of "mid") doesn't trigger a backend Zod 400.
+      const validSeniorities = new Set(SENIORITY_OPTIONS.map(o => o.value));
+      const validAvailabilities = new Set(AVAILABILITY_OPTIONS.map(o => o.value));
       setSearchCriteria({
         coreSkill: response.parsedCriteria.coreSkill || undefined,
         mustHaveSkills: response.parsedCriteria.mustHaveSkills,
         goodToHaveSkills: response.parsedCriteria.goodToHaveSkills,
         minExperience: response.parsedCriteria.minExperience || undefined,
         maxExperience: response.parsedCriteria.maxExperience || undefined,
-        seniority: response.parsedCriteria.seniority,
-        availability: response.parsedCriteria.availability,
+        seniority: response.parsedCriteria.seniority.filter(s => validSeniorities.has(s)),
+        availability: response.parsedCriteria.availability?.filter(s => validAvailabilities.has(s)),
         location: response.parsedCriteria.location || undefined,
         roles: response.parsedCriteria.roles || [],
         maxBudgetLpa: response.parsedCriteria.rateLpa || undefined,
@@ -657,6 +661,9 @@ export default function RecruiterSearchPage() {
     if (budgetMaxLpa) {
       setSearchCriteria(prev => ({ ...prev, maxBudgetLpa: parseFloat(budgetMaxLpa) }));
     }
+    // Clear any stale requirement ID so the subsequent search is a fresh ad-hoc
+    // scan, not bound to a prior requirement's match cache.
+    setSourceRequirementId(null);
     setViewMode('criteria');
   };
 
