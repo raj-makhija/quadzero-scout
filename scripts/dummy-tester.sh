@@ -11,6 +11,11 @@
 #               behavior-focused test plan as an issue comment under the
 #               [tester:test-plan] header; dummy posts a canned line.
 #               No code is committed in either path (no branch yet).
+#   e2e      -- fire-and-report: runs Playwright against dev.scout.quadzero.com
+#               and posts a PASS/FAIL comment on the ticket. Does NOT advance
+#               Pipeline Status -- it is a post-deploy observability step only.
+#               Requires E2E_TEST_EMAIL + E2E_TEST_PASSWORD env vars (repo
+#               secrets in Actions). Dummy mode posts a canned PASS comment.
 #   validate -- validation-pending -> pr-pending OR rework. Two gates,
 #               both must pass:
 #               1. Hard gate: `npm ci && npm test` in backend/ and
@@ -336,8 +341,65 @@ Routing to rework. Developer will branch fresh from develop and address the unme
     esac
     ;;
 
+  # ----------------------------------------------------------------- e2e
+  e2e)
+    # Fire-and-report: run Playwright against dev.scout.quadzero.com.
+    # Never changes Pipeline Status — FAIL just posts a report so the human
+    # can decide whether to block or proceed to status:ready-for-qa.
+    if [[ "$USE_REAL_AGENT" != "true" ]]; then
+      gh issue comment "$TICKET" --body "[dummy tester] E2E skipped (dummy mode). Would have run Playwright against dev.scout.quadzero.com." >&2
+      echo "tester -> e2e no-op (dummy); Pipeline Status unchanged" >&2
+      exit 0
+    fi
+
+    REPO_ROOT="$(git rev-parse --show-toplevel)"
+    E2E_DIR="$REPO_ROOT/e2e"
+
+    if [[ ! -f "$E2E_DIR/package.json" ]]; then
+      gh issue comment "$TICKET" --body "[tester:e2e] SKIP — \`e2e/package.json\` not found. E2E suite not yet installed." >&2
+      echo "tester -> e2e skipped (no e2e/package.json)" >&2
+      exit 0
+    fi
+
+    if [[ -z "${E2E_TEST_EMAIL:-}" || -z "${E2E_TEST_PASSWORD:-}" ]]; then
+      gh issue comment "$TICKET" --body "[tester:e2e] FAIL — \`E2E_TEST_EMAIL\` or \`E2E_TEST_PASSWORD\` env var is not set. Add them as repo secrets." >&2
+      echo "tester -> e2e failed (missing credentials env vars)" >&2
+      exit 0
+    fi
+
+    echo "==> installing e2e/ deps" >&2
+    (cd "$E2E_DIR" && npm ci --silent)
+
+    echo "==> installing Playwright Chromium browser" >&2
+    (cd "$E2E_DIR" && npx playwright install chromium --with-deps) >&2 || true
+
+    echo "==> running Playwright smoke tests against dev.scout.quadzero.com" >&2
+    PW_OUT="$(mktemp -t playwright.XXXXXX)"
+    trap 'rm -f "$PW_OUT"' EXIT
+    PW_EXIT=0
+    (cd "$E2E_DIR" && npx playwright test --reporter=list 2>&1) > "$PW_OUT" || PW_EXIT=$?
+
+    PW_TAIL="$(tail -n 60 "$PW_OUT")"
+
+    if [[ "$PW_EXIT" -eq 0 ]]; then
+      gh issue comment "$TICKET" --body "[tester:e2e] PASS — Playwright smoke tests passed on \`dev.scout.quadzero.com\`.
+
+\`\`\`
+$PW_TAIL
+\`\`\`" >&2
+      echo "tester -> e2e PASS" >&2
+    else
+      gh issue comment "$TICKET" --body "[tester:e2e] FAIL — Playwright smoke tests failed on \`dev.scout.quadzero.com\`. This is advisory: Pipeline Status is unchanged. Review failures before marking \`status:ready-for-qa\`.
+
+\`\`\`
+$PW_TAIL
+\`\`\`" >&2
+      echo "tester -> e2e FAIL (advisory; Pipeline Status unchanged)" >&2
+    fi
+    ;;
+
   *)
-    echo "error: unknown mode '$MODE' (expected: write | validate)" >&2
+    echo "error: unknown mode '$MODE' (expected: write | validate | e2e)" >&2
     exit 1
     ;;
 esac

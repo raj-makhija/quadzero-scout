@@ -8,7 +8,11 @@
 # Branch-isolated model: the ticket's branch was deployed to QA
 # (status:in-qa) and validated by a human. Approving it:
 #   1. Squash-merges the PR to develop (`Closes #N`), deleting the branch.
-#   2. Sets Pipeline Status=merged-to-develop + status:qa-approved.
+#   2. Deploys backend to dev (Amplify auto-deploys the frontend from the
+#      develop push above). Skipped when PIPELINE_SKIP_DEPLOY=1.
+#   3. Runs E2E smoke tests against dev.scout.quadzero.com (fire-and-report;
+#      FAIL does not block -- it posts a report for human review).
+#   4. Sets Pipeline Status=merged-to-develop + status:qa-approved.
 #
 # develop now carries only approved work; the next dev ticket forks from it,
 # and tonight's develop->main mirror (pipeline-nightly-release) ships it.
@@ -78,6 +82,19 @@ if git log -1 --format='%B' | pl_has_coauthors; then
 fi
 
 [[ -n "$BRANCH" ]] && git branch -D "$BRANCH" 2>/dev/null >&2 || true
+
+# --- Deploy backend to dev (Amplify auto-deploys frontend from the develop push) ---
+if [[ "${PIPELINE_SKIP_DEPLOY:-}" == "1" ]]; then
+  echo "==> PIPELINE_SKIP_DEPLOY=1 — skipping dev backend deploy" >&2
+else
+  pl_deploy_stage dev
+fi
+
+# --- E2E smoke tests (fire-and-report; non-blocking) ---
+# Runs Playwright against dev.scout.quadzero.com and posts a PASS/FAIL comment.
+# A FAIL does not change Pipeline Status — the human decides whether to proceed.
+echo "==> triggering E2E smoke tests for #$TICKET" >&2
+"$SCRIPT_DIR/dummy-tester.sh" "$TICKET" e2e || true
 
 "$SCRIPT_DIR/set-field.sh" "$TICKET" "Pipeline Status" merged-to-develop
 "$SCRIPT_DIR/set-status.sh" "$TICKET" qa-approved
