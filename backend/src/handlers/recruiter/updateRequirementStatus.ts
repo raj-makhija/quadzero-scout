@@ -4,8 +4,9 @@ import { validate, formatZodErrors, UpdateRequirementStatusRequestSchema } from 
 import { getRequirementById, updateRequirementStatus } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
-import { rebuildCacheForRequirement, deleteMatchCache } from '../../lib/matchCacheService.js';
-import { putMatchCacheFailureMetric } from '../../lib/cloudwatchMetrics.js';
+import { deleteMatchCache } from '../../lib/matchCacheService.js';
+import { invokeLambdaAsync } from '../../lib/lambdaInvoke.js';
+import { config } from '../../lib/config.js';
 import { safeResolveFoundTasksForRequirement } from '../../lib/recruiterTasks.js';
 import type { StatusHistoryEntry } from '../../types/index.js';
 
@@ -73,18 +74,21 @@ async function handleRequest(
 
     await updateRequirementStatus(requirementId, newStatus, historyEntry);
 
-    // Reopen (→ active) rebuilds the cache from a full scan; any other
-    // transition (close / on-hold / duplicate) drops the cache entry.
-    // Non-fatal — cache failure must not fail the status change. The reopen
-    // path is observable (ticket #447): a failed rebuild leaves an empty cache,
-    // so it is logged with the requirement ID and emits a CloudWatch metric.
-    // The drop path is best-effort log-only (a failed delete is self-healing).
+    // Reopen (→ active) rebuilds the cache off the request path (ticket #469) —
+    // the full scan can't finish inside the 30s request timeout at prod scale,
+    // so it runs in matchCacheRequirementWorker, which carries the ticket #447
+    // failure observability. Any other transition (close / on-hold / duplicate)
+    // drops the cache entry. Non-fatal — cache work must not fail the status
+    // change. The drop path is best-effort log-only (a failed delete self-heals).
     if (newStatus === 'active') {
-      try {
-        await rebuildCacheForRequirement({ ...existing, status: newStatus });
-      } catch (cacheErr) {
-        console.error(`[matchCache] Failed to build cache for requirement ${requirementId}:`, cacheErr);
-        await putMatchCacheFailureMetric(requirementId);
+      if (config.lambda.matchCacheRequirementWorkerName) {
+        try {
+          await invokeLambdaAsync(config.lambda.matchCacheRequirementWorkerName, {
+            requirementId,
+          });
+        } catch (cacheErr) {
+          console.error('Failed to dispatch match-cache rebuild on reopen:', cacheErr);
+        }
       }
     } else {
       try {

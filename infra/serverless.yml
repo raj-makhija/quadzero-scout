@@ -81,6 +81,7 @@ provider:
     DYNAMODB_TABLE_LINKEDIN_POST_JOBS: ${self:custom.linkedInPostJobsTable}
     LINKEDIN_GENERATE_WORKER_NAME: ${self:service}-${self:provider.stage}-recruiterLinkedInGenerateWorker
     MATCH_CACHE_REBUILD_WORKER_NAME: ${self:service}-${self:provider.stage}-matchCacheRebuildWorker
+    MATCH_CACHE_REQUIREMENT_WORKER_NAME: ${self:service}-${self:provider.stage}-matchCacheRequirementWorker
     LINKEDIN_CLIENT_ID: ${ssm:/quadzero-scout/${self:provider.stage}/LINKEDIN_CLIENT_ID, env:LINKEDIN_CLIENT_ID, ''}
     LINKEDIN_CLIENT_SECRET: ${ssm:/quadzero-scout/${self:provider.stage}/LINKEDIN_CLIENT_SECRET, env:LINKEDIN_CLIENT_SECRET, ''}
     LINKEDIN_REDIRECT_URI: ${ssm:/quadzero-scout/${self:provider.stage}/LINKEDIN_REDIRECT_URI, env:LINKEDIN_REDIRECT_URI, ''}
@@ -627,6 +628,16 @@ functions:
       - schedule:
           rate: rate(1 day)
           enabled: true
+
+  # Single-requirement match-cache rebuild worker (ticket #469) — invoked
+  # fire-and-forget from requirement create / criteria-edit / reopen. The full
+  # active-candidate scan can't finish inside the 30s request Lambda at prod
+  # scale, so it runs here off the request path. Sized like the nightly rebuild
+  # (one requirement's scan needs the same scan budget). No HTTP events.
+  matchCacheRequirementWorker:
+    handler: src/handlers/worker/matchCacheRequirementWorker.handler
+    timeout: 600
+    memorySize: 1536
 
   # LLM tie-break re-rank worker (ticket #239) — invoked fire-and-forget from
   # the requirement-bound search read path on a stale/cold re-rank. No events.

@@ -5,8 +5,8 @@ import { validate, formatZodErrors, SaveRequirementRequestSchema } from '../../l
 import { saveRequirement } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
-import { rebuildCacheForRequirement } from '../../lib/matchCacheService.js';
-import { putMatchCacheFailureMetric } from '../../lib/cloudwatchMetrics.js';
+import { invokeLambdaAsync } from '../../lib/lambdaInvoke.js';
+import { config } from '../../lib/config.js';
 import type { RequirementItem, LLMJDOutput } from '../../types/index.js';
 import { slugifyFieldKey } from '../../lib/slugify.js';
 import { normalizeLocation } from '../../lib/locationNormalizer.js';
@@ -77,16 +77,18 @@ async function handleRequest(
 
     await saveRequirement(item);
 
-    // Build the match-cache from a full active-candidate scan for newly active
-    // requirements. Non-fatal — cache failure must not fail the create.
-    if (item.status === 'active') {
+    // Build the match-cache off the request path (ticket #469). A full
+    // active-candidate scan can't finish inside the 30s request timeout at prod
+    // scale, so the rebuild runs in matchCacheRequirementWorker, which carries
+    // the ticket #447 failure observability. Fire-and-forget and non-fatal —
+    // cache dispatch failure must not fail the create.
+    if (item.status === 'active' && config.lambda.matchCacheRequirementWorkerName) {
       try {
-        await rebuildCacheForRequirement(item);
+        await invokeLambdaAsync(config.lambda.matchCacheRequirementWorkerName, {
+          requirementId,
+        });
       } catch (cacheErr) {
-        // Non-fatal but observable (ticket #447): log with the requirement ID
-        // and emit a CloudWatch metric so a silent empty cache is alarmable.
-        console.error(`[matchCache] Failed to build cache for requirement ${requirementId}:`, cacheErr);
-        await putMatchCacheFailureMetric(requirementId);
+        console.error('Failed to dispatch match-cache build for new requirement:', cacheErr);
       }
     }
 

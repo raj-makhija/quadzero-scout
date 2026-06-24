@@ -7,8 +7,7 @@ import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 
 const mockGetRequirementById = vi.fn();
 const mockUpdateRequirementCriteria = vi.fn();
-const mockRebuildCacheForRequirement = vi.fn();
-const mockPutMatchCacheFailureMetric = vi.fn();
+const mockInvokeLambdaAsync = vi.fn();
 
 vi.mock('../../lib/dynamodb.js', () => ({
   getRequirementById: (...args: unknown[]) => mockGetRequirementById(...args),
@@ -26,12 +25,12 @@ vi.mock('../../lib/audit.js', () => ({
   logAuditEvent: vi.fn(),
 }));
 
-vi.mock('../../lib/matchCacheService.js', () => ({
-  rebuildCacheForRequirement: (...args: unknown[]) => mockRebuildCacheForRequirement(...args),
+vi.mock('../../lib/lambdaInvoke.js', () => ({
+  invokeLambdaAsync: (...args: unknown[]) => mockInvokeLambdaAsync(...args),
 }));
 
-vi.mock('../../lib/cloudwatchMetrics.js', () => ({
-  putMatchCacheFailureMetric: (...args: unknown[]) => mockPutMatchCacheFailureMetric(...args),
+vi.mock('../../lib/config.js', () => ({
+  config: { lambda: { matchCacheRequirementWorkerName: 'match-cache-req-worker' } },
 }));
 
 // ---------------------------------------------------------------------------
@@ -126,42 +125,33 @@ describe('updateRequirementCriteria handler', () => {
     vi.clearAllMocks();
     mockGetRequirementById.mockResolvedValue({ ...existingRequirement });
     mockUpdateRequirementCriteria.mockResolvedValue(undefined);
-    mockRebuildCacheForRequirement.mockResolvedValue(undefined);
-    mockPutMatchCacheFailureMetric.mockResolvedValue(undefined);
+    mockInvokeLambdaAsync.mockResolvedValue(undefined);
   });
 
-  it('succeeds and rebuilds the cache on a normal criteria edit', async () => {
+  it('succeeds and dispatches the cache rebuild on a normal criteria edit', async () => {
     const result = parseResponse(await handler(makeEvent(validBody)));
     expect(result.statusCode).toBe(200);
     expect(result.body.data.requirementId).toBe('req-123');
-    expect(mockRebuildCacheForRequirement).toHaveBeenCalledOnce();
-    expect(mockPutMatchCacheFailureMetric).not.toHaveBeenCalled();
+    expect(mockInvokeLambdaAsync).toHaveBeenCalledOnce();
+    expect(mockInvokeLambdaAsync).toHaveBeenCalledWith('match-cache-req-worker', {
+      requirementId: 'req-123',
+    });
   });
 
-  // ticket #447 — a failed cache rebuild on criteria edit must be non-fatal + observable
-  it('TC-CRITERIA-447-a: returns 200 even when the cache rebuild throws', async () => {
-    mockRebuildCacheForRequirement.mockRejectedValue(new Error('scan failed'));
+  it('does not dispatch the rebuild when the requirement is not active', async () => {
+    mockGetRequirementById.mockResolvedValue({ ...existingRequirement, status: 'closed_won' });
+    const result = parseResponse(await handler(makeEvent(validBody)));
+    expect(result.statusCode).toBe(200);
+    expect(mockInvokeLambdaAsync).not.toHaveBeenCalled();
+  });
+
+  // ticket #469 — the cache rebuild is dispatched to the async worker (off the
+  // 30s request path), not run inline. The rebuild + #447 failure observability
+  // is exercised in matchCacheRequirementWorker.test.ts.
+  it('TC-CRITERIA-469-a: returns 200 even when the worker dispatch throws', async () => {
+    mockInvokeLambdaAsync.mockRejectedValue(new Error('invoke failed'));
     const result = parseResponse(await handler(makeEvent(validBody)));
     expect(result.statusCode).toBe(200);
     expect(result.body.data.requirementId).toBe('req-123');
-  });
-
-  it('TC-CRITERIA-447-b: logs the requirement ID at error level when the cache rebuild fails', async () => {
-    mockRebuildCacheForRequirement.mockRejectedValue(new Error('scan failed'));
-    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    await handler(makeEvent(validBody));
-
-    expect(errSpy.mock.calls.some((c) => String(c[0]).includes('req-123'))).toBe(true);
-    errSpy.mockRestore();
-  });
-
-  it('TC-CRITERIA-447-c: emits the cache-build failure metric once when the cache rebuild fails', async () => {
-    mockRebuildCacheForRequirement.mockRejectedValue(new Error('scan failed'));
-
-    await handler(makeEvent(validBody));
-
-    expect(mockPutMatchCacheFailureMetric).toHaveBeenCalledOnce();
-    expect(mockPutMatchCacheFailureMetric).toHaveBeenCalledWith('req-123');
   });
 });
