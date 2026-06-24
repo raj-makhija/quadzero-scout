@@ -6,8 +6,7 @@ import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 // ---------------------------------------------------------------------------
 
 const mockSaveRequirement = vi.fn();
-const mockRebuildCacheForRequirement = vi.fn();
-const mockPutMatchCacheFailureMetric = vi.fn();
+const mockInvokeLambdaAsync = vi.fn();
 
 vi.mock('../../lib/dynamodb.js', () => ({
   getLlmRerank: vi.fn().mockResolvedValue(null),
@@ -16,12 +15,12 @@ vi.mock('../../lib/dynamodb.js', () => ({
   saveRequirement: (...args: unknown[]) => mockSaveRequirement(...args),
 }));
 
-vi.mock('../../lib/matchCacheService.js', () => ({
-  rebuildCacheForRequirement: (...args: unknown[]) => mockRebuildCacheForRequirement(...args),
+vi.mock('../../lib/lambdaInvoke.js', () => ({
+  invokeLambdaAsync: (...args: unknown[]) => mockInvokeLambdaAsync(...args),
 }));
 
-vi.mock('../../lib/cloudwatchMetrics.js', () => ({
-  putMatchCacheFailureMetric: (...args: unknown[]) => mockPutMatchCacheFailureMetric(...args),
+vi.mock('../../lib/config.js', () => ({
+  config: { lambda: { matchCacheRequirementWorkerName: 'test-matchCacheRequirementWorker' } },
 }));
 
 vi.mock('../../lib/auth.js', () => ({
@@ -114,8 +113,7 @@ describe('saveRequirement handler', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSaveRequirement.mockResolvedValue(undefined);
-    mockRebuildCacheForRequirement.mockResolvedValue(undefined);
-    mockPutMatchCacheFailureMetric.mockResolvedValue(undefined);
+    mockInvokeLambdaAsync.mockResolvedValue(undefined);
   });
 
   it('TC-SAVEREQ-001: sets notify_recruiter_ids to [recruiterId] by default on new requirement', async () => {
@@ -188,9 +186,9 @@ describe('saveRequirement handler', () => {
     });
   });
 
-  // ticket #447 — a failed cache build on create must be non-fatal + observable
-  it('TC-SAVEREQ-447-a: returns success even when the cache build throws', async () => {
-    mockRebuildCacheForRequirement.mockRejectedValue(new Error('scan failed'));
+  // ticket #469 — cache rebuild dispatched async; dispatch failure must be non-fatal
+  it('TC-SAVEREQ-469-a: returns success even when the async dispatch throws', async () => {
+    mockInvokeLambdaAsync.mockRejectedValue(new Error('Lambda invoke failed'));
     const result = await handler(makeEvent(validBody) as never);
     const body = parseBody(result as { body?: string });
 
@@ -199,8 +197,8 @@ describe('saveRequirement handler', () => {
     expect(mockSaveRequirement).toHaveBeenCalledOnce();
   });
 
-  it('TC-SAVEREQ-447-b: logs the requirement ID at error level when the cache build fails', async () => {
-    mockRebuildCacheForRequirement.mockRejectedValue(new Error('scan failed'));
+  it('TC-SAVEREQ-469-b: logs the requirement ID when the async dispatch fails', async () => {
+    mockInvokeLambdaAsync.mockRejectedValue(new Error('Lambda invoke failed'));
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const result = await handler(makeEvent(validBody) as never);
@@ -210,18 +208,30 @@ describe('saveRequirement handler', () => {
     errSpy.mockRestore();
   });
 
-  it('TC-SAVEREQ-447-c: emits the cache-build failure metric once when the cache build fails', async () => {
-    mockRebuildCacheForRequirement.mockRejectedValue(new Error('scan failed'));
+  it('TC-SAVEREQ-469-c: dispatches the worker with the new requirementId for active requirements', async () => {
     const result = await handler(makeEvent(validBody) as never);
     const body = parseBody(result as { body?: string });
 
-    expect(mockPutMatchCacheFailureMetric).toHaveBeenCalledOnce();
-    expect(mockPutMatchCacheFailureMetric).toHaveBeenCalledWith(body.data.requirementId);
+    expect(mockInvokeLambdaAsync).toHaveBeenCalledOnce();
+    expect(mockInvokeLambdaAsync).toHaveBeenCalledWith(
+      'test-matchCacheRequirementWorker',
+      { requirementId: body.data.requirementId }
+    );
   });
 
-  it('TC-SAVEREQ-447-d: does not emit the failure metric on a successful cache build', async () => {
+  it('TC-SAVEREQ-469-d: does not dispatch the worker for non-active requirements', async () => {
+    const bodyWithStatus = { ...validBody, status: 'closed_on_hold' };
+    await handler(makeEvent(bodyWithStatus) as never);
+    expect(mockInvokeLambdaAsync).not.toHaveBeenCalled();
+  });
+
+  it('TC-SAVEREQ-469-e: persists the requirement before dispatching the worker', async () => {
+    const order: string[] = [];
+    mockSaveRequirement.mockImplementation(async () => { order.push('save'); });
+    mockInvokeLambdaAsync.mockImplementation(async () => { order.push('invoke'); });
+
     await handler(makeEvent(validBody) as never);
-    expect(mockRebuildCacheForRequirement).toHaveBeenCalledOnce();
-    expect(mockPutMatchCacheFailureMetric).not.toHaveBeenCalled();
+
+    expect(order).toEqual(['save', 'invoke']);
   });
 });
