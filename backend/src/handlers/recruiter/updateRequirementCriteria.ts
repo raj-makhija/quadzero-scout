@@ -5,9 +5,8 @@ import { getRequirementById, updateRequirementCriteria } from '../../lib/dynamod
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { normalizeLocation } from '../../lib/locationNormalizer.js';
 import { logAuditEvent } from '../../lib/audit.js';
-import { rebuildCacheForRequirement } from '../../lib/matchCacheService.js';
-import { putMatchCacheFailureMetric } from '../../lib/cloudwatchMetrics.js';
-import type { LLMJDOutput } from '../../types/index.js';
+import { invokeLambdaAsync } from '../../lib/lambdaInvoke.js';
+import { config } from '../../lib/config.js';
 
 async function handleRequest(
   event: AuthenticatedEvent
@@ -63,20 +62,13 @@ async function handleRequest(
       now
     );
 
-    // Rebuild the requirement's cache from scratch against the new criteria.
-    // Non-fatal — cache failure must not fail the criteria update.
+    // Dispatch the match-cache rebuild asynchronously so the full active-candidate
+    // scan runs off the 30s request path (ticket #469). Non-fatal.
     if (existing.status === 'active') {
       try {
-        await rebuildCacheForRequirement({
-          ...existing,
-          parsed_criteria: normalizedCriteria as LLMJDOutput,
-          budget_max_lpa: data.maxBudgetLpa ?? existing.budget_max_lpa,
-        });
-      } catch (cacheErr) {
-        // Non-fatal but observable (ticket #447): log with the requirement ID
-        // and emit a CloudWatch metric so a silent empty cache is alarmable.
-        console.error(`[matchCache] Failed to build cache for requirement ${requirementId}:`, cacheErr);
-        await putMatchCacheFailureMetric(requirementId);
+        await invokeLambdaAsync(config.lambda.matchCacheRequirementWorkerName, { requirementId });
+      } catch (dispatchErr) {
+        console.error(`[matchCache] Failed to dispatch cache worker for requirement ${requirementId}:`, dispatchErr);
       }
     }
 

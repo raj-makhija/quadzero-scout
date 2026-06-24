@@ -4,8 +4,9 @@ import { validate, formatZodErrors, UpdateRequirementStatusRequestSchema } from 
 import { getRequirementById, updateRequirementStatus } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
-import { rebuildCacheForRequirement, deleteMatchCache } from '../../lib/matchCacheService.js';
-import { putMatchCacheFailureMetric } from '../../lib/cloudwatchMetrics.js';
+import { deleteMatchCache } from '../../lib/matchCacheService.js';
+import { invokeLambdaAsync } from '../../lib/lambdaInvoke.js';
+import { config } from '../../lib/config.js';
 import { safeResolveFoundTasksForRequirement } from '../../lib/recruiterTasks.js';
 import type { StatusHistoryEntry } from '../../types/index.js';
 
@@ -73,18 +74,15 @@ async function handleRequest(
 
     await updateRequirementStatus(requirementId, newStatus, historyEntry);
 
-    // Reopen (→ active) rebuilds the cache from a full scan; any other
-    // transition (close / on-hold / duplicate) drops the cache entry.
-    // Non-fatal — cache failure must not fail the status change. The reopen
-    // path is observable (ticket #447): a failed rebuild leaves an empty cache,
-    // so it is logged with the requirement ID and emits a CloudWatch metric.
-    // The drop path is best-effort log-only (a failed delete is self-healing).
+    // Reopen (→ active) dispatches the cache rebuild asynchronously so the full
+    // active-candidate scan runs off the 30s request path (ticket #469). Any other
+    // transition (close / on-hold / duplicate) drops the cache entry synchronously.
+    // Both paths are non-fatal.
     if (newStatus === 'active') {
       try {
-        await rebuildCacheForRequirement({ ...existing, status: newStatus });
-      } catch (cacheErr) {
-        console.error(`[matchCache] Failed to build cache for requirement ${requirementId}:`, cacheErr);
-        await putMatchCacheFailureMetric(requirementId);
+        await invokeLambdaAsync(config.lambda.matchCacheRequirementWorkerName, { requirementId });
+      } catch (dispatchErr) {
+        console.error(`[matchCache] Failed to dispatch cache worker for requirement ${requirementId}:`, dispatchErr);
       }
     } else {
       try {
