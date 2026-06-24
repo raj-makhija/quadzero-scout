@@ -66,7 +66,7 @@ see `docs/two-route-playbook.md`.
 - [8. Failure modes & recovery](#8-failure-modes--recovery)
   - [8.1 Doomed 1-second runs](#81-doomed-1-second-runs)
   - [8.2 Stuck ticket at `dev-pending`/`validation-pending`](#82-stuck-ticket-at-dev-pendingvalidation-pending)
-  - [8.3 Agent timed out (600s base, auto-scaled per strike)](#83-agent-timed-out-600s-base-auto-scaled-per-strike)
+  - [8.3 Agent timed out (per-mode base, auto-scaled per strike)](#83-agent-timed-out-per-mode-base-auto-scaled-per-strike)
   - [8.4 Stale base handling](#84-stale-base-handling)
   - [8.5 3-strike escalation](#85-3-strike-escalation)
   - [8.6 Cost gate](#86-cost-gate)
@@ -205,8 +205,11 @@ even though most are now real Claude.
 | PR-Reviewer | `scripts/dummy-pr-reviewer.sh` | `PIPELINE_PR_REVIEWER_AGENT=claude` | Read-only review of the PR; emits VERDICT: APPROVE or REQUEST_CHANGES |
 
 The headless wrapper is `scripts/_agent-claude.sh`. It runs
-`claude --print --dangerously-skip-permissions` with a 600s timeout
-and accepts either `ANTHROPIC_API_KEY` (API billing) or
+`claude --print --dangerously-skip-permissions` with a timeout set by
+`PIPELINE_AGENT_TIMEOUT_SEC` (default 600s if not exported by the
+drain loop). The drain loop sets this per-iteration based on the
+ticket's mode and strike count — see §8.3 for the full table.
+Accepts either `ANTHROPIC_API_KEY` (API billing) or
 `CLAUDE_CODE_OAUTH_TOKEN` (Pro/Max subscription, from `claude setup-token`).
 If `PIPELINE_AGENT_MODEL` is set in the environment, the wrapper passes
 it to claude as `--model <value>`; per-agent scripts set this for the
@@ -1193,33 +1196,42 @@ To unstick:
   gh workflow run pipeline-manager.yml
   ```
 
-### 8.3 Agent timed out (600s base, auto-scaled per strike)
+### 8.3 Agent timed out (per-mode base, auto-scaled per strike)
 
-`_agent-claude.sh` uses `timeout` with `PIPELINE_AGENT_TIMEOUT_SEC`
-(default 600s). The drain loop in `pipeline-manager.yml` sets this
-per-iteration based on the ticket's current strike count:
+`_agent-claude.sh` uses `timeout` with `PIPELINE_AGENT_TIMEOUT_SEC`.
+The drain loop in `pipeline-manager.yml` sets this per-iteration
+based on two factors: the ticket's current **mode** (implement vs.
+rework) and its **strike count**.
 
-| Prior strikes | Timeout |
-|---|---|
-| 0 | 600s (10 min) |
-| 1 | 1200s (20 min) |
-| 2 | 1800s (30 min) |
+**Per-mode baseline** (0 strikes):
 
-Rationale: a ticket that timed out on pass 1 likely needs more
-wall-clock to finish, not the same budget retried. Scaling is
-unconditional (not gated on RC=124) because non-timeout strikes --
-branch errors, missing labels, etc. -- fail fast and never consume
-the larger window, so we trade a small amount of worst-case
+| Mode | Baseline | Why |
+|---|---|---|
+| `implement` (dev-pending) | 600s (10 min) | Sonnet call on attempt 1 |
+| `rework` (Pipeline Status == "rework") | 1200s (20 min) | Opus call; sharper model takes more wall-clock |
+
+**Effective timeout** = baseline × (strikes + 1):
+
+| Mode | 0 strikes | 1 strike | 2 strikes |
+|---|---|---|---|
+| implement | 600s | 1200s | 1800s |
+| rework | 1200s | 2400s | 3600s |
+
+All values are clamped to the remaining drain budget (≤ 1620s) and
+the 30-minute job ceiling, so a rework + 2 strikes cap in practice
+at the budget or ceiling, whichever is smaller.
+
+Scaling is unconditional (not gated on RC=124) because non-timeout
+strikes -- branch errors, missing labels, etc. -- fail fast and never
+consume the larger window, so we trade a small amount of worst-case
 runner-minutes for code simplicity.
 
-Strike 3 parks the ticket at `needs-human` (see §8.10), so the
-auto-scaled budget caps at 1800s before human intervention.
+Strike 3 parks the ticket at `needs-human` (see §8.10).
 
-To raise the base for a specific run, override
-`PIPELINE_AGENT_TIMEOUT_SEC` in the drain step env block -- but note
-the drain loop will overwrite it per iteration. To raise the floor
-globally, edit the `600 *` literal in `pipeline-manager.yml`'s drain
-step.
+To raise the baseline for a specific run, set
+`PIPELINE_AGENT_TIMEOUT_SEC` in the drain-step env block; the loop
+takes the max of that value and the per-mode computed value, so a
+larger manual override is always honoured.
 
 ### 8.4 Stale base handling
 

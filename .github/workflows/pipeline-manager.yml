@@ -171,6 +171,12 @@ jobs:
           # 5-min cron tick. SECONDS counts from the start of this step's shell.
           DRAIN_BUDGET_SEC=1620
 
+          # Capture any manually-set timeout override from the drain-step env
+          # block before the loop overwrites PIPELINE_AGENT_TIMEOUT_SEC each
+          # iteration. A manual value larger than the per-mode computed value is
+          # honoured (max wins).
+          PIPELINE_AGENT_TIMEOUT_OVERRIDE="${PIPELINE_AGENT_TIMEOUT_SEC:-0}"
+
           for i in $(seq 1 25); do
             if [[ -n "$STRUCK_THIS_DRAIN" ]]; then
               NEXT="$(scripts/next-ticket.sh | grep -vE "^($STRUCK_THIS_DRAIN)\b" | head -1 | awk '{print $1}' || true)"
@@ -185,20 +191,32 @@ jobs:
 
             echo "manager: iter $i, advancing #$NEXT"
 
-            # Scale agent timeout by strike count so a ticket that timed out
-            # on pass 1 gets a larger wall-clock budget on pass 2/3. Non-
-            # timeout strikes fail fast and never consume the larger window,
-            # so we scale unconditionally rather than gating on RC=124.
-            # 0 strikes -> 600s, 1 -> 1200s, 2 -> 1800s.
-            # `|| echo` keeps the substitution exit-0 when no struck-N
-            # labels exist (grep -oE exits 1 on no match, which would
-            # otherwise trip pipefail + the YAML-implicit set -e).
+            # Scale agent timeout by mode and strike count. Rework dispatches
+            # (Pipeline Status == "rework") use a 1200s baseline because they
+            # invoke the Opus model; implement dispatches use 600s (Sonnet).
+            # Within each mode, multiply by (strikes+1) so a ticket that timed
+            # out gets a larger window on retry. Non-timeout strikes fail fast
+            # and never consume the larger window, so we scale unconditionally
+            # rather than gating on RC=124.
+            # `|| echo` keeps the substitution exit-0 when no struck-N labels
+            # exist (grep -oE exits 1 on no match, which would otherwise trip
+            # pipefail + the YAML-implicit set -e).
             STRIKES=$( (gh issue view "$NEXT" --json labels -q '.labels[].name' \
               | grep -oE 'pipeline:struck-[0-9]+' \
               | grep -oE '[0-9]+$' \
               | sort -nr | head -1) || echo 0 )
             STRIKES=${STRIKES:-0}
-            PIPELINE_AGENT_TIMEOUT_SEC=$((600 * (STRIKES + 1)))
+            TICKET_STATUS="$(scripts/get-field.sh "$NEXT" "Pipeline Status" 2>/dev/null || echo "")"
+            if [[ "$TICKET_STATUS" == "rework" ]]; then
+              BASELINE=1200
+            else
+              BASELINE=600
+            fi
+            PIPELINE_AGENT_TIMEOUT_SEC=$((BASELINE * (STRIKES + 1)))
+            # Honour a larger manual override from the drain-step env block.
+            if (( PIPELINE_AGENT_TIMEOUT_OVERRIDE > PIPELINE_AGENT_TIMEOUT_SEC )); then
+              PIPELINE_AGENT_TIMEOUT_SEC=$PIPELINE_AGENT_TIMEOUT_OVERRIDE
+            fi
 
             # Don't start an iteration that can't finish before the job
             # timeout. Defer to the next cron tick once the budget is gone,
@@ -215,11 +233,11 @@ jobs:
             export PIPELINE_AGENT_TIMEOUT_SEC
             # Attempt = rework counter (reviewer-driven); Strikes = dispatch-failure
             # counter (manager.sh non-zero exit). Logged together so the timeout
-            # value reads correctly -- it scales with strikes, not attempts.
+            # value reads correctly -- it scales with mode+strikes, not attempts.
             # Attempt is the value before any rework increment in manager.sh below.
             ATTEMPT="$(scripts/get-field.sh "$NEXT" "Attempt" 2>/dev/null || echo 0)"
             ATTEMPT=${ATTEMPT:-0}
-            echo "manager: #$NEXT attempt=$ATTEMPT strikes=$STRIKES; PIPELINE_AGENT_TIMEOUT_SEC=$PIPELINE_AGENT_TIMEOUT_SEC"
+            echo "manager: #$NEXT attempt=$ATTEMPT strikes=$STRIKES status=$TICKET_STATUS baseline=${BASELINE}s; PIPELINE_AGENT_TIMEOUT_SEC=$PIPELINE_AGENT_TIMEOUT_SEC"
 
             # Reset to a clean develop checkout before handing off. The
             # prior iteration's manager.sh may have failed mid-edit --
