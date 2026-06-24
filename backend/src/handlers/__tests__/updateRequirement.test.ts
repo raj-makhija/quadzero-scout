@@ -7,7 +7,7 @@ import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 
 const mockGetRequirementById = vi.fn();
 const mockUpdateRequirementFields = vi.fn();
-const mockRebuildCacheForRequirement = vi.fn();
+const mockInvokeLambdaAsync = vi.fn();
 
 vi.mock('../../lib/dynamodb.js', () => ({
   getLlmRerank: vi.fn().mockResolvedValue(null),
@@ -17,8 +17,12 @@ vi.mock('../../lib/dynamodb.js', () => ({
   updateRequirementFields: (...args: unknown[]) => mockUpdateRequirementFields(...args),
 }));
 
-vi.mock('../../lib/matchCacheService.js', () => ({
-  rebuildCacheForRequirement: (...args: unknown[]) => mockRebuildCacheForRequirement(...args),
+vi.mock('../../lib/lambdaInvoke.js', () => ({
+  invokeLambdaAsync: (...args: unknown[]) => mockInvokeLambdaAsync(...args),
+}));
+
+vi.mock('../../lib/config.js', () => ({
+  config: { lambda: { matchCacheRequirementWorkerName: 'match-cache-req-worker' } },
 }));
 
 vi.mock('../../lib/auth.js', () => ({
@@ -107,7 +111,7 @@ describe('updateRequirement handler', () => {
     vi.clearAllMocks();
     mockGetRequirementById.mockResolvedValue({ ...existingRequirement });
     mockUpdateRequirementFields.mockResolvedValue(undefined);
-    mockRebuildCacheForRequirement.mockResolvedValue(undefined);
+    mockInvokeLambdaAsync.mockResolvedValue(undefined);
   });
 
   it('returns 400 when requirementId is missing', async () => {
@@ -197,79 +201,82 @@ describe('updateRequirement handler', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Match cache rebuild tests (#448)
+  // Match cache rebuild dispatch tests (#448, dispatched async per #469)
+  //
+  // The rebuild runs in matchCacheRequirementWorker, dispatched with only the
+  // requirement ID; the worker re-fetches the just-persisted fields. So these
+  // assert the dispatch + the DB write the worker will read back (the #461
+  // updateRequirementFields-content tests below cover the persisted values).
   // ---------------------------------------------------------------------------
 
-  it('rebuilds cache when parsedCriteria changes on active requirement', async () => {
+  it('dispatches rebuild when parsedCriteria changes on active requirement', async () => {
     const newCriteria = { mustHaveSkills: ['vue'], goodToHaveSkills: [], minExperience: 2, maxExperience: null, seniority: ['senior'], location: null, remote: true };
     const result = parseResponse(await handler(makeEvent({ parsedCriteria: newCriteria })));
     expect(result.statusCode).toBe(200);
-    expect(mockRebuildCacheForRequirement).toHaveBeenCalledTimes(1);
-    const rebuiltReq = mockRebuildCacheForRequirement.mock.calls[0][0];
-    expect(rebuiltReq.parsed_criteria).toMatchObject({ mustHaveSkills: ['vue'], seniority: ['senior'], remote: true, location: null });
+    expect(mockInvokeLambdaAsync).toHaveBeenCalledTimes(1);
+    expect(mockInvokeLambdaAsync).toHaveBeenCalledWith('match-cache-req-worker', { requirementId: 'req-123' });
   });
 
-  it('rebuilds cache when engagementModel changes on active requirement', async () => {
+  it('dispatches rebuild when engagementModel changes on active requirement', async () => {
     const result = parseResponse(await handler(makeEvent({ engagementModel: 'full_time_regular' })));
     expect(result.statusCode).toBe(200);
-    expect(mockRebuildCacheForRequirement).toHaveBeenCalledTimes(1);
-    const rebuiltReq = mockRebuildCacheForRequirement.mock.calls[0][0];
-    expect(rebuiltReq.engagement_model).toBe('full_time_regular');
+    expect(mockInvokeLambdaAsync).toHaveBeenCalledTimes(1);
+    expect(mockInvokeLambdaAsync).toHaveBeenCalledWith('match-cache-req-worker', { requirementId: 'req-123' });
   });
 
-  it('rebuilds cache when budgetMaxLpa changes on active requirement', async () => {
+  it('dispatches rebuild when budgetMaxLpa changes on active requirement', async () => {
     const result = parseResponse(await handler(makeEvent({ budgetMaxLpa: 35 })));
     expect(result.statusCode).toBe(200);
-    expect(mockRebuildCacheForRequirement).toHaveBeenCalledTimes(1);
-    const rebuiltReq = mockRebuildCacheForRequirement.mock.calls[0][0];
-    expect(rebuiltReq.budget_max_lpa).toBe(35);
+    expect(mockInvokeLambdaAsync).toHaveBeenCalledTimes(1);
+    expect(mockInvokeLambdaAsync).toHaveBeenCalledWith('match-cache-req-worker', { requirementId: 'req-123' });
   });
 
-  it('does NOT rebuild cache when only non-match fields change', async () => {
+  it('does NOT dispatch rebuild when only non-match fields change', async () => {
     const result = parseResponse(await handler(makeEvent({ clientName: 'Other Corp', contactPersonName: 'Jane', paymentTermsDays: 45 })));
     expect(result.statusCode).toBe(200);
-    expect(mockRebuildCacheForRequirement).not.toHaveBeenCalled();
+    expect(mockInvokeLambdaAsync).not.toHaveBeenCalled();
   });
 
-  it('rebuilds cache exactly once when all three match-affecting fields change', async () => {
+  it('dispatches rebuild exactly once when all three match-affecting fields change', async () => {
     const newCriteria = { mustHaveSkills: ['angular'], goodToHaveSkills: [], minExperience: 1, maxExperience: 5, seniority: ['junior'], location: null, remote: false };
     const result = parseResponse(await handler(makeEvent({ parsedCriteria: newCriteria, engagementModel: 'part_time_contract', budgetMaxLpa: 25 })));
     expect(result.statusCode).toBe(200);
-    expect(mockRebuildCacheForRequirement).toHaveBeenCalledTimes(1);
+    expect(mockInvokeLambdaAsync).toHaveBeenCalledTimes(1);
   });
 
-  it('rebuilds with updated values, not pre-update snapshot', async () => {
+  it('persists updated values before dispatch so the worker re-fetch sees them', async () => {
     const result = parseResponse(await handler(makeEvent({ budgetMaxLpa: 50, engagementModel: 'part_time_contract' })));
     expect(result.statusCode).toBe(200);
-    const rebuiltReq = mockRebuildCacheForRequirement.mock.calls[0][0];
-    expect(rebuiltReq.budget_max_lpa).toBe(50);
-    expect(rebuiltReq.engagement_model).toBe('part_time_contract');
+    expect(mockInvokeLambdaAsync).toHaveBeenCalledTimes(1);
+    const fieldsWritten = mockUpdateRequirementFields.mock.calls[0][1] as Record<string, unknown>;
+    expect(fieldsWritten['budget_max_lpa']).toBe(50);
+    expect(fieldsWritten['engagement_model']).toBe('part_time_contract');
   });
 
-  it('does NOT rebuild cache when requirement is not active', async () => {
+  it('does NOT dispatch rebuild when requirement is not active', async () => {
     mockGetRequirementById.mockResolvedValue({ ...existingRequirement, status: 'closed' });
     const result = parseResponse(await handler(makeEvent({ budgetMaxLpa: 35 })));
     expect(result.statusCode).toBe(200);
-    expect(mockRebuildCacheForRequirement).not.toHaveBeenCalled();
+    expect(mockInvokeLambdaAsync).not.toHaveBeenCalled();
   });
 
-  it('does NOT rebuild cache when match-affecting field value is unchanged', async () => {
+  it('does NOT dispatch rebuild when match-affecting field value is unchanged', async () => {
     const result = parseResponse(await handler(makeEvent({ budgetMaxLpa: 20 })));
     expect(result.statusCode).toBe(200);
     expect(result.body.data.message).toBe('No fields changed');
-    expect(mockRebuildCacheForRequirement).not.toHaveBeenCalled();
+    expect(mockInvokeLambdaAsync).not.toHaveBeenCalled();
   });
 
-  it('does NOT rebuild cache when no fields changed', async () => {
+  it('does NOT dispatch rebuild when no fields changed', async () => {
     const result = parseResponse(await handler(makeEvent({ clientName: 'Acme Corp' })));
     expect(result.statusCode).toBe(200);
     expect(result.body.data.message).toBe('No fields changed');
-    expect(mockRebuildCacheForRequirement).not.toHaveBeenCalled();
+    expect(mockInvokeLambdaAsync).not.toHaveBeenCalled();
   });
 
-  it('returns 200 and logs error when cache rebuild fails', async () => {
+  it('returns 200 and logs error when the rebuild dispatch fails', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    mockRebuildCacheForRequirement.mockRejectedValue(new Error('cache failure'));
+    mockInvokeLambdaAsync.mockRejectedValue(new Error('invoke failure'));
     const result = parseResponse(await handler(makeEvent({ budgetMaxLpa: 35 })));
     expect(result.statusCode).toBe(200);
     expect(consoleSpy).toHaveBeenCalledWith(
@@ -279,21 +286,11 @@ describe('updateRequirement handler', () => {
     consoleSpy.mockRestore();
   });
 
-  it('does NOT rebuild cache when the DB write fails', async () => {
+  it('does NOT dispatch rebuild when the DB write fails', async () => {
     mockUpdateRequirementFields.mockRejectedValue(new Error('db failure'));
     const result = parseResponse(await handler(makeEvent({ budgetMaxLpa: 35 })));
     expect(result.statusCode).toBe(500);
-    expect(mockRebuildCacheForRequirement).not.toHaveBeenCalled();
-  });
-
-  it('rebuilds cache with null budget_max_lpa when it is null on existing requirement', async () => {
-    mockGetRequirementById.mockResolvedValue({ ...existingRequirement, budget_max_lpa: null });
-    const newCriteria = { mustHaveSkills: ['node'], goodToHaveSkills: [], minExperience: 2, maxExperience: null, seniority: ['mid'], location: null, remote: false };
-    const result = parseResponse(await handler(makeEvent({ parsedCriteria: newCriteria })));
-    expect(result.statusCode).toBe(200);
-    expect(mockRebuildCacheForRequirement).toHaveBeenCalledTimes(1);
-    const rebuiltReq = mockRebuildCacheForRequirement.mock.calls[0][0];
-    expect(rebuiltReq.budget_max_lpa).toBeNull();
+    expect(mockInvokeLambdaAsync).not.toHaveBeenCalled();
   });
 
   // ---------------------------------------------------------------------------
@@ -312,12 +309,13 @@ describe('updateRequirement handler', () => {
     expect(pc['mustHaveSkills']).toEqual(['react']);
   });
 
-  it('cache rebuild req has matching budget_max_lpa and parsed_criteria.budgetMaxLpa', async () => {
+  it('persists matching budget_max_lpa and parsed_criteria.budgetMaxLpa for the worker to read back', async () => {
     const result = parseResponse(await handler(makeEvent({ budgetMaxLpa: 35 })));
     expect(result.statusCode).toBe(200);
-    const rebuiltReq = mockRebuildCacheForRequirement.mock.calls[0][0];
-    expect(rebuiltReq.budget_max_lpa).toBe(35);
-    expect(rebuiltReq.parsed_criteria.budgetMaxLpa).toBe(35);
+    expect(mockInvokeLambdaAsync).toHaveBeenCalledWith('match-cache-req-worker', { requirementId: 'req-123' });
+    const fieldsWritten = mockUpdateRequirementFields.mock.calls[0][1] as Record<string, unknown>;
+    expect(fieldsWritten['budget_max_lpa']).toBe(35);
+    expect((fieldsWritten['parsed_criteria'] as Record<string, unknown>)['budgetMaxLpa']).toBe(35);
   });
 
   it('does not write parsed_criteria when only non-budget fields change', async () => {
@@ -332,8 +330,8 @@ describe('updateRequirement handler', () => {
     const newCriteria = { mustHaveSkills: ['vue'], goodToHaveSkills: [], minExperience: 2, maxExperience: null, seniority: ['senior'], location: null, remote: true, budgetMaxLpa: 999 };
     const result = parseResponse(await handler(makeEvent({ budgetMaxLpa: 40, parsedCriteria: newCriteria })));
     expect(result.statusCode).toBe(200);
-    // Only one cache rebuild despite two match-affecting fields
-    expect(mockRebuildCacheForRequirement).toHaveBeenCalledTimes(1);
+    // Only one rebuild dispatch despite two match-affecting fields
+    expect(mockInvokeLambdaAsync).toHaveBeenCalledTimes(1);
     const dbCall = mockUpdateRequirementFields.mock.calls[0];
     const fieldsWritten = dbCall[1] as Record<string, unknown>;
     const pc = fieldsWritten['parsed_criteria'] as Record<string, unknown>;
@@ -355,7 +353,7 @@ describe('updateRequirement handler', () => {
     mockGetRequirementById.mockResolvedValue({ ...existingRequirement, status: 'closed' });
     const result = parseResponse(await handler(makeEvent({ budgetMaxLpa: 35 })));
     expect(result.statusCode).toBe(200);
-    expect(mockRebuildCacheForRequirement).not.toHaveBeenCalled();
+    expect(mockInvokeLambdaAsync).not.toHaveBeenCalled();
     const dbCall = mockUpdateRequirementFields.mock.calls[0];
     const fieldsWritten = dbCall[1] as Record<string, unknown>;
     expect(fieldsWritten['budget_max_lpa']).toBe(35);

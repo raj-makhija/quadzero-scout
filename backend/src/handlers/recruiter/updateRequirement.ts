@@ -6,8 +6,9 @@ import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
 import { slugifyFieldKey } from '../../lib/slugify.js';
 import { normalizeLocation } from '../../lib/locationNormalizer.js';
-import { rebuildCacheForRequirement } from '../../lib/matchCacheService.js';
-import type { RequirementChangeEntry, RequirementChangeDetail, RequirementItem } from '../../types/index.js';
+import { invokeLambdaAsync } from '../../lib/lambdaInvoke.js';
+import { config } from '../../lib/config.js';
+import type { RequirementChangeEntry, RequirementChangeDetail } from '../../types/index.js';
 
 const MATCH_AFFECTING_FIELDS = new Set(['parsedCriteria', 'engagementModel', 'budgetMaxLpa']);
 
@@ -155,12 +156,18 @@ async function handleRequest(
 
     await updateRequirementFields(requirementId, fieldsToUpdate, changeEntry);
 
+    // Rebuild the cache off the request path (ticket #469) when a match-affecting
+    // field changed on an active requirement — the full scan can't finish inside
+    // the 30s request timeout at prod scale. The worker re-fetches the
+    // just-persisted fields. Fire-and-forget and non-fatal.
     const matchAffected = changes.some(c => MATCH_AFFECTING_FIELDS.has(c.field));
-    if (matchAffected && existing.status === 'active') {
+    if (matchAffected && existing.status === 'active' && config.lambda.matchCacheRequirementWorkerName) {
       try {
-        await rebuildCacheForRequirement({ ...existing, ...fieldsToUpdate } as unknown as RequirementItem);
+        await invokeLambdaAsync(config.lambda.matchCacheRequirementWorkerName, {
+          requirementId,
+        });
       } catch (cacheErr) {
-        console.error(`Failed to rebuild match-cache for requirement ${requirementId}:`, cacheErr);
+        console.error(`Failed to dispatch match-cache rebuild for requirement ${requirementId}:`, cacheErr);
       }
     }
 
