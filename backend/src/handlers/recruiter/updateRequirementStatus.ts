@@ -7,7 +7,7 @@ import { logAuditEvent } from '../../lib/audit.js';
 import { deleteMatchCache } from '../../lib/matchCacheService.js';
 import { invokeLambdaAsync } from '../../lib/lambdaInvoke.js';
 import { config } from '../../lib/config.js';
-import { safeResolveFoundTasksForRequirement } from '../../lib/recruiterTasks.js';
+import { safeResolveFoundTasksForRequirement, safeResolveCloseRequirementTask } from '../../lib/recruiterTasks.js';
 import type { StatusHistoryEntry } from '../../types/index.js';
 
 async function handleRequest(
@@ -92,13 +92,18 @@ async function handleRequest(
       }
     }
 
-    // Expire open found-candidate tasks when closing/putting on-hold.
+    // Expire open found-candidate and close_requirement tasks when closing/putting on-hold.
     // Best-effort — failure must not block the status update.
     if (newStatus === 'closed_on_hold') {
       try {
         await safeResolveFoundTasksForRequirement({ requirementId, completedBy: event.auth.userId });
       } catch (cleanupErr) {
         console.error('Failed to expire found-candidate tasks after status change:', cleanupErr);
+      }
+      try {
+        await safeResolveCloseRequirementTask({ requirementId, completedBy: event.auth.userId });
+      } catch (cleanupErr) {
+        console.error('Failed to expire close-requirement task after status change:', cleanupErr);
       }
     }
 
