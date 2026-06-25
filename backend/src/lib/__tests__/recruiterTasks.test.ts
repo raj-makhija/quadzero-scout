@@ -39,6 +39,7 @@ import {
   buildTaskItem,
   createTaskIfAbsent,
   resolveTaskByEntity,
+  safeResolveTask,
   resolveScreeningTasksForCandidate,
   resolveFoundTasksForRequirement,
   listActiveTasksForRecruiter,
@@ -596,6 +597,29 @@ describe('resolveTaskByEntity (auto-complete)', () => {
     expect(upd.ExpressionAttributeValues[':c']).toBe('completed');
     expect(upd.ExpressionAttributeValues[':cb']).toBe('rec-2');
     expect(upd.ExpressionAttributeValues[':ttl']).toBe(ttlEpochFrom(NOW.toISOString()));
+  });
+});
+
+describe('safeResolveTask (never-throw wrapper)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  // EC-2 (#472): a DynamoDB failure during resolution must be swallowed by the
+  // wrapper so it never propagates to the calling handler (which would otherwise
+  // turn a best-effort task close into a 500). recordInterviewFeedback relies on
+  // this contract to keep returning 200 when the reminder resolve fails.
+  it('swallows a DynamoDB error and resolves without throwing', async () => {
+    const send = vi.fn(async () => {
+      throw new Error('DynamoDB unavailable');
+    });
+    __setDocClientForTests({ send });
+    await expect(
+      safeResolveTask({
+        entityRef: 'REQ#r1#CAND#c1',
+        type: 'pre_interview_reminder',
+        completedBy: 'rec-1',
+      })
+    ).resolves.toBeUndefined();
+    expect(send).toHaveBeenCalled();
   });
 });
 
