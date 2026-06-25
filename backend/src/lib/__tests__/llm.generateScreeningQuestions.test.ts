@@ -44,7 +44,8 @@ vi.mock('../llm/claude.js', () => ({
 }));
 
 // Import after mocks
-import { generateScreeningQuestions } from '../llm/index.js';
+import { generateScreeningQuestions, _clearPromptCache } from '../llm/index.js';
+import { getActivePrompt } from '../dynamodb.js';
 
 function questions(n: number): string {
   return JSON.stringify(
@@ -55,6 +56,7 @@ function questions(n: number): string {
 describe('generateScreeningQuestions() — 3–10 count enforcement', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    _clearPromptCache();
   });
 
   it('returns a valid list when the LLM returns 3–10 questions', async () => {
@@ -91,5 +93,107 @@ describe('generateScreeningQuestions() — 3–10 count enforcement', () => {
   it('throws when the LLM returns unparseable JSON', async () => {
     stubProvider.handler = async () => ({ content: 'not json at all' });
     await expect(generateScreeningQuestions('summary')).rejects.toThrow();
+  });
+});
+
+describe('generateScreeningQuestions() — suitable requirements in prompt', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _clearPromptCache();
+  });
+
+  it('includes suitable requirements section in the user message when provided', async () => {
+    let capturedUserMessage = '';
+    stubProvider.handler = async (messages: LLMMessage[]) => {
+      capturedUserMessage = messages.find((m) => m.role === 'user')?.content ?? '';
+      return { content: questions(5) };
+    };
+
+    await generateScreeningQuestions('React developer, 5 years', [
+      { jobTitle: 'Frontend Lead', mustHaveSkills: ['react', 'typescript'], mustHaveMissing: ['typescript'] },
+    ]);
+
+    expect(capturedUserMessage).toContain('Candidate profile:');
+    expect(capturedUserMessage).toContain('Suitable open requirements');
+    expect(capturedUserMessage).toContain('Frontend Lead');
+    expect(capturedUserMessage).toContain('Required skills: react, typescript');
+    expect(capturedUserMessage).toContain('Candidate is missing: typescript');
+  });
+
+  it('includes all provided requirements in the user message', async () => {
+    let capturedUserMessage = '';
+    stubProvider.handler = async (messages: LLMMessage[]) => {
+      capturedUserMessage = messages.find((m) => m.role === 'user')?.content ?? '';
+      return { content: questions(5) };
+    };
+
+    await generateScreeningQuestions('profile', [
+      { jobTitle: 'Role A', mustHaveSkills: ['react'], mustHaveMissing: [] },
+      { jobTitle: 'Role B', mustHaveSkills: ['python'], mustHaveMissing: ['python'] },
+    ]);
+
+    expect(capturedUserMessage).toContain('Role A');
+    expect(capturedUserMessage).toContain('Role B');
+    expect(capturedUserMessage).toContain('python');
+  });
+
+  it('omits the requirements section when suitableRequirements is empty', async () => {
+    let capturedUserMessage = '';
+    stubProvider.handler = async (messages: LLMMessage[]) => {
+      capturedUserMessage = messages.find((m) => m.role === 'user')?.content ?? '';
+      return { content: questions(5) };
+    };
+
+    await generateScreeningQuestions('profile', []);
+
+    expect(capturedUserMessage).not.toContain('Suitable open requirements');
+  });
+
+  it('omits the requirements section when suitableRequirements is undefined', async () => {
+    let capturedUserMessage = '';
+    stubProvider.handler = async (messages: LLMMessage[]) => {
+      capturedUserMessage = messages.find((m) => m.role === 'user')?.content ?? '';
+      return { content: questions(5) };
+    };
+
+    await generateScreeningQuestions('profile');
+
+    expect(capturedUserMessage).not.toContain('Suitable open requirements');
+  });
+
+  it('omits "Candidate is missing" line when mustHaveMissing is empty', async () => {
+    let capturedUserMessage = '';
+    stubProvider.handler = async (messages: LLMMessage[]) => {
+      capturedUserMessage = messages.find((m) => m.role === 'user')?.content ?? '';
+      return { content: questions(5) };
+    };
+
+    await generateScreeningQuestions('profile', [
+      { jobTitle: 'Full Match Role', mustHaveSkills: ['react'], mustHaveMissing: [] },
+    ]);
+
+    expect(capturedUserMessage).toContain('Full Match Role');
+    expect(capturedUserMessage).not.toContain('Candidate is missing');
+  });
+
+  it('uses the DB prompt as the system message when getActivePrompt returns one', async () => {
+    vi.mocked(getActivePrompt).mockResolvedValueOnce({
+      prompt_id: 'screening_questions',
+      content: 'CUSTOM_DB_PROMPT',
+      version: 2,
+      created_at: '',
+      updated_at: '',
+      created_by: '',
+    } as any);
+
+    let capturedSystemMessage = '';
+    stubProvider.handler = async (messages: LLMMessage[]) => {
+      capturedSystemMessage = messages.find((m) => m.role === 'system')?.content ?? '';
+      return { content: questions(5) };
+    };
+
+    await generateScreeningQuestions('summary');
+
+    expect(capturedSystemMessage).toBe('CUSTOM_DB_PROMPT');
   });
 });

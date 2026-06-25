@@ -1,8 +1,9 @@
 import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
-import { getCandidateById } from '../../lib/dynamodb.js';
-import { generateScreeningQuestions as generateQuestions } from '../../lib/llm/index.js';
+import { getCandidateById, getAllActiveRequirements, getShortlistsForCandidate } from '../../lib/dynamodb.js';
+import { generateScreeningQuestions as generateQuestions, type SuitableRequirementContext } from '../../lib/llm/index.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
+import { normalizeSkills } from '../../lib/skillNormalizer.js';
 import type { CandidateItem } from '../../types/index.js';
 
 /**
@@ -29,6 +30,48 @@ function buildCandidateSummary(c: CandidateItem): string {
   if (c.summary) parts.push(`Summary: ${c.summary}`);
   if (c.cover_letter) parts.push(`Cover letter / supplementary text: ${c.cover_letter}`);
   return parts.join('\n');
+}
+
+const MAX_SUITABLE_REQUIREMENTS = 5;
+
+async function findSuitableRequirements(
+  candidateId: string,
+  candidate: CandidateItem
+): Promise<SuitableRequirementContext[]> {
+  const [requirements, shortlists] = await Promise.all([
+    getAllActiveRequirements(),
+    getShortlistsForCandidate(candidateId),
+  ]);
+
+  const shortlistedIds = new Set(shortlists.map((s) => s.requirement_id));
+  const candidateSkills = new Set(
+    normalizeSkills([
+      ...(candidate.primary_skills || []),
+      ...(candidate.secondary_skills || []),
+    ])
+  );
+
+  const suitable: SuitableRequirementContext[] = [];
+
+  for (const req of requirements) {
+    if (suitable.length >= MAX_SUITABLE_REQUIREMENTS) break;
+    if (shortlistedIds.has(req.requirement_id)) continue;
+
+    const mustHaveSkills = normalizeSkills(req.parsed_criteria?.mustHaveSkills || []);
+
+    // Only include requirements where the candidate has at least one must-have skill
+    if (mustHaveSkills.length > 0 && !mustHaveSkills.some((s) => candidateSkills.has(s))) {
+      continue;
+    }
+
+    suitable.push({
+      jobTitle: req.job_title || 'Open Role',
+      mustHaveSkills,
+      mustHaveMissing: mustHaveSkills.filter((s) => !candidateSkills.has(s)),
+    });
+  }
+
+  return suitable;
 }
 
 async function handleRequest(event: AuthenticatedEvent): Promise<APIGatewayProxyResultV2> {
@@ -76,8 +119,15 @@ async function handleRequest(event: AuthenticatedEvent): Promise<APIGatewayProxy
       });
     }
 
+    let suitableRequirements: SuitableRequirementContext[] | undefined;
     try {
-      const questions = await generateQuestions(summary);
+      suitableRequirements = await findSuitableRequirements(candidateId, candidate);
+    } catch (err) {
+      console.error('Failed to fetch suitable requirements for screening questions, falling back to profile-only:', err);
+    }
+
+    try {
+      const questions = await generateQuestions(summary, suitableRequirements);
       return success({ questions, generated: true });
     } catch (err) {
       // LLM failure, unparseable JSON, or out-of-range question count: degrade
