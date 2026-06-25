@@ -8,6 +8,7 @@ import {
   dueLabel,
   COLLAPSED_COUNT,
   TASK_REFRESH_EVENT,
+  POLL_INTERVAL_MS,
 } from '../task-queue-widget';
 import type { RecruiterTask } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
@@ -81,6 +82,9 @@ describe('task-queue-widget helpers', () => {
   it('labels due/overdue windows', () => {
     expect(dueLabel(task({ due_date: '2026-06-02T00:00:00Z' }), NOW)).toBe('Due in 1d');
     expect(dueLabel(task({ due_date: '2026-05-30T00:00:00Z' }), NOW)).toBe('Overdue by 2d');
+  });
+  it('polls at an interval ≤ 15 s so completed tasks disappear for other users quickly', () => {
+    expect(POLL_INTERVAL_MS).toBeLessThanOrEqual(15_000);
   });
 });
 
@@ -241,5 +245,47 @@ describe('TaskQueueWidget', () => {
     fireEvent(window, new Event(TASK_REFRESH_EVENT));
     await waitFor(() => expect(mockGetTasks).toHaveBeenCalledTimes(2));
     expect(toast).not.toHaveBeenCalled();
+  });
+
+  it('shows error toast and reloads tasks when completeTask rejects', async () => {
+    mockCompleteTask.mockRejectedValue(new Error('network failure'));
+    render(<TaskQueueWidget />);
+    fireEvent.click(await screen.findByText('Done'));
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith({ variant: 'error', title: 'Could not complete task' })
+    );
+    // getTasks called once on mount, once in the catch reload
+    expect(mockGetTasks).toHaveBeenCalledTimes(2);
+  });
+
+  it('pool task is absent on the next poll after completion (cross-user visibility)', async () => {
+    const poolTask = task({ task_id: 'pool-t1', owner_id: 'POOL', type: 'source_candidates' });
+    mockGetTasks.mockResolvedValue({ tasks: [poolTask] });
+    render(<TaskQueueWidget />);
+    expect(await screen.findByText('Re-run search for stale requirement')).toBeInTheDocument();
+
+    // Next poll (e.g. from another recruiter's session) returns the task already completed
+    mockGetTasks.mockResolvedValueOnce({ tasks: [] });
+    fireEvent(window, new Event(TASK_REFRESH_EVENT));
+    await waitFor(() =>
+      expect(screen.queryByText('Re-run search for stale requirement')).not.toBeInTheDocument()
+    );
+  });
+
+  it('expanded list shrinks correctly when a poll returns fewer tasks', async () => {
+    const many = Array.from({ length: 5 }, (_, i) =>
+      task({ task_id: `t${i}`, context: { candidate_name: `Exp${i}` } })
+    );
+    mockGetTasks.mockResolvedValue({ tasks: many });
+    render(<TaskQueueWidget />);
+    await screen.findByText('Exp0');
+    fireEvent.click(screen.getByText(`View all (${many.length})`));
+    expect(await screen.findByText('Exp4')).toBeInTheDocument();
+
+    // Poll fires and another recruiter completed two tasks — list shrinks
+    mockGetTasks.mockResolvedValueOnce({ tasks: many.slice(0, 2) });
+    fireEvent(window, new Event(TASK_REFRESH_EVENT));
+    await waitFor(() => expect(screen.queryByText('Exp4')).not.toBeInTheDocument());
+    expect(screen.getByText('Exp0')).toBeInTheDocument();
   });
 });
