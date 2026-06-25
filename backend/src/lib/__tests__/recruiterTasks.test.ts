@@ -40,6 +40,7 @@ import {
   createTaskIfAbsent,
   resolveTaskByEntity,
   resolveScreeningTasksForCandidate,
+  resolveMandatoryDocsTasksForCandidate,
   resolveFoundTasksForRequirement,
   listActiveTasksForRecruiter,
   snoozeTaskById,
@@ -625,6 +626,37 @@ describe('resolveScreeningTasksForCandidate (auto-complete on screen)', () => {
   it('is a no-op when the candidate has no open screen tasks', async () => {
     const state = installMock({ ownerItems: { POOL: [] } });
     const count = await resolveScreeningTasksForCandidate({ candidateId: 'c1', completedBy: 'rec-2' }, NOW);
+    expect(count).toBe(0);
+    expect(state.updates).toHaveLength(0);
+  });
+});
+
+describe('resolveMandatoryDocsTasksForCandidate (auto-complete on doc upload)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("completes the candidate's get_mandatory_documents tasks across requirements and owners", async () => {
+    const state = installMock({
+      scanItems: [
+        makeTask({ owner_id: 'rec-1', task_id: 'm1', type: 'get_mandatory_documents', entity_ref: 'REQ#r1#CAND#c1' }),
+        makeTask({ owner_id: 'rec-2', task_id: 'm2', type: 'get_mandatory_documents', entity_ref: 'REQ#r2#CAND#c1' }),
+        makeTask({ owner_id: 'rec-1', task_id: 'other-type', type: 'submit_to_client', entity_ref: 'REQ#r1#CAND#c1' }),
+        makeTask({ owner_id: 'rec-3', task_id: 'other-cand', type: 'get_mandatory_documents', entity_ref: 'REQ#r1#CAND#c2' }),
+      ],
+    });
+    const count = await resolveMandatoryDocsTasksForCandidate({ candidateId: 'c1', completedBy: 'rec-9' }, NOW);
+    // Both get_mandatory_documents tasks for c1 (different requirements + owners) resolve;
+    // the unrelated type and the other candidate's task are untouched.
+    expect(count).toBe(2);
+    expect(state.updates).toHaveLength(2);
+    const resolvedTaskIds = state.updates.map((u) => (u.Key as Record<string, unknown>).task_id).sort();
+    expect(resolvedTaskIds).toEqual(['m1', 'm2']);
+    expect(state.updates.every((u) => (u.ExpressionAttributeValues as Record<string, unknown>)[':c'] === 'completed')).toBe(true);
+    expect(state.updates.every((u) => (u.ExpressionAttributeValues as Record<string, unknown>)[':cb'] === 'rec-9')).toBe(true);
+  });
+
+  it('is a no-op when the candidate has no open mandatory-docs task', async () => {
+    const state = installMock({ scanItems: [] });
+    const count = await resolveMandatoryDocsTasksForCandidate({ candidateId: 'c1', completedBy: 'rec-9' }, NOW);
     expect(count).toBe(0);
     expect(state.updates).toHaveLength(0);
   });
