@@ -16,7 +16,7 @@ import { api, type RecruiterTask, type SnoozePreset } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 
 export const COLLAPSED_COUNT = 3;
-const POLL_INTERVAL_MS = 60_000;
+export const POLL_INTERVAL_MS = 10_000;
 /** Fired on `window` when an action elsewhere resolves a task server-side (e.g. a completed screening), so the widget reloads without waiting for the poll. */
 export const TASK_REFRESH_EVENT = 'recruiter-tasks:refresh';
 
