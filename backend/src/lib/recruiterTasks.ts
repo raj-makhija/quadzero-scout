@@ -776,6 +776,41 @@ export async function safeResolveFoundTasksForRequirement(args: {
   }
 }
 
+/**
+ * Resolve any active `close_requirement` task for a requirement when it is
+ * closed. The task is POOL-owned with entity_ref `REQ#<requirementId>` (no
+ * candidate suffix). Returns the count resolved.
+ */
+export async function resolveCloseRequirementTask(
+  args: { requirementId: string; completedBy: string },
+  now: Date = new Date()
+): Promise<number> {
+  const pool = await queryActiveByOwner(POOL_OWNER);
+  const entityRef = `REQ#${args.requirementId}`;
+  const targets = pool.filter(
+    (t) => t.type === 'close_requirement' && t.entity_ref === entityRef
+  );
+  for (const t of targets) {
+    try {
+      await markCompleted(t.owner_id, t.task_id, args.completedBy, now);
+    } catch {
+      // Conditional check failed (already terminal) — ignore.
+    }
+  }
+  return targets.length;
+}
+
+export async function safeResolveCloseRequirementTask(args: {
+  requirementId: string;
+  completedBy: string;
+}): Promise<void> {
+  try {
+    await resolveCloseRequirementTask(args);
+  } catch (err) {
+    console.error('[recruiterTasks] close-requirement task cleanup failed:', err);
+  }
+}
+
 /** Best-effort display context for a pipeline task (candidate + requirement names). */
 export async function loadTaskContext(requirementId?: string, candidateId?: string): Promise<TaskContext> {
   try {

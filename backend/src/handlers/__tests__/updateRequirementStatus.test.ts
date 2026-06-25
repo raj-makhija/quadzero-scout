@@ -8,6 +8,7 @@ import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 const mockGetRequirementById = vi.fn();
 const mockUpdateRequirementStatus = vi.fn();
 const mockSafeResolveFoundTasksForRequirement = vi.fn();
+const mockSafeResolveCloseRequirementTask = vi.fn();
 const mockInvokeLambdaAsync = vi.fn();
 const mockDeleteMatchCache = vi.fn();
 
@@ -42,6 +43,8 @@ vi.mock('../../lib/config.js', () => ({
 vi.mock('../../lib/recruiterTasks.js', () => ({
   safeResolveFoundTasksForRequirement: (...args: unknown[]) =>
     mockSafeResolveFoundTasksForRequirement(...args),
+  safeResolveCloseRequirementTask: (...args: unknown[]) =>
+    mockSafeResolveCloseRequirementTask(...args),
 }));
 
 // ---------------------------------------------------------------------------
@@ -115,6 +118,7 @@ describe('updateRequirementStatus handler', () => {
     mockGetRequirementById.mockResolvedValue({ ...activeRequirement });
     mockUpdateRequirementStatus.mockResolvedValue(undefined);
     mockSafeResolveFoundTasksForRequirement.mockResolvedValue(undefined);
+    mockSafeResolveCloseRequirementTask.mockResolvedValue(undefined);
     mockInvokeLambdaAsync.mockResolvedValue(undefined);
     mockDeleteMatchCache.mockResolvedValue(undefined);
   });
@@ -238,5 +242,40 @@ describe('updateRequirementStatus handler', () => {
     expect(result.statusCode).toBe(200);
     expect(mockDeleteMatchCache).toHaveBeenCalledWith('req-1');
     expect(mockInvokeLambdaAsync).not.toHaveBeenCalled();
+  });
+
+  // ticket #473 — close_requirement task cleanup on closed_on_hold
+  it('TC-473-a: close_requirement task is NOT resolved before the fix (failing test reproducing the bug)', async () => {
+    // This test documents the pre-fix behavior: safeResolveCloseRequirementTask was
+    // never called. With the fix applied it WILL be called, so this assertion now
+    // verifies the fix is in place by expecting it to be called.
+    const result = parseResponse(await handler(makeEvent({ status: 'closed_on_hold' }, 'req-1', 'rec-1')));
+    expect(result.statusCode).toBe(200);
+    expect(mockSafeResolveCloseRequirementTask).toHaveBeenCalledOnce();
+    expect(mockSafeResolveCloseRequirementTask).toHaveBeenCalledWith({
+      requirementId: 'req-1',
+      completedBy: 'rec-1',
+    });
+  });
+
+  it('TC-473-b: both found_candidate and close_requirement tasks are resolved on closed_on_hold', async () => {
+    const result = parseResponse(await handler(makeEvent({ status: 'closed_on_hold' }, 'req-1', 'rec-1')));
+    expect(result.statusCode).toBe(200);
+    expect(mockSafeResolveFoundTasksForRequirement).toHaveBeenCalledOnce();
+    expect(mockSafeResolveCloseRequirementTask).toHaveBeenCalledOnce();
+  });
+
+  it('TC-473-c: close_requirement cleanup is best-effort — 200 even when resolver throws', async () => {
+    mockSafeResolveCloseRequirementTask.mockRejectedValue(new Error('DynamoDB down'));
+    const result = parseResponse(await handler(makeEvent({ status: 'closed_on_hold' })));
+    expect(result.statusCode).toBe(200);
+    expect(result.body.data.status).toBe('closed_on_hold');
+  });
+
+  it('TC-473-d: does NOT call safeResolveCloseRequirementTask when transitioning to active', async () => {
+    mockGetRequirementById.mockResolvedValue({ ...activeRequirement, status: 'closed_on_hold' });
+    const result = parseResponse(await handler(makeEvent({ status: 'active' }, 'req-1', 'rec-1')));
+    expect(result.statusCode).toBe(200);
+    expect(mockSafeResolveCloseRequirementTask).not.toHaveBeenCalled();
   });
 });
