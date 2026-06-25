@@ -1,0 +1,6 @@
+# Playwright artifacts -- never commit run output or downloaded browsers
+node_modules/
+results/
+playwright-report/
+test-results/
+.cache/

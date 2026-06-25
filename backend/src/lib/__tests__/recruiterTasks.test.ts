@@ -39,8 +39,11 @@ import {
   buildTaskItem,
   createTaskIfAbsent,
   resolveTaskByEntity,
+  safeResolveTask,
   resolveScreeningTasksForCandidate,
+  resolveMandatoryDocsTasksForCandidate,
   resolveFoundTasksForRequirement,
+  resolveCloseRequirementTask,
   listActiveTasksForRecruiter,
   snoozeTaskById,
   completeTaskById,
@@ -599,6 +602,29 @@ describe('resolveTaskByEntity (auto-complete)', () => {
   });
 });
 
+describe('safeResolveTask (never-throw wrapper)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  // EC-2 (#472): a DynamoDB failure during resolution must be swallowed by the
+  // wrapper so it never propagates to the calling handler (which would otherwise
+  // turn a best-effort task close into a 500). recordInterviewFeedback relies on
+  // this contract to keep returning 200 when the reminder resolve fails.
+  it('swallows a DynamoDB error and resolves without throwing', async () => {
+    const send = vi.fn(async () => {
+      throw new Error('DynamoDB unavailable');
+    });
+    __setDocClientForTests({ send });
+    await expect(
+      safeResolveTask({
+        entityRef: 'REQ#r1#CAND#c1',
+        type: 'pre_interview_reminder',
+        completedBy: 'rec-1',
+      })
+    ).resolves.toBeUndefined();
+    expect(send).toHaveBeenCalled();
+  });
+});
+
 describe('resolveScreeningTasksForCandidate (auto-complete on screen)', () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -625,6 +651,37 @@ describe('resolveScreeningTasksForCandidate (auto-complete on screen)', () => {
   it('is a no-op when the candidate has no open screen tasks', async () => {
     const state = installMock({ ownerItems: { POOL: [] } });
     const count = await resolveScreeningTasksForCandidate({ candidateId: 'c1', completedBy: 'rec-2' }, NOW);
+    expect(count).toBe(0);
+    expect(state.updates).toHaveLength(0);
+  });
+});
+
+describe('resolveMandatoryDocsTasksForCandidate (auto-complete on doc upload)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("completes the candidate's get_mandatory_documents tasks across requirements and owners", async () => {
+    const state = installMock({
+      scanItems: [
+        makeTask({ owner_id: 'rec-1', task_id: 'm1', type: 'get_mandatory_documents', entity_ref: 'REQ#r1#CAND#c1' }),
+        makeTask({ owner_id: 'rec-2', task_id: 'm2', type: 'get_mandatory_documents', entity_ref: 'REQ#r2#CAND#c1' }),
+        makeTask({ owner_id: 'rec-1', task_id: 'other-type', type: 'submit_to_client', entity_ref: 'REQ#r1#CAND#c1' }),
+        makeTask({ owner_id: 'rec-3', task_id: 'other-cand', type: 'get_mandatory_documents', entity_ref: 'REQ#r1#CAND#c2' }),
+      ],
+    });
+    const count = await resolveMandatoryDocsTasksForCandidate({ candidateId: 'c1', completedBy: 'rec-9' }, NOW);
+    // Both get_mandatory_documents tasks for c1 (different requirements + owners) resolve;
+    // the unrelated type and the other candidate's task are untouched.
+    expect(count).toBe(2);
+    expect(state.updates).toHaveLength(2);
+    const resolvedTaskIds = state.updates.map((u) => (u.Key as Record<string, unknown>).task_id).sort();
+    expect(resolvedTaskIds).toEqual(['m1', 'm2']);
+    expect(state.updates.every((u) => (u.ExpressionAttributeValues as Record<string, unknown>)[':c'] === 'completed')).toBe(true);
+    expect(state.updates.every((u) => (u.ExpressionAttributeValues as Record<string, unknown>)[':cb'] === 'rec-9')).toBe(true);
+  });
+
+  it('is a no-op when the candidate has no open mandatory-docs task', async () => {
+    const state = installMock({ scanItems: [] });
+    const count = await resolveMandatoryDocsTasksForCandidate({ candidateId: 'c1', completedBy: 'rec-9' }, NOW);
     expect(count).toBe(0);
     expect(state.updates).toHaveLength(0);
   });
@@ -705,6 +762,102 @@ describe('resolveFoundTasksForRequirement (close/on-hold cleanup)', () => {
     const input = query![0].input as Record<string, unknown>;
     const vals = input.ExpressionAttributeValues as Record<string, unknown>;
     expect(vals[':o']).toBe(POOL_OWNER);
+  });
+});
+
+describe('resolveCloseRequirementTask (close cleanup)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('resolves the close_requirement task keyed by REQ#<id> (no candidate suffix)', async () => {
+    const state = installMock({
+      ownerItems: {
+        POOL: [
+          makeTask({ owner_id: POOL_OWNER, task_id: 'cr1', type: 'close_requirement', entity_ref: 'REQ#req-1' }),
+        ],
+      },
+    });
+    const count = await resolveCloseRequirementTask({ requirementId: 'req-1', completedBy: 'rec-2' }, NOW);
+    expect(count).toBe(1);
+    expect(state.updates).toHaveLength(1);
+    expect((state.updates[0].ExpressionAttributeValues as Record<string, unknown>)[':cb']).toBe('rec-2');
+  });
+
+  it('resolves multiple active close_requirement tasks for the same requirement', async () => {
+    const state = installMock({
+      ownerItems: {
+        POOL: [
+          makeTask({ owner_id: POOL_OWNER, task_id: 'cr1', type: 'close_requirement', entity_ref: 'REQ#req-1' }),
+          makeTask({ owner_id: POOL_OWNER, task_id: 'cr2', type: 'close_requirement', entity_ref: 'REQ#req-1' }),
+        ],
+      },
+    });
+    const count = await resolveCloseRequirementTask({ requirementId: 'req-1', completedBy: 'rec-2' }, NOW);
+    expect(count).toBe(2);
+    expect(state.updates).toHaveLength(2);
+  });
+
+  it('does not resolve close_requirement tasks for a different requirement', async () => {
+    const state = installMock({
+      ownerItems: {
+        POOL: [
+          makeTask({ owner_id: POOL_OWNER, task_id: 'cr-target', type: 'close_requirement', entity_ref: 'REQ#req-1' }),
+          makeTask({ owner_id: POOL_OWNER, task_id: 'cr-other', type: 'close_requirement', entity_ref: 'REQ#req-2' }),
+        ],
+      },
+    });
+    const count = await resolveCloseRequirementTask({ requirementId: 'req-1', completedBy: 'rec-2' }, NOW);
+    expect(count).toBe(1);
+    expect(state.updates).toHaveLength(1);
+    const updatedKey = (state.updates[0].Key as Record<string, unknown>)['task_id'];
+    expect(updatedKey).toBe('cr-target');
+  });
+
+  it('does not match a found_candidate_for_requirement task whose entity_ref starts with REQ#req-1#', async () => {
+    // Ensures the exact-match strategy doesn't accidentally match candidate-scoped refs.
+    const state = installMock({
+      ownerItems: {
+        POOL: [
+          makeTask({ owner_id: POOL_OWNER, task_id: 'fc', type: 'found_candidate_for_requirement', entity_ref: 'REQ#req-1#CAND#c1' }),
+          makeTask({ owner_id: POOL_OWNER, task_id: 'cr', type: 'close_requirement', entity_ref: 'REQ#req-1' }),
+        ],
+      },
+    });
+    const count = await resolveCloseRequirementTask({ requirementId: 'req-1', completedBy: 'rec-2' }, NOW);
+    expect(count).toBe(1);
+    expect(state.updates).toHaveLength(1);
+    const updatedKey = (state.updates[0].Key as Record<string, unknown>)['task_id'];
+    expect(updatedKey).toBe('cr');
+  });
+
+  it('returns 0 and makes no updates when no close_requirement task exists', async () => {
+    const state = installMock({ ownerItems: { POOL: [] } });
+    const count = await resolveCloseRequirementTask({ requirementId: 'req-1', completedBy: 'rec-2' }, NOW);
+    expect(count).toBe(0);
+    expect(state.updates).toHaveLength(0);
+  });
+
+  it('skips a task that is already terminal (markCompleted conditional check fails) without throwing', async () => {
+    const tasks = [
+      makeTask({ owner_id: POOL_OWNER, task_id: 'cr1', type: 'close_requirement', entity_ref: 'REQ#req-1' }),
+      makeTask({ owner_id: POOL_OWNER, task_id: 'cr2', type: 'close_requirement', entity_ref: 'REQ#req-1' }),
+    ];
+    const resolved: string[] = [];
+    const send = vi.fn(async (cmd: { constructor: { name: string }; input: Record<string, unknown> }) => {
+      if (cmd.constructor.name === 'QueryCommand') return { Items: tasks };
+      if (cmd.constructor.name === 'UpdateCommand') {
+        const taskId = (cmd.input.Key as Record<string, unknown>)['task_id'] as string;
+        if (taskId === 'cr1') throw Object.assign(new Error('ConditionalCheckFailedException'), { name: 'ConditionalCheckFailedException' });
+        resolved.push(taskId);
+        return {};
+      }
+      return {};
+    });
+    __setDocClientForTests({ send });
+    // cr1 throws — cr2 should still be resolved.
+    const count = await resolveCloseRequirementTask({ requirementId: 'req-1', completedBy: 'rec-2' }, NOW);
+    expect(count).toBe(2); // targets.length includes both, even if one fails to update
+    expect(resolved).toContain('cr2');
+    expect(resolved).not.toContain('cr1');
   });
 });
 

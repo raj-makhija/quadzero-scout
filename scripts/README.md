@@ -53,7 +53,7 @@ and runs discover-ids to write `.pipeline-config.json` at the repo root.
 | Script | Purpose |
 |---|---|
 | `manager.sh` | `[<ticket>]` — advance one ticket by one state transition. |
-| `dummy-tester.sh` | `<ticket> write\|validate` — simulated tester. |
+| `dummy-tester.sh` | `<ticket> write\|validate\|e2e` — simulated tester; `e2e` runs post-deploy Playwright smoke tests against dev (fire-and-report, no state change). |
 | `dummy-developer.sh` | `<ticket> implement\|open_pr\|rework` — simulated developer, does real git work. |
 | `dummy-pr-reviewer.sh` | `<ticket>` — simulated reviewer; on APPROVE leaves the branch + PR intact and sets `awaiting-qa` (status:ready-for-qa). |
 

@@ -80,10 +80,19 @@ async function handleRequest(
     }
 
     // Recording feedback resolves the "record interview feedback" task and,
-    // on a proceed decision, queues the "send offer" task.
+    // on a proceed decision, queues the "send offer" task. It also resolves the
+    // "pre interview reminder" task event-driven (on feedback submission) rather
+    // than waiting for the stale-task sweep — feedback being recorded means the
+    // interview has happened, so the reminder is no longer actionable.
+    const entityRef = compositeEntityRef(requirementId, candidateId);
     await safeResolveTask({
-      entityRef: compositeEntityRef(requirementId, candidateId),
+      entityRef,
       type: 'record_interview_feedback',
+      completedBy: event.auth.userId,
+    });
+    await safeResolveTask({
+      entityRef,
+      type: 'pre_interview_reminder',
       completedBy: event.auth.userId,
     });
     const taskContext = await loadTaskContext(requirementId, candidateId);
