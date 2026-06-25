@@ -1,0 +1,72 @@
+# Playwright E2E -- post-deploy browser smoke tests against dev.
+#
+# Fired automatically by the pipeline:qa-approve path (after a ticket is
+# squash-merged to develop and dev auto-deploys), and runnable manually.
+# Fire-and-report: scripts/dummy-tester.sh <ticket> e2e posts a
+# [tester:e2e-report] PASS/FAIL comment and never mutates pipeline state.
+#
+# Auth/secrets:
+#   - PIPELINE_APP_ID + PIPELINE_APP_PRIVATE_KEY: App creds for gh comment ops.
+#   - E2E_TEST_EMAIL + E2E_TEST_PASSWORD: dedicated dev test user (repo secrets).
+
+name: Playwright E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      ticket:
+        description: 'Issue number to post the E2E report on'
+        required: true
+        type: string
+  repository_dispatch:
+    types: [e2e-run]
+
+# Serialize per ticket: if qa-approve fires a second run while one is still
+# going, cancel the in-flight run so the verdict comment is never doubled or
+# corrupted (acceptance edge case).
+concurrency:
+  group: e2e-${{ github.event.inputs.ticket || github.event.client_payload.ticket }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ secrets.PIPELINE_APP_ID }}
+          private-key: ${{ secrets.PIPELINE_APP_PRIVATE_KEY }}
+
+      - name: Checkout develop
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: develop
+          fetch-depth: 1
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Setup Node
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4
+        with:
+          node-version: '20'
+
+      - name: Install Playwright browser + system deps
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Run E2E smoke tests (fire-and-report)
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TICKET: ${{ github.event.inputs.ticket || github.event.client_payload.ticket }}
+          E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
+          E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+          E2E_BASE_URL: https://dev.scout.quadzero.com
+        run: scripts/dummy-tester.sh "$TICKET" e2e

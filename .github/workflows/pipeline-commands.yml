@@ -182,7 +182,13 @@ jobs:
                 # the approval (which has already happened).
                 CLAUDE_CODE_OAUTH_TOKEN="${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}" \
                   scripts/scribe.sh "$TICKET" || true
-                finish_success "[/qa-approve] OK -- @$ACTOR approved #$TICKET. Squash-merged to develop; the QA lock is released so the next ticket can deploy. It ships to prod at tonight's develop->main mirror (01:00 IST)."
+                # Fire the post-deploy E2E smoke suite against dev. The merge
+                # above moved develop (Amplify auto-deploys dev), so this is
+                # the "after deploy-to-dev" hook. Fire-and-report: a separate
+                # workflow run posts a [tester:e2e-report] PASS/FAIL comment
+                # and never touches pipeline state. Best-effort dispatch.
+                gh workflow run playwright.yml -f ticket="$TICKET" >&2 || true
+                finish_success "[/qa-approve] OK -- @$ACTOR approved #$TICKET. Squash-merged to develop; the QA lock is released so the next ticket can deploy. Post-deploy E2E smoke tests were triggered against dev (fire-and-report). It ships to prod at tonight's develop->main mirror (01:00 IST)."
               else
                 finish_error "[/qa-approve] FAIL -- qa-approve errored. Check workflow logs (likely the ticket has no merged PR yet)."
               fi
