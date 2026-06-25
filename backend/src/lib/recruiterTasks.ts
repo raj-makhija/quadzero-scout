@@ -557,6 +557,33 @@ export async function resolveScreeningTasksForCandidate(
   return targets.length;
 }
 
+/**
+ * Auto-complete a candidate's active `get_mandatory_documents` tasks once both
+ * mandatory documents (PAN + Aadhaar) are on file. These tasks are recruiter-owned
+ * (created when shortlisting with `bypassDocumentCheck`), so the owner is unknown
+ * here and can differ across requirements — match by scanning active tasks and
+ * filtering on the candidate suffix of the entity_ref (`...CAND#<candidateId>`),
+ * mirroring `resolveScreeningTasksForCandidate`. Returns the count resolved.
+ */
+export async function resolveMandatoryDocsTasksForCandidate(
+  args: { candidateId: string; completedBy: string },
+  now: Date = new Date()
+): Promise<number> {
+  const active = await scanActiveTasks();
+  const suffix = `CAND#${args.candidateId}`;
+  const targets = active.filter(
+    (t) => t.type === 'get_mandatory_documents' && t.entity_ref.endsWith(suffix)
+  );
+  for (const t of targets) {
+    try {
+      await markCompleted(t.owner_id, t.task_id, args.completedBy, now);
+    } catch {
+      // Conditional check failed (already terminal) — ignore.
+    }
+  }
+  return targets.length;
+}
+
 async function queryActiveByOwner(ownerId: string): Promise<RecruiterTask[]> {
   const result = await docClient.send(
     new QueryCommand({
@@ -773,6 +800,52 @@ export async function safeResolveFoundTasksForRequirement(args: {
     await resolveFoundTasksForRequirement(args);
   } catch (err) {
     console.error('[recruiterTasks] found-candidate task cleanup failed:', err);
+  }
+}
+
+/**
+ * Resolve any active `close_requirement` task for a requirement when it is
+ * closed. The task is POOL-owned with entity_ref `REQ#<requirementId>` (no
+ * candidate suffix). Returns the count resolved.
+ */
+export async function resolveCloseRequirementTask(
+  args: { requirementId: string; completedBy: string },
+  now: Date = new Date()
+): Promise<number> {
+  const pool = await queryActiveByOwner(POOL_OWNER);
+  const entityRef = `REQ#${args.requirementId}`;
+  const targets = pool.filter(
+    (t) => t.type === 'close_requirement' && t.entity_ref === entityRef
+  );
+  for (const t of targets) {
+    try {
+      await markCompleted(t.owner_id, t.task_id, args.completedBy, now);
+    } catch {
+      // Conditional check failed (already terminal) — ignore.
+    }
+  }
+  return targets.length;
+}
+
+export async function safeResolveCloseRequirementTask(args: {
+  requirementId: string;
+  completedBy: string;
+}): Promise<void> {
+  try {
+    await resolveCloseRequirementTask(args);
+  } catch (err) {
+    console.error('[recruiterTasks] close-requirement task cleanup failed:', err);
+  }
+}
+
+export async function safeResolveMandatoryDocsTasks(args: {
+  candidateId: string;
+  completedBy: string;
+}): Promise<void> {
+  try {
+    await resolveMandatoryDocsTasksForCandidate(args);
+  } catch (err) {
+    console.error('[recruiterTasks] mandatory-docs task resolution failed:', err);
   }
 }
 
