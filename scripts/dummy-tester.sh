@@ -27,6 +27,12 @@
 #               clears Base SHA, sets Pipeline Status=rework so
 #               manager.sh increments Attempt and routes to developer
 #               rework mode (3-strike rule applies).
+#   e2e      -- post-deploy browser smoke tests (Playwright) against
+#               dev.scout.quadzero.com. Fire-and-report: posts a
+#               [tester:e2e-report] PASS/FAIL comment and ALWAYS exits 0;
+#               never mutates pipeline state (merged-to-develop stays
+#               terminal). Makes no LLM call. Credentials come from the
+#               E2E_TEST_EMAIL / E2E_TEST_PASSWORD env vars (repo secrets).
 #
 # Model tiering: PIPELINE_TESTER_MODEL (default: claude-sonnet-4-6). Both
 # write and validate are reasoning over acceptance criteria; Sonnet hits
@@ -336,8 +342,70 @@ Routing to rework. Developer will branch fresh from develop and address the unme
     esac
     ;;
 
+  # ------------------------------------------------------------------- e2e
+  e2e)
+    # Post-deploy browser smoke tests against dev.scout.quadzero.com.
+    #
+    # FIRE-AND-REPORT: this mode never mutates pipeline state. It posts a
+    # single [tester:e2e-report] PASS/FAIL comment and always exits 0, so a
+    # red suite cannot strike the ticket, route it to rework, or touch the QA
+    # lock -- `merged-to-develop` stays terminal. It also makes NO LLM call;
+    # the verdict comes straight from Playwright's exit code.
+    E2E_DIR="$SCRIPT_DIR/../e2e"
+    export E2E_BASE_URL="${E2E_BASE_URL:-https://dev.scout.quadzero.com}"
+
+    post_e2e() {
+      # $1 = verdict (PASS|FAIL), $2 = body detail
+      gh issue comment "$TICKET" --body "[tester:e2e-report] **$1** against \`$E2E_BASE_URL\`
+
+$2" >&2 || true
+    }
+
+    # Credentials must come from the environment (repo secrets in CI); never
+    # hard-coded. Missing creds is a FAIL report, not a crash.
+    if [[ -z "${E2E_TEST_EMAIL:-}" || -z "${E2E_TEST_PASSWORD:-}" ]]; then
+      post_e2e "FAIL" "E2E credentials not configured: \`E2E_TEST_EMAIL\` / \`E2E_TEST_PASSWORD\` are unset. No tests were run. Pipeline state unchanged."
+      echo "tester e2e -> FAIL (missing credentials); #$TICKET state unchanged" >&2
+      exit 0
+    fi
+
+    OUT="$(mktemp -t e2e.XXXXXX)"
+    RC=0
+    (
+      cd "$E2E_DIR"
+      npm ci --silent --no-audit --no-fund
+      # Ensure the headless Chromium binary is present (no-op if cached). The
+      # workflow installs system deps via `playwright install --with-deps`.
+      npx playwright install chromium
+      # No --bail / maxFailures: every test runs so the report lists all
+      # failures, not just the first.
+      npx playwright test
+    ) >"$OUT" 2>&1 || RC=$?
+
+    TAIL="$(tail -n 40 "$OUT")"
+    if [[ "$RC" -eq 0 ]]; then
+      post_e2e "PASS" "All smoke tests passed.
+
+\`\`\`
+$TAIL
+\`\`\`"
+      echo "tester e2e -> PASS; #$TICKET state unchanged" >&2
+    else
+      post_e2e "FAIL" "One or more smoke tests failed (Playwright exit $RC). This is a post-deploy report only -- promotion is unaffected and a human decides whether to act.
+
+Last 40 lines of output:
+
+\`\`\`
+$TAIL
+\`\`\`"
+      echo "tester e2e -> FAIL (exit $RC); #$TICKET state unchanged" >&2
+    fi
+    rm -f "$OUT"
+    exit 0
+    ;;
+
   *)
-    echo "error: unknown mode '$MODE' (expected: write | validate)" >&2
+    echo "error: unknown mode '$MODE' (expected: write | validate | e2e)" >&2
     exit 1
     ;;
 esac
