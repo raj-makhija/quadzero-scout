@@ -329,20 +329,50 @@ export async function parseResume(resumeText: string, supplementaryText?: string
   return { output, confidence, promptVersion };
 }
 
+export interface SuitableRequirementContext {
+  jobTitle: string;
+  mustHaveSkills: string[];
+  mustHaveMissing: string[];
+}
+
 /**
  * Generate AI screening questions for a candidate from a structured profile
  * summary. Returns a validated list of 3–10 questions. Throws if the LLM
  * returns an unparseable response or fewer than 3 questions (callers are
  * expected to handle this gracefully by surfacing a notice). Responses with
  * more than 10 questions are clamped to 10.
+ *
+ * When suitableRequirements is provided, they are appended to the user message
+ * so the LLM can probe the candidate's skill gaps for each open role.
  */
-export async function generateScreeningQuestions(candidateSummary: string): Promise<ScreeningQuestion[]> {
+export async function generateScreeningQuestions(
+  candidateSummary: string,
+  suitableRequirements?: SuitableRequirementContext[]
+): Promise<ScreeningQuestion[]> {
   const provider = getLLMProvider();
   const { content: systemPrompt } = await getPromptContent('screening_questions');
 
+  let userContent = `Candidate profile:\n\n${candidateSummary}`;
+
+  if (suitableRequirements && suitableRequirements.length > 0) {
+    const reqSection = suitableRequirements
+      .map((req, i) => {
+        const lines = [`[${i + 1}] Role: ${req.jobTitle}`];
+        if (req.mustHaveSkills.length > 0) {
+          lines.push(`Required skills: ${req.mustHaveSkills.join(', ')}`);
+        }
+        if (req.mustHaveMissing.length > 0) {
+          lines.push(`Candidate is missing: ${req.mustHaveMissing.join(', ')}`);
+        }
+        return lines.join('\n');
+      })
+      .join('\n\n');
+    userContent += `\n\nSuitable open requirements (probe missing mandatory skill gaps):\n\n${reqSection}`;
+  }
+
   const messages: LLMMessage[] = [
     { role: 'system', content: systemPrompt },
-    { role: 'user', content: `Candidate profile:\n\n${candidateSummary}` },
+    { role: 'user', content: userContent },
   ];
 
   const response = await withProviderFallback(provider, (p) =>

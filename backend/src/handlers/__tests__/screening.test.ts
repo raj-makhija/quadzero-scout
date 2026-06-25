@@ -6,6 +6,7 @@ import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 // ---------------------------------------------------------------------------
 
 const mockGetCandidateById = vi.fn();
+const mockGetAllActiveRequirements = vi.fn().mockResolvedValue([]);
 const mockSaveScreening = vi.fn().mockResolvedValue(undefined);
 const mockUpdateCandidateProfileFields = vi.fn().mockResolvedValue(undefined);
 const mockGetScreeningHistory = vi.fn().mockResolvedValue([]);
@@ -30,6 +31,7 @@ vi.mock('../../lib/dynamodb.js', () => ({
   putLlmRerank: vi.fn().mockResolvedValue(undefined),
   deleteLlmRerank: vi.fn().mockResolvedValue(undefined),
   getCandidateById: (...args: unknown[]) => mockGetCandidateById(...args),
+  getAllActiveRequirements: (...args: unknown[]) => mockGetAllActiveRequirements(...args),
   saveScreening: (...args: unknown[]) => mockSaveScreening(...args),
   updateCandidateProfileFields: (...args: unknown[]) => mockUpdateCandidateProfileFields(...args),
   getScreeningHistory: (...args: unknown[]) => mockGetScreeningHistory(...args),
@@ -1345,5 +1347,113 @@ describe('generateScreeningQuestions handler', () => {
     expect(body.data.questions).toEqual([]);
     expect(body.data.notice).toBe('Re-screening; no additional questions are needed here.');
     expect(mockGenerateScreeningQuestions).not.toHaveBeenCalled();
+  });
+
+  it('should pass suitable requirements to the LLM when matching open requirements exist', async () => {
+    mockGetCandidateById.mockResolvedValue({ ...mockCandidate, last_screened_at: undefined });
+    mockGetAllActiveRequirements.mockResolvedValue([
+      {
+        requirement_id: 'req_1',
+        job_title: 'React Developer',
+        parsed_criteria: { mustHaveSkills: ['react', 'typescript'], goodToHaveSkills: [] },
+      },
+    ]);
+    mockGetShortlistsForCandidate.mockResolvedValue([]);
+    mockGenerateScreeningQuestions.mockResolvedValue(['Q1', 'Q2', 'Q3']);
+
+    const result = await handler(makeEvent({ candidateId: 'cand_1' }));
+    const body = JSON.parse(result.body);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.data.generated).toBe(true);
+
+    const [, suitableRequirements] = mockGenerateScreeningQuestions.mock.calls[0] as [string, unknown[]];
+    expect(suitableRequirements).toBeDefined();
+    expect(suitableRequirements).toHaveLength(1);
+    const req = suitableRequirements[0] as { jobTitle: string; mustHaveSkills: string[]; mustHaveMissing: string[] };
+    expect(req.jobTitle).toBe('React Developer');
+    // mockCandidate has ['react', 'nodejs'] + ['aws'] — typescript is missing
+    expect(req.mustHaveMissing).toContain('typescript');
+    expect(req.mustHaveMissing).not.toContain('react');
+  });
+
+  it('should exclude already-shortlisted requirements from the LLM prompt', async () => {
+    mockGetCandidateById.mockResolvedValue({ ...mockCandidate, last_screened_at: undefined });
+    mockGetAllActiveRequirements.mockResolvedValue([
+      {
+        requirement_id: 'req_shortlisted',
+        job_title: 'Shortlisted Role',
+        parsed_criteria: { mustHaveSkills: ['react'], goodToHaveSkills: [] },
+      },
+    ]);
+    mockGetShortlistsForCandidate.mockResolvedValue([{ requirement_id: 'req_shortlisted' }]);
+    mockGenerateScreeningQuestions.mockResolvedValue(['Q1', 'Q2', 'Q3']);
+
+    await handler(makeEvent({ candidateId: 'cand_1' }));
+
+    const [, suitableRequirements] = mockGenerateScreeningQuestions.mock.calls[0] as [string, unknown[]];
+    expect(suitableRequirements).toHaveLength(0);
+  });
+
+  it('should cap suitable requirements at 5 even when more match', async () => {
+    mockGetCandidateById.mockResolvedValue({ ...mockCandidate, last_screened_at: undefined });
+    const tenReqs = Array.from({ length: 10 }, (_, i) => ({
+      requirement_id: `req_${i}`,
+      job_title: `Role ${i}`,
+      parsed_criteria: { mustHaveSkills: ['react'], goodToHaveSkills: [] },
+    }));
+    mockGetAllActiveRequirements.mockResolvedValue(tenReqs);
+    mockGetShortlistsForCandidate.mockResolvedValue([]);
+    mockGenerateScreeningQuestions.mockResolvedValue(['Q1', 'Q2', 'Q3']);
+
+    await handler(makeEvent({ candidateId: 'cand_1' }));
+
+    const [, suitableRequirements] = mockGenerateScreeningQuestions.mock.calls[0] as [string, unknown[]];
+    expect((suitableRequirements as unknown[]).length).toBeLessThanOrEqual(5);
+  });
+
+  it('should fall back to profile-only generation when requirements fetch fails', async () => {
+    mockGetCandidateById.mockResolvedValue({ ...mockCandidate, last_screened_at: undefined });
+    mockGetAllActiveRequirements.mockRejectedValue(new Error('DynamoDB error'));
+    mockGenerateScreeningQuestions.mockResolvedValue(['Q1', 'Q2', 'Q3']);
+
+    const result = await handler(makeEvent({ candidateId: 'cand_1' }));
+    const body = JSON.parse(result.body);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.data.generated).toBe(true);
+    // LLM was still called (profile-only, no crash)
+    expect(mockGenerateScreeningQuestions).toHaveBeenCalledOnce();
+    const [, suitableRequirements] = mockGenerateScreeningQuestions.mock.calls[0] as [string, unknown];
+    expect(suitableRequirements).toBeUndefined();
+  });
+
+  it('should not fetch requirements for re-screened candidates', async () => {
+    mockGetCandidateById.mockResolvedValue({ ...mockCandidate, last_screened_at: '2026-05-01T10:00:00Z' });
+
+    await handler(makeEvent({ candidateId: 'cand_1' }));
+
+    expect(mockGetAllActiveRequirements).not.toHaveBeenCalled();
+    expect(mockGenerateScreeningQuestions).not.toHaveBeenCalled();
+  });
+
+  it('should include a requirement with empty mustHaveMissing when candidate satisfies all must-haves', async () => {
+    mockGetCandidateById.mockResolvedValue({ ...mockCandidate, last_screened_at: undefined });
+    mockGetAllActiveRequirements.mockResolvedValue([
+      {
+        requirement_id: 'req_full_match',
+        job_title: 'Node Developer',
+        parsed_criteria: { mustHaveSkills: ['nodejs'], goodToHaveSkills: [] },
+      },
+    ]);
+    mockGetShortlistsForCandidate.mockResolvedValue([]);
+    mockGenerateScreeningQuestions.mockResolvedValue(['Q1', 'Q2', 'Q3']);
+
+    await handler(makeEvent({ candidateId: 'cand_1' }));
+
+    const [, suitableRequirements] = mockGenerateScreeningQuestions.mock.calls[0] as [string, unknown[]];
+    expect(suitableRequirements).toHaveLength(1);
+    const req = suitableRequirements[0] as { mustHaveMissing: string[] };
+    expect(req.mustHaveMissing).toHaveLength(0);
   });
 });
