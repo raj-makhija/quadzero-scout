@@ -88,6 +88,9 @@ provider:
     LINKEDIN_API_VERSION: ${ssm:/quadzero-scout/${self:provider.stage}/LINKEDIN_API_VERSION, env:LINKEDIN_API_VERSION, '202606'}
     IMAGE_GEN_MODEL: ${ssm:/quadzero-scout/${self:provider.stage}/IMAGE_GEN_MODEL, env:IMAGE_GEN_MODEL, 'gemini-3-pro-image'}
     IMAGE_GEN_SIZE: ${ssm:/quadzero-scout/${self:provider.stage}/IMAGE_GEN_SIZE, env:IMAGE_GEN_SIZE, '1024x1024'}
+    DYNAMODB_TABLE_JOB_SOURCES: ${self:custom.jobSourcesTable}
+    DYNAMODB_TABLE_JOB_SOURCE_SEEN_LOG: ${self:custom.jobSourceSeenLogTable}
+    PORTAL_SCAN_ENABLED: ${ssm:/quadzero-scout/${self:provider.stage}/PORTAL_SCAN_ENABLED, env:PORTAL_SCAN_ENABLED, 'false'}
 
   httpApi:
     cors:
@@ -155,6 +158,8 @@ custom:
     default: Delete
   linkedInTokensTable: LinkedInTokens-${self:provider.stage}
   linkedInPostJobsTable: LinkedInPostJobs-${self:provider.stage}
+  jobSourcesTable: JobSources-${self:provider.stage}
+  jobSourceSeenLogTable: JobSourceSeenLog-${self:provider.stage}
 
   dotenv:
     include:
@@ -652,6 +657,19 @@ functions:
     events:
       - schedule:
           rate: rate(3 minutes)
+          enabled: true
+
+  # Portal Scan Worker (ticket #498) — daily EventBridge schedule.
+  # Reads enabled JobSources, dispatches each to its adapter, dedups against
+  # JobSourceSeenLog, and logs new vs already-seen counts.
+  # Gated by PORTAL_SCAN_ENABLED SSM kill-switch (default: false).
+  portalScanWorker:
+    handler: src/handlers/worker/portalScanWorker.handler
+    timeout: 300
+    memorySize: 512
+    events:
+      - schedule:
+          rate: rate(1 day)
           enabled: true
 
   # Recruiter Task Queue (ticket #153)

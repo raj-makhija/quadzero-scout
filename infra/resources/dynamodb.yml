@@ -656,6 +656,55 @@ Resources:
         - Key: Project
           Value: quadzero-scout
 
+  # JobSources Table (ticket #498 — portal scan source registry)
+  # PK: source_id. Stores type, identifier, url, cadence, enabled, last_scanned_at.
+  JobSourcesTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    UpdateReplacePolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    Properties:
+      TableName: ${self:custom.jobSourcesTable}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: source_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: source_id
+          KeyType: HASH
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Project
+          Value: quadzero-scout
+
+  # JobSourceSeenLog Table (ticket #498 — dedup idempotency log for portal scan)
+  # PK: source_id, SK: external_job_id. TTL auto-prunes stale entries.
+  JobSourceSeenLogTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    UpdateReplacePolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    Properties:
+      TableName: ${self:custom.jobSourceSeenLogTable}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: source_id
+          AttributeType: S
+        - AttributeName: external_job_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: source_id
+          KeyType: HASH
+        - AttributeName: external_job_id
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Project
+          Value: quadzero-scout
+
 Outputs:
   TalentProfilesTableArn:
     Description: TalentProfiles table ARN
@@ -776,3 +825,15 @@ Outputs:
     Value: !GetAtt LinkedInTokensTable.Arn
     Export:
       Name: ${self:provider.stage}-LinkedInTokensTableArn
+
+  JobSourcesTableArn:
+    Description: JobSources table ARN
+    Value: !GetAtt JobSourcesTable.Arn
+    Export:
+      Name: ${self:provider.stage}-JobSourcesTableArn
+
+  JobSourceSeenLogTableArn:
+    Description: JobSourceSeenLog table ARN
+    Value: !GetAtt JobSourceSeenLogTable.Arn
+    Export:
+      Name: ${self:provider.stage}-JobSourceSeenLogTableArn
