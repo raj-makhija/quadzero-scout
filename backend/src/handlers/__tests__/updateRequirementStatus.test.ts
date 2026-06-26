@@ -278,4 +278,44 @@ describe('updateRequirementStatus handler', () => {
     expect(result.statusCode).toBe(200);
     expect(mockSafeResolveCloseRequirementTask).not.toHaveBeenCalled();
   });
+
+  // ticket #499 — discovered status transitions
+  it('TC-STATUS-499-a: transitioning to discovered drops the cache and does NOT dispatch the worker', async () => {
+    const result = parseResponse(await handler(makeEvent({ status: 'discovered' })));
+    expect(result.statusCode).toBe(200);
+    expect(result.body.data.status).toBe('discovered');
+    expect(mockDeleteMatchCache).toHaveBeenCalledWith('req-1');
+    expect(mockInvokeLambdaAsync).not.toHaveBeenCalled();
+  });
+
+  it('TC-STATUS-499-b: promoting discovered → active dispatches the worker and does NOT drop the cache', async () => {
+    mockGetRequirementById.mockResolvedValue({ ...activeRequirement, status: 'discovered' });
+    const result = parseResponse(await handler(makeEvent({ status: 'active' })));
+    expect(result.statusCode).toBe(200);
+    expect(mockInvokeLambdaAsync).toHaveBeenCalledOnce();
+    expect(mockInvokeLambdaAsync).toHaveBeenCalledWith(
+      'test-matchCacheRequirementWorker',
+      { requirementId: 'req-1' }
+    );
+    expect(mockDeleteMatchCache).not.toHaveBeenCalled();
+  });
+
+  it('TC-STATUS-499-c: discovered → discovered is a no-op (no DB write, no cache calls)', async () => {
+    mockGetRequirementById.mockResolvedValue({ ...activeRequirement, status: 'discovered' });
+    const result = parseResponse(await handler(makeEvent({ status: 'discovered' })));
+    expect(result.statusCode).toBe(200);
+    expect(result.body.data.status).toBe('discovered');
+    expect(mockUpdateRequirementStatus).not.toHaveBeenCalled();
+    expect(mockDeleteMatchCache).not.toHaveBeenCalled();
+    expect(mockInvokeLambdaAsync).not.toHaveBeenCalled();
+  });
+
+  it('TC-STATUS-499-d: discovered → closed_on_hold drops the cache and resolves tasks', async () => {
+    mockGetRequirementById.mockResolvedValue({ ...activeRequirement, status: 'discovered' });
+    const result = parseResponse(await handler(makeEvent({ status: 'closed_on_hold' }, 'req-1', 'rec-1')));
+    expect(result.statusCode).toBe(200);
+    expect(mockDeleteMatchCache).toHaveBeenCalledWith('req-1');
+    expect(mockInvokeLambdaAsync).not.toHaveBeenCalled();
+    expect(mockSafeResolveFoundTasksForRequirement).toHaveBeenCalledOnce();
+  });
 });

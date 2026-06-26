@@ -1332,6 +1332,13 @@ export async function getAllRequirementsPaginated(
       filterParts.push('#status = :statusVal');
       exprNames['#status'] = 'status';
       exprValues[':statusVal'] = statusFilter;
+    } else {
+      // Discovered requirements (portal-scan, #499) are inert and only surfaced via
+      // the dedicated discovered queue (#502) — exclude them from the default
+      // recruiter-facing list unless explicitly requested via statusFilter.
+      filterParts.push('#status <> :discovered');
+      exprNames['#status'] = 'status';
+      exprValues[':discovered'] = 'discovered';
     }
 
     if (dateFrom) {

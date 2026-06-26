@@ -42,8 +42,13 @@ export type EngagementModel = z.infer<typeof EngagementModelEnum>;
 export const PayrollEnum = z.enum(['quadzero', 'client']);
 export type Payroll = z.infer<typeof PayrollEnum>;
 
-export const RequirementStatusEnum = z.enum(['active', 'duplicate']);
+export const RequirementStatusEnum = z.enum(['active', 'duplicate', 'closed_on_hold', 'discovered']);
 export type RequirementStatus = z.infer<typeof RequirementStatusEnum>;
+
+// Provenance for requirements: 'recruiter' = created by a Scout recruiter,
+// 'portal-scan' = auto-discovered from an external job portal (ticket #499).
+export const RequirementOriginEnum = z.enum(['recruiter', 'portal-scan']);
+export type RequirementOrigin = z.infer<typeof RequirementOriginEnum>;
 
 export const AdditionalFieldTypeEnum = z.enum(['text', 'date', 'number']);
 export type AdditionalFieldType = z.infer<typeof AdditionalFieldTypeEnum>;
@@ -565,6 +570,12 @@ export interface RequirementItem {
   jd_text: string;
   parsed_criteria: LLMJDOutput;
   status: string;
+  // Provenance (ticket #499). Defaults to 'recruiter'. For portal-scan discovered
+  // requirements these capture where the posting came from until promotion (#502).
+  origin?: string;
+  source_id?: string;
+  source_url?: string;
+  source_company?: string;
   duplicate_of?: string;
   created_at: string;
   last_updated: string;
@@ -612,6 +623,10 @@ export interface SaveRequirementRequest {
   jdText: string;
   parsedCriteria: LLMJDOutput;
   status?: string;
+  origin?: string;
+  sourceId?: string;
+  sourceUrl?: string;
+  sourceCompany?: string;
   duplicateOf?: string;
   additionalFields?: AdditionalFieldDefinition[];
   contactPersonName?: string;

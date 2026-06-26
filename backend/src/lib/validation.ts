@@ -144,13 +144,23 @@ export const SaveRequirementRequestSchema = z.object({
   }).optional(),
   jobTitle: z.string().max(200).optional(),
   jdText: z.string().min(50).max(10000),
-  parsedCriteria: LLMJDOutputSchema,
-  status: z.enum(['active', 'duplicate']).optional().default('active'),
+  // Optional so portal-scan can create a `discovered` requirement before the LLM
+  // parse runs (parse is deferred to promotion, #502). Required for all other
+  // statuses — enforced by the refine below (ticket #499).
+  parsedCriteria: LLMJDOutputSchema.optional(),
+  status: z.enum(['active', 'duplicate', 'closed_on_hold', 'discovered']).optional().default('active'),
+  origin: z.enum(['recruiter', 'portal-scan']).optional(),
+  sourceId: z.string().max(500).optional(),
+  sourceUrl: z.string().url().max(2000).optional(),
+  sourceCompany: z.string().max(200).optional(),
   duplicateOf: z.string().uuid().optional(),
   additionalFields: z.array(AdditionalFieldDefinitionSchema).max(20).optional().default([]),
   contactPersonName: z.string().max(200).optional(),
   isRateGstInclusive: z.boolean().optional().default(false),
-});
+}).refine(
+  (data) => data.status === 'discovered' || data.parsedCriteria != null,
+  { message: 'parsedCriteria is required unless status is "discovered"', path: ['parsedCriteria'] }
+);
 
 // Check Duplicate Request Validation
 export const CheckDuplicateRequestSchema = z.object({
@@ -176,7 +186,7 @@ export const ConsolidateRequirementRequestSchema = z.object({
 
 // Update Requirement Status Request Validation
 export const UpdateRequirementStatusRequestSchema = z.object({
-  status: z.enum(['active', 'closed_on_hold']),
+  status: z.enum(['active', 'closed_on_hold', 'discovered']),
   reason: z.string().max(500).optional(),
 });
 

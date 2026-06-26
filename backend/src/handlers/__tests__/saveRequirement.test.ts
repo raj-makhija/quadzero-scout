@@ -234,4 +234,62 @@ describe('saveRequirement handler', () => {
 
     expect(order).toEqual(['save', 'invoke']);
   });
+
+  // ticket #499 — discovered requirements are inert: no match worker, no notify subscription
+  it('TC-SAVEREQ-499-a: does NOT dispatch the match worker for a discovered requirement', async () => {
+    const event = makeEvent({ ...validBody, status: 'discovered' });
+    const result = await handler(event as never);
+    const body = parseBody(result as { body?: string });
+
+    expect(body.success).toBe(true);
+    expect(mockSaveRequirement).toHaveBeenCalledOnce();
+    expect(mockInvokeLambdaAsync).not.toHaveBeenCalled();
+    const savedItem = mockSaveRequirement.mock.calls[0][0];
+    expect(savedItem.status).toBe('discovered');
+  });
+
+  it('TC-SAVEREQ-499-b: sets notify_recruiter_ids to [] for a discovered requirement', async () => {
+    const event = makeEvent({ ...validBody, status: 'discovered' }, 'rec_creator');
+    await handler(event as never);
+
+    const savedItem = mockSaveRequirement.mock.calls[0][0];
+    expect(savedItem.notify_recruiter_ids).toEqual([]);
+  });
+
+  it('TC-SAVEREQ-499-c: maps origin/source_* provenance fields onto the saved item', async () => {
+    const event = makeEvent({
+      ...validBody,
+      status: 'discovered',
+      origin: 'portal-scan',
+      sourceId: 'src-42',
+      sourceUrl: 'https://jobs.example.com/posting/42',
+      sourceCompany: 'External Co',
+    });
+    await handler(event as never);
+
+    const savedItem = mockSaveRequirement.mock.calls[0][0];
+    expect(savedItem.origin).toBe('portal-scan');
+    expect(savedItem.source_id).toBe('src-42');
+    expect(savedItem.source_url).toBe('https://jobs.example.com/posting/42');
+    expect(savedItem.source_company).toBe('External Co');
+  });
+
+  it('TC-SAVEREQ-499-d: defaults origin to "recruiter" when not supplied', async () => {
+    await handler(makeEvent(validBody) as never);
+    const savedItem = mockSaveRequirement.mock.calls[0][0];
+    expect(savedItem.origin).toBe('recruiter');
+  });
+
+  it('TC-SAVEREQ-499-e: accepts a discovered requirement with no parsedCriteria and stores an empty stub', async () => {
+    const { parsedCriteria: _omit, ...withoutCriteria } = validBody;
+    const event = makeEvent({ ...withoutCriteria, status: 'discovered', origin: 'portal-scan' });
+    const result = await handler(event as never);
+    const body = parseBody(result as { body?: string });
+
+    expect(body.success).toBe(true);
+    const savedItem = mockSaveRequirement.mock.calls[0][0];
+    expect(savedItem.parsed_criteria).toBeDefined();
+    expect(savedItem.parsed_criteria.mustHaveSkills).toEqual([]);
+    expect(mockInvokeLambdaAsync).not.toHaveBeenCalled();
+  });
 });
