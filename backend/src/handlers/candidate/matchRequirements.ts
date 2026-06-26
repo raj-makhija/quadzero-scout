@@ -53,7 +53,9 @@ export async function handler(
       getShortlistsForCandidate(candidateId),
     ]);
 
-    const shortlistedRequirementIds = new Set(shortlists.map((s) => s.requirement_id));
+    const shortlistedRequirementIds = new Set(
+      shortlists.filter((s) => s.status !== 'not_suitable').map((s) => s.requirement_id)
+    );
 
     // Score candidate against each requirement
     const matches: MatchedRequirement[] = [];

@@ -750,7 +750,7 @@ export default function CandidateProfilePage() {
 
 // ─── Shortlisted Requirement Row ───────────────────────────────────────────────
 
-function ShortlistedRequirementRow({
+export function ShortlistedRequirementRow({
   req,
   removeConfirmId,
   removing,
@@ -778,9 +778,18 @@ function ShortlistedRequirementRow({
             {req.jobTitle && (
               <span className="text-sm text-gray-500 dark:text-gray-400">{req.clientName}</span>
             )}
-            <span className="badge bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs">
-              <CheckCircle className="w-3 h-3 inline mr-0.5" />
-              Shortlisted
+            <span
+              data-testid="shortlist-status-badge"
+              className={`badge text-xs ${
+                req.status === 'submitted'
+                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                  : req.status === 'rejected'
+                  ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                  : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+              }`}
+            >
+              {req.status === 'shortlisted' && <CheckCircle className="w-3 h-3 inline mr-0.5" />}
+              {req.status === 'shortlisted' ? 'Shortlisted' : req.status === 'submitted' ? 'Submitted' : 'Rejected'}
             </span>
           </div>
           <div className="flex flex-wrap gap-x-3 text-xs text-gray-500 dark:text-gray-400 mb-2">
