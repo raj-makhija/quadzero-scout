@@ -11,7 +11,7 @@ vi.mock('../../lib/dynamodb.js', () => ({
 }));
 
 import { handler } from '../candidate/matchRequirements.js';
-import { getCandidateById, getAllActiveRequirements } from '../../lib/dynamodb.js';
+import { getCandidateById, getAllActiveRequirements, getShortlistsForCandidate } from '../../lib/dynamodb.js';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -232,5 +232,47 @@ describe('matchRequirements handler — discipline gate', () => {
     const body = JSON.parse((response as { body: string }).body);
 
     expect(body.data.matches).toHaveLength(1);
+  });
+});
+
+describe('matchRequirements handler — not_suitable shortlist handling', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('does not set isShortlisted for a not_suitable entry — requirement appears in matches', async () => {
+    (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeCandidate(['react'])
+    );
+    (getAllActiveRequirements as ReturnType<typeof vi.fn>).mockResolvedValue([
+      makeRequirement('react', 'req_1'),
+    ]);
+    (getShortlistsForCandidate as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { requirement_id: 'req_1', candidate_id: 'cand_test', status: 'not_suitable', tagged_by: 'user_r', tagged_at: '2024-01-14T00:00:00Z' },
+    ]);
+
+    const response = await handler(makeEvent('cand_test'));
+    const body = JSON.parse((response as { body: string }).body);
+
+    expect(body.data.matches).toHaveLength(1);
+    expect(body.data.matches[0].isShortlisted).toBe(false);
+  });
+
+  it('sets isShortlisted for a genuine shortlisted entry', async () => {
+    (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeCandidate(['react'])
+    );
+    (getAllActiveRequirements as ReturnType<typeof vi.fn>).mockResolvedValue([
+      makeRequirement('react', 'req_1'),
+    ]);
+    (getShortlistsForCandidate as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { requirement_id: 'req_1', candidate_id: 'cand_test', status: 'shortlisted', tagged_by: 'user_r', tagged_at: '2024-01-15T00:00:00Z' },
+    ]);
+
+    const response = await handler(makeEvent('cand_test'));
+    const body = JSON.parse((response as { body: string }).body);
+
+    expect(body.data.matches).toHaveLength(1);
+    expect(body.data.matches[0].isShortlisted).toBe(true);
   });
 });

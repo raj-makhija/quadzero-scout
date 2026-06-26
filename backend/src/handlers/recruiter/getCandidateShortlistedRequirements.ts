@@ -31,7 +31,8 @@ async function handleRequest(
       return error(ErrorCodes.VALIDATION_ERROR, 'candidateId is required', 400);
     }
 
-    const shortlists = await getShortlistsForCandidate(candidateId);
+    const allShortlists = await getShortlistsForCandidate(candidateId);
+    const shortlists = allShortlists.filter((s) => s.status !== 'not_suitable');
     if (shortlists.length === 0) {
       return success({ shortlistedRequirements: [] } as CandidateShortlistedRequirementsResponse);
     }
