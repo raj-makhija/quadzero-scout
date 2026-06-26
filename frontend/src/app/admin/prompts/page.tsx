@@ -12,6 +12,7 @@ const PROMPT_LABELS: Record<string, string> = {
   screening_questions: 'Screening Questions',
   linkedin_post_generator: 'LinkedIn Post — Text',
   linkedin_image_generator: 'LinkedIn Post — Image',
+  candidate_reranker: 'Candidate Re-ranker',
 };
 
 export default function PromptsPage() {
