@@ -52,6 +52,9 @@ dynamoDbPolicy:
     # Async LinkedIn post generation jobs (#442). The kickoff/worker/status/publish
     # handlers read & write job rows here; without this grant they 500 at runtime.
     - !GetAtt LinkedInPostJobsTable.Arn
+    # Portal scan source registry and dedup seen-log (ticket #498).
+    - !GetAtt JobSourcesTable.Arn
+    - !GetAtt JobSourceSeenLogTable.Arn
 
 # S3 Policy
 s3Policy:

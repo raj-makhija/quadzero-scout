@@ -26,6 +26,8 @@ interface Config {
     cloneJobsTable: string;
     linkedInTokensTable: string;
     linkedInPostJobsTable: string;
+    jobSourcesTable: string;
+    jobSourceSeenLogTable: string;
   };
   s3: {
     resumesBucket: string;
@@ -65,6 +67,9 @@ interface Config {
     clientSecret: string;
     redirectUri: string;
     apiVersion: string;
+  };
+  portalScan: {
+    enabled: boolean;
   };
   imageGen: {
     model: string;
@@ -118,6 +123,8 @@ export const config: Config = {
     cloneJobsTable: getEnvVar('DYNAMODB_TABLE_CLONE_JOBS', 'CloneJobs-dev'),
     linkedInTokensTable: getEnvVar('DYNAMODB_TABLE_LINKEDIN_TOKENS', 'LinkedInTokens-dev'),
     linkedInPostJobsTable: getEnvVar('DYNAMODB_TABLE_LINKEDIN_POST_JOBS', 'LinkedInPostJobs-dev'),
+    jobSourcesTable: getEnvVar('DYNAMODB_TABLE_JOB_SOURCES', 'JobSources-dev'),
+    jobSourceSeenLogTable: getEnvVar('DYNAMODB_TABLE_JOB_SOURCE_SEEN_LOG', 'JobSourceSeenLog-dev'),
   },
   s3: {
     resumesBucket: getEnvVar('S3_BUCKET_RESUMES', 'quadzero-scout-resumes-dev'),
@@ -157,6 +164,9 @@ export const config: Config = {
     clientSecret: getEnvVar('LINKEDIN_CLIENT_SECRET', ''),
     redirectUri: getEnvVar('LINKEDIN_REDIRECT_URI', ''),
     apiVersion: getEnvVar('LINKEDIN_API_VERSION', '202505'),
+  },
+  portalScan: {
+    enabled: getEnvVar('PORTAL_SCAN_ENABLED', 'false') === 'true',
   },
   imageGen: {
     model: getEnvVar('IMAGE_GEN_MODEL', 'gpt-image-1'),
