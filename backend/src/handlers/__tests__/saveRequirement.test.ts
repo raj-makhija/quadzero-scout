@@ -7,12 +7,19 @@ import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 
 const mockSaveRequirement = vi.fn();
 const mockInvokeLambdaAsync = vi.fn();
+const mockPatchRequirementVendorJd = vi.fn();
+const mockGenerateVendorJd = vi.fn();
 
 vi.mock('../../lib/dynamodb.js', () => ({
   getLlmRerank: vi.fn().mockResolvedValue(null),
   putLlmRerank: vi.fn().mockResolvedValue(undefined),
   deleteLlmRerank: vi.fn().mockResolvedValue(undefined),
   saveRequirement: (...args: unknown[]) => mockSaveRequirement(...args),
+  patchRequirementVendorJd: (...args: unknown[]) => mockPatchRequirementVendorJd(...args),
+}));
+
+vi.mock('../../lib/llm/index.js', () => ({
+  generateVendorJd: (...args: unknown[]) => mockGenerateVendorJd(...args),
 }));
 
 vi.mock('../../lib/lambdaInvoke.js', () => ({
@@ -114,6 +121,8 @@ describe('saveRequirement handler', () => {
     vi.clearAllMocks();
     mockSaveRequirement.mockResolvedValue(undefined);
     mockInvokeLambdaAsync.mockResolvedValue(undefined);
+    mockGenerateVendorJd.mockResolvedValue('Vendor-safe JD text');
+    mockPatchRequirementVendorJd.mockResolvedValue(undefined);
   });
 
   it('TC-SAVEREQ-001: sets notify_recruiter_ids to [recruiterId] by default on new requirement', async () => {
@@ -233,5 +242,33 @@ describe('saveRequirement handler', () => {
     await handler(makeEvent(validBody) as never);
 
     expect(order).toEqual(['save', 'invoke']);
+  });
+
+  // ticket #490 — vendor JD generation
+  it('TC-SAVEREQ-490-a: generates and patches vendor JD for active requirements', async () => {
+    const result = await handler(makeEvent(validBody, 'rec_creator') as never);
+    const body = parseBody(result as { body?: string });
+
+    expect(body.success).toBe(true);
+    expect(mockGenerateVendorJd).toHaveBeenCalledOnce();
+    expect(mockPatchRequirementVendorJd).toHaveBeenCalledWith(
+      body.data.requirementId,
+      'Vendor-safe JD text'
+    );
+  });
+
+  it('TC-SAVEREQ-490-b: returns success even when vendor JD generation throws', async () => {
+    mockGenerateVendorJd.mockRejectedValue(new Error('LLM error'));
+    const result = await handler(makeEvent(validBody) as never);
+    const body = parseBody(result as { body?: string });
+
+    expect(body.success).toBe(true);
+    expect(body.data.requirementId).toBeDefined();
+  });
+
+  it('TC-SAVEREQ-490-c: does not generate vendor JD for non-active requirements', async () => {
+    const bodyWithStatus = { ...validBody, status: 'closed_on_hold' };
+    await handler(makeEvent(bodyWithStatus) as never);
+    expect(mockGenerateVendorJd).not.toHaveBeenCalled();
   });
 });

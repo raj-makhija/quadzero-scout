@@ -257,6 +257,18 @@ export default function VendorRequirementDetailPage() {
           </div>
         </div>
 
+        {/* Job Description */}
+        {requirement.vendor_jd && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-5">
+            <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
+              Job Description
+            </h2>
+            <div className="prose prose-sm dark:prose-invert max-w-none text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+              {requirement.vendor_jd}
+            </div>
+          </div>
+        )}
+
         {/* Additional Fields */}
         {requirement.additionalFields && requirement.additionalFields.length > 0 && (
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-5">

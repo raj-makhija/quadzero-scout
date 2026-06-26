@@ -2184,6 +2184,7 @@ export interface PublicRequirementSummary {
   additionalFields?: AdditionalFieldDefinition[];
   createdAt: string;
   lastUpdated: string;
+  vendor_jd?: string;
 }
 
 export interface MatchDebugResponse {
