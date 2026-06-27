@@ -36,6 +36,12 @@ vi.mock('../../../lib/portalScan/jobSourceSeenLog.js', () => ({
   putSeenLogEntry: (...a: unknown[]) => mockPutSeenLogEntry(...a),
 }));
 
+// --- mock dynamodb ---
+const mockSaveRequirement = vi.fn();
+vi.mock('../../../lib/dynamodb.js', () => ({
+  saveRequirement: (...a: unknown[]) => mockSaveRequirement(...a),
+}));
+
 import { handler } from '../portalScanWorker.js';
 import { config } from '../../../lib/config.js';
 
@@ -362,5 +368,145 @@ describe('portalScanWorker — lever source type', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
 
     await expect(handler()).resolves.toBeUndefined();
+  });
+});
+
+describe('portalScanWorker — discovered requirement creation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (config.portalScan as { enabled: boolean }).enabled = true;
+    mockGetEnabledSources.mockResolvedValue([stubSource]);
+    mockFetchJobs.mockResolvedValue(cannedJobs);
+    mockGetSeenLogEntry.mockResolvedValue(null);
+    mockPutSeenLogEntry.mockResolvedValue(undefined);
+    mockSaveRequirement.mockResolvedValue(undefined);
+  });
+
+  it('creates a discovered requirement for each new job', async () => {
+    await handler();
+
+    expect(mockSaveRequirement).toHaveBeenCalledTimes(2);
+    expect(mockSaveRequirement).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'discovered',
+        origin: 'portal-scan',
+        jd_text: 'desc1',
+        job_title: 'Engineer',
+        source_id: 'src-1',
+        source_url: 'https://example.com/1',
+        source_company: 'Acme',
+      })
+    );
+    expect(mockSaveRequirement).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'discovered',
+        origin: 'portal-scan',
+        jd_text: 'desc2',
+        job_title: 'Designer',
+        source_id: 'src-1',
+        source_url: 'https://example.com/2',
+        source_company: 'Acme',
+      })
+    );
+  });
+
+  it('persists empty parsed_criteria stub (no LLM call)', async () => {
+    mockFetchJobs.mockResolvedValue([cannedJobs[0]]);
+
+    await handler();
+
+    const savedItem = mockSaveRequirement.mock.calls[0][0] as Record<string, unknown>;
+    expect(savedItem.parsed_criteria).toMatchObject({
+      mustHaveSkills: [],
+      goodToHaveSkills: [],
+      minExperience: null,
+      maxExperience: null,
+      seniority: [],
+      location: null,
+    });
+  });
+
+  it('sets notify_recruiter_ids to [] (no recruiter notifications for discovered)', async () => {
+    mockFetchJobs.mockResolvedValue([cannedJobs[0]]);
+
+    await handler();
+
+    const savedItem = mockSaveRequirement.mock.calls[0][0] as Record<string, unknown>;
+    expect(savedItem.notify_recruiter_ids).toEqual([]);
+  });
+
+  it('creates zero requirements on second run (dedup holds end-to-end)', async () => {
+    mockGetSeenLogEntry.mockResolvedValue({
+      source_id: 'src-1', external_job_id: 'job-1', first_seen_at: 'x', ttl: 1,
+    });
+
+    await handler();
+
+    expect(mockSaveRequirement).not.toHaveBeenCalled();
+  });
+
+  it('saveRequirement called only after putSeenLogEntry succeeds', async () => {
+    const callOrder: string[] = [];
+    mockPutSeenLogEntry.mockImplementation(() => {
+      callOrder.push('put');
+      return Promise.resolve();
+    });
+    mockSaveRequirement.mockImplementation(() => {
+      callOrder.push('save');
+      return Promise.resolve();
+    });
+    mockFetchJobs.mockResolvedValue([cannedJobs[0]]);
+
+    await handler();
+
+    expect(callOrder).toEqual(['put', 'save']);
+  });
+
+  it('skips saveRequirement when putSeenLogEntry throws ConditionalCheckFailedException', async () => {
+    const err = Object.assign(new Error('conditional'), { name: 'ConditionalCheckFailedException' });
+    mockPutSeenLogEntry.mockRejectedValue(err);
+
+    await handler();
+
+    expect(mockSaveRequirement).not.toHaveBeenCalled();
+  });
+
+  it('per-job saveRequirement failure is isolated and scan continues', async () => {
+    mockSaveRequirement
+      .mockRejectedValueOnce(new Error('DynamoDB write error'))
+      .mockResolvedValueOnce(undefined);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await handler();
+
+    // Both jobs attempted, first failed but second succeeded
+    expect(mockSaveRequirement).toHaveBeenCalledTimes(2);
+    errSpy.mockRestore();
+  });
+
+  it('per-job saveRequirement failure does not rethrow (handler resolves)', async () => {
+    mockSaveRequirement.mockRejectedValue(new Error('write error'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(handler()).resolves.toBeUndefined();
+  });
+
+  it('empty rawDescription produces jd_text="" not undefined', async () => {
+    const jobWithEmptyDesc = { ...cannedJobs[0], rawDescription: '' };
+    mockFetchJobs.mockResolvedValue([jobWithEmptyDesc]);
+
+    await handler();
+
+    const savedItem = mockSaveRequirement.mock.calls[0][0] as Record<string, unknown>;
+    expect(savedItem.jd_text).toBe('');
+  });
+
+  it('kill-switch prevents saveRequirement call', async () => {
+    (config.portalScan as { enabled: boolean }).enabled = false;
+
+    await handler();
+
+    expect(mockSaveRequirement).not.toHaveBeenCalled();
+    (config.portalScan as { enabled: boolean }).enabled = true;
   });
 });
