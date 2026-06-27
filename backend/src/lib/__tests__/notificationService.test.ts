@@ -155,6 +155,26 @@ describe('notifyMatchingRecruiters', () => {
     expect(mockUpdateCacheForCandidates).toHaveBeenCalledOnce();
   });
 
+  // ticket #499 — discovered requirements are excluded by getAllActiveRequirements
+  // (DB-level scan filter), so the notification path never sees them: no match
+  // notifications fire against a table that holds only discovered requirements.
+  it('TC-NOTIFY-499-a: sends no email and caches no discovered requirements', async () => {
+    mockGetCandidateById.mockResolvedValue(candidateA);
+    // getAllActiveRequirements filters on status = active, so a discovered-only
+    // table surfaces as an empty active set.
+    mockGetAllActiveRequirements.mockResolvedValue([]);
+
+    await notifyMatchingRecruiters(['cand_1']);
+
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(mockCalculateMatchScore).not.toHaveBeenCalled();
+    const cacheCall = mockUpdateCacheForCandidates.mock.calls[0];
+    if (cacheCall) {
+      const [, reqsArg] = cacheCall;
+      expect(reqsArg).toEqual([]);
+    }
+  });
+
   it('TC-NOTIFY-003: no email when candidate does not meet MIN_MUST_HAVE_MATCH_RATIO', async () => {
     mockGetCandidateById.mockResolvedValue(candidateA);
     mockGetAllActiveRequirements.mockResolvedValue([requirementActive]);

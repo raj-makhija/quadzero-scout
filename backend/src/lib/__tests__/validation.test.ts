@@ -7,6 +7,7 @@ import {
   SearchRequestSchema,
   SaveSearchRequestSchema,
   SaveRequirementRequestSchema,
+  UpdateRequirementStatusRequestSchema,
   UpdateCandidateCustomFieldsRequestSchema,
   ScreenCandidateRequestSchema,
   validate,
@@ -824,6 +825,72 @@ describe('SaveRequirementRequestSchema — additionalFields', () => {
         { key: 'dob', label: '', type: 'date', required: true },
       ],
     });
+    expect(result.success).toBe(false);
+  });
+
+  // ticket #499 — discovered status, provenance fields, optional parsedCriteria
+  it('TC-SAVEREQ-499-validation-a: accepts status "discovered"', () => {
+    const result = validate(SaveRequirementRequestSchema, {
+      ...validRequirement,
+      status: 'discovered',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('TC-SAVEREQ-499-validation-b: rejects an unknown status value', () => {
+    const result = validate(SaveRequirementRequestSchema, {
+      ...validRequirement,
+      status: 'not_a_status',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('TC-SAVEREQ-499-validation-c: accepts a discovered requirement with no parsedCriteria', () => {
+    const { parsedCriteria: _omit, ...withoutCriteria } = validRequirement;
+    const result = validate(SaveRequirementRequestSchema, {
+      ...withoutCriteria,
+      status: 'discovered',
+      origin: 'portal-scan',
+      sourceId: 'src-1',
+      sourceUrl: 'https://jobs.example.com/posting/42',
+      sourceCompany: 'External Co',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.origin).toBe('portal-scan');
+      expect(result.data.sourceId).toBe('src-1');
+      expect(result.data.sourceUrl).toBe('https://jobs.example.com/posting/42');
+      expect(result.data.sourceCompany).toBe('External Co');
+    }
+  });
+
+  it('TC-SAVEREQ-499-validation-d: rejects a non-discovered requirement with no parsedCriteria', () => {
+    const { parsedCriteria: _omit, ...withoutCriteria } = validRequirement;
+    const result = validate(SaveRequirementRequestSchema, {
+      ...withoutCriteria,
+      status: 'active',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// UpdateRequirementStatusRequestSchema — ticket #499
+// ---------------------------------------------------------------------------
+
+describe('UpdateRequirementStatusRequestSchema', () => {
+  it('TC-STATUS-499-validation-a: accepts status "discovered"', () => {
+    const result = validate(UpdateRequirementStatusRequestSchema, { status: 'discovered' });
+    expect(result.success).toBe(true);
+  });
+
+  it('TC-STATUS-499-validation-b: accepts status "active"', () => {
+    const result = validate(UpdateRequirementStatusRequestSchema, { status: 'active' });
+    expect(result.success).toBe(true);
+  });
+
+  it('TC-STATUS-499-validation-c: rejects an unknown status value', () => {
+    const result = validate(UpdateRequirementStatusRequestSchema, { status: 'not_a_status' });
     expect(result.success).toBe(false);
   });
 });
