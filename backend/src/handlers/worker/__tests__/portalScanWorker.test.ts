@@ -22,7 +22,8 @@ vi.mock('../../../lib/portalScan/jobSources.js', () => ({
 const mockFetchJobs = vi.fn();
 vi.mock('../../../lib/portalScan/adapters/index.js', () => ({
   getAdapter: (type: string) => {
-    if (type === 'stub') return { type: 'stub', fetchJobs: (...a: unknown[]) => mockFetchJobs(...a) };
+    if (type === 'stub' || type === 'greenhouse' || type === 'lever')
+      return { type, fetchJobs: (...a: unknown[]) => mockFetchJobs(...a) };
     return undefined;
   },
 }));
@@ -255,5 +256,111 @@ describe('portalScanWorker — stub adapter', () => {
       expect(job).toHaveProperty('url');
       expect(job).toHaveProperty('rawDescription');
     }
+  });
+});
+
+const greenhouseSource = {
+  source_id: 'src-gh-1',
+  type: 'greenhouse',
+  identifier: 'acme-corp',
+  url: 'https://boards.greenhouse.io/acme-corp',
+  cadence: 'daily',
+  enabled: true,
+};
+
+const leverSource = {
+  source_id: 'src-lv-1',
+  type: 'lever',
+  identifier: 'acme',
+  url: 'https://jobs.lever.co/acme',
+  cadence: 'daily',
+  enabled: true,
+};
+
+describe('portalScanWorker — greenhouse source type', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (config.portalScan as { enabled: boolean }).enabled = true;
+    mockGetSeenLogEntry.mockResolvedValue(null);
+    mockPutSeenLogEntry.mockResolvedValue(undefined);
+  });
+
+  it('dispatches to adapter for a greenhouse source', async () => {
+    const ghJobs = [
+      { sourceId: 'src-gh-1', externalJobId: 'gh-1', title: 'Engineer', company: 'acme-corp', url: 'https://example.com/1', rawDescription: 'desc' },
+    ];
+    mockGetEnabledSources.mockResolvedValue([greenhouseSource]);
+    mockFetchJobs.mockResolvedValue(ghJobs);
+
+    await handler();
+
+    expect(mockFetchJobs).toHaveBeenCalledWith(greenhouseSource);
+    expect(mockPutSeenLogEntry).toHaveBeenCalledOnce();
+    expect(mockPutSeenLogEntry).toHaveBeenCalledWith('src-gh-1', 'gh-1', expect.any(Number));
+  });
+
+  it('yields zero new jobs on second run for a greenhouse source', async () => {
+    const ghJobs = [
+      { sourceId: 'src-gh-1', externalJobId: 'gh-1', title: 'Engineer', company: 'acme-corp', url: 'https://example.com/1', rawDescription: 'desc' },
+    ];
+    mockGetEnabledSources.mockResolvedValue([greenhouseSource]);
+    mockFetchJobs.mockResolvedValue(ghJobs);
+    mockGetSeenLogEntry.mockResolvedValue({ source_id: 'src-gh-1', external_job_id: 'gh-1', first_seen_at: 'x', ttl: 1 });
+
+    await handler();
+
+    expect(mockPutSeenLogEntry).not.toHaveBeenCalled();
+  });
+
+  it('isolates greenhouse adapter errors without propagating', async () => {
+    mockGetEnabledSources.mockResolvedValue([greenhouseSource]);
+    mockFetchJobs.mockRejectedValue(new Error('Greenhouse API error: 503 Service Unavailable'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(handler()).resolves.toBeUndefined();
+  });
+});
+
+describe('portalScanWorker — lever source type', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (config.portalScan as { enabled: boolean }).enabled = true;
+    mockGetSeenLogEntry.mockResolvedValue(null);
+    mockPutSeenLogEntry.mockResolvedValue(undefined);
+  });
+
+  it('dispatches to adapter for a lever source', async () => {
+    const lvJobs = [
+      { sourceId: 'src-lv-1', externalJobId: 'lv-1', title: 'Designer', company: 'acme', url: 'https://jobs.lever.co/acme/lv-1', rawDescription: 'desc' },
+    ];
+    mockGetEnabledSources.mockResolvedValue([leverSource]);
+    mockFetchJobs.mockResolvedValue(lvJobs);
+
+    await handler();
+
+    expect(mockFetchJobs).toHaveBeenCalledWith(leverSource);
+    expect(mockPutSeenLogEntry).toHaveBeenCalledOnce();
+    expect(mockPutSeenLogEntry).toHaveBeenCalledWith('src-lv-1', 'lv-1', expect.any(Number));
+  });
+
+  it('yields zero new jobs on second run for a lever source', async () => {
+    const lvJobs = [
+      { sourceId: 'src-lv-1', externalJobId: 'lv-1', title: 'Designer', company: 'acme', url: 'https://jobs.lever.co/acme/lv-1', rawDescription: 'desc' },
+    ];
+    mockGetEnabledSources.mockResolvedValue([leverSource]);
+    mockFetchJobs.mockResolvedValue(lvJobs);
+    mockGetSeenLogEntry.mockResolvedValue({ source_id: 'src-lv-1', external_job_id: 'lv-1', first_seen_at: 'x', ttl: 1 });
+
+    await handler();
+
+    expect(mockPutSeenLogEntry).not.toHaveBeenCalled();
+  });
+
+  it('isolates lever adapter errors without propagating', async () => {
+    mockGetEnabledSources.mockResolvedValue([leverSource]);
+    mockFetchJobs.mockRejectedValue(new Error('Lever API error: 429 Too Many Requests'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(handler()).resolves.toBeUndefined();
   });
 });
