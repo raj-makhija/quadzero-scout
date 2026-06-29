@@ -41,7 +41,7 @@ vi.mock('@/components/screening-modal', () => ({
 vi.mock('@/components/screening-history-panel', () => ({ default: () => null }));
 vi.mock('@/components/MatchExplainer', () => ({ CheckRequirementMatch: () => null }));
 
-import { ShortlistedRequirementRow } from '../[candidateId]/page';
+import { ShortlistedRequirementRow } from '../[candidateId]/ShortlistedRequirementRow';
 import type { ShortlistedRequirement } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
