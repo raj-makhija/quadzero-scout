@@ -555,3 +555,96 @@ describe('RecruiterSearchPage — Skip & Search (#464)', () => {
     expect(criteria.seniority).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Cold match-cache pending state (#510)
+// ---------------------------------------------------------------------------
+describe('RecruiterSearchPage — cold match-cache pending state', () => {
+  const REQ_PREFILL = {
+    viewMode: 'results',
+    searchCriteria: { mustHaveSkills: ['react'] },
+    requirementId: 'req-123',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    mockGetClientNames.mockResolvedValue({ clientNames: [], endClients: [] });
+    mockGetRequirement.mockResolvedValue({ requirementId: 'req-123', clientName: 'Test', engagementModel: 'full_time_regular' });
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation((key) =>
+      key === STORAGE_KEY ? JSON.stringify(REQ_PREFILL) : null
+    );
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
+  const pendingResponse = () => ({
+    candidates: [],
+    pagination: { count: 0, hasMore: false },
+    totalMatches: 0,
+    cacheBuilding: true,
+  });
+
+  it('shows building indicator (not an error, not candidate results) when response has cacheBuilding:true', async () => {
+    mockSearchCandidates.mockResolvedValue(pendingResponse());
+
+    render(<RecruiterSearchPage />);
+
+    await vi.waitFor(() => {
+      expect(screen.getByTestId('cache-building-indicator')).toBeInTheDocument();
+    });
+    // Must not show "0 candidates found" or an error banner
+    expect(screen.queryByText('0 candidates found')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('error')).not.toBeInTheDocument();
+  });
+
+  it('polls and transitions to results once the cache is warm', async () => {
+    mockSearchCandidates
+      .mockResolvedValueOnce(pendingResponse())
+      .mockResolvedValueOnce({
+        candidates: makeCandidates(3),
+        pagination: { count: 3, hasMore: false },
+        totalMatches: 3,
+      });
+
+    render(<RecruiterSearchPage />);
+
+    await vi.waitFor(() => {
+      expect(screen.getByTestId('cache-building-indicator')).toBeInTheDocument();
+    });
+    expect(mockSearchCandidates).toHaveBeenCalledTimes(1);
+
+    // Advance past the first poll interval
+    await vi.advanceTimersByTimeAsync(5100);
+
+    await vi.waitFor(() => {
+      expect(screen.getByText('3 candidates found')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('cache-building-indicator')).not.toBeInTheDocument();
+    expect(mockSearchCandidates).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops polling and shows give-up message when poll budget is exhausted', async () => {
+    mockSearchCandidates.mockResolvedValue(pendingResponse());
+
+    render(<RecruiterSearchPage />);
+
+    await vi.waitFor(() => {
+      expect(screen.getByTestId('cache-building-indicator')).toBeInTheDocument();
+    });
+
+    // Exhaust the full poll budget (12 × 5s = 60s, plus margin)
+    await vi.advanceTimersByTimeAsync(70000);
+
+    await vi.waitFor(() => {
+      expect(screen.queryByTestId('cache-building-indicator')).not.toBeInTheDocument();
+      expect(screen.getByTestId('cache-building-timeout')).toBeInTheDocument();
+    });
+    // Bounded: at most 1 initial + 12 polls = 13 calls
+    expect(mockSearchCandidates.mock.calls.length).toBeLessThanOrEqual(13);
+  });
+});

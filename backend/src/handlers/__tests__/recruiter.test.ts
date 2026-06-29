@@ -167,6 +167,7 @@ vi.mock('../../lib/config.js', () => ({
       formatResumeWorkerName: '',
       notifyWorkerName: '',
       llmRerankWorkerName: 'llm-rerank-worker',
+      matchCacheRequirementWorkerName: 'test-matchCacheRequirementWorker',
     },
     featureFlags: {
       llmRerankEnabled: false,
@@ -1086,49 +1087,18 @@ describe('POST /recruiter/search', () => {
   });
 
   it('excludes not-suitable candidates from results and totalMatches when includeNotSuitable is false', async () => {
-    vi.mocked(searchCandidates).mockResolvedValueOnce({
-      items: [
-        {
-          candidate_id: 'cand_a',
-          user_id: 'u_a',
-          full_name: 'Suitable Alice',
-          email: 'a@example.com',
-          primary_skills: ['react'],
-          primary_skill_years: { react: 4 },
-          secondary_skills: [],
-          total_experience: 5,
-          seniority: 'mid',
-          availability: 'immediate',
-          industries: [],
-          roles: [],
-          experience_bucket: '3-5',
-          resume_s3_key: 'r/a.pdf',
-          created_at: '2024-01-01T00:00:00Z',
-          last_updated: '2024-01-15T00:00:00Z',
-        },
-        {
-          candidate_id: 'cand_b',
-          user_id: 'u_b',
-          full_name: 'Not Suitable Bob',
-          email: 'b@example.com',
-          primary_skills: ['react'],
-          primary_skill_years: { react: 3 },
-          secondary_skills: [],
-          total_experience: 4,
-          seniority: 'mid',
-          availability: 'immediate',
-          industries: [],
-          roles: [],
-          experience_bucket: '3-5',
-          resume_s3_key: 'r/b.pdf',
-          created_at: '2024-01-01T00:00:00Z',
-          last_updated: '2024-01-14T00:00:00Z',
-        },
-      ],
-      lastKey: undefined,
-    });
-
     const reqId = '00000000-0000-0000-0000-000000000088';
+    // Use warm-cache path so not-suitable filtering works via requirementId
+    // (cold-cache path returns a pending response and skips the live scan).
+    vi.mocked(getMatchCache).mockResolvedValueOnce([
+      { candidate_id: 'cand_a', rank: 1, score: 85 },
+      { candidate_id: 'cand_b', rank: 2, score: 70 },
+    ]);
+    const candidateItems = [
+      { candidate_id: 'cand_a', user_id: 'u_a', full_name: 'Suitable Alice', email: 'a@example.com', primary_skills: ['react'], primary_skill_years: { react: 4 }, secondary_skills: [], total_experience: 5, seniority: 'mid', availability: 'immediate', industries: [], roles: [], experience_bucket: '3-5', resume_s3_key: 'r/a.pdf', created_at: '2024-01-01T00:00:00Z', last_updated: '2024-01-15T00:00:00Z' },
+      { candidate_id: 'cand_b', user_id: 'u_b', full_name: 'Not Suitable Bob', email: 'b@example.com', primary_skills: ['react'], primary_skill_years: { react: 3 }, secondary_skills: [], total_experience: 4, seniority: 'mid', availability: 'immediate', industries: [], roles: [], experience_bucket: '3-5', resume_s3_key: 'r/b.pdf', created_at: '2024-01-01T00:00:00Z', last_updated: '2024-01-14T00:00:00Z' },
+    ];
+    vi.mocked(getCandidatesByIds).mockResolvedValueOnce(candidateItems);
     vi.mocked(getShortlistsForRequirement).mockResolvedValueOnce([
       { requirement_id: reqId, candidate_id: 'cand_b', status: 'not_suitable', tagged_by: 'u1', tagged_at: '2024-01-16T00:00:00Z' },
     ]);
@@ -1148,49 +1118,17 @@ describe('POST /recruiter/search', () => {
   });
 
   it('includes not-suitable candidates when includeNotSuitable is true or omitted', async () => {
-    vi.mocked(searchCandidates).mockResolvedValueOnce({
-      items: [
-        {
-          candidate_id: 'cand_a',
-          user_id: 'u_a',
-          full_name: 'Suitable Alice',
-          email: 'a@example.com',
-          primary_skills: ['react'],
-          primary_skill_years: { react: 4 },
-          secondary_skills: [],
-          total_experience: 5,
-          seniority: 'mid',
-          availability: 'immediate',
-          industries: [],
-          roles: [],
-          experience_bucket: '3-5',
-          resume_s3_key: 'r/a.pdf',
-          created_at: '2024-01-01T00:00:00Z',
-          last_updated: '2024-01-15T00:00:00Z',
-        },
-        {
-          candidate_id: 'cand_b',
-          user_id: 'u_b',
-          full_name: 'Not Suitable Bob',
-          email: 'b@example.com',
-          primary_skills: ['react'],
-          primary_skill_years: { react: 3 },
-          secondary_skills: [],
-          total_experience: 4,
-          seniority: 'mid',
-          availability: 'immediate',
-          industries: [],
-          roles: [],
-          experience_bucket: '3-5',
-          resume_s3_key: 'r/b.pdf',
-          created_at: '2024-01-01T00:00:00Z',
-          last_updated: '2024-01-14T00:00:00Z',
-        },
-      ],
-      lastKey: undefined,
-    });
-
     const reqId = '00000000-0000-0000-0000-000000000088';
+    // Use warm-cache path so not-suitable overlay applies via requirementId.
+    vi.mocked(getMatchCache).mockResolvedValueOnce([
+      { candidate_id: 'cand_a', rank: 1, score: 85 },
+      { candidate_id: 'cand_b', rank: 2, score: 70 },
+    ]);
+    const candidateItems = [
+      { candidate_id: 'cand_a', user_id: 'u_a', full_name: 'Suitable Alice', email: 'a@example.com', primary_skills: ['react'], primary_skill_years: { react: 4 }, secondary_skills: [], total_experience: 5, seniority: 'mid', availability: 'immediate', industries: [], roles: [], experience_bucket: '3-5', resume_s3_key: 'r/a.pdf', created_at: '2024-01-01T00:00:00Z', last_updated: '2024-01-15T00:00:00Z' },
+      { candidate_id: 'cand_b', user_id: 'u_b', full_name: 'Not Suitable Bob', email: 'b@example.com', primary_skills: ['react'], primary_skill_years: { react: 3 }, secondary_skills: [], total_experience: 4, seniority: 'mid', availability: 'immediate', industries: [], roles: [], experience_bucket: '3-5', resume_s3_key: 'r/b.pdf', created_at: '2024-01-01T00:00:00Z', last_updated: '2024-01-14T00:00:00Z' },
+    ];
+    vi.mocked(getCandidatesByIds).mockResolvedValueOnce(candidateItems);
     vi.mocked(getShortlistsForRequirement).mockResolvedValueOnce([
       { requirement_id: reqId, candidate_id: 'cand_b', status: 'not_suitable', tagged_by: 'u1', tagged_at: '2024-01-16T00:00:00Z' },
     ]);
@@ -1277,17 +1215,12 @@ describe('POST /recruiter/search — placed-candidate exclusion', () => {
     expect(body.data.totalMatches).toBe(1);
   });
 
-  it('excludes placed candidates even when searching for a different requirement', async () => {
+  it('excludes placed candidates in an ad-hoc search (no requirementId)', async () => {
     vi.mocked(searchCandidates).mockResolvedValueOnce(makeCandidates());
     vi.mocked(getPlacedCandidateIds).mockResolvedValueOnce(new Set(['cand_placed']));
-    vi.mocked(getShortlistsForRequirement).mockResolvedValueOnce([]);
 
-    const reqId = '00000000-0000-0000-0000-000000000099';
     const event = makeEvent({
-      body: JSON.stringify({
-        criteria: { mustHaveSkills: ['react'] },
-        requirementId: reqId,
-      }),
+      body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] } }),
     });
     const body = parseBody(await searchHandler(event));
 
@@ -1561,48 +1494,69 @@ describe('POST /recruiter/search — match-cache read path', () => {
     expect(page2.data.pagination.lastEvaluatedKey).toBeUndefined();
   });
 
-  // Acceptance item 13 / edge: cold cache (getMatchCache null) falls back to a live scan.
-  it('falls back to a live scan when the cache is cold', async () => {
+  // Cold-cache requirement-bound path (#510): absent cache item (null) means the
+  // build hasn't started — return a pending response and (re)dispatch the worker
+  // instead of running an expensive live scan that times out at prod scale.
+  it('returns cacheBuilding pending response (not a live scan) when cache item is absent (null)', async () => {
     vi.mocked(getMatchCache).mockResolvedValue(null);
-    vi.mocked(searchCandidates).mockResolvedValue({ items: [makeCandidate('live1')], lastKey: undefined });
 
-    const body = parseBody(
-      await searchHandler(makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] }, requirementId: REQ_ID }) }))
-    );
+    const result = await searchHandler(makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] }, requirementId: REQ_ID }) }));
+    const body = parseBody(result);
 
-    expect(vi.mocked(searchCandidates)).toHaveBeenCalledTimes(1);
+    expect(result.statusCode).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.data.cacheBuilding).toBe(true);
+    expect(body.data.candidates).toEqual([]);
+    expect(body.data.totalMatches).toBe(0);
+    expect(vi.mocked(searchCandidates)).not.toHaveBeenCalled();
     expect(vi.mocked(getCandidatesByIds)).not.toHaveBeenCalled();
-    expect(body.data.candidates.map((c: { candidateId: string }) => c.candidateId)).toEqual(['live1']);
+    expect(vi.mocked(invokeLambdaAsync)).toHaveBeenCalledWith('test-matchCacheRequirementWorker', { requirementId: REQ_ID });
   });
 
-  // Bug #460: empty ranked list (cached = []) must fall back to live scan, not serve 0 candidates.
-  it('falls back to a live scan when the cache returns an empty ranked list ([])', async () => {
+  // QA correction (#510): a present-but-empty cache ([]) is a *completed* zero-match
+  // build — return a normal zero-match result via the read path, NOT a pending
+  // response, and do NOT re-dispatch the worker (otherwise it spins forever).
+  it('returns totalMatches 0 without cacheBuilding (no worker re-dispatch) when cache item is empty ([])', async () => {
     vi.mocked(getMatchCache).mockResolvedValue([]);
-    vi.mocked(searchCandidates).mockResolvedValue({ items: [makeCandidate('live1')], lastKey: undefined });
 
-    const body = parseBody(
-      await searchHandler(makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] }, requirementId: REQ_ID }) }))
-    );
+    const result = await searchHandler(makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] }, requirementId: REQ_ID }) }));
+    const body = parseBody(result);
 
-    expect(vi.mocked(searchCandidates)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(getCandidatesByIds)).not.toHaveBeenCalled();
-    expect(body.data.candidates.map((c: { candidateId: string }) => c.candidateId)).toEqual(['live1']);
-    expect(body.data.totalMatches).toBe(1);
-  });
-
-  // Bug #460 edge: empty ranked list + live scan finds zero candidates -> totalMatches 0, no error.
-  it('returns totalMatches 0 without error when empty cache falls back and live scan also finds nothing', async () => {
-    vi.mocked(getMatchCache).mockResolvedValue([]);
-    vi.mocked(searchCandidates).mockResolvedValue({ items: [], lastKey: undefined });
-
-    const body = parseBody(
-      await searchHandler(makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] }, requirementId: REQ_ID }) }))
-    );
-
-    expect(vi.mocked(searchCandidates)).toHaveBeenCalledTimes(1);
+    expect(result.statusCode).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.data.cacheBuilding).toBeUndefined();
     expect(body.data.candidates).toEqual([]);
     expect(body.data.totalMatches).toBe(0);
     expect(body.data.pagination.hasMore).toBe(false);
+    expect(vi.mocked(searchCandidates)).not.toHaveBeenCalled();
+    expect(vi.mocked(invokeLambdaAsync)).not.toHaveBeenCalled();
+  });
+
+  // Worker dispatch failure must not prevent the pending response from being returned.
+  it('returns pending response even when worker dispatch fails', async () => {
+    vi.mocked(getMatchCache).mockResolvedValue(null);
+    vi.mocked(invokeLambdaAsync).mockRejectedValueOnce(new Error('Lambda unavailable'));
+
+    const result = await searchHandler(makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] }, requirementId: REQ_ID }) }));
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.data.cacheBuilding).toBe(true);
+    expect(vi.mocked(searchCandidates)).not.toHaveBeenCalled();
+  });
+
+  // Paginating into a cold-cache requirement also returns pending (no crash, no live scan).
+  it('returns pending response on cold-cache when lastEvaluatedKey is present', async () => {
+    vi.mocked(getMatchCache).mockResolvedValue(null);
+    const paginationKey = Buffer.from(JSON.stringify({ offset: 20 })).toString('base64');
+
+    const result = await searchHandler(makeEvent({ body: JSON.stringify({ criteria: { mustHaveSkills: ['react'] }, requirementId: REQ_ID, pagination: { lastEvaluatedKey: paginationKey } }) }));
+    const body = parseBody(result);
+
+    expect(result.statusCode).toBe(200);
+    expect(body.data.cacheBuilding).toBe(true);
+    expect(vi.mocked(searchCandidates)).not.toHaveBeenCalled();
   });
 
   // Bug #460 regression guard: non-empty cache filtered to 0 by placed overlay stays on cache path.
