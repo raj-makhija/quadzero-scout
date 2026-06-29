@@ -14,6 +14,8 @@ import type { MatchDetails } from '../../lib/matchScoring.js';
 import { withOptionalAuth, type OptionalAuthEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
 import type { CandidateItem, CandidateSearchResult, SearchResponse, SearchCriteria } from '../../types/index.js';
+import { invokeLambdaAsync } from '../../lib/lambdaInvoke.js';
+import { config } from '../../lib/config.js';
 
 // Details placeholder for the rare case where a cached candidate no longer
 // scores against the live criteria (e.g. its skills changed since cache build).
@@ -218,10 +220,27 @@ async function handleRequest(
           console.error('LLM rerank overlay failed, serving deterministic order:', err);
         }
       }
+    } else if (requirementId) {
+      // ── Cold-cache pending path ───────────────────────────────────────────
+      // Requirement-bound search but the match cache isn't warm yet (null or
+      // empty). Running a full live scan on the 30s search Lambda budget will
+      // time-out at prod scale (#510). Instead, (re)dispatch the cache worker
+      // and return a lightweight pending response so the client can poll.
+      try {
+        await invokeLambdaAsync(config.lambda.matchCacheRequirementWorkerName, { requirementId });
+      } catch (dispatchErr) {
+        console.error(`[matchCache] Failed to dispatch cache worker for requirement ${requirementId}:`, dispatchErr);
+      }
+      return success({
+        candidates: [],
+        pagination: { count: 0, hasMore: false },
+        totalMatches: 0,
+        cacheBuilding: true,
+      } as SearchResponse);
     } else {
       // ── Live-scan path ────────────────────────────────────────────────────
-      // Ad-hoc search (no requirementId) or cold-cache fallback. Runs the full
-      // scan + shared scorer, then resolves the page from the in-memory result.
+      // Ad-hoc search (no requirementId) only. Runs the full scan + shared
+      // scorer, then resolves the page from the in-memory result.
       const searchCriteria: SearchCriteria = {
         mustHaveSkills: criteria.mustHaveSkills || [],
         goodToHaveSkills: criteria.goodToHaveSkills || [],

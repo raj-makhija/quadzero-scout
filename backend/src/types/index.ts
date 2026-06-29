@@ -375,6 +375,10 @@ export interface SearchResponse {
   // `ranked` — the returned order is LLM-influenced. `pending` — a recompute was
   // kicked off; the client may re-fetch shortly to pick up the LLM order.
   llmRerank?: { ranked: boolean; pending: boolean };
+  // Cold-cache pending response (#510): the match-cache hasn't landed yet for
+  // this requirement. The worker has been (re)dispatched; the client should poll
+  // until the cache is warm before showing results.
+  cacheBuilding?: boolean;
 }
 
 // API Warning (for graceful degradation signals)

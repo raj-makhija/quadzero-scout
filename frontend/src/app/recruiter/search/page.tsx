@@ -22,6 +22,10 @@ const PAGE_SIZE = 20;
 // compute reliably lands within the view before we fall back to deterministic.
 const RERANK_MAX_POLLS = 10;
 const RERANK_POLL_INTERVAL_MS = 4000;
+// Cache-build poll budget (#510): poll every 5s for up to ~60s; if the worker
+// hasn't landed by then, show a give-up fallback rather than spinning forever.
+const CACHE_BUILD_MAX_POLLS = 12;
+const CACHE_BUILD_POLL_INTERVAL_MS = 5000;
 
 export default function RecruiterSearchPage() {
   const router = useRouter();
@@ -68,6 +72,12 @@ export default function RecruiterSearchPage() {
   const [llmRanked, setLlmRanked] = useState(false);
   const [llmPending, setLlmPending] = useState(false);
   const rerankPollCount = useRef(0);
+  // Cache-build pending state (#510). `cacheBuilding` — the match cache hasn't
+  // landed yet; poll until it's warm. `cacheBuildingTimedOut` — poll budget
+  // exhausted; show a give-up message instead of the building indicator.
+  const [cacheBuilding, setCacheBuilding] = useState(false);
+  const [cacheBuildingTimedOut, setCacheBuildingTimedOut] = useState(false);
+  const cacheBuildPollCount = useRef(0);
 
   // Cover letter modal state
   const [coverLetterCandidate, setCoverLetterCandidate] = useState<CandidateSearchResult | null>(null);
@@ -151,13 +161,17 @@ export default function RecruiterSearchPage() {
   }, [engagementModel, payroll]);
 
   // Search helper — reusable for both button click and state restore
-  const runSearch = useCallback(async (criteria: SearchCriteria, lastEvaluatedKey?: string, sort?: 'matchScore' | 'experience' | 'lastUpdated', append?: boolean, includeNotSuitable?: boolean, isRerankPoll?: boolean) => {
+  const runSearch = useCallback(async (criteria: SearchCriteria, lastEvaluatedKey?: string, sort?: 'matchScore' | 'experience' | 'lastUpdated', append?: boolean, includeNotSuitable?: boolean, isRerankPoll?: boolean, isCacheBuildingPoll?: boolean) => {
+    const isBackgroundPoll = isRerankPoll || isCacheBuildingPoll;
     try {
-      // A fresh, user-initiated search resets the rerank-poll budget; a poll or
-      // a "load more" page does not.
-      if (!append && !isRerankPoll) rerankPollCount.current = 0;
-      // A rerank poll refreshes order in the background — don't show the spinner.
-      if (!isRerankPoll) setLoading(true);
+      // A fresh, user-initiated search resets both poll budgets.
+      if (!append && !isBackgroundPoll) {
+        rerankPollCount.current = 0;
+        cacheBuildPollCount.current = 0;
+        setCacheBuildingTimedOut(false);
+      }
+      // Background polls refresh state silently — don't show the spinner.
+      if (!isBackgroundPoll) setLoading(true);
       setError(null);
       const pagination = lastEvaluatedKey ? { lastEvaluatedKey } : undefined;
       const response = await api.searchCandidates(criteria, pagination, sort || sortBy, sourceRequirementId || undefined, includeNotSuitable);
@@ -169,16 +183,17 @@ export default function RecruiterSearchPage() {
         // Only a non-append (full) response carries the canonical overlay state.
         setLlmRanked(!!response.llmRerank?.ranked);
         setLlmPending(!!response.llmRerank?.pending);
+        setCacheBuilding(!!response.cacheBuilding);
       }
       setTotalMatches(response.totalMatches);
       setPaginationKey(response.pagination.lastEvaluatedKey);
       setHasMore(response.pagination.hasMore);
       setViewMode('results');
     } catch (err) {
-      // A failed background poll must not surface an error over good results.
-      if (!isRerankPoll) setError(err instanceof Error ? err.message : 'Search failed');
+      // A failed background poll must not surface an error over the building state.
+      if (!isBackgroundPoll) setError(err instanceof Error ? err.message : 'Search failed');
     } finally {
-      if (!isRerankPoll) setLoading(false);
+      if (!isBackgroundPoll) setLoading(false);
     }
   }, [sortBy, sourceRequirementId]);
 
@@ -206,6 +221,23 @@ export default function RecruiterSearchPage() {
     }, RERANK_POLL_INTERVAL_MS);
     return () => clearInterval(id);
   }, [llmPending, sourceRequirementId, sortBy, searchCriteria, showNotSuitable, runSearch]);
+
+  // Cache-build polling (#510): when the backend returns cacheBuilding:true the
+  // match-cache worker is still running. Poll every 5s until the cache lands or
+  // the budget (12 × 5s ≈ 60s) is spent, then show a give-up message.
+  useEffect(() => {
+    if (!cacheBuilding || !sourceRequirementId) return;
+    const id = setInterval(() => {
+      cacheBuildPollCount.current += 1;
+      if (cacheBuildPollCount.current > CACHE_BUILD_MAX_POLLS) {
+        setCacheBuilding(false);
+        setCacheBuildingTimedOut(true);
+        return;
+      }
+      runSearch(searchCriteria, undefined, undefined, false, showNotSuitable, false, true);
+    }, CACHE_BUILD_POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [cacheBuilding, sourceRequirementId, searchCriteria, showNotSuitable, runSearch]);
 
   // Run auto-search and clean up sessionStorage for prefilled state
   useEffect(() => {
@@ -1120,7 +1152,22 @@ export default function RecruiterSearchPage() {
           </div>
         )}
 
-        {viewMode === 'results' && !(loading && results.length === 0) && (
+        {/* Cache-build pending state (#510): match cache still building, poll until warm */}
+        {viewMode === 'results' && !loading && cacheBuilding && (
+          <div data-testid="cache-building-indicator" className="card p-12 text-center">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-500 mx-auto" />
+            <p className="mt-4 text-gray-600 dark:text-gray-400">Building candidate matches, this takes a few seconds…</p>
+          </div>
+        )}
+
+        {/* Cache-build timed out: worker didn't land within poll budget */}
+        {viewMode === 'results' && !loading && !cacheBuilding && cacheBuildingTimedOut && results.length === 0 && (
+          <div data-testid="cache-building-timeout" className="card p-12 text-center">
+            <p className="text-gray-600 dark:text-gray-400">Candidate matching is taking longer than expected. Please try again in a moment.</p>
+          </div>
+        )}
+
+        {viewMode === 'results' && !(loading && results.length === 0) && !cacheBuilding && !(cacheBuildingTimedOut && results.length === 0) && (
           <div>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
               <div>
