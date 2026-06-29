@@ -82,6 +82,13 @@ lambdaInvokePolicy:
     - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-cloneDataWorker'
     - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-recruiterLinkedInGenerateWorker'
     - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-matchCacheRebuildWorker'
+    # Per-requirement match-cache worker (ticket #469). Dispatched fire-and-forget
+    # from saveRequirement / updateRequirementCriteria / updateRequirementStatus
+    # (reopen). Without this grant the InvokeFunction call gets AccessDenied, which
+    # the callers swallow non-fatally, so a freshly-created/edited requirement
+    # never gets its cache built and every search falls to the slow live-scan path
+    # (no caching, no LLM re-rank) until the nightly matchCacheRebuildWorker heals it.
+    - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-matchCacheRequirementWorker'
 
 # SES Policy (for sending notification emails)
 sesPolicy:
