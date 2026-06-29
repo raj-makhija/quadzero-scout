@@ -1256,6 +1256,9 @@ export interface SearchResponse {
   totalMatches: number;
   // LLM tie-break overlay status for the requirement-bound read path (#239).
   llmRerank?: { ranked: boolean; pending: boolean };
+  // Cold-cache pending flag (#510): the requirement's match cache is still being
+  // built. The client should poll until results land.
+  cacheBuilding?: boolean;
 }
 
 export interface SavedSearch {
