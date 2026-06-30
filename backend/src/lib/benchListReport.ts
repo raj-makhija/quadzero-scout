@@ -88,6 +88,21 @@ function formatAvailability(availability: string): string {
   return map[availability] || capitalizeFirst(availability);
 }
 
+// ─── Rate formatting ──────────────────────────────────────────────────────────
+
+function formatRateRange(ctcValues: (number | null | undefined)[]): string {
+  const valid = ctcValues.filter((r): r is number => typeof r === 'number' && r > 0);
+  if (valid.length === 0) return 'on request';
+  const monthly = valid.map((r) => r / 12);
+  const min = Math.min(...monthly);
+  const max = Math.max(...monthly);
+  const fmt = (n: number): string => {
+    const rounded = Math.round(n * 10) / 10;
+    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  };
+  return min === max ? `₹${fmt(min)}L/month` : `₹${fmt(min)}–${fmt(max)}L/month`;
+}
+
 // ─── Grouping ────────────────────────────────────────────────────────────────
 
 // Minimal candidate shape this module reads. The bench-list DynamoDB projection
@@ -98,6 +113,7 @@ export interface BenchReportCandidate {
   seniority?: string;
   availability?: string;
   location?: string;
+  expected_ctc?: number | null;
 }
 
 export interface BenchGroup {
@@ -108,6 +124,7 @@ export interface BenchGroup {
   experienceRange: string;
   availabilities: string[];
   locations: string[];
+  indicativeRateRange: string;
 }
 
 export function buildBenchGroups(candidates: BenchReportCandidate[]): BenchGroup[] {
@@ -152,6 +169,7 @@ export function buildBenchGroups(candidates: BenchReportCandidate[]): BenchGroup
       experienceRange: minExp === maxExp ? `${minExp} years` : `${minExp}–${maxExp} years`,
       availabilities: Array.from(avails),
       locations: Array.from(locs),
+      indicativeRateRange: formatRateRange(members.map((m) => m.expected_ctc)),
     });
   }
 
@@ -159,7 +177,7 @@ export function buildBenchGroups(candidates: BenchReportCandidate[]): BenchGroup
   return groups;
 }
 
-// ─── HTML table (mirrors frontend generateHtmlTable, without the rate column) ─
+// ─── HTML table (mirrors frontend generateHtmlTable) ─────────────────────────
 
 export function getFormattedDate(): string {
   return new Date().toLocaleDateString('en-IN', {
@@ -177,7 +195,7 @@ function escapeHtml(str: string): string {
     .replace(/"/g, '&quot;');
 }
 
-export function generateHtmlTable(groups: BenchGroup[]): string {
+export function generateHtmlTable(groups: BenchGroup[], includeRates = false): string {
   const date = getFormattedDate();
   const totalCount = groups.reduce((sum, g) => sum + g.count, 0);
 
@@ -185,9 +203,14 @@ export function generateHtmlTable(groups: BenchGroup[]): string {
   const cellStyle = 'padding:8px 12px;border:1px solid #cbd5e1;vertical-align:top;font-size:13px;';
   const altRowStyle = 'background-color:#f8fafc;';
 
+  const rateHeader = includeRates ? `\n        <th style="${headerStyle}">Indicative Rate</th>` : '';
+
   const rows = groups
     .map((g, i) => {
       const rowBg = i % 2 === 1 ? ` style="${altRowStyle}"` : '';
+      const rateCell = includeRates
+        ? `\n      <td style="${cellStyle}">${escapeHtml(g.indicativeRateRange)}</td>`
+        : '';
       return `<tr${rowBg}>
       <td style="${cellStyle}font-weight:500;">${escapeHtml(g.role)}</td>
       <td style="${cellStyle}text-align:center;">${g.count}</td>
@@ -195,7 +218,7 @@ export function generateHtmlTable(groups: BenchGroup[]): string {
       <td style="${cellStyle}">${escapeHtml(g.seniorities.join(', ') || 'N/A')}</td>
       <td style="${cellStyle}">${escapeHtml(g.experienceRange)}</td>
       <td style="${cellStyle}">${escapeHtml(g.availabilities.join(', ') || 'N/A')}</td>
-      <td style="${cellStyle}">${escapeHtml(g.locations.join(', '))}</td>
+      <td style="${cellStyle}">${escapeHtml(g.locations.join(', '))}</td>${rateCell}
     </tr>`;
     })
     .join('\n');
@@ -212,7 +235,7 @@ export function generateHtmlTable(groups: BenchGroup[]): string {
         <th style="${headerStyle}">Seniority</th>
         <th style="${headerStyle}">Experience</th>
         <th style="${headerStyle}">Availability</th>
-        <th style="${headerStyle}">Preferred Location</th>
+        <th style="${headerStyle}">Preferred Location</th>${rateHeader}
       </tr>
     </thead>
     <tbody>

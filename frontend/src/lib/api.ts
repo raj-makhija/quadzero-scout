@@ -432,9 +432,10 @@ class ApiClient {
     );
   }
 
-  async sendBenchListEmail() {
+  async sendBenchListEmail(params?: { recipientEmail?: string; includeRates?: boolean }) {
     return this.request<Record<string, never>>('/recruiter/bench-list/email', {
       method: 'POST',
+      ...(params ? { body: JSON.stringify(params) } : {}),
     });
   }
 

@@ -772,3 +772,106 @@ describe('BenchListModal "Email to me"', () => {
     await waitFor(() => expect(screen.getByText('Failed')).toBeInTheDocument());
   });
 });
+
+// ---------------------------------------------------------------------------
+// "Send to partner" external send row
+// ---------------------------------------------------------------------------
+describe('BenchListModal "Send to partner"', () => {
+  const onClose = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSendBenchListEmail.mockResolvedValue({});
+  });
+
+  it('renders the partner email input and send button when isInternal is true', () => {
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal />);
+    expect(screen.getByPlaceholderText('Partner email address')).toBeInTheDocument();
+    expect(screen.getByText('Send to partner')).toBeInTheDocument();
+  });
+
+  it('does not render the external send row when isInternal is false or omitted', () => {
+    const { unmount } = render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal={false} />);
+    expect(screen.queryByText('Send to partner')).not.toBeInTheDocument();
+    unmount();
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} />);
+    expect(screen.queryByText('Send to partner')).not.toBeInTheDocument();
+  });
+
+  it('send button is disabled when the recipient input is empty', () => {
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal />);
+    expect(screen.getByText('Send to partner').closest('button')).toBeDisabled();
+  });
+
+  it('send button is disabled when the recipient input is not a valid email', () => {
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal />);
+    fireEvent.change(screen.getByPlaceholderText('Partner email address'), { target: { value: 'not-an-email' } });
+    expect(screen.getByText('Send to partner').closest('button')).toBeDisabled();
+  });
+
+  it('send button is enabled when a valid email is entered', () => {
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal />);
+    fireEvent.change(screen.getByPlaceholderText('Partner email address'), { target: { value: 'partner@acme.com' } });
+    expect(screen.getByText('Send to partner').closest('button')).not.toBeDisabled();
+  });
+
+  it('calls api.sendBenchListEmail with recipientEmail on click', async () => {
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal />);
+    fireEvent.change(screen.getByPlaceholderText('Partner email address'), { target: { value: 'partner@acme.com' } });
+    fireEvent.click(screen.getByText('Send to partner'));
+    await waitFor(() => expect(mockSendBenchListEmail).toHaveBeenCalledTimes(1));
+    expect(mockSendBenchListEmail.mock.calls[0][0]).toMatchObject({ recipientEmail: 'partner@acme.com' });
+  });
+
+  it('disables the send button while the request is in flight', async () => {
+    let resolve!: (v: unknown) => void;
+    mockSendBenchListEmail.mockReturnValue(new Promise((r) => { resolve = r; }));
+
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal />);
+    fireEvent.change(screen.getByPlaceholderText('Partner email address'), { target: { value: 'partner@acme.com' } });
+    const button = screen.getByText('Send to partner').closest('button')!;
+    fireEvent.click(button);
+
+    expect(screen.getByText('Sending…')).toBeInTheDocument();
+    expect(button).toBeDisabled();
+
+    await act(async () => { resolve({}); });
+    await waitFor(() => expect(screen.getByText('Sent!')).toBeInTheDocument());
+    expect(button).not.toBeDisabled();
+  });
+
+  it('shows "Sent!" on success then resets to "Send to partner" after 2s', async () => {
+    vi.useFakeTimers();
+    try {
+      render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal />);
+      fireEvent.change(screen.getByPlaceholderText('Partner email address'), { target: { value: 'partner@acme.com' } });
+      await act(async () => {
+        fireEvent.click(screen.getByText('Send to partner'));
+      });
+      expect(screen.getByText('Sent!')).toBeInTheDocument();
+
+      await act(async () => { vi.advanceTimersByTime(2000); });
+      expect(screen.queryByText('Sent!')).not.toBeInTheDocument();
+      expect(screen.getByText('Send to partner')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shows "Failed" when the external send rejects', async () => {
+    mockSendBenchListEmail.mockRejectedValue(new Error('SES error'));
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal />);
+    fireEvent.change(screen.getByPlaceholderText('Partner email address'), { target: { value: 'partner@acme.com' } });
+    fireEvent.click(screen.getByText('Send to partner'));
+    await waitFor(() => expect(screen.getByText('Failed')).toBeInTheDocument());
+  });
+
+  it('passes includeRates to the API when the checkbox is checked', async () => {
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal />);
+    fireEvent.click(screen.getByLabelText('Include rates'));
+    fireEvent.change(screen.getByPlaceholderText('Partner email address'), { target: { value: 'partner@acme.com' } });
+    fireEvent.click(screen.getByText('Send to partner'));
+    await waitFor(() => expect(mockSendBenchListEmail).toHaveBeenCalledTimes(1));
+    expect(mockSendBenchListEmail.mock.calls[0][0]).toMatchObject({ includeRates: true, recipientEmail: 'partner@acme.com' });
+  });
+});

@@ -265,6 +265,8 @@ export function BenchListModal({ profiles, onClose, isInternal = false }: BenchL
   // Default off; not persisted, so reopening the modal always starts unchecked.
   const [includeRates, setIncludeRates] = useState(false);
   const [emailStatus, setEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
+  const [recipientEmail, setRecipientEmail] = useState('');
+  const [externalSendStatus, setExternalSendStatus] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
   const groups = useMemo(() => buildBenchGroups(profiles), [profiles]);
   const totalCount = groups.reduce((sum, g) => sum + g.count, 0);
 
@@ -272,7 +274,7 @@ export function BenchListModal({ profiles, onClose, isInternal = false }: BenchL
     if (emailStatus === 'sending') return;
     setEmailStatus('sending');
     try {
-      await api.sendBenchListEmail();
+      await api.sendBenchListEmail({ includeRates });
       setEmailStatus('sent');
       setTimeout(() => setEmailStatus('idle'), 2000);
     } catch {
@@ -280,6 +282,21 @@ export function BenchListModal({ profiles, onClose, isInternal = false }: BenchL
       setTimeout(() => setEmailStatus('idle'), 2000);
     }
   };
+
+  const sendToPartner = async () => {
+    if (externalSendStatus === 'sending') return;
+    setExternalSendStatus('sending');
+    try {
+      await api.sendBenchListEmail({ recipientEmail: recipientEmail.trim(), includeRates });
+      setExternalSendStatus('sent');
+      setTimeout(() => setExternalSendStatus('idle'), 2000);
+    } catch {
+      setExternalSendStatus('failed');
+      setTimeout(() => setExternalSendStatus('idle'), 2000);
+    }
+  };
+
+  const isValidRecipient = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail.trim());
 
   const copyForEmail = async () => {
     try {
@@ -396,6 +413,39 @@ export function BenchListModal({ profiles, onClose, isInternal = false }: BenchL
             </button>
           </div>
         </div>
+
+        {/* External send row — visible to internal recruiters only */}
+        {isInternal && (
+          <div className="flex items-center gap-2 px-6 py-2 border-b border-gray-200 dark:border-gray-700">
+            <input
+              type="email"
+              placeholder="Partner email address"
+              value={recipientEmail}
+              onChange={(e) => setRecipientEmail(e.target.value)}
+              aria-label="Partner email address"
+              className="flex-1 text-sm rounded-md border border-gray-300 dark:border-gray-600 px-3 py-1.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400"
+            />
+            <button
+              onClick={sendToPartner}
+              disabled={!isValidRecipient || externalSendStatus === 'sending'}
+              aria-label="Send to partner"
+              className="btn-secondary flex items-center gap-1.5 text-sm px-3 py-1.5 disabled:opacity-60"
+            >
+              {externalSendStatus === 'sent' ? (
+                <Check className="w-4 h-4 text-green-600" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
+              {externalSendStatus === 'sending'
+                ? 'Sending…'
+                : externalSendStatus === 'sent'
+                  ? 'Sent!'
+                  : externalSendStatus === 'failed'
+                    ? 'Failed'
+                    : 'Send to partner'}
+            </button>
+          </div>
+        )}
 
         {/* Table */}
         <div className="overflow-auto px-6 py-4" style={{ maxHeight: 'calc(90vh - 80px)' }}>

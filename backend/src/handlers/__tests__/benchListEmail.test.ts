@@ -23,6 +23,12 @@ vi.mock('../../lib/auth.js', () => ({
   withAuth: (_roles: string[], handler: Function) => handler,
 }));
 
+const mockLogAuditEvent = vi.fn();
+
+vi.mock('../../lib/audit.js', () => ({
+  logAuditEvent: (...args: unknown[]) => mockLogAuditEvent(...args),
+}));
+
 // ---------------------------------------------------------------------------
 // Test data
 // ---------------------------------------------------------------------------
@@ -45,9 +51,9 @@ function candidate(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function makeEvent(authOverride?: unknown): APIGatewayProxyEventV2 {
+function makeEvent(authOverride?: unknown, body?: Record<string, unknown> | null): APIGatewayProxyEventV2 {
   const base = {
-    body: null,
+    body: body === undefined ? null : body === null ? null : JSON.stringify(body),
     headers: { authorization: 'Bearer test-token' },
     requestContext: {} as any,
     routeKey: '',
@@ -72,6 +78,7 @@ describe('benchListEmail handler', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mockSendBenchListEmail.mockResolvedValue(undefined);
+    mockLogAuditEvent.mockReturnValue(undefined);
     const mod = await import('../recruiter/benchListEmail.js');
     handler = mod.handler;
   });
@@ -137,5 +144,150 @@ describe('benchListEmail handler', () => {
 
     expect(result.statusCode).toBe(403);
     expect(mockSendBenchListEmail).not.toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
+  // External send path (recipientEmail in body)
+  // -------------------------------------------------------------------------
+
+  it('sends to recipientEmail when provided and returns 200', async () => {
+    mockGetBenchListCandidates.mockResolvedValue({ items: [candidate()] });
+
+    const result = await handler(makeEvent(undefined, { recipientEmail: 'partner@acme.com' }));
+
+    expect(result.statusCode).toBe(200);
+    expect(mockSendBenchListEmail).toHaveBeenCalledTimes(1);
+    expect(mockSendBenchListEmail.mock.calls[0][0].toEmail).toBe('partner@acme.com');
+  });
+
+  it('accepts a plus-addressed recipient email', async () => {
+    mockGetBenchListCandidates.mockResolvedValue({ items: [candidate()] });
+
+    const result = await handler(makeEvent(undefined, { recipientEmail: 'user+tag@partner.com' }));
+
+    expect(result.statusCode).toBe(200);
+    expect(mockSendBenchListEmail.mock.calls[0][0].toEmail).toBe('user+tag@partner.com');
+  });
+
+  it('rejects a missing recipientEmail (empty string) with 400', async () => {
+    const result = await handler(makeEvent(undefined, { recipientEmail: '' }));
+
+    expect(result.statusCode).toBe(400);
+    expect(mockSendBenchListEmail).not.toHaveBeenCalled();
+  });
+
+  it('rejects a whitespace-only recipientEmail with 400', async () => {
+    const result = await handler(makeEvent(undefined, { recipientEmail: '   ' }));
+
+    expect(result.statusCode).toBe(400);
+    expect(mockSendBenchListEmail).not.toHaveBeenCalled();
+  });
+
+  it('rejects a malformed recipientEmail (no @) with 400', async () => {
+    const result = await handler(makeEvent(undefined, { recipientEmail: 'missing-at-sign.com' }));
+
+    expect(result.statusCode).toBe(400);
+    expect(mockSendBenchListEmail).not.toHaveBeenCalled();
+  });
+
+  it('rejects a malformed recipientEmail (no local part) with 400', async () => {
+    const result = await handler(makeEvent(undefined, { recipientEmail: '@missing-local.com' }));
+
+    expect(result.statusCode).toBe(400);
+    expect(mockSendBenchListEmail).not.toHaveBeenCalled();
+  });
+
+  it('rejects a malformed recipientEmail (not-an-email) with 400', async () => {
+    const result = await handler(makeEvent(undefined, { recipientEmail: 'not-an-email' }));
+
+    expect(result.statusCode).toBe(400);
+    expect(mockSendBenchListEmail).not.toHaveBeenCalled();
+  });
+
+  it('writes an audit record after a successful external send', async () => {
+    mockGetBenchListCandidates.mockResolvedValue({ items: [candidate()] });
+
+    const result = await handler(makeEvent(undefined, { recipientEmail: 'partner@acme.com' }));
+
+    expect(result.statusCode).toBe(200);
+    expect(mockLogAuditEvent).toHaveBeenCalledTimes(1);
+    const auditCall = mockLogAuditEvent.mock.calls[0];
+    expect(auditCall[0]).toMatchObject({ userId: 'recruiter_1', email: 'recruiter@quadzero.com' });
+    expect(auditCall[2]).toMatchObject({
+      action: 'BENCH_LIST_EMAIL_EXTERNAL',
+      entityType: 'bench_list',
+      entityId: 'partner@acme.com',
+      metadata: { recipientEmail: 'partner@acme.com' },
+    });
+  });
+
+  it('does not write an audit record for the "Email to me" path', async () => {
+    mockGetBenchListCandidates.mockResolvedValue({ items: [candidate()] });
+
+    await handler(makeEvent());
+
+    expect(mockLogAuditEvent).not.toHaveBeenCalled();
+  });
+
+  it('does not include a rate column in HTML when includeRates is false', async () => {
+    mockGetBenchListCandidates.mockResolvedValue({ items: [candidate({ expected_ctc: 24 })] });
+
+    await handler(makeEvent(undefined, { recipientEmail: 'partner@acme.com', includeRates: false }));
+
+    const htmlBody = mockSendBenchListEmail.mock.calls[0][0].htmlBody;
+    expect(htmlBody).not.toContain('Indicative Rate');
+  });
+
+  it('includes a rate column in HTML when includeRates is true', async () => {
+    mockGetBenchListCandidates.mockResolvedValue({ items: [candidate({ expected_ctc: 24 })] });
+
+    await handler(makeEvent(undefined, { recipientEmail: 'partner@acme.com', includeRates: true }));
+
+    const htmlBody = mockSendBenchListEmail.mock.calls[0][0].htmlBody;
+    expect(htmlBody).toContain('Indicative Rate');
+    // 24 LPA / 12 = ₹2L/month
+    expect(htmlBody).toContain('₹2L/month');
+  });
+
+  it('returns 500 when SES fails on the external send path', async () => {
+    mockGetBenchListCandidates.mockResolvedValue({ items: [candidate()] });
+    mockSendBenchListEmail.mockRejectedValue(new Error('SES rejected'));
+
+    const result = await handler(makeEvent(undefined, { recipientEmail: 'partner@acme.com' }));
+
+    expect(result.statusCode).toBe(500);
+  });
+
+  it('does not send an audit record when SES fails (error is thrown before logAuditEvent)', async () => {
+    mockGetBenchListCandidates.mockResolvedValue({ items: [candidate()] });
+    mockSendBenchListEmail.mockRejectedValue(new Error('SES rejected'));
+
+    await handler(makeEvent(undefined, { recipientEmail: 'partner@acme.com' }));
+
+    expect(mockLogAuditEvent).not.toHaveBeenCalled();
+  });
+
+  it('excludes not_interested candidates from the external send', async () => {
+    mockGetBenchListCandidates.mockResolvedValue({
+      items: [
+        candidate({ candidate_id: 'c1' }),
+        candidate({ candidate_id: 'c2', not_interested: true }),
+      ],
+    });
+
+    await handler(makeEvent(undefined, { recipientEmail: 'partner@acme.com' }));
+
+    const htmlBody = mockSendBenchListEmail.mock.calls[0][0].htmlBody;
+    expect(htmlBody).toContain('1 resources across 1 role');
+  });
+
+  it('sends without crashing for an empty bench list on the external path', async () => {
+    mockGetBenchListCandidates.mockResolvedValue({ items: [] });
+
+    const result = await handler(makeEvent(undefined, { recipientEmail: 'partner@acme.com' }));
+
+    expect(result.statusCode).toBe(200);
+    const htmlBody = mockSendBenchListEmail.mock.calls[0][0].htmlBody;
+    expect(htmlBody).toContain('0 resources across 0 roles');
   });
 });

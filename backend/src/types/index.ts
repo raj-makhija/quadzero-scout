@@ -1581,7 +1581,8 @@ export type AuditAction =
   | 'PIPELINE_INTERVIEW_FEEDBACK'
   | 'PIPELINE_STAGE_UPDATE'
   | 'PIPELINE_NOTE_ADDED'
-  | 'PIPELINE_UPDATE_QUOTED_RATE';
+  | 'PIPELINE_UPDATE_QUOTED_RATE'
+  | 'BENCH_LIST_EMAIL_EXTERNAL';
 
 export type AuditEntityType =
   | 'session'
@@ -1593,7 +1594,8 @@ export type AuditEntityType =
   | 'user'
   | 'config'
   | 'sub_vendor'
-  | 'pipeline';
+  | 'pipeline'
+  | 'bench_list';
 
 export interface AuditLogItem {
   pk: string;
