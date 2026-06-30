@@ -100,7 +100,7 @@ describe('benchListEmail handler', () => {
     await handler(makeEvent());
 
     const arg = mockSendBenchListEmail.mock.calls[0][0];
-    expect(arg.htmlBody).toContain('1 resources across 1 role');
+    expect(arg.htmlBody).toContain('1 resource across 1 role');
   });
 
   it('sends a header-only (0 resources) email for an empty bench list without crashing', async () => {
@@ -111,6 +111,29 @@ describe('benchListEmail handler', () => {
     expect(result.statusCode).toBe(200);
     const arg = mockSendBenchListEmail.mock.calls[0][0];
     expect(arg.htmlBody).toContain('0 resources across 0 roles');
+  });
+
+  it('HTML output has branded header before the table, merged role cell, badge, stacked tags, and footer', async () => {
+    mockGetBenchListCandidates.mockResolvedValue({ items: [candidate(), candidate({ candidate_id: 'c2' })] });
+
+    await handler(makeEvent());
+
+    const html = mockSendBenchListEmail.mock.calls[0][0].htmlBody;
+    // Branded header div appears before the first <table tag.
+    const tableIdx = html.indexOf('<table');
+    const beforeTable = html.slice(0, tableIdx);
+    expect(beforeTable).toContain('Quadzero');
+    expect(beforeTable).toContain('Bench List');
+    // No standalone Roles column header.
+    expect(html).not.toMatch(/>Roles<\/th>/);
+    // Count badge.
+    expect(html).toMatch(/background-color[^"]*font-weight:bold/);
+    // Stacked inline-block tags for multi-value fields (no comma-soup).
+    expect(html).toContain('display:inline-block');
+    expect(html).not.toContain('border:1px solid');
+    // Confidentiality footer after </table>.
+    const tableEnd = html.lastIndexOf('</table>');
+    expect(html.slice(tableEnd)).toContain('intended for the named recipient only');
   });
 
   it('returns 500 when the SES send fails', async () => {
