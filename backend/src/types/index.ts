@@ -572,6 +572,7 @@ export interface RequirementItem {
   payment_terms_days?: number;
   job_title?: string;
   jd_text: string;
+  vendor_jd?: string;
   parsed_criteria: LLMJDOutput;
   status: string;
   // Provenance (ticket #499). Defaults to 'recruiter'. For portal-scan discovered
