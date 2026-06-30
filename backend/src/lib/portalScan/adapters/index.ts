@@ -33,6 +33,8 @@ registry.set(stubAdapter.type, stubAdapter);
 registry.set(greenhouseAdapter.type, greenhouseAdapter);
 registry.set(leverAdapter.type, leverAdapter);
 
+export const VALID_TYPES: string[] = [stubAdapter.type, greenhouseAdapter.type, leverAdapter.type];
+
 export function getAdapter(type: string): SourceAdapter | undefined {
   return registry.get(type);
 }

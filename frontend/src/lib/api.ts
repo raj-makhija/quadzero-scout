@@ -666,6 +666,30 @@ class ApiClient {
     });
   }
 
+  async listJobSources() {
+    return this.request<{ sources: JobSource[] }>('/admin/job-sources');
+  }
+
+  async createJobSource(source: Omit<JobSource, 'source_id' | 'last_scanned_at'>) {
+    return this.request<{ source: JobSource }>('/admin/job-sources', {
+      method: 'POST',
+      body: JSON.stringify(source),
+    });
+  }
+
+  async updateJobSource(sourceId: string, updates: Partial<Omit<JobSource, 'source_id' | 'last_scanned_at'>>) {
+    return this.request<{ source: JobSource }>(`/admin/job-sources/${sourceId}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    });
+  }
+
+  async deleteJobSource(sourceId: string) {
+    return this.request<Record<string, never>>(`/admin/job-sources/${sourceId}`, {
+      method: 'DELETE',
+    });
+  }
+
   async updateCandidateCustomFields(
     candidateId: string,
     customFields: Record<string, string | number>,
@@ -2280,4 +2304,14 @@ export interface RecruiterTask {
   generated_at: string;
   snoozed_until: string | null;
   snooze_count: number;
+}
+
+export interface JobSource {
+  source_id: string;
+  type: string;
+  identifier: string;
+  url: string;
+  cadence: string;
+  enabled: boolean;
+  last_scanned_at?: string;
 }

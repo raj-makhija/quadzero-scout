@@ -493,6 +493,23 @@ export const AddPipelineNoteRequestSchema = z.object({
   source: CommunicationSourceEnum,
 });
 
+// Job source CRUD validation
+export const CreateJobSourceSchema = z.object({
+  type: z.string().min(1).max(50),
+  identifier: z.string().min(1).max(200),
+  url: z.string().url(),
+  cadence: z.string().min(1).max(50),
+  enabled: z.boolean(),
+});
+
+export const UpdateJobSourceSchema = z.object({
+  type: z.string().min(1).max(50).optional(),
+  identifier: z.string().min(1).max(200).optional(),
+  url: z.string().url().optional(),
+  cadence: z.string().min(1).max(50).optional(),
+  enabled: z.boolean().optional(),
+}).refine((data) => Object.keys(data).length > 0, { message: 'At least one field must be provided' });
+
 // Format Zod errors for API response
 export function formatZodErrors(error: z.ZodError): string {
   return error.errors
