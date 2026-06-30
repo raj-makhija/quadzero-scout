@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef, type ReactNode } from 'react';
 import * as XLSX from 'xlsx';
-import { X, Mail, Linkedin, Check, Download, Send } from 'lucide-react';
+import { X, Mail, Linkedin, Check, Download, Send, ChevronDown } from 'lucide-react';
 import type { ProfileListItem } from '@/app/recruiter/locate/page';
 import { formatAvailability, formatSeniority } from '@/lib/utils';
 import { normalizeRoleCategory } from '@/lib/roleCategories';
@@ -253,6 +253,41 @@ export function downloadGroupedXlsx(groups: BenchGroup[], includeRates = false):
   XLSX.writeFile(wb, `bench-list-${getDateStamp()}.xlsx`);
 }
 
+// ─── On-screen presentation helpers ──────────────────────────────────────────
+
+// Renders a list of values as wrapping chips. An empty list renders a muted
+// em dash (—) rather than "N/A" (the on-screen view's empty-value convention;
+// the copy/export outputs keep their own "N/A" formatting).
+function ChipList({ values }: { values: string[] }) {
+  if (values.length === 0) {
+    return <span className="text-gray-400 dark:text-gray-500">—</span>;
+  }
+  return (
+    <span className="flex flex-wrap gap-1">
+      {values.map((v, i) => (
+        <span
+          key={`${v}-${i}`}
+          className="inline-flex items-center rounded-full bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200 px-2 py-0.5 text-xs"
+        >
+          {v}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+// A labelled field within a row card: a muted label above its value.
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <div className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-gray-500">{label}</div>
+      <div className="mt-0.5 text-gray-700 dark:text-gray-300">{children}</div>
+    </div>
+  );
+}
+
+type SortMode = 'count' | 'role';
+
 interface BenchListModalProps {
   profiles: ProfileListItem[];
   onClose: () => void;
@@ -265,8 +300,49 @@ export function BenchListModal({ profiles, onClose, isInternal = false }: BenchL
   // Default off; not persisted, so reopening the modal always starts unchecked.
   const [includeRates, setIncludeRates] = useState(false);
   const [emailStatus, setEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
+  const [filter, setFilter] = useState('');
+  const [sortMode, setSortMode] = useState<SortMode>('count');
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
   const groups = useMemo(() => buildBenchGroups(profiles), [profiles]);
   const totalCount = groups.reduce((sum, g) => sum + g.count, 0);
+
+  // Filter by role name (category or specific title) then apply the chosen sort.
+  // 'count' preserves buildBenchGroups' descending-count order (stable for ties);
+  // 'role' sorts alphabetically by canonical category.
+  const displayedGroups = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    const filtered = q
+      ? groups.filter(
+          g =>
+            g.role.toLowerCase().includes(q) ||
+            g.specificRoles.some(r => r.toLowerCase().includes(q))
+        )
+      : groups;
+    if (sortMode === 'role') {
+      return [...filtered].sort((a, b) => a.role.localeCompare(b.role));
+    }
+    return filtered;
+  }, [groups, filter, sortMode]);
+
+  // Close the Export menu on outside click or Escape while it is open.
+  useEffect(() => {
+    if (!exportOpen) return;
+    const onMouseDown = (e: MouseEvent) => {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
+        setExportOpen(false);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setExportOpen(false);
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [exportOpen]);
 
   const emailToMe = async () => {
     if (emailStatus === 'sending') return;
@@ -315,6 +391,9 @@ export function BenchListModal({ profiles, onClose, isInternal = false }: BenchL
     }
   };
 
+  const menuItemClass =
+    'w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
@@ -322,7 +401,7 @@ export function BenchListModal({ profiles, onClose, isInternal = false }: BenchL
 
       {/* Modal */}
       <div className="relative bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden mx-4">
-        {/* Header */}
+        {/* Header — title, summary, Export menu, close */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
           <div>
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Bench List</h2>
@@ -331,63 +410,79 @@ export function BenchListModal({ profiles, onClose, isInternal = false }: BenchL
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <label className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-300 select-none cursor-pointer mr-1">
-              <input
-                type="checkbox"
-                checked={includeRates}
-                onChange={(e) => setIncludeRates(e.target.checked)}
-                className="rounded border-gray-300 dark:border-gray-600"
-              />
-              Include rates
-            </label>
-            <button
-              onClick={copyForEmail}
-              className="btn-secondary flex items-center gap-1.5 text-sm px-3 py-1.5"
-            >
-              {copied === 'email' ? <Check className="w-4 h-4 text-green-600" /> : <Mail className="w-4 h-4" />}
-              {copied === 'email' ? 'Copied!' : 'Copy for Email'}
-            </button>
-            <button
-              onClick={copyForLinkedIn}
-              className="btn-secondary flex items-center gap-1.5 text-sm px-3 py-1.5"
-            >
-              {copied === 'linkedin' ? <Check className="w-4 h-4 text-green-600" /> : <Linkedin className="w-4 h-4" />}
-              {copied === 'linkedin' ? 'Copied!' : 'Copy for LinkedIn'}
-            </button>
-            <button
-              onClick={() => downloadGroupedXlsx(groups, includeRates)}
-              className="btn-secondary flex items-center gap-1.5 text-sm px-3 py-1.5"
-            >
-              <Download className="w-4 h-4" />
-              Download XLSX
-            </button>
-            <button
-              onClick={() => downloadGroupedCsv(groups, includeRates)}
-              className="btn-secondary flex items-center gap-1.5 text-sm px-3 py-1.5"
-            >
-              <Download className="w-4 h-4" />
-              Download CSV
-            </button>
-            {isInternal && (
+            <div className="relative" ref={exportRef}>
               <button
-                onClick={emailToMe}
-                disabled={emailStatus === 'sending'}
-                className="btn-secondary flex items-center gap-1.5 text-sm px-3 py-1.5 disabled:opacity-60"
+                onClick={() => setExportOpen(o => !o)}
+                aria-haspopup="menu"
+                aria-expanded={exportOpen}
+                className="btn-secondary flex items-center gap-1.5 text-sm px-3 py-1.5 text-gray-700 dark:text-gray-200"
               >
-                {emailStatus === 'sent' ? (
-                  <Check className="w-4 h-4 text-green-600" />
-                ) : (
-                  <Send className="w-4 h-4" />
-                )}
-                {emailStatus === 'sending'
-                  ? 'Sending…'
-                  : emailStatus === 'sent'
-                    ? 'Sent!'
-                    : emailStatus === 'failed'
-                      ? 'Failed'
-                      : 'Email to me'}
+                <Download className="w-4 h-4" />
+                Export
+                <ChevronDown className="w-4 h-4" />
               </button>
-            )}
+              {exportOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 mt-1 w-56 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg z-10 py-1"
+                >
+                  <button role="menuitem" onClick={copyForEmail} className={menuItemClass}>
+                    {copied === 'email' ? <Check className="w-4 h-4 text-green-600" /> : <Mail className="w-4 h-4" />}
+                    {copied === 'email' ? 'Copied!' : 'Copy for Email'}
+                  </button>
+                  <button role="menuitem" onClick={copyForLinkedIn} className={menuItemClass}>
+                    {copied === 'linkedin' ? <Check className="w-4 h-4 text-green-600" /> : <Linkedin className="w-4 h-4" />}
+                    {copied === 'linkedin' ? 'Copied!' : 'Copy for LinkedIn'}
+                  </button>
+                  <button
+                    role="menuitem"
+                    onClick={() => downloadGroupedXlsx(groups, includeRates)}
+                    className={menuItemClass}
+                  >
+                    <Download className="w-4 h-4" />
+                    Download XLSX
+                  </button>
+                  <button
+                    role="menuitem"
+                    onClick={() => downloadGroupedCsv(groups, includeRates)}
+                    className={menuItemClass}
+                  >
+                    <Download className="w-4 h-4" />
+                    Download CSV
+                  </button>
+                  {isInternal && (
+                    <button
+                      role="menuitem"
+                      onClick={emailToMe}
+                      disabled={emailStatus === 'sending'}
+                      className={`${menuItemClass} disabled:opacity-60`}
+                    >
+                      {emailStatus === 'sent' ? (
+                        <Check className="w-4 h-4 text-green-600" />
+                      ) : (
+                        <Send className="w-4 h-4" />
+                      )}
+                      {emailStatus === 'sending'
+                        ? 'Sending…'
+                        : emailStatus === 'sent'
+                          ? 'Sent!'
+                          : emailStatus === 'failed'
+                            ? 'Failed'
+                            : 'Email to me'}
+                    </button>
+                  )}
+                  <label className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 border-t border-gray-100 dark:border-gray-700 select-none cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={includeRates}
+                      onChange={(e) => setIncludeRates(e.target.checked)}
+                      className="rounded border-gray-300 dark:border-gray-600"
+                    />
+                    Include rates
+                  </label>
+                </div>
+              )}
+            </div>
             <button
               onClick={onClose}
               className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500"
@@ -397,61 +492,90 @@ export function BenchListModal({ profiles, onClose, isInternal = false }: BenchL
           </div>
         </div>
 
-        {/* Table */}
+        {/* Body */}
         <div className="overflow-auto px-6 py-4" style={{ maxHeight: 'calc(90vh - 80px)' }}>
           {groups.length === 0 ? (
             <p className="text-center text-gray-500 dark:text-gray-400 py-12">
               {EMPTY_STATE_MESSAGE}
             </p>
           ) : (
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr>
-                <th className="bg-primary-700 text-white text-left px-3 py-2.5 font-semibold border border-gray-300 dark:border-gray-600">Role / Category</th>
-                <th className="bg-primary-700 text-white text-center px-3 py-2.5 font-semibold border border-gray-300 dark:border-gray-600">Resources Available</th>
-                <th className="bg-primary-700 text-white text-left px-3 py-2.5 font-semibold border border-gray-300 dark:border-gray-600">Roles</th>
-                <th className="bg-primary-700 text-white text-left px-3 py-2.5 font-semibold border border-gray-300 dark:border-gray-600">Seniority</th>
-                <th className="bg-primary-700 text-white text-left px-3 py-2.5 font-semibold border border-gray-300 dark:border-gray-600">Experience</th>
-                <th className="bg-primary-700 text-white text-left px-3 py-2.5 font-semibold border border-gray-300 dark:border-gray-600">Availability</th>
-                <th className="bg-primary-700 text-white text-left px-3 py-2.5 font-semibold border border-gray-300 dark:border-gray-600">Preferred Location</th>
-                {includeRates && (
-                  <th className="bg-primary-700 text-white text-left px-3 py-2.5 font-semibold border border-gray-300 dark:border-gray-600">Indicative Rate</th>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {groups.map((group, i) => (
-                <tr key={group.role} className={i % 2 === 1 ? 'bg-gray-50 dark:bg-gray-800/50' : ''}>
-                  <td className="px-3 py-2 border border-gray-200 dark:border-gray-700 font-medium text-gray-900 dark:text-gray-100">
-                    {group.role}
-                  </td>
-                  <td className="px-3 py-2 border border-gray-200 dark:border-gray-700 text-center text-gray-900 dark:text-gray-100">
-                    {group.count}
-                  </td>
-                  <td className="px-3 py-2 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300">
-                    {group.specificRoles.join(', ') || 'N/A'}
-                  </td>
-                  <td className="px-3 py-2 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300">
-                    {group.seniorities.join(', ') || 'N/A'}
-                  </td>
-                  <td className="px-3 py-2 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300">
-                    {group.experienceRange}
-                  </td>
-                  <td className="px-3 py-2 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300">
-                    {group.availabilities.join(', ') || 'N/A'}
-                  </td>
-                  <td className="px-3 py-2 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300">
-                    {group.locations.join(', ')}
-                  </td>
-                  {includeRates && (
-                    <td className="px-3 py-2 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300">
-                      {group.indicativeRateRange}
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+            <>
+              {/* Filter + sort bar */}
+              <div className="flex items-center gap-3 mb-4">
+                <input
+                  type="text"
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                  aria-label="Filter by role"
+                  placeholder="Filter by role…"
+                  className="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 px-3 py-1.5"
+                />
+                <select
+                  value={sortMode}
+                  onChange={(e) => setSortMode(e.target.value as SortMode)}
+                  aria-label="Sort by"
+                  className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 px-3 py-1.5"
+                >
+                  <option value="count">Most available</option>
+                  <option value="role">Role A–Z</option>
+                </select>
+              </div>
+
+              {displayedGroups.length === 0 ? (
+                <p className="text-center text-gray-500 dark:text-gray-400 py-8">
+                  No roles match “{filter}”.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {displayedGroups.map((group) => (
+                    <div
+                      key={group.role}
+                      data-testid={`bench-card-${group.role}`}
+                      className="flex gap-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 p-4"
+                    >
+                      {/* Count badge — the row's visual anchor */}
+                      <div className="flex flex-col items-center justify-center shrink-0 w-16">
+                        <span
+                          aria-label={`${group.count} available`}
+                          className="inline-flex items-center justify-center min-w-[2.5rem] h-10 px-2 rounded-full bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-200 text-lg font-bold"
+                        >
+                          {group.count}
+                        </span>
+                        <span className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500 mt-1">
+                          available
+                        </span>
+                      </div>
+
+                      {/* Merged role cell + fields */}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-gray-900 dark:text-white">{group.role}</div>
+                        {group.specificRoles.length > 0 && (
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                            {group.specificRoles.join(', ')}
+                          </div>
+                        )}
+
+                        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+                          <Field label="Seniority">
+                            <ChipList values={group.seniorities} />
+                          </Field>
+                          <Field label="Experience">{group.experienceRange}</Field>
+                          <Field label="Availability">
+                            <ChipList values={group.availabilities} />
+                          </Field>
+                          <Field label="Preferred Location">
+                            <ChipList values={group.locations} />
+                          </Field>
+                          {includeRates && (
+                            <Field label="Indicative Rate">{group.indicativeRateRange}</Field>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
