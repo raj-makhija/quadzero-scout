@@ -242,8 +242,8 @@ describe('Match Scoring Algorithm', () => {
     expect(result.details.mustHaveMissing).toContain('salesforce');
   });
 
-  // TC-SCORE-015: 1/10 must-have passes the OR gate (any positive ratio is sufficient)
-  it('candidate with 1 of 10 must-have skills passes the OR gate', () => {
+  // TC-SCORE-015: 1/10 must-have falls below the 20% gate threshold
+  it('candidate with 1 of 10 must-have skills falls below the 20% gate threshold and is excluded', () => {
     const candidate = makeCandidate({
       primary_skills: ['react'],
       secondary_skills: [],
@@ -253,7 +253,8 @@ describe('Match Scoring Algorithm', () => {
     const result = calculateMatchScore(candidate, mustHave, []);
     const ratio = result.details.mustHaveMatched.length / mustHave.length;
     expect(ratio).toBe(0.1);
-    expect(ratio).toBeGreaterThan(MIN_MUST_HAVE_MATCH_RATIO);
+    // 0.1 ≤ 0.2 → gate excludes this candidate (strict greater-than required)
+    expect(ratio).not.toBeGreaterThan(MIN_MUST_HAVE_MATCH_RATIO);
   });
 
   // TC-SCORE-016: 4/10 must-have passes 40% threshold
@@ -268,6 +269,26 @@ describe('Match Scoring Algorithm', () => {
     const ratio = result.details.mustHaveMatched.length / mustHave.length;
     expect(ratio).toBe(0.4);
     expect(ratio).toBeGreaterThanOrEqual(MIN_MUST_HAVE_MATCH_RATIO);
+  });
+
+  // TC-SCORE-016b: higher must-have coverage ranks above lower coverage (ratio scaling preserved)
+  it('candidate matching 8 of 10 must-haves scores higher than one matching 3 of 10', () => {
+    const mustHave = ['react', 'nodejs', 'python', 'java', 'golang',
+                      'rust', 'csharp', 'ruby', 'php', 'scala'];
+    const highCoverage = makeCandidate({
+      primary_skills: ['react', 'nodejs', 'python', 'java', 'golang', 'rust', 'csharp', 'ruby'],
+      secondary_skills: [],
+      // Use location mismatch to keep base score below 100 so ratio differences show
+      location: 'Mumbai',
+    });
+    const lowCoverage = makeCandidate({
+      primary_skills: ['react', 'nodejs', 'python'],
+      secondary_skills: [],
+      location: 'Mumbai',
+    });
+    const highResult = calculateMatchScore(highCoverage, mustHave, [], undefined, undefined, undefined, undefined, ['bangalore']);
+    const lowResult = calculateMatchScore(lowCoverage, mustHave, [], undefined, undefined, undefined, undefined, ['bangalore']);
+    expect(highResult.score).toBeGreaterThan(lowResult.score);
   });
 
   // TC-SCORE-017: SAP and Oracle ERP are related (same erp sub-category)
@@ -300,8 +321,8 @@ describe('Match Scoring Algorithm', () => {
     expect(MUST_HAVE_RELATED_WEIGHT).toBe(0.3);
   });
 
-  it('MIN_MUST_HAVE_MATCH_RATIO is 0', () => {
-    expect(MIN_MUST_HAVE_MATCH_RATIO).toBe(0);
+  it('MIN_MUST_HAVE_MATCH_RATIO is 0.2', () => {
+    expect(MIN_MUST_HAVE_MATCH_RATIO).toBe(0.2);
   });
 
   it('MUST_HAVE_WEIGHT is 40', () => {
