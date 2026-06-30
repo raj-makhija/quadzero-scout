@@ -11,6 +11,10 @@ import { api } from '@/lib/api';
 const EMPTY_STATE_MESSAGE =
   'No bench-ready resources found. Candidates must be available within 2 weeks and screened in the last 15 days.';
 
+// Same shape as the backend recipient validation (ticket #492): rejects blank
+// and malformed addresses, accepts plus-addressed emails.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 interface BenchGroup {
   role: string;
   count: number;
@@ -304,6 +308,8 @@ export function BenchListModal({ profiles, onClose, isInternal = false }: BenchL
   // Default off; not persisted, so reopening the modal always starts unchecked.
   const [includeRates, setIncludeRates] = useState(false);
   const [emailStatus, setEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
+  const [recipientEmail, setRecipientEmail] = useState('');
+  const [externalSendStatus, setExternalSendStatus] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
   const groups = useMemo(() => buildBenchGroups(profiles), [profiles]);
   const totalCount = groups.reduce((sum, g) => sum + g.count, 0);
 
@@ -317,6 +323,23 @@ export function BenchListModal({ profiles, onClose, isInternal = false }: BenchL
     } catch {
       setEmailStatus('failed');
       setTimeout(() => setEmailStatus('idle'), 2000);
+    }
+  };
+
+  const trimmedRecipient = recipientEmail.trim();
+  const recipientValid = EMAIL_RE.test(trimmedRecipient);
+
+  const sendToPartner = async () => {
+    if (externalSendStatus === 'sending' || !recipientValid) return;
+    setExternalSendStatus('sending');
+    try {
+      await api.sendBenchListEmail({ recipientEmail: trimmedRecipient, includeRates });
+      setExternalSendStatus('sent');
+      setRecipientEmail('');
+      setTimeout(() => setExternalSendStatus('idle'), 2000);
+    } catch {
+      setExternalSendStatus('failed');
+      setTimeout(() => setExternalSendStatus('idle'), 2000);
     }
   };
 
@@ -435,6 +458,41 @@ export function BenchListModal({ profiles, onClose, isInternal = false }: BenchL
             </button>
           </div>
         </div>
+
+        {/* Send to external partner (internal recruiters only) */}
+        {isInternal && (
+          <div className="flex items-center gap-2 px-6 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40">
+            <label htmlFor="bench-partner-email" className="text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">
+              Send to partner:
+            </label>
+            <input
+              id="bench-partner-email"
+              type="email"
+              value={recipientEmail}
+              onChange={(e) => setRecipientEmail(e.target.value)}
+              placeholder="partner@company.com"
+              className="flex-1 min-w-0 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1.5 text-sm text-gray-900 dark:text-gray-100"
+            />
+            <button
+              onClick={sendToPartner}
+              disabled={externalSendStatus === 'sending' || !recipientValid}
+              className="btn-primary flex items-center gap-1.5 text-sm px-3 py-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {externalSendStatus === 'sent' ? (
+                <Check className="w-4 h-4" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
+              {externalSendStatus === 'sending'
+                ? 'Sending…'
+                : externalSendStatus === 'sent'
+                  ? 'Sent!'
+                  : externalSendStatus === 'failed'
+                    ? 'Failed'
+                    : 'Send to partner'}
+            </button>
+          </div>
+        )}
 
         {/* Table */}
         <div className="overflow-auto px-6 py-4" style={{ maxHeight: 'calc(90vh - 80px)' }}>
