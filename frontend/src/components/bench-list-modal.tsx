@@ -197,28 +197,37 @@ function getDateStamp(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-// Builds the grouped export rows (header + one row per group) matching the modal
-// table columns. The Indicative Rate column is included only when rates are on.
-export function buildGroupedExportRows(groups: BenchGroup[], includeRates = false): string[][] {
+function formatCandidateRate(lpa: number | null | undefined): string {
+  if (typeof lpa !== 'number' || lpa <= 0) return '—';
+  const monthly = lpa / 12;
+  const rounded = Math.round(monthly * 10) / 10;
+  const formatted = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  return `₹${formatted}L/month`;
+}
+
+// Builds per-candidate export rows (header + one row per profile).
+// Each cell holds a single atomic value so recipients can filter/sort/pivot.
+// The Indicative Rate column is included only when rates are on.
+export function buildGroupedExportRows(profiles: ProfileListItem[], includeRates = false): string[][] {
   const headers = [
+    'Name',
     'Role / Category',
-    'Resources Available',
-    'Roles',
+    'Specific Role',
     'Seniority',
     'Experience',
     'Availability',
-    'Preferred Location',
+    'Location',
     ...(includeRates ? ['Indicative Rate'] : []),
   ];
-  const rows = groups.map(g => [
-    g.role,
-    String(g.count),
-    g.specificRoles.join(', ') || 'N/A',
-    g.seniorities.join(', ') || 'N/A',
-    g.experienceRange,
-    g.availabilities.join(', ') || 'N/A',
-    g.locations.join(', '),
-    ...(includeRates ? [g.indicativeRateRange] : []),
+  const rows = profiles.map(p => [
+    p.fullName,
+    normalizeRoleCategory(p.roles),
+    p.roles?.join(', ') || '—',
+    p.seniority ? formatSeniority(p.seniority) : '—',
+    `${p.totalExperience} years`,
+    p.availability ? formatAvailability(p.availability) : '—',
+    p.location?.trim() || '—',
+    ...(includeRates ? [formatCandidateRate(p.indicativeBillingRateLpa)] : []),
   ]);
   return [headers, ...rows];
 }
@@ -230,8 +239,8 @@ function escapeCsvField(field: string): string {
   return field;
 }
 
-export function downloadGroupedCsv(groups: BenchGroup[], includeRates = false): void {
-  const rows = buildGroupedExportRows(groups, includeRates);
+export function downloadGroupedCsv(profiles: ProfileListItem[], includeRates = false): void {
+  const rows = buildGroupedExportRows(profiles, includeRates);
   const csv = rows.map(row => row.map(escapeCsvField).join(',')).join('\n');
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
@@ -242,8 +251,8 @@ export function downloadGroupedCsv(groups: BenchGroup[], includeRates = false): 
   URL.revokeObjectURL(url);
 }
 
-export function downloadGroupedXlsx(groups: BenchGroup[], includeRates = false): void {
-  const rows = buildGroupedExportRows(groups, includeRates);
+export function downloadGroupedXlsx(profiles: ProfileListItem[], includeRates = false): void {
+  const rows = buildGroupedExportRows(profiles, includeRates);
   const ws = XLSX.utils.aoa_to_sheet(rows);
   ws['!cols'] = rows[0].map((_, i) => ({
     wch: Math.max(...rows.map(r => (r[i] || '').length), 10),
@@ -355,14 +364,14 @@ export function BenchListModal({ profiles, onClose, isInternal = false }: BenchL
               {copied === 'linkedin' ? 'Copied!' : 'Copy for LinkedIn'}
             </button>
             <button
-              onClick={() => downloadGroupedXlsx(groups, includeRates)}
+              onClick={() => downloadGroupedXlsx(profiles, includeRates)}
               className="btn-secondary flex items-center gap-1.5 text-sm px-3 py-1.5"
             >
               <Download className="w-4 h-4" />
               Download XLSX
             </button>
             <button
-              onClick={() => downloadGroupedCsv(groups, includeRates)}
+              onClick={() => downloadGroupedCsv(profiles, includeRates)}
               className="btn-secondary flex items-center gap-1.5 text-sm px-3 py-1.5"
             >
               <Download className="w-4 h-4" />

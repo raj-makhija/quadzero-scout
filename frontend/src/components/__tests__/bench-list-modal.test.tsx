@@ -569,33 +569,99 @@ describe('BenchListModal include-rates toggle', () => {
 });
 
 // ---------------------------------------------------------------------------
-// buildGroupedExportRows — grouped row shape for XLSX/CSV
+// buildGroupedExportRows — per-candidate row shape for XLSX/CSV
 // ---------------------------------------------------------------------------
 describe('buildGroupedExportRows', () => {
-  it('produces a header row matching the modal columns (no rates by default)', () => {
-    const rows = buildGroupedExportRows(buildBenchGroups(mockProfiles));
+  it('produces the per-candidate header row (no rates by default)', () => {
+    const rows = buildGroupedExportRows(mockProfiles);
     expect(rows[0]).toEqual([
+      'Name',
       'Role / Category',
-      'Resources Available',
-      'Roles',
+      'Specific Role',
       'Seniority',
       'Experience',
       'Availability',
-      'Preferred Location',
+      'Location',
     ]);
   });
 
-  it('appends an Indicative Rate column when includeRates is true', () => {
-    const rows = buildGroupedExportRows(buildBenchGroups(ratedProfiles), true);
-    expect(rows[0]).toContain('Indicative Rate');
-    // One header + one row per group.
-    expect(rows.length).toBe(buildBenchGroups(ratedProfiles).length + 1);
+  it('produces one data row per candidate', () => {
+    const rows = buildGroupedExportRows(mockProfiles);
+    expect(rows.length).toBe(mockProfiles.length + 1);
   });
 
-  it('returns a header-only sheet (no data rows) for an empty bench list', () => {
+  it('appends an Indicative Rate column when includeRates is true', () => {
+    const rows = buildGroupedExportRows(ratedProfiles, true);
+    expect(rows[0]).toContain('Indicative Rate');
+    expect(rows.length).toBe(ratedProfiles.length + 1);
+  });
+
+  it('returns a header-only sheet for an empty profiles list', () => {
     const rows = buildGroupedExportRows([]);
     expect(rows.length).toBe(1);
-    expect(rows[0][0]).toBe('Role / Category');
+    expect(rows[0][0]).toBe('Name');
+  });
+
+  it('Seniority and Availability cells hold a single atomic value (no comma-joined lists)', () => {
+    const rows = buildGroupedExportRows(mockProfiles);
+    const seniorityIdx = rows[0].indexOf('Seniority');
+    const availabilityIdx = rows[0].indexOf('Availability');
+    for (const row of rows.slice(1)) {
+      // Formatted seniority/availability values never contain commas on their own;
+      // a comma would mean the old grouped join-multiple-values behaviour leaked in.
+      expect(row[seniorityIdx]).not.toContain(',');
+      expect(row[availabilityIdx]).not.toContain(',');
+    }
+  });
+
+  it('Location cell is the candidate own location, not a joined list of group locations', () => {
+    const rows = buildGroupedExportRows(mockProfiles);
+    const locationIdx = rows[0].indexOf('Location');
+    // Alice: 'Mumbai, India' (natural comma is fine — this is ONE location, not joined values)
+    const aliceRow = rows.find(r => r[0] === 'Alice Smith');
+    expect(aliceRow?.[locationIdx]).toBe('Mumbai, India');
+    // Bob: 'Pune, India'
+    const bobRow = rows.find(r => r[0] === 'Bob Jones');
+    expect(bobRow?.[locationIdx]).toBe('Pune, India');
+  });
+
+  it('null rate renders as — in the rate column (not "on request")', () => {
+    const rows = buildGroupedExportRows(ratedProfiles, true);
+    const rateIdx = rows[0].indexOf('Indicative Rate');
+    const dianaRow = rows.find(r => r[0] === 'Diana');
+    expect(dianaRow?.[rateIdx]).toBe('—');
+  });
+
+  it('valid LPA renders as a per-candidate monthly rate', () => {
+    const rows = buildGroupedExportRows(ratedProfiles, true);
+    const rateIdx = rows[0].indexOf('Indicative Rate');
+    // Alice: 24 LPA → 24/12 = 2L/month
+    const aliceRow = rows.find(r => r[0] === 'Alice');
+    expect(aliceRow?.[rateIdx]).toBe('₹2L/month');
+  });
+
+  it('missing location renders as — (not "Not specified")', () => {
+    const rows = buildGroupedExportRows(mockProfiles);
+    const locationIdx = rows[0].indexOf('Location');
+    // Eve Wilson (candidateId 5) has no location field
+    const eveRow = rows.find(r => r[0] === 'Eve Wilson');
+    expect(eveRow?.[locationIdx]).toBe('—');
+  });
+
+  it('empty seniority renders as — (not "N/A")', () => {
+    const rows = buildGroupedExportRows(mockProfiles);
+    const seniorityIdx = rows[0].indexOf('Seniority');
+    // Frank Castle has seniority: ''
+    const frankRow = rows.find(r => r[0] === 'Frank Castle');
+    expect(frankRow?.[seniorityIdx]).toBe('—');
+  });
+
+  it('candidate with empty roles renders — in Specific Role without crashing', () => {
+    const rows = buildGroupedExportRows(mockProfiles);
+    const specificRoleIdx = rows[0].indexOf('Specific Role');
+    // Frank Castle has roles: []
+    const frankRow = rows.find(r => r[0] === 'Frank Castle');
+    expect(frankRow?.[specificRoleIdx]).toBe('—');
   });
 });
 
