@@ -88,6 +88,8 @@ export async function handler(): Promise<void> {
             source_id: job.sourceId,
             source_url: job.url,
             source_company: job.company,
+            source_location: job.location,
+            posted_at: job.postedAt,
             notify_recruiter_ids: [],
             created_at: now,
             last_updated: now,
