@@ -196,12 +196,15 @@ describe('buildBenchGroups', () => {
 // Copy-output generators (email HTML + LinkedIn plain text)
 // ---------------------------------------------------------------------------
 describe('generateHtmlTable', () => {
-  it('includes a Seniority column header and per-row seniority values', () => {
+  it('includes a Seniority column header and renders seniority values as stacked inline tags', () => {
     const groups = buildBenchGroups(mockProfiles);
     const html = generateHtmlTable(groups);
-    expect(html).toContain('<th style="');
     expect(html).toContain('>Seniority</th>');
-    expect(html).toContain('Senior, Lead');
+    // Values appear in separate display:inline-block spans, not comma-joined.
+    expect(html).not.toContain('Senior, Lead');
+    expect(html).toContain('display:inline-block');
+    expect(html).toContain('Senior');
+    expect(html).toContain('Lead');
   });
 
   it('produces valid output for an empty groups array (no crash, 0 resources)', () => {
@@ -209,20 +212,135 @@ describe('generateHtmlTable', () => {
     expect(html).toContain('0 resources across 0 roles');
     expect(html).toContain('>Seniority</th>');
   });
+
+  it('has branded header div before the table with company name, Bench List, date, and totals', () => {
+    const groups = buildBenchGroups(mockProfiles);
+    const html = generateHtmlTable(groups);
+    const tableIdx = html.indexOf('<table');
+    const beforeTable = html.slice(0, tableIdx);
+    expect(beforeTable).toContain('Quadzero');
+    expect(beforeTable).toContain('Bench List');
+    expect(beforeTable).toContain('resources across');
+  });
+
+  it('has intro framing line between the header band and the table', () => {
+    const groups = buildBenchGroups(mockProfiles);
+    const html = generateHtmlTable(groups);
+    const tableIdx = html.indexOf('<table');
+    const beforeTable = html.slice(0, tableIdx);
+    expect(beforeTable).toContain('screened within the last 15 days');
+  });
+
+  it('merges Role/Category and Roles into one cell — no standalone Roles th', () => {
+    const groups = buildBenchGroups(mockProfiles);
+    const html = generateHtmlTable(groups);
+    expect(html).not.toMatch(/>Roles<\/th>/);
+    expect(html).toContain('Role / Category');
+    // Specific roles appear as a sub-line inside the same cell.
+    expect(html).toContain('React Developer');
+  });
+
+  it('renders resource count as a badge with background-color and font-weight:bold', () => {
+    const groups = buildBenchGroups(mockProfiles);
+    const html = generateHtmlTable(groups);
+    expect(html).toMatch(/background-color[^"]*font-weight:bold/);
+  });
+
+  it('has no display:flex, display:grid, or border-radius in the output', () => {
+    const groups = buildBenchGroups(mockProfiles);
+    const html = generateHtmlTable(groups);
+    expect(html).not.toContain('display:flex');
+    expect(html).not.toContain('display:grid');
+    expect(html).not.toContain('border-radius');
+  });
+
+  it('has no border:1px solid on cell styles and uses border-bottom for row separation', () => {
+    const groups = buildBenchGroups(mockProfiles);
+    const html = generateHtmlTable(groups);
+    expect(html).not.toContain('border:1px solid');
+    expect(html).toContain('border-bottom');
+  });
+
+  it('renders empty seniority/availability/location arrays as em dash, not N/A', () => {
+    const html = generateHtmlTable([{
+      role: 'Other',
+      count: 1,
+      specificRoles: [],
+      seniorities: [],
+      experienceRange: '3 years',
+      availabilities: [],
+      locations: [],
+      indicativeRateRange: 'on request',
+    }]);
+    expect(html).toContain('—');
+    expect(html).not.toContain('N/A');
+  });
+
+  it('has confidentiality footer after </table>', () => {
+    const groups = buildBenchGroups(mockProfiles);
+    const html = generateHtmlTable(groups);
+    const tableEnd = html.lastIndexOf('</table>');
+    const afterTable = html.slice(tableEnd);
+    expect(afterTable).toContain('intended for the named recipient only');
+  });
+
+  it('reads "1 role" (singular) for a bench list with a single group', () => {
+    const html = generateHtmlTable([{
+      role: 'Backend',
+      count: 2,
+      specificRoles: ['Backend Developer'],
+      seniorities: ['Senior'],
+      experienceRange: '6 years',
+      availabilities: ['Immediate'],
+      locations: ['Mumbai, India'],
+      indicativeRateRange: 'on request',
+    }]);
+    expect(html).toContain('1 role');
+    expect(html).not.toContain('1 roles');
+  });
+
+  it('escapes HTML special characters in role names', () => {
+    const html = generateHtmlTable([{
+      role: 'Other',
+      count: 1,
+      specificRoles: ['Dev & <Ops>'],
+      seniorities: [],
+      experienceRange: '4 years',
+      availabilities: [],
+      locations: [],
+      indicativeRateRange: 'on request',
+    }]);
+    expect(html).toContain('Dev &amp; &lt;Ops&gt;');
+    expect(html).not.toContain('<Ops>');
+  });
 });
 
 describe('generatePlainText', () => {
-  it('includes a "Seniority:" line per group', () => {
+  it('renders seniority values on separate lines without comma-joining', () => {
     const groups = buildBenchGroups(mockProfiles);
     const text = generatePlainText(groups);
-    expect(text).toContain('Seniority: Senior, Lead');
-    // Group with no seniority renders N/A
-    expect(text).toContain('Seniority: N/A');
+    // No comma-joined multi-value strings.
+    expect(text).not.toContain('Senior, Lead');
+    expect(text).not.toContain('N/A');
+    // Each value appears individually.
+    expect(text).toContain('Senior');
+    expect(text).toContain('Lead');
+    // Group with no seniority renders em dash.
+    expect(text).toContain('Seniority: —');
+  });
+
+  it('has intro framing and confidentiality footer', () => {
+    const groups = buildBenchGroups(mockProfiles);
+    const text = generatePlainText(groups);
+    expect(text).toContain('screened within the last 15 days');
+    expect(text).toContain('intended for the named recipient only');
   });
 
   it('produces valid output for an empty groups array (no crash, 0 resources)', () => {
     const text = generatePlainText([]);
     expect(text).toContain('0 resources across 0 roles');
+    expect(text).toContain('screened within the last 15 days');
+    expect(text).toContain('intended for the named recipient only');
   });
 });
 
