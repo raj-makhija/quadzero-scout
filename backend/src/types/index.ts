@@ -581,6 +581,8 @@ export interface RequirementItem {
   source_id?: string;
   source_url?: string;
   source_company?: string;
+  source_location?: string;
+  posted_at?: string;
   duplicate_of?: string;
   created_at: string;
   last_updated: string;
