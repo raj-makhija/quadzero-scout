@@ -52,6 +52,9 @@ dynamoDbPolicy:
     # Async LinkedIn post generation jobs (#442). The kickoff/worker/status/publish
     # handlers read & write job rows here; without this grant they 500 at runtime.
     - !GetAtt LinkedInPostJobsTable.Arn
+    # Portal scan source registry and dedup seen-log (ticket #498).
+    - !GetAtt JobSourcesTable.Arn
+    - !GetAtt JobSourceSeenLogTable.Arn
 
 # S3 Policy
 s3Policy:
@@ -79,6 +82,11 @@ lambdaInvokePolicy:
     - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-cloneDataWorker'
     - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-recruiterLinkedInGenerateWorker'
     - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-matchCacheRebuildWorker'
+    # Per-requirement on-demand cache worker (#510). saveRequirement (on create),
+    # the criteria/status update paths, and the cold-cache search path all invoke
+    # this; without this grant the invoke throws AccessDeniedException, the cache
+    # never builds, and requirement searches spin forever in the "building" state.
+    - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-matchCacheRequirementWorker'
 
 # SES Policy (for sending notification emails)
 sesPolicy:

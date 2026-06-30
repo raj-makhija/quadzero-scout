@@ -13,6 +13,8 @@ import { applyLlmRerankOverlay, RERANK_TOP_N } from '../../lib/llmRerank.js';
 import type { MatchDetails } from '../../lib/matchScoring.js';
 import { withOptionalAuth, type OptionalAuthEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
+import { invokeLambdaAsync } from '../../lib/lambdaInvoke.js';
+import { config } from '../../lib/config.js';
 import type { CandidateItem, CandidateSearchResult, SearchResponse, SearchCriteria } from '../../types/index.js';
 
 // Details placeholder for the rare case where a cached candidate no longer
@@ -154,13 +156,17 @@ async function handleRequest(
     }
 
     // Requirement-bound searches read the pre-ranked id-list from the match cache.
+    // getMatchCache distinguishes three states (#510):
+    //   null      → cache item absent → build not started yet → pending/building.
+    //   []        → cache item present but empty → completed zero-match build.
+    //   non-empty → completed build with matches → warm read.
     const cached = requirementId ? await getMatchCache(requirementId) : null;
 
     let pageCandidates: CandidateSearchResult[];
     let totalMatches: number;
     let llmRerank: { ranked: boolean; pending: boolean } | undefined;
 
-    if (requirementId && cached && cached.length > 0) {
+    if (requirementId && cached !== null) {
       // ── Cache read path ───────────────────────────────────────────────────
       // The cache stores the matchScore ranking (rank asc == score desc).
       const ranked = [...cached].sort((a, b) => a.rank - b.rank);
@@ -218,10 +224,31 @@ async function handleRequest(
           console.error('LLM rerank overlay failed, serving deterministic order:', err);
         }
       }
+    } else if (requirementId) {
+      // ── Cold cache (cached === null) — build pending (#510) ───────────────
+      // The requirement's match cache item is absent, so the build hasn't run
+      // yet. A full live scan here times out the 30s HTTP integration on large
+      // candidate pools, so instead dispatch the per-requirement cache worker
+      // off the request path and return a lightweight pending response; the
+      // client polls until the cache lands. (A present-but-empty cache, [], is
+      // a completed zero-match build and reads through the path above as 0
+      // matches — no rebuild, no pending flag.) Dispatch is non-fatal: a failed
+      // invoke still returns the pending response rather than erroring.
+      try {
+        await invokeLambdaAsync(config.lambda.matchCacheRequirementWorkerName, { requirementId });
+      } catch (dispatchErr) {
+        console.error(`[matchCache] Failed to dispatch cache worker for requirement ${requirementId}:`, dispatchErr);
+      }
+      return success({
+        candidates: [],
+        pagination: { count: 0, hasMore: false },
+        totalMatches: 0,
+        cacheBuilding: true,
+      });
     } else {
       // ── Live-scan path ────────────────────────────────────────────────────
-      // Ad-hoc search (no requirementId) or cold-cache fallback. Runs the full
-      // scan + shared scorer, then resolves the page from the in-memory result.
+      // Ad-hoc search (no requirementId). Runs the full scan + shared scorer,
+      // then resolves the page from the in-memory result.
       const searchCriteria: SearchCriteria = {
         mustHaveSkills: criteria.mustHaveSkills || [],
         goodToHaveSkills: criteria.goodToHaveSkills || [],

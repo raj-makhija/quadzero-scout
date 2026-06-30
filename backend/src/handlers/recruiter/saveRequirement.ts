@@ -2,11 +2,13 @@ import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, SaveRequirementRequestSchema } from '../../lib/validation.js';
-import { saveRequirement } from '../../lib/dynamodb.js';
+import { saveRequirement, patchRequirementVendorJd } from '../../lib/dynamodb.js';
 import { withAuth, type AuthenticatedEvent } from '../../lib/auth.js';
 import { logAuditEvent } from '../../lib/audit.js';
 import { invokeLambdaAsync } from '../../lib/lambdaInvoke.js';
 import { config } from '../../lib/config.js';
+import { LLMJDOutputSchema } from '../../types/index.js';
+import { generateVendorJd } from '../../lib/llm/index.js';
 import type { RequirementItem, LLMJDOutput } from '../../types/index.js';
 import { slugifyFieldKey } from '../../lib/slugify.js';
 import { normalizeLocation } from '../../lib/locationNormalizer.js';
@@ -39,6 +41,25 @@ async function handleRequest(
     const recruiterId = event.auth.userId;
     const requirementId = uuidv4();
     const now = new Date().toISOString();
+    const status = data.status || 'active';
+
+    // Portal-scan `discovered` requirements may have no parsed criteria yet — the
+    // LLM parse is deferred to promotion (#502). Store an empty stub so the
+    // RequirementItem contract holds; discovered rows are excluded from all match
+    // paths until promoted, so the empty criteria are never scored.
+    const parsedCriteria: LLMJDOutput = data.parsedCriteria
+      ? ({
+          ...data.parsedCriteria,
+          location: normalizeLocation(data.parsedCriteria.location) ?? null,
+        } as LLMJDOutput)
+      : LLMJDOutputSchema.parse({
+          mustHaveSkills: [],
+          goodToHaveSkills: [],
+          minExperience: null,
+          maxExperience: null,
+          seniority: [],
+          location: null,
+        });
 
     const item: RequirementItem = {
       requirement_id: requirementId,
@@ -54,11 +75,12 @@ async function handleRequest(
       payment_terms_days: data.paymentTermsDays,
       job_title: data.jobTitle,
       jd_text: data.jdText,
-      parsed_criteria: {
-        ...data.parsedCriteria,
-        location: normalizeLocation(data.parsedCriteria.location) ?? null,
-      } as LLMJDOutput,
-      status: data.status || 'active',
+      parsed_criteria: parsedCriteria,
+      status,
+      origin: data.origin || 'recruiter',
+      source_id: data.sourceId,
+      source_url: data.sourceUrl,
+      source_company: data.sourceCompany,
       duplicate_of: data.duplicateOf,
       created_at: now,
       last_updated: now,
@@ -66,7 +88,9 @@ async function handleRequest(
       last_requested_at: now,
       contributing_recruiters: [recruiterId],
       demand_score: 0,
-      notify_recruiter_ids: [recruiterId],
+      // Discovered requirements are inert until promotion — no recruiter is
+      // subscribed for "new profile match" emails (#499).
+      notify_recruiter_ids: status === 'discovered' ? [] : [recruiterId],
       additional_fields: (data.additionalFields || []).map(field => ({
         ...field,
         key: slugifyFieldKey(field.label),
@@ -84,6 +108,14 @@ async function handleRequest(
         await invokeLambdaAsync(config.lambda.matchCacheRequirementWorkerName, { requirementId });
       } catch (dispatchErr) {
         console.error(`[matchCache] Failed to dispatch cache worker for requirement ${requirementId}:`, dispatchErr);
+      }
+
+      // Generate and persist the vendor-safe JD (ticket #490). Non-fatal.
+      try {
+        const vendorJd = await generateVendorJd(item.jd_text, item.client_name, item.end_client);
+        await patchRequirementVendorJd(requirementId, vendorJd);
+      } catch (jdErr) {
+        console.error(`[vendorJd] Failed to generate vendor JD for requirement ${requirementId}:`, jdErr);
       }
     }
 

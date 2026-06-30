@@ -760,6 +760,21 @@ export async function saveRequirement(item: RequirementItem): Promise<void> {
   );
 }
 
+export async function patchRequirementVendorJd(requirementId: string, vendorJd: string): Promise<void> {
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.requirementsTable,
+      Key: { requirement_id: requirementId },
+      UpdateExpression: 'SET vendor_jd = :v, last_updated = :now',
+      ExpressionAttributeValues: {
+        ':v': vendorJd,
+        ':now': new Date().toISOString(),
+      },
+      ConditionExpression: 'attribute_exists(requirement_id)',
+    })
+  );
+}
+
 export async function getRequirementById(requirementId: string): Promise<RequirementItem | null> {
   const result = await docClient.send(
     new GetCommand({
@@ -1332,6 +1347,13 @@ export async function getAllRequirementsPaginated(
       filterParts.push('#status = :statusVal');
       exprNames['#status'] = 'status';
       exprValues[':statusVal'] = statusFilter;
+    } else {
+      // Discovered requirements (portal-scan, #499) are inert and only surfaced via
+      // the dedicated discovered queue (#502) — exclude them from the default
+      // recruiter-facing list unless explicitly requested via statusFilter.
+      filterParts.push('#status <> :discovered');
+      exprNames['#status'] = 'status';
+      exprValues[':discovered'] = 'discovered';
     }
 
     if (dateFrom) {

@@ -163,4 +163,12 @@ describe('updateRequirementCriteria handler', () => {
     expect(result.statusCode).toBe(200);
     expect(mockInvokeLambdaAsync).not.toHaveBeenCalled();
   });
+
+  // ticket #499 — discovered requirements stay inert when their criteria are edited
+  it('TC-CRITERIA-499-a: does not dispatch the worker for a discovered requirement', async () => {
+    mockGetRequirementById.mockResolvedValue({ ...existingRequirement, status: 'discovered' });
+    const result = parseResponse(await handler(makeEvent(validBody)));
+    expect(result.statusCode).toBe(200);
+    expect(mockInvokeLambdaAsync).not.toHaveBeenCalled();
+  });
 });
