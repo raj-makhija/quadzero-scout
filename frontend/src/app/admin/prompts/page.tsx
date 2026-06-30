@@ -13,6 +13,7 @@ const PROMPT_LABELS: Record<string, string> = {
   linkedin_post_generator: 'LinkedIn Post — Text',
   linkedin_image_generator: 'LinkedIn Post — Image',
   candidate_reranker: 'Candidate Re-ranker',
+  vendor_jd_rewriter: 'Vendor JD Rewriter',
 };
 
 export default function PromptsPage() {
