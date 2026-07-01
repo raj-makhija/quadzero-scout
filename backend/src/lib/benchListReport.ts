@@ -98,6 +98,7 @@ export interface BenchReportCandidate {
   seniority?: string;
   availability?: string;
   location?: string;
+  expected_ctc?: number | null;
 }
 
 export interface BenchGroup {
@@ -108,6 +109,28 @@ export interface BenchGroup {
   experienceRange: string;
   availabilities: string[];
   locations: string[];
+  indicativeRateRange: string;
+}
+
+// Format the indicative rate range for a group. Rates are annual (LPA, from
+// expected_ctc) and displayed as a monthly figure (LPA / 12) in lakhs. Members
+// with a null/zero rate are ignored; if none have a rate the group reads
+// "on request". Mirrors the frontend bench-list-modal formatRateRange so the
+// emailed table matches the in-app "Include rates" output (ticket #491/#492).
+function formatRateRange(rates: (number | null | undefined)[]): string {
+  const valid = rates.filter((r): r is number => typeof r === 'number' && r > 0);
+  if (valid.length === 0) return 'on request';
+
+  const monthly = valid.map((r) => r / 12);
+  const min = Math.min(...monthly);
+  const max = Math.max(...monthly);
+
+  const fmt = (n: number): string => {
+    const rounded = Math.round(n * 10) / 10;
+    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  };
+
+  return min === max ? `₹${fmt(min)}L/month` : `₹${fmt(min)}–${fmt(max)}L/month`;
 }
 
 export function buildBenchGroups(candidates: BenchReportCandidate[]): BenchGroup[] {
@@ -144,6 +167,8 @@ export function buildBenchGroups(candidates: BenchReportCandidate[]): BenchGroup
       locs.add(m.location?.trim() || 'Not specified');
     });
 
+    const rates = members.map((m) => m.expected_ctc);
+
     groups.push({
       role,
       count: members.length,
@@ -152,6 +177,7 @@ export function buildBenchGroups(candidates: BenchReportCandidate[]): BenchGroup
       experienceRange: minExp === maxExp ? `${minExp} years` : `${minExp}–${maxExp} years`,
       availabilities: Array.from(avails),
       locations: Array.from(locs),
+      indicativeRateRange: formatRateRange(rates),
     });
   }
 
@@ -177,7 +203,7 @@ function escapeHtml(str: string): string {
     .replace(/"/g, '&quot;');
 }
 
-export function generateHtmlTable(groups: BenchGroup[]): string {
+export function generateHtmlTable(groups: BenchGroup[], includeRates = false): string {
   const date = getFormattedDate();
   const totalCount = groups.reduce((sum, g) => sum + g.count, 0);
   const totalResources = `${totalCount} resource${totalCount !== 1 ? 's' : ''} across ${groups.length} role${groups.length !== 1 ? 's' : ''}`;
@@ -198,6 +224,9 @@ export function generateHtmlTable(groups: BenchGroup[]): string {
         g.specificRoles.length > 0
           ? `<div style="font-size:12px;color:#6b7280;margin-top:3px;">${g.specificRoles.map((r) => escapeHtml(r)).join(' &middot; ')}</div>`
           : '';
+      const rateCell = includeRates
+        ? `\n      <td style="${tdStyle}">${escapeHtml(g.indicativeRateRange)}</td>`
+        : '';
       return `<tr${rowStyle}>
       <td style="${tdStyle}">
         <div style="font-weight:600;color:#111827;">${escapeHtml(g.role)}</div>${specificRolesHtml}
@@ -208,10 +237,12 @@ export function generateHtmlTable(groups: BenchGroup[]): string {
       <td style="${tdStyle}">${renderTags(g.seniorities)}</td>
       <td style="${tdStyle}">${escapeHtml(g.experienceRange)}</td>
       <td style="${tdStyle}">${renderTags(g.availabilities)}</td>
-      <td style="${tdStyle}">${renderTags(g.locations)}</td>
+      <td style="${tdStyle}">${renderTags(g.locations)}</td>${rateCell}
     </tr>`;
     })
     .join('\n');
+
+  const rateHeader = includeRates ? `\n        <th style="${thStyle}">Indicative Rate</th>` : '';
 
   return `<div style="font-family:Arial,Helvetica,sans-serif;">
   <div style="background-color:#1e40af;color:#ffffff;padding:16px 20px;">
@@ -228,7 +259,7 @@ export function generateHtmlTable(groups: BenchGroup[]): string {
         <th style="${thStyle}">Seniority</th>
         <th style="${thStyle}">Experience</th>
         <th style="${thStyle}">Availability</th>
-        <th style="${thStyle}">Preferred Location</th>
+        <th style="${thStyle}">Preferred Location</th>${rateHeader}
       </tr>
     </thead>
     <tbody>
