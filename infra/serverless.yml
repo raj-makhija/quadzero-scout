@@ -1005,6 +1005,35 @@ functions:
           path: /admin/match-cache/rebuild
           method: POST
 
+  # Job Sources CRUD — admin portal scan source management (ticket #503).
+  adminListJobSources:
+    handler: src/handlers/admin/listJobSources.handler
+    events:
+      - httpApi:
+          path: /admin/job-sources
+          method: GET
+
+  adminCreateJobSource:
+    handler: src/handlers/admin/createJobSource.handler
+    events:
+      - httpApi:
+          path: /admin/job-sources
+          method: POST
+
+  adminUpdateJobSource:
+    handler: src/handlers/admin/updateJobSource.handler
+    events:
+      - httpApi:
+          path: /admin/job-sources/{source_id}
+          method: PUT
+
+  adminDeleteJobSource:
+    handler: src/handlers/admin/deleteJobSource.handler
+    events:
+      - httpApi:
+          path: /admin/job-sources/{source_id}
+          method: DELETE
+
 resources:
   - ${file(resources/dynamodb.yml)}
   - ${file(resources/s3.yml)}

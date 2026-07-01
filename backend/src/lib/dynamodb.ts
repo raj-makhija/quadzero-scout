@@ -3020,3 +3020,65 @@ export async function writeLinkedInPost(
     })
   );
 }
+
+// JobSources CRUD — admin management of portal scan source registry
+
+import type { JobSource } from './portalScan/adapters/index.js';
+
+export async function listAllJobSources(): Promise<JobSource[]> {
+  const items: JobSource[] = [];
+  let lastKey: Record<string, unknown> | undefined;
+
+  do {
+    const result = await docClient.send(
+      new ScanCommand({
+        TableName: config.dynamodb.jobSourcesTable,
+        ExclusiveStartKey: lastKey,
+      })
+    );
+    items.push(...((result.Items as JobSource[]) || []));
+    lastKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (lastKey);
+
+  return items;
+}
+
+export async function getJobSource(sourceId: string): Promise<JobSource | null> {
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: config.dynamodb.jobSourcesTable,
+      Key: { source_id: sourceId },
+    })
+  );
+  return (result.Item as JobSource) || null;
+}
+
+export async function createJobSource(source: JobSource): Promise<void> {
+  await docClient.send(
+    new PutCommand({
+      TableName: config.dynamodb.jobSourcesTable,
+      Item: source,
+      ConditionExpression: 'attribute_not_exists(source_id)',
+    })
+  );
+}
+
+export async function replaceJobSource(source: JobSource): Promise<void> {
+  await docClient.send(
+    new PutCommand({
+      TableName: config.dynamodb.jobSourcesTable,
+      Item: source,
+      ConditionExpression: 'attribute_exists(source_id)',
+    })
+  );
+}
+
+export async function deleteJobSource(sourceId: string): Promise<void> {
+  await docClient.send(
+    new DeleteCommand({
+      TableName: config.dynamodb.jobSourcesTable,
+      Key: { source_id: sourceId },
+      ConditionExpression: 'attribute_exists(source_id)',
+    })
+  );
+}
