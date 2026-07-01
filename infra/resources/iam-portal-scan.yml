@@ -1,0 +1,41 @@
+# IAM policies for the portal-scan service (ticket #535).
+#
+# The main iam.yml scopes DynamoDB/S3/Lambda via `!GetAtt <Resource>` and
+# `${self:service}` — those reference resources defined in the MAIN stack and
+# resolve to the main service name, so they cannot be reused here. This file
+# scopes the portal-scan role by constructing ARNs from table/function NAMES
+# (the tables and the matchCache worker are owned by the main stack; this stack
+# only references them). ssmPolicy + cloudwatchMetricsPolicy from iam.yml are
+# self-contained and reused directly.
+
+# DynamoDB — only the tables the portal-scan handlers touch:
+#   Requirements (list/get/promote/dismiss + worker create), JobSources (CRUD +
+#   worker read), JobSourceSeenLog (worker dedup), AuditLog (promote/dismiss).
+dynamoDbPortalPolicy:
+  Effect: Allow
+  Action:
+    - dynamodb:Query
+    - dynamodb:Scan
+    - dynamodb:GetItem
+    - dynamodb:PutItem
+    - dynamodb:UpdateItem
+    - dynamodb:DeleteItem
+    - dynamodb:BatchGetItem
+    - dynamodb:BatchWriteItem
+  Resource:
+    - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/Requirements-${self:provider.stage}'
+    - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/Requirements-${self:provider.stage}/index/*'
+    - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/JobSources-${self:provider.stage}'
+    - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/JobSources-${self:provider.stage}/index/*'
+    - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/JobSourceSeenLog-${self:provider.stage}'
+    - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/AuditLog-${self:provider.stage}'
+    - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/AuditLog-${self:provider.stage}/index/*'
+
+# Lambda invoke — promoteDiscoveredRequirement dispatches the match-cache worker,
+# which lives in the MAIN stack (hence the literal service name, not ${self:service}).
+lambdaInvokePortalPolicy:
+  Effect: Allow
+  Action:
+    - lambda:InvokeFunction
+  Resource:
+    - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:quadzero-scout-${self:provider.stage}-matchCacheRequirementWorker'

@@ -125,12 +125,12 @@ provider:
   iam:
     role:
       statements:
-        - ${file(resources/iam.yml):dynamoDbPolicy}
-        - ${file(resources/iam.yml):s3Policy}
-        - ${file(resources/iam.yml):lambdaInvokePolicy}
+        # Portal-scan-scoped DynamoDB + Lambda-invoke (name-based ARNs — the main
+        # iam.yml uses cross-stack !GetAtt/${self:service} refs that don't resolve
+        # here). ssmPolicy + cloudwatchMetricsPolicy from iam.yml are self-contained.
+        - ${file(resources/iam-portal-scan.yml):dynamoDbPortalPolicy}
+        - ${file(resources/iam-portal-scan.yml):lambdaInvokePortalPolicy}
         - ${file(resources/iam.yml):ssmPolicy}
-        - ${file(resources/iam.yml):sesPolicy}
-        - ${file(resources/iam.yml):textractPolicy}
         - ${file(resources/iam.yml):cloudwatchMetricsPolicy}
 
 custom:
@@ -221,3 +221,36 @@ functions:
       - schedule:
           rate: rate(1 day)
           enabled: true
+
+  # Discovered-requirement endpoints, consolidated into one router Lambda
+  # (tickets #502, #535). timeout: 45 covers the promote path (match-cache dispatch).
+  discoveredRequirementsRouter:
+    handler: src/handlers/recruiter/discoveredRequirementsRouter.handler
+    timeout: 45
+    events:
+      - httpApi:
+          path: /recruiter/discovered-requirements
+          method: GET
+      - httpApi:
+          path: /recruiter/discovered-requirements/{requirementId}/promote
+          method: POST
+      - httpApi:
+          path: /recruiter/discovered-requirements/{requirementId}/dismiss
+          method: POST
+
+  # Admin JobSources CRUD, consolidated into one router Lambda (tickets #503, #535).
+  jobSourcesRouter:
+    handler: src/handlers/admin/jobSourcesRouter.handler
+    events:
+      - httpApi:
+          path: /admin/job-sources
+          method: GET
+      - httpApi:
+          path: /admin/job-sources
+          method: POST
+      - httpApi:
+          path: /admin/job-sources/{source_id}
+          method: PUT
+      - httpApi:
+          path: /admin/job-sources/{source_id}
+          method: DELETE
