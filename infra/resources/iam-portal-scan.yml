@@ -23,6 +23,11 @@ dynamoDbPortalPolicy:
     - dynamodb:BatchGetItem
     - dynamodb:BatchWriteItem
   Resource:
+    # withAuth (on every authenticated endpoint) reads Users (getUserById /
+    # getUserByEmail via EmailIndex) and PricingConfig (getActiveSessionSettings).
+    - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/Users-${self:provider.stage}'
+    - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/Users-${self:provider.stage}/index/*'
+    - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/PricingConfig-${self:provider.stage}'
     - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/Requirements-${self:provider.stage}'
     - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/Requirements-${self:provider.stage}/index/*'
     - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/JobSources-${self:provider.stage}'
