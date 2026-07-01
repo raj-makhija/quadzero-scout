@@ -1413,6 +1413,113 @@ export async function getAllRequirementsPaginated(
   };
 }
 
+// ─── Discovered Requirements Queue ─────────────────────────────────────────
+
+export async function getDiscoveredRequirements(): Promise<RequirementItem[]> {
+  const PAGE_SIZE = 100;
+  const MAX_ITEMS = 500;
+  const allItems: RequirementItem[] = [];
+  let currentKey: Record<string, unknown> | undefined;
+
+  do {
+    const params: {
+      TableName: string;
+      FilterExpression: string;
+      ExpressionAttributeNames: Record<string, string>;
+      ExpressionAttributeValues: Record<string, unknown>;
+      Limit: number;
+      ExclusiveStartKey?: Record<string, unknown>;
+    } = {
+      TableName: config.dynamodb.requirementsTable,
+      FilterExpression: '#status = :discovered',
+      ExpressionAttributeNames: { '#status': 'status' },
+      ExpressionAttributeValues: { ':discovered': 'discovered' },
+      Limit: PAGE_SIZE,
+    };
+
+    if (currentKey) {
+      params.ExclusiveStartKey = currentKey;
+    }
+
+    const result = await docClient.send(new ScanCommand(params));
+    allItems.push(...((result.Items || []) as RequirementItem[]));
+    currentKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (currentKey && allItems.length < MAX_ITEMS);
+
+  allItems.sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+
+  return allItems;
+}
+
+export async function promoteDiscoveredRequirement(
+  requirementId: string,
+  parsedCriteria: Record<string, unknown>,
+  recruiterId: string,
+  clientName: string,
+  engagementModel?: string,
+  payroll?: string
+): Promise<void> {
+  const now = new Date().toISOString();
+  const setParts = [
+    '#status = :active',
+    'parsed_criteria = :criteria',
+    'recruiter_id = :recruiterId',
+    'client_name = :clientName',
+    'client_name_lower = :clientNameLower',
+    'notify_recruiter_ids = :notifyIds',
+    'last_updated = :now',
+  ];
+  const exprValues: Record<string, unknown> = {
+    ':active': 'active',
+    ':discovered': 'discovered',
+    ':criteria': parsedCriteria,
+    ':recruiterId': recruiterId,
+    ':clientName': clientName,
+    ':clientNameLower': clientName.toLowerCase().trim(),
+    ':notifyIds': [recruiterId],
+    ':now': now,
+  };
+
+  if (engagementModel !== undefined) {
+    setParts.push('engagement_model = :engagementModel');
+    exprValues[':engagementModel'] = engagementModel;
+  }
+  if (payroll !== undefined) {
+    setParts.push('payroll = :payroll');
+    exprValues[':payroll'] = payroll;
+  }
+
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.requirementsTable,
+      Key: { requirement_id: requirementId },
+      UpdateExpression: `SET ${setParts.join(', ')}`,
+      ConditionExpression: '#status = :discovered',
+      ExpressionAttributeNames: { '#status': 'status' },
+      ExpressionAttributeValues: exprValues,
+    })
+  );
+}
+
+export async function dismissDiscoveredRequirement(requirementId: string): Promise<void> {
+  await docClient.send(
+    new UpdateCommand({
+      TableName: config.dynamodb.requirementsTable,
+      Key: { requirement_id: requirementId },
+      UpdateExpression: 'SET #status = :dismissed, last_updated = :now',
+      ConditionExpression: '#status = :discovered',
+      ExpressionAttributeNames: { '#status': 'status' },
+      ExpressionAttributeValues: {
+        ':dismissed': 'closed_on_hold',
+        ':discovered': 'discovered',
+        ':now': new Date().toISOString(),
+      },
+    })
+  );
+}
+
 // ─── Recent Requirements ────────────────────────────────────────────────────
 
 // TODO: If Requirements table grows beyond ~1000 items, add a GSI with
@@ -2910,6 +3017,68 @@ export async function writeLinkedInPost(
         ':lp': post,
         ':now': new Date().toISOString(),
       },
+    })
+  );
+}
+
+// JobSources CRUD — admin management of portal scan source registry
+
+import type { JobSource } from './portalScan/adapters/index.js';
+
+export async function listAllJobSources(): Promise<JobSource[]> {
+  const items: JobSource[] = [];
+  let lastKey: Record<string, unknown> | undefined;
+
+  do {
+    const result = await docClient.send(
+      new ScanCommand({
+        TableName: config.dynamodb.jobSourcesTable,
+        ExclusiveStartKey: lastKey,
+      })
+    );
+    items.push(...((result.Items as JobSource[]) || []));
+    lastKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (lastKey);
+
+  return items;
+}
+
+export async function getJobSource(sourceId: string): Promise<JobSource | null> {
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: config.dynamodb.jobSourcesTable,
+      Key: { source_id: sourceId },
+    })
+  );
+  return (result.Item as JobSource) || null;
+}
+
+export async function createJobSource(source: JobSource): Promise<void> {
+  await docClient.send(
+    new PutCommand({
+      TableName: config.dynamodb.jobSourcesTable,
+      Item: source,
+      ConditionExpression: 'attribute_not_exists(source_id)',
+    })
+  );
+}
+
+export async function replaceJobSource(source: JobSource): Promise<void> {
+  await docClient.send(
+    new PutCommand({
+      TableName: config.dynamodb.jobSourcesTable,
+      Item: source,
+      ConditionExpression: 'attribute_exists(source_id)',
+    })
+  );
+}
+
+export async function deleteJobSource(sourceId: string): Promise<void> {
+  await docClient.send(
+    new DeleteCommand({
+      TableName: config.dynamodb.jobSourcesTable,
+      Key: { source_id: sourceId },
+      ConditionExpression: 'attribute_exists(source_id)',
     })
   );
 }

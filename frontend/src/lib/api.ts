@@ -1,6 +1,9 @@
 import { toast } from '@/hooks/use-toast';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+// Portal-scan endpoints live in a separate serverless service with its own API
+// (ticket #535). Falls back to API_URL when unset (e.g. local single-service dev).
+const PORTAL_SCAN_API_URL = process.env.NEXT_PUBLIC_PORTAL_SCAN_API_URL || API_URL;
 
 interface ApiWarning {
   code: string;
@@ -90,11 +93,13 @@ export class ApiError extends Error {
 
 class ApiClient {
   private baseUrl: string;
+  private portalScanBaseUrl: string;
   private token: string | null = null;
   private tokenFetchPromise: Promise<void> | null = null;
 
-  constructor(baseUrl: string) {
+  constructor(baseUrl: string, portalScanBaseUrl: string) {
     this.baseUrl = baseUrl;
+    this.portalScanBaseUrl = portalScanBaseUrl;
   }
 
   setToken(token: string | null) {
@@ -132,7 +137,8 @@ class ApiClient {
 
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    baseUrl?: string
   ): Promise<T> {
     await this.ensureToken();
 
@@ -147,7 +153,7 @@ class ApiClient {
 
     let response: Response;
     try {
-      response = await fetch(`${this.baseUrl}${endpoint}`, {
+      response = await fetch(`${baseUrl ?? this.baseUrl}${endpoint}`, {
         ...options,
         headers,
       });
@@ -670,6 +676,32 @@ class ApiClient {
     });
   }
 
+  // JobSources CRUD is served by the portal-scan service (separate API) — route
+  // these through portalScanBaseUrl (ticket #535).
+  async listJobSources() {
+    return this.request<{ sources: JobSource[] }>('/admin/job-sources', {}, this.portalScanBaseUrl);
+  }
+
+  async createJobSource(source: Omit<JobSource, 'source_id' | 'last_scanned_at'>) {
+    return this.request<{ source: JobSource }>('/admin/job-sources', {
+      method: 'POST',
+      body: JSON.stringify(source),
+    }, this.portalScanBaseUrl);
+  }
+
+  async updateJobSource(sourceId: string, updates: Partial<Omit<JobSource, 'source_id' | 'last_scanned_at'>>) {
+    return this.request<{ source: JobSource }>(`/admin/job-sources/${sourceId}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    }, this.portalScanBaseUrl);
+  }
+
+  async deleteJobSource(sourceId: string) {
+    return this.request<Record<string, never>>(`/admin/job-sources/${sourceId}`, {
+      method: 'DELETE',
+    }, this.portalScanBaseUrl);
+  }
+
   async updateCandidateCustomFields(
     candidateId: string,
     customFields: Record<string, string | number>,
@@ -1094,7 +1126,7 @@ class ApiClient {
   }
 }
 
-export const api = new ApiClient(API_URL);
+export const api = new ApiClient(API_URL, PORTAL_SCAN_API_URL);
 
 // Types
 export interface ExtractedProfile {
@@ -2284,4 +2316,14 @@ export interface RecruiterTask {
   generated_at: string;
   snoozed_until: string | null;
   snooze_count: number;
+}
+
+export interface JobSource {
+  source_id: string;
+  type: string;
+  identifier: string;
+  url: string;
+  cadence: string;
+  enabled: boolean;
+  last_scanned_at?: string;
 }
