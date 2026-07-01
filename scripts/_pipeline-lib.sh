@@ -367,5 +367,10 @@ pl_deploy_stage() {
       npm install --silent --no-audit --no-fund "@sparticuz/chromium@$chromium_ver")
   fi
   echo "==> deploying backend to $stage (npx serverless deploy --stage $stage)" >&2
-  (cd infra/ && npx serverless deploy --stage "$stage")
+  (cd infra/ && npx serverless deploy --stage "$stage") || return 1
+  # Portal-scan is a second serverless service (ticket #535) with its own stack;
+  # deploy it too so qa-deploy and prod-release ship both. Depends on the chromium
+  # layer built above being present for the worker's HireBound headless path (#538).
+  echo "==> deploying portal-scan service to $stage (serverless-portal-scan.yml)" >&2
+  (cd infra/ && npx serverless deploy --config serverless-portal-scan.yml --stage "$stage")
 }

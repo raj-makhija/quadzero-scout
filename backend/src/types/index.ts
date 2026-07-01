@@ -581,6 +581,8 @@ export interface RequirementItem {
   source_id?: string;
   source_url?: string;
   source_company?: string;
+  source_location?: string;
+  posted_at?: string;
   duplicate_of?: string;
   created_at: string;
   last_updated: string;
@@ -1555,6 +1557,8 @@ export type AuditAction =
   | 'SHORTLIST_REMOVE'
   | 'CANDIDATE_SCREEN'
   | 'REQUIREMENT_CREATE'
+  | 'REQUIREMENT_PROMOTE'
+  | 'REQUIREMENT_DISMISS'
   | 'REQUIREMENT_UPDATE'
   | 'REQUIREMENT_UPDATE_STATUS'
   | 'REQUIREMENT_UPDATE_CRITERIA'

@@ -42,6 +42,12 @@ vi.mock('../../../lib/dynamodb.js', () => ({
   saveRequirement: (...a: unknown[]) => mockSaveRequirement(...a),
 }));
 
+// --- mock LLM (must never be called during scan) ---
+const mockParseJobDescription = vi.fn();
+vi.mock('../../../lib/llm/index.js', () => ({
+  parseJobDescription: (...a: unknown[]) => mockParseJobDescription(...a),
+}));
+
 import { handler } from '../portalScanWorker.js';
 import { config } from '../../../lib/config.js';
 
@@ -409,6 +415,38 @@ describe('portalScanWorker — hirebound source type', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
 
     await expect(handler()).resolves.toBeUndefined();
+  });
+});
+
+describe('portalScanWorker — LLM isolation (#502)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (config.portalScan as { enabled: boolean }).enabled = true;
+    mockGetEnabledSources.mockResolvedValue([stubSource]);
+    mockFetchJobs.mockResolvedValue(cannedJobs);
+    mockGetSeenLogEntry.mockResolvedValue(null);
+    mockPutSeenLogEntry.mockResolvedValue(undefined);
+    mockSaveRequirement.mockResolvedValue(undefined);
+  });
+
+  it('never calls parseJobDescription during a scan run regardless of how many jobs are processed', async () => {
+    await handler();
+
+    expect(mockParseJobDescription).not.toHaveBeenCalled();
+  });
+
+  it('never calls parseJobDescription even when multiple sources are scanned', async () => {
+    const source2 = { ...stubSource, source_id: 'src-2' };
+    mockGetEnabledSources.mockResolvedValue([stubSource, source2]);
+    const moreJobs = [
+      ...cannedJobs,
+      { sourceId: 'src-2', externalJobId: 'job-3', title: 'PM', company: 'Beta', url: 'https://example.com/3', rawDescription: 'desc3' },
+    ];
+    mockFetchJobs.mockResolvedValue(moreJobs);
+
+    await handler();
+
+    expect(mockParseJobDescription).not.toHaveBeenCalled();
   });
 });
 
