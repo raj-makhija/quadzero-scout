@@ -449,6 +449,28 @@ functions:
           path: /recruiter/requirements/{requirementId}/status
           method: PUT
 
+  recruiterListDiscoveredRequirements:
+    handler: src/handlers/recruiter/listDiscoveredRequirements.handler
+    events:
+      - httpApi:
+          path: /recruiter/discovered-requirements
+          method: GET
+
+  recruiterPromoteDiscoveredRequirement:
+    handler: src/handlers/recruiter/promoteDiscoveredRequirement.handler
+    timeout: 45
+    events:
+      - httpApi:
+          path: /recruiter/discovered-requirements/{requirementId}/promote
+          method: POST
+
+  recruiterDismissDiscoveredRequirement:
+    handler: src/handlers/recruiter/dismissDiscoveredRequirement.handler
+    events:
+      - httpApi:
+          path: /recruiter/discovered-requirements/{requirementId}/dismiss
+          method: POST
+
   recruiterToggleRequirementNotify:
     handler: src/handlers/recruiter/toggleRequirementNotify.handler
     events:

@@ -195,6 +195,13 @@ export const ToggleRequirementNotifyRequestSchema = z.object({
   notify: z.boolean(),
 });
 
+// Promote Discovered Requirement Request Validation
+export const PromoteDiscoveredRequirementSchema = z.object({
+  clientName: z.string().min(1).max(200),
+  engagementModel: z.enum(['full_time_regular', 'full_time_contract', 'part_time_contract']).optional(),
+  payroll: z.enum(['quadzero', 'client']).optional(),
+});
+
 // Update Requirement Criteria Request Validation
 export const UpdateRequirementCriteriaRequestSchema = z.object({
   parsedCriteria: LLMJDOutputSchema,
