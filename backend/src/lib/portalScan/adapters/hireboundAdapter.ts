@@ -87,9 +87,21 @@ async function tryHeadlessPath(source: JobSource): Promise<DiscoveredJob[]> {
           'article',
         ];
 
-        let cards: Element[] = [];
+        // DOM globals exist in the browser context this callback runs in, but the
+        // backend tsconfig has no "dom" lib (correct for Node/Lambda), so type the
+        // nodes structurally here. These type-only constructs are erased before the
+        // callback is serialized to the browser, so runtime is unchanged.
+        interface DomNode {
+          querySelector(sel: string): DomNode | null;
+          querySelectorAll(sel: string): DomNode[];
+          textContent: string | null;
+          href?: string;
+        }
+        const doc = (globalThis as unknown as { document: DomNode }).document;
+
+        let cards: DomNode[] = [];
         for (const sel of selectors) {
-          const found = Array.from(document.querySelectorAll(sel));
+          const found = Array.from(doc.querySelectorAll(sel));
           if (found.length > 0) { cards = found; break; }
         }
 
@@ -102,7 +114,7 @@ async function tryHeadlessPath(source: JobSource): Promise<DiscoveredJob[]> {
             card.querySelector('[class*="location"], [class*="Location"]')
               ?.textContent ?? ''
           ).trim() || undefined,
-          url: (card.querySelector('a[href]') as HTMLAnchorElement | null)?.href ?? '',
+          url: card.querySelector('a[href]')?.href ?? '',
           rawDescription: (
             card.querySelector('[class*="description"], [class*="Description"], p')
               ?.textContent ?? ''
