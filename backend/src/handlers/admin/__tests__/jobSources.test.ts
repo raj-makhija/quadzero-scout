@@ -12,7 +12,7 @@ vi.mock('../../../lib/auth.js', () => ({
 
 // --- mock adapter registry ---
 vi.mock('../../../lib/portalScan/adapters/index.js', () => ({
-  VALID_TYPES: ['stub', 'greenhouse', 'lever'],
+  VALID_TYPES: ['stub', 'greenhouse', 'lever', 'hirebound'],
 }));
 
 // --- mock dynamodb ---
@@ -102,6 +102,17 @@ describe('POST /admin/job-sources', () => {
     expect(parsed.success).toBe(true);
     expect(parsed.data.source.source_id).toBeDefined();
     expect(parsed.data.source.type).toBe('greenhouse');
+    expect(mockCreateJobSource).toHaveBeenCalledOnce();
+  });
+
+  it('accepts hirebound as a valid type (#537)', async () => {
+    const body = { type: 'hirebound', identifier: 'acme-org', url: 'https://cpages.hirebound.io/in/overview/org/acme', cadence: 'daily', enabled: true };
+
+    const res = await createHandler(makeEvent({ body: JSON.stringify(body) }) as never);
+    const parsed = JSON.parse((res as { body: string }).body);
+
+    expect(parsed.success).toBe(true);
+    expect(parsed.data.source.type).toBe('hirebound');
     expect(mockCreateJobSource).toHaveBeenCalledOnce();
   });
 
