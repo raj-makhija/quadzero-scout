@@ -35,7 +35,9 @@ registry.set(greenhouseAdapter.type, greenhouseAdapter);
 registry.set(leverAdapter.type, leverAdapter);
 registry.set(hireboundAdapter.type, hireboundAdapter);
 
-export const VALID_TYPES: string[] = [stubAdapter.type, greenhouseAdapter.type, leverAdapter.type];
+// hirebound works via its API-first path; headless fallback needs the chromium
+// layer wired to portalScanWorker (#538) but is a graceful no-op without it.
+export const VALID_TYPES: string[] = [stubAdapter.type, greenhouseAdapter.type, leverAdapter.type, hireboundAdapter.type];
 
 export function getAdapter(type: string): SourceAdapter | undefined {
   return registry.get(type);

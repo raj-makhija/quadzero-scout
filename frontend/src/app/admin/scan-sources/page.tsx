@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { api, JobSource } from '@/lib/api';
 import { Pencil, Trash2, Plus, X } from 'lucide-react';
 
-const VALID_TYPES = ['stub', 'greenhouse', 'lever'];
+const VALID_TYPES = ['stub', 'greenhouse', 'lever', 'hirebound'];
 const VALID_CADENCES = ['daily', 'weekly'];
 
 type FormState = {
