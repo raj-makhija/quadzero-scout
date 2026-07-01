@@ -1,5 +1,6 @@
 import {
   calculateMatchScore,
+  MIN_MUST_HAVE_MATCH_RATIO,
   FUZZY_MATCH_WEIGHT,
   MUST_HAVE_SECONDARY_WEIGHT,
   CORESKILL_UNCONFIRMED_SCORE_FLOOR,
@@ -120,7 +121,7 @@ export function matchAndRankCandidates(
         + (details.mustHaveFuzzy?.length ?? 0) * FUZZY_MATCH_WEIGHT
         + (details.mustHaveSecondary?.length ?? 0) * MUST_HAVE_SECONDARY_WEIGHT
       ) / normalizedMustHave.length;
-      if (effectiveRatio <= 0) continue;
+      if (effectiveRatio <= MIN_MUST_HAVE_MATCH_RATIO) continue;
     }
 
     // Hard filter: discipline gate

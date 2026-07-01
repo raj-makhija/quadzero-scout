@@ -16,7 +16,7 @@ vi.mock('../matchScoring.js', () => {
   };
   return {
     calculateMatchScore: (...args: unknown[]) => mockCalculateMatchScore(...args),
-    MIN_MUST_HAVE_MATCH_RATIO: 0,
+    MIN_MUST_HAVE_MATCH_RATIO: 0.2,
     FUZZY_MATCH_WEIGHT: 0.85,
     MUST_HAVE_SECONDARY_WEIGHT: 0.5,
     CORESKILL_UNCONFIRMED_SCORE_FLOOR: 40,
@@ -205,7 +205,8 @@ describe('matchAndRankCandidates', () => {
     expect(result).toHaveLength(1);
   });
 
-  it('includes candidate matching 1 of 5 must-have skills (OR semantics)', () => {
+  it('excludes candidate matching 1 of 5 must-have skills (ratio 0.2 at gate boundary)', () => {
+    // effectiveRatio = 1/5 = 0.2 = MIN_MUST_HAVE_MATCH_RATIO → excluded (strict greater-than)
     mockCalculateMatchScore.mockReturnValue({
       score: 15,
       details: {
@@ -222,7 +223,7 @@ describe('matchAndRankCandidates', () => {
       { mustHaveSkills: ['react', 'nodejs', 'python', 'java', 'golang'] }
     );
 
-    expect(result).toHaveLength(1);
+    expect(result).toHaveLength(0);
   });
 
   it('excludes candidate matching 0 of N must-have skills', () => {
@@ -243,6 +244,51 @@ describe('matchAndRankCandidates', () => {
     );
 
     expect(result).toHaveLength(0);
+  });
+
+  it('excludes candidate matching 1 of 10 must-have skills (ratio 0.1 below 20% gate)', () => {
+    // effectiveRatio = 1/10 = 0.1 ≤ 0.2 → excluded by the stricter gate
+    const mustHave10 = ['react', 'nodejs', 'python', 'java', 'golang',
+                         'rust', 'csharp', 'ruby', 'php', 'scala'];
+    mockCalculateMatchScore.mockReturnValue({
+      score: 10,
+      details: {
+        ...goodDetails,
+        mustHaveMatched: ['react'],
+        mustHaveFuzzy: [],
+        mustHaveSecondary: [],
+        mustHaveMissing: mustHave10.slice(1),
+      },
+    });
+
+    const result = matchAndRankCandidates(
+      [baseCandidate],
+      { mustHaveSkills: mustHave10 }
+    );
+
+    expect(result).toHaveLength(0);
+  });
+
+  it('includes candidate matching 8 of 10 must-have skills (ratio 0.8 well above gate)', () => {
+    const mustHave10 = ['react', 'nodejs', 'python', 'java', 'golang',
+                         'rust', 'csharp', 'ruby', 'php', 'scala'];
+    mockCalculateMatchScore.mockReturnValue({
+      score: 75,
+      details: {
+        ...goodDetails,
+        mustHaveMatched: mustHave10.slice(0, 8),
+        mustHaveFuzzy: [],
+        mustHaveSecondary: [],
+        mustHaveMissing: mustHave10.slice(8),
+      },
+    });
+
+    const result = matchAndRankCandidates(
+      [baseCandidate],
+      { mustHaveSkills: mustHave10 }
+    );
+
+    expect(result).toHaveLength(1);
   });
 
   it('higher must-have partial match ranks above lower partial match', () => {
@@ -289,7 +335,8 @@ describe('matchAndRankCandidates', () => {
     expect(result).toHaveLength(1);
   });
 
-  it('includes candidate whose only must-have match is secondary-bucket (OR semantics)', () => {
+  it('includes candidate whose only must-have match is secondary-bucket when ratio clears the gate', () => {
+    // 1 secondary of 2 must-haves: effectiveRatio = 1×0.5 / 2 = 0.25 > 0.2 → included
     mockCalculateMatchScore.mockReturnValue({
       score: 15,
       details: {
@@ -297,19 +344,20 @@ describe('matchAndRankCandidates', () => {
         mustHaveMatched: [],
         mustHaveFuzzy: [],
         mustHaveSecondary: ['react'],
-        mustHaveMissing: ['nodejs', 'python'],
+        mustHaveMissing: ['nodejs'],
       },
     });
 
     const result = matchAndRankCandidates(
       [baseCandidate],
-      { mustHaveSkills: ['react', 'nodejs', 'python'] }
+      { mustHaveSkills: ['react', 'nodejs'] }
     );
 
     expect(result).toHaveLength(1);
   });
 
-  it('OR semantics apply consistently in notify mode (notifyInclusion=true)', () => {
+  it('ratio gate applies in notify mode — 1 of 5 (ratio 0.2 at boundary) is still excluded', () => {
+    // effectiveRatio = 1/5 = 0.2 = MIN_MUST_HAVE_MATCH_RATIO → excluded (gate is a hard prereq)
     mockCalculateMatchScore.mockReturnValue({
       score: 10,
       details: {
@@ -327,7 +375,7 @@ describe('matchAndRankCandidates', () => {
       { notifyInclusion: true }
     );
 
-    expect(result).toHaveLength(1);
+    expect(result).toHaveLength(0);
   });
 
   it('skips ratio gate when criteria has zero must-have skills', () => {

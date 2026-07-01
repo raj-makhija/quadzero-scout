@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import {
   BenchListModal,
   buildBenchGroups,
@@ -196,12 +196,15 @@ describe('buildBenchGroups', () => {
 // Copy-output generators (email HTML + LinkedIn plain text)
 // ---------------------------------------------------------------------------
 describe('generateHtmlTable', () => {
-  it('includes a Seniority column header and per-row seniority values', () => {
+  it('includes a Seniority column header and renders seniority values as stacked inline tags', () => {
     const groups = buildBenchGroups(mockProfiles);
     const html = generateHtmlTable(groups);
-    expect(html).toContain('<th style="');
     expect(html).toContain('>Seniority</th>');
-    expect(html).toContain('Senior, Lead');
+    // Values appear in separate display:inline-block spans, not comma-joined.
+    expect(html).not.toContain('Senior, Lead');
+    expect(html).toContain('display:inline-block');
+    expect(html).toContain('Senior');
+    expect(html).toContain('Lead');
   });
 
   it('produces valid output for an empty groups array (no crash, 0 resources)', () => {
@@ -209,26 +212,146 @@ describe('generateHtmlTable', () => {
     expect(html).toContain('0 resources across 0 roles');
     expect(html).toContain('>Seniority</th>');
   });
+
+  it('has branded header div before the table with company name, Bench List, date, and totals', () => {
+    const groups = buildBenchGroups(mockProfiles);
+    const html = generateHtmlTable(groups);
+    const tableIdx = html.indexOf('<table');
+    const beforeTable = html.slice(0, tableIdx);
+    expect(beforeTable).toContain('Quadzero');
+    expect(beforeTable).toContain('Bench List');
+    expect(beforeTable).toContain('resources across');
+  });
+
+  it('has intro framing line between the header band and the table', () => {
+    const groups = buildBenchGroups(mockProfiles);
+    const html = generateHtmlTable(groups);
+    const tableIdx = html.indexOf('<table');
+    const beforeTable = html.slice(0, tableIdx);
+    expect(beforeTable).toContain('screened within the last 15 days');
+  });
+
+  it('merges Role/Category and Roles into one cell — no standalone Roles th', () => {
+    const groups = buildBenchGroups(mockProfiles);
+    const html = generateHtmlTable(groups);
+    expect(html).not.toMatch(/>Roles<\/th>/);
+    expect(html).toContain('Role / Category');
+    // Specific roles appear as a sub-line inside the same cell.
+    expect(html).toContain('React Developer');
+  });
+
+  it('renders resource count as a badge with background-color and font-weight:bold', () => {
+    const groups = buildBenchGroups(mockProfiles);
+    const html = generateHtmlTable(groups);
+    expect(html).toMatch(/background-color[^"]*font-weight:bold/);
+  });
+
+  it('has no display:flex, display:grid, or border-radius in the output', () => {
+    const groups = buildBenchGroups(mockProfiles);
+    const html = generateHtmlTable(groups);
+    expect(html).not.toContain('display:flex');
+    expect(html).not.toContain('display:grid');
+    expect(html).not.toContain('border-radius');
+  });
+
+  it('has no border:1px solid on cell styles and uses border-bottom for row separation', () => {
+    const groups = buildBenchGroups(mockProfiles);
+    const html = generateHtmlTable(groups);
+    expect(html).not.toContain('border:1px solid');
+    expect(html).toContain('border-bottom');
+  });
+
+  it('renders empty seniority/availability/location arrays as em dash, not N/A', () => {
+    const html = generateHtmlTable([{
+      role: 'Other',
+      count: 1,
+      specificRoles: [],
+      seniorities: [],
+      experienceRange: '3 years',
+      availabilities: [],
+      locations: [],
+      indicativeRateRange: 'on request',
+    }]);
+    expect(html).toContain('—');
+    expect(html).not.toContain('N/A');
+  });
+
+  it('has confidentiality footer after </table>', () => {
+    const groups = buildBenchGroups(mockProfiles);
+    const html = generateHtmlTable(groups);
+    const tableEnd = html.lastIndexOf('</table>');
+    const afterTable = html.slice(tableEnd);
+    expect(afterTable).toContain('intended for the named recipient only');
+  });
+
+  it('reads "1 role" (singular) for a bench list with a single group', () => {
+    const html = generateHtmlTable([{
+      role: 'Backend',
+      count: 2,
+      specificRoles: ['Backend Developer'],
+      seniorities: ['Senior'],
+      experienceRange: '6 years',
+      availabilities: ['Immediate'],
+      locations: ['Mumbai, India'],
+      indicativeRateRange: 'on request',
+    }]);
+    expect(html).toContain('1 role');
+    expect(html).not.toContain('1 roles');
+  });
+
+  it('escapes HTML special characters in role names', () => {
+    const html = generateHtmlTable([{
+      role: 'Other',
+      count: 1,
+      specificRoles: ['Dev & <Ops>'],
+      seniorities: [],
+      experienceRange: '4 years',
+      availabilities: [],
+      locations: [],
+      indicativeRateRange: 'on request',
+    }]);
+    expect(html).toContain('Dev &amp; &lt;Ops&gt;');
+    expect(html).not.toContain('<Ops>');
+  });
 });
 
 describe('generatePlainText', () => {
-  it('includes a "Seniority:" line per group', () => {
+  it('renders seniority values on separate lines without comma-joining', () => {
     const groups = buildBenchGroups(mockProfiles);
     const text = generatePlainText(groups);
-    expect(text).toContain('Seniority: Senior, Lead');
-    // Group with no seniority renders N/A
-    expect(text).toContain('Seniority: N/A');
+    // No comma-joined multi-value strings.
+    expect(text).not.toContain('Senior, Lead');
+    expect(text).not.toContain('N/A');
+    // Each value appears individually.
+    expect(text).toContain('Senior');
+    expect(text).toContain('Lead');
+    // Group with no seniority renders em dash.
+    expect(text).toContain('Seniority: —');
+  });
+
+  it('has intro framing and confidentiality footer', () => {
+    const groups = buildBenchGroups(mockProfiles);
+    const text = generatePlainText(groups);
+    expect(text).toContain('screened within the last 15 days');
+    expect(text).toContain('intended for the named recipient only');
   });
 
   it('produces valid output for an empty groups array (no crash, 0 resources)', () => {
     const text = generatePlainText([]);
     expect(text).toContain('0 resources across 0 roles');
+    expect(text).toContain('screened within the last 15 days');
+    expect(text).toContain('intended for the named recipient only');
   });
 });
 
 // ---------------------------------------------------------------------------
 // BenchListModal component tests
 // ---------------------------------------------------------------------------
+// Opens the Export ▾ menu so its items (copy/download/email/include-rates) are
+// queryable. The trigger's accessible name is "Export".
+const openExportMenu = () =>
+  fireEvent.click(screen.getByRole('button', { name: /Export/i }));
+
 describe('BenchListModal', () => {
   const onClose = vi.fn();
 
@@ -242,7 +365,7 @@ describe('BenchListModal', () => {
     expect(screen.getByText(/6 resources across 4 roles/)).toBeInTheDocument();
   });
 
-  it('renders canonical category groups in the table', () => {
+  it('renders canonical category groups as row cards', () => {
     render(<BenchListModal profiles={mockProfiles} onClose={onClose} />);
     expect(screen.getByText('Frontend')).toBeInTheDocument();
     expect(screen.getByText('Backend')).toBeInTheDocument();
@@ -250,31 +373,70 @@ describe('BenchListModal', () => {
     expect(screen.getByText('Other')).toBeInTheDocument();
   });
 
-  it('renders table headers including the Seniority column', () => {
+  it('no longer renders the old table column headers (Role / Category, Roles)', () => {
     render(<BenchListModal profiles={mockProfiles} onClose={onClose} />);
-    expect(screen.getByText('Role / Category')).toBeInTheDocument();
-    expect(screen.getByText('Resources Available')).toBeInTheDocument();
-    expect(screen.getByText('Roles')).toBeInTheDocument();
-    expect(screen.getByText('Seniority')).toBeInTheDocument();
-    expect(screen.getByText('Experience')).toBeInTheDocument();
-    expect(screen.getByText('Availability')).toBeInTheDocument();
-    expect(screen.getByText('Preferred Location')).toBeInTheDocument();
+    expect(screen.queryByText('Role / Category')).not.toBeInTheDocument();
+    expect(screen.queryByText('Resources Available')).not.toBeInTheDocument();
+    // The redundant standalone "Roles" column header is gone.
+    expect(screen.queryByText('Roles')).not.toBeInTheDocument();
   });
 
-  it('renders seniority values for groups with different distributions', () => {
+  it('renders multi-value seniority as individual chips, not a comma string', () => {
     render(<BenchListModal profiles={mockProfiles} onClose={onClose} />);
-    // Frontend: Senior, Lead
-    expect(screen.getByText('Senior, Lead')).toBeInTheDocument();
-    // Backend: Senior, Mid-Level
-    expect(screen.getByText('Senior, Mid-Level')).toBeInTheDocument();
-    // Other: no seniority → N/A (Frank's row)
-    expect(screen.getAllByText('N/A').length).toBeGreaterThanOrEqual(1);
+    // The comma-joined form must NOT appear anywhere.
+    expect(screen.queryByText('Senior, Lead')).not.toBeInTheDocument();
+    expect(screen.queryByText('Senior, Mid-Level')).not.toBeInTheDocument();
+    // Each value is its own chip text node within the Frontend card.
+    const frontend = screen.getByTestId('bench-card-Frontend');
+    expect(within(frontend).getByText('Senior')).toBeInTheDocument();
+    expect(within(frontend).getByText('Lead')).toBeInTheDocument();
   });
 
-  it('displays copy buttons', () => {
+  it('renders a single-value field as a chip (not suppressed or plain text)', () => {
     render(<BenchListModal profiles={mockProfiles} onClose={onClose} />);
+    // DevOps/Cloud has exactly one seniority (Mid-Level) → still a chip.
+    const devops = screen.getByTestId('bench-card-DevOps/Cloud');
+    expect(within(devops).getByText('Mid-Level')).toBeInTheDocument();
+  });
+
+  it('merges the role category and specific roles into one cell', () => {
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} />);
+    const frontend = screen.getByTestId('bench-card-Frontend');
+    // Canonical category as primary text…
+    expect(within(frontend).getByText('Frontend')).toBeInTheDocument();
+    // …specific titles as a subordinate sub-line in the same card.
+    expect(
+      within(frontend).getByText(/React Developer, UI Engineer, Frontend Lead/)
+    ).toBeInTheDocument();
+  });
+
+  it('renders the count as a labelled badge per card', () => {
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} />);
+    const frontend = screen.getByTestId('bench-card-Frontend');
+    expect(within(frontend).getByLabelText('2 available')).toHaveTextContent('2');
+  });
+
+  it('renders em dash for empty seniority, not N/A', () => {
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} />);
+    // Frank's "Other" group has no seniority → em dash, never "N/A".
+    const other = screen.getByTestId('bench-card-Other');
+    expect(within(other).getByText('—')).toBeInTheDocument();
+    expect(screen.queryByText('N/A')).not.toBeInTheDocument();
+  });
+
+  it('collapses copy/download actions into the Export menu (hidden until opened)', () => {
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} />);
+    // Not rendered as standalone header controls.
+    expect(screen.queryByText('Copy for Email')).not.toBeInTheDocument();
+    expect(screen.queryByText('Copy for LinkedIn')).not.toBeInTheDocument();
+    expect(screen.queryByText('Download XLSX')).not.toBeInTheDocument();
+    expect(screen.queryByText('Download CSV')).not.toBeInTheDocument();
+    // Opening the Export menu reveals them.
+    openExportMenu();
     expect(screen.getByText('Copy for Email')).toBeInTheDocument();
     expect(screen.getByText('Copy for LinkedIn')).toBeInTheDocument();
+    expect(screen.getByText('Download XLSX')).toBeInTheDocument();
+    expect(screen.getByText('Download CSV')).toBeInTheDocument();
   });
 
   it('calls onClose when close button is clicked', () => {
@@ -492,40 +654,58 @@ describe('BenchListModal include-rates toggle', () => {
     };
   });
 
-  it('renders the Include rates checkbox unchecked by default', () => {
+  it('renders the Include rates checkbox unchecked by default (inside Export menu)', () => {
     render(<BenchListModal profiles={ratedProfiles} onClose={onClose} />);
+    openExportMenu();
     const checkbox = screen.getByLabelText('Include rates') as HTMLInputElement;
     expect(checkbox).toBeInTheDocument();
     expect(checkbox.checked).toBe(false);
   });
 
-  it('shows the Indicative Rate column when the checkbox is checked', () => {
+  it('shows the indicative rate in the cards when the checkbox is checked', () => {
     render(<BenchListModal profiles={ratedProfiles} onClose={onClose} />);
-    expect(screen.queryByText('Indicative Rate')).not.toBeInTheDocument();
+    openExportMenu();
+    expect(screen.queryByText('₹2–3L/month')).not.toBeInTheDocument();
     fireEvent.click(screen.getByLabelText('Include rates'));
-    expect(screen.getByText('Indicative Rate')).toBeInTheDocument();
+    // Backend group rate range now visible on screen.
+    expect(screen.getByText('₹2–3L/month')).toBeInTheDocument();
   });
 
-  it('hides the Indicative Rate column again when the checkbox is unchecked', () => {
+  it('hides the indicative rate again when the checkbox is unchecked', () => {
     render(<BenchListModal profiles={ratedProfiles} onClose={onClose} />);
+    openExportMenu();
     const checkbox = screen.getByLabelText('Include rates');
     fireEvent.click(checkbox);
-    expect(screen.getByText('Indicative Rate')).toBeInTheDocument();
+    expect(screen.getByText('₹2–3L/month')).toBeInTheDocument();
     fireEvent.click(checkbox);
-    expect(screen.queryByText('Indicative Rate')).not.toBeInTheDocument();
+    expect(screen.queryByText('₹2–3L/month')).not.toBeInTheDocument();
   });
 
   it('resets the checkbox to unchecked when the modal is reopened', () => {
     const { unmount } = render(<BenchListModal profiles={ratedProfiles} onClose={onClose} />);
+    openExportMenu();
     fireEvent.click(screen.getByLabelText('Include rates'));
     expect((screen.getByLabelText('Include rates') as HTMLInputElement).checked).toBe(true);
     unmount();
     render(<BenchListModal profiles={ratedProfiles} onClose={onClose} />);
+    openExportMenu();
     expect((screen.getByLabelText('Include rates') as HTMLInputElement).checked).toBe(false);
+  });
+
+  it('keeps the Include-rates state across menu dismiss/reopen', () => {
+    render(<BenchListModal profiles={ratedProfiles} onClose={onClose} />);
+    openExportMenu();
+    fireEvent.click(screen.getByLabelText('Include rates'));
+    // Dismiss without selecting (Escape) then reopen — state preserved.
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByLabelText('Include rates')).not.toBeInTheDocument();
+    openExportMenu();
+    expect((screen.getByLabelText('Include rates') as HTMLInputElement).checked).toBe(true);
   });
 
   it('shows "on request" cells when rates are enabled but all members are unrated', () => {
     render(<BenchListModal profiles={unratedProfiles} onClose={onClose} />);
+    openExportMenu();
     fireEvent.click(screen.getByLabelText('Include rates'));
     expect(screen.getByText('on request')).toBeInTheDocument();
   });
@@ -534,6 +714,7 @@ describe('BenchListModal include-rates toggle', () => {
     const { unmount } = render(<BenchListModal profiles={ratedProfiles} onClose={onClose} />);
 
     // Unchecked → no rate column in the copied HTML.
+    openExportMenu();
     fireEvent.click(screen.getByText('Copy for Email'));
     await waitFor(() => expect(writeMock).toHaveBeenCalledTimes(1));
     const htmlOff = await writeMock.mock.calls[0][0][0].data['text/html'].text();
@@ -542,6 +723,7 @@ describe('BenchListModal include-rates toggle', () => {
 
     // Checked → rate column present.
     render(<BenchListModal profiles={ratedProfiles} onClose={onClose} />);
+    openExportMenu();
     fireEvent.click(screen.getByLabelText('Include rates'));
     fireEvent.click(screen.getByText('Copy for Email'));
     await waitFor(() => expect(writeMock).toHaveBeenCalledTimes(2));
@@ -554,6 +736,7 @@ describe('BenchListModal include-rates toggle', () => {
     const { unmount } = render(<BenchListModal profiles={ratedProfiles} onClose={onClose} />);
 
     // Unchecked → no rate line in the copied plain text.
+    openExportMenu();
     fireEvent.click(screen.getByText('Copy for LinkedIn'));
     await waitFor(() => expect(writeTextMock).toHaveBeenCalledTimes(1));
     expect(writeTextMock.mock.calls[0][0]).not.toContain('Indicative Rate');
@@ -561,6 +744,7 @@ describe('BenchListModal include-rates toggle', () => {
 
     // Checked → rate line present.
     render(<BenchListModal profiles={ratedProfiles} onClose={onClose} />);
+    openExportMenu();
     fireEvent.click(screen.getByLabelText('Include rates'));
     fireEvent.click(screen.getByText('Copy for LinkedIn'));
     await waitFor(() => expect(writeTextMock).toHaveBeenCalledTimes(2));
@@ -618,14 +802,16 @@ describe('BenchListModal download buttons', () => {
     (URL as any).revokeObjectURL = revokeObjectURLMock;
   });
 
-  it('renders both download buttons in the header', () => {
+  it('renders both download buttons inside the Export menu', () => {
     render(<BenchListModal profiles={mockProfiles} onClose={onClose} />);
+    openExportMenu();
     expect(screen.getByText('Download XLSX')).toBeInTheDocument();
     expect(screen.getByText('Download CSV')).toBeInTheDocument();
   });
 
   it('Download XLSX writes a file named bench-list-YYYY-MM-DD.xlsx', () => {
     render(<BenchListModal profiles={mockProfiles} onClose={onClose} />);
+    openExportMenu();
     fireEvent.click(screen.getByText('Download XLSX'));
     expect(mockWriteFile).toHaveBeenCalledTimes(1);
     const filename = mockWriteFile.mock.calls[0][1] as string;
@@ -646,6 +832,7 @@ describe('BenchListModal download buttons', () => {
     });
 
     render(<BenchListModal profiles={mockProfiles} onClose={onClose} />);
+    openExportMenu();
     fireEvent.click(screen.getByText('Download CSV'));
 
     expect(createObjectURLMock).toHaveBeenCalledTimes(1);
@@ -661,6 +848,7 @@ describe('BenchListModal download buttons', () => {
     const fetchSpy = vi.fn();
     (globalThis as any).fetch = fetchSpy;
     render(<BenchListModal profiles={mockProfiles} onClose={onClose} />);
+    openExportMenu();
     fireEvent.click(screen.getByText('Download XLSX'));
     fireEvent.click(screen.getByText('Download CSV'));
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -678,6 +866,7 @@ describe('BenchListModal download buttons', () => {
       }
     };
     render(<BenchListModal profiles={[]} onClose={onClose} />);
+    openExportMenu();
     fireEvent.click(screen.getByText('Download CSV'));
     expect(capturedBlob).not.toBeNull();
     // Only the BOM + header line — no data rows.
@@ -713,21 +902,25 @@ describe('BenchListModal "Email to me"', () => {
     mockSendBenchListEmail.mockResolvedValue({});
   });
 
-  it('renders the button when isInternal is true', () => {
+  it('renders the menu item when isInternal is true', () => {
     render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal />);
+    openExportMenu();
     expect(screen.getByText('Email to me')).toBeInTheDocument();
   });
 
-  it('does not render the button when isInternal is false or omitted', () => {
+  it('does not render the item when isInternal is false or omitted', () => {
     const { unmount } = render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal={false} />);
+    openExportMenu();
     expect(screen.queryByText('Email to me')).not.toBeInTheDocument();
     unmount();
     render(<BenchListModal profiles={mockProfiles} onClose={onClose} />);
+    openExportMenu();
     expect(screen.queryByText('Email to me')).not.toBeInTheDocument();
   });
 
   it('calls api.sendBenchListEmail on click', async () => {
     render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal />);
+    openExportMenu();
     fireEvent.click(screen.getByText('Email to me'));
     await waitFor(() => expect(mockSendBenchListEmail).toHaveBeenCalledTimes(1));
   });
@@ -737,6 +930,7 @@ describe('BenchListModal "Email to me"', () => {
     mockSendBenchListEmail.mockReturnValue(new Promise((r) => { resolve = r; }));
 
     render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal />);
+    openExportMenu();
     const button = screen.getByText('Email to me').closest('button')!;
     fireEvent.click(button);
 
@@ -752,6 +946,7 @@ describe('BenchListModal "Email to me"', () => {
     vi.useFakeTimers();
     try {
       render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal />);
+      openExportMenu();
       await act(async () => {
         fireEvent.click(screen.getByText('Email to me'));
       });
@@ -768,7 +963,198 @@ describe('BenchListModal "Email to me"', () => {
   it('shows "Failed" when the request rejects', async () => {
     mockSendBenchListEmail.mockRejectedValue(new Error('boom'));
     render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal />);
+    openExportMenu();
     fireEvent.click(screen.getByText('Email to me'));
+    await waitFor(() => expect(screen.getByText('Failed')).toBeInTheDocument());
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Role filter
+// ---------------------------------------------------------------------------
+describe('BenchListModal — role filter', () => {
+  const onClose = vi.fn();
+  beforeEach(() => vi.clearAllMocks());
+
+  const cardRoles = () =>
+    screen.getAllByTestId(/^bench-card-/).map(el => el.getAttribute('data-testid')!.replace('bench-card-', ''));
+
+  it('hides non-matching cards as you type and restores them when cleared', () => {
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} />);
+    const input = screen.getByLabelText('Filter by role');
+    fireEvent.change(input, { target: { value: 'frontend' } });
+    expect(cardRoles()).toEqual(['Frontend']);
+    fireEvent.change(input, { target: { value: '' } });
+    expect(cardRoles()).toContain('Backend');
+    expect(cardRoles()).toContain('Other');
+  });
+
+  it('matches case-insensitively', () => {
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} />);
+    const input = screen.getByLabelText('Filter by role');
+    for (const term of ['frontend', 'FRONTEND', 'Frontend']) {
+      fireEvent.change(input, { target: { value: term } });
+      expect(cardRoles()).toEqual(['Frontend']);
+    }
+  });
+
+  it('shows a no-match indicator (not the empty-bench message) when nothing matches', () => {
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} />);
+    fireEvent.change(screen.getByLabelText('Filter by role'), { target: { value: 'zzz-nope' } });
+    expect(screen.queryAllByTestId(/^bench-card-/)).toHaveLength(0);
+    expect(screen.getByText(/No roles match/)).toBeInTheDocument();
+    expect(screen.queryByText(/No bench-ready resources found/)).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sort control
+// ---------------------------------------------------------------------------
+describe('BenchListModal — sort', () => {
+  const onClose = vi.fn();
+  beforeEach(() => vi.clearAllMocks());
+
+  const cardRoles = () =>
+    screen.getAllByTestId(/^bench-card-/).map(el => el.getAttribute('data-testid')!.replace('bench-card-', ''));
+
+  it('defaults to most-available (descending count) order', () => {
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} />);
+    expect((screen.getByLabelText('Sort by') as HTMLSelectElement).value).toBe('count');
+    expect(cardRoles()).toEqual(['Frontend', 'Backend', 'DevOps/Cloud', 'Other']);
+  });
+
+  it('reorders alphabetically when Role A–Z is selected and restores on switch back', () => {
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} />);
+    const select = screen.getByLabelText('Sort by');
+    fireEvent.change(select, { target: { value: 'role' } });
+    expect(cardRoles()).toEqual(['Backend', 'DevOps/Cloud', 'Frontend', 'Other']);
+    fireEvent.change(select, { target: { value: 'count' } });
+    expect(cardRoles()).toEqual(['Frontend', 'Backend', 'DevOps/Cloud', 'Other']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Header & dark-mode styling
+// ---------------------------------------------------------------------------
+describe('BenchListModal — header & dark mode', () => {
+  const onClose = vi.fn();
+  beforeEach(() => vi.clearAllMocks());
+
+  it('header renders only title, summary and close outside the Export menu', () => {
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal />);
+    // Closed menu → none of the actions are in the DOM.
+    expect(screen.queryByText('Copy for Email')).not.toBeInTheDocument();
+    expect(screen.queryByText('Download XLSX')).not.toBeInTheDocument();
+    expect(screen.queryByText('Email to me')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Include rates')).not.toBeInTheDocument();
+    // Title + summary present, Export trigger + close present.
+    expect(screen.getByText('Bench List')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Export/i })).toBeInTheDocument();
+  });
+
+  it('applies dark: variants to chips, the count badge, the Export trigger and the role cell', () => {
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} />);
+    const frontend = screen.getByTestId('bench-card-Frontend');
+    expect(within(frontend).getByText('Senior').className).toContain('dark:');
+    expect(within(frontend).getByLabelText('2 available').className).toContain('dark:');
+    expect(within(frontend).getByText('Frontend').className).toContain('dark:');
+    expect(screen.getByRole('button', { name: /Export/i }).className).toContain('dark:');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// "Send to partner" (external send — ticket #492)
+// ---------------------------------------------------------------------------
+describe('BenchListModal "Send to partner"', () => {
+  const onClose = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSendBenchListEmail.mockResolvedValue({});
+  });
+
+  it('renders the recipient input and Send to partner button when isInternal is true', () => {
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal />);
+    expect(screen.getByLabelText('Send to partner:')).toBeInTheDocument();
+    expect(screen.getByText('Send to partner')).toBeInTheDocument();
+  });
+
+  it('does not render the partner send row when isInternal is false or omitted', () => {
+    const { unmount } = render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal={false} />);
+    expect(screen.queryByText('Send to partner')).not.toBeInTheDocument();
+    unmount();
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} />);
+    expect(screen.queryByText('Send to partner')).not.toBeInTheDocument();
+  });
+
+  it('disables the button while the recipient is blank or malformed, enables it when valid', () => {
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal />);
+    const button = screen.getByText('Send to partner').closest('button')!;
+    const input = screen.getByLabelText('Send to partner:');
+
+    expect(button).toBeDisabled(); // blank
+    fireEvent.change(input, { target: { value: 'not-an-email' } });
+    expect(button).toBeDisabled(); // malformed
+    fireEvent.change(input, { target: { value: 'partner@acme.com' } });
+    expect(button).not.toBeDisabled(); // valid
+  });
+
+  it('accepts a plus-addressed recipient', () => {
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal />);
+    const button = screen.getByText('Send to partner').closest('button')!;
+    fireEvent.change(screen.getByLabelText('Send to partner:'), { target: { value: 'user+tag@partner.com' } });
+    expect(button).not.toBeDisabled();
+  });
+
+  it('calls api.sendBenchListEmail with the recipient and includeRates flag', async () => {
+    render(<BenchListModal profiles={ratedProfiles} onClose={onClose} isInternal />);
+    openExportMenu();
+    fireEvent.click(screen.getByLabelText('Include rates'));
+    fireEvent.change(screen.getByLabelText('Send to partner:'), { target: { value: '  partner@acme.com  ' } });
+    fireEvent.click(screen.getByText('Send to partner'));
+    await waitFor(() => expect(mockSendBenchListEmail).toHaveBeenCalledTimes(1));
+    expect(mockSendBenchListEmail).toHaveBeenCalledWith({ recipientEmail: 'partner@acme.com', includeRates: true });
+  });
+
+  it('disables the button and shows "Sending…" while the request is in flight', async () => {
+    let resolve!: (v: unknown) => void;
+    mockSendBenchListEmail.mockReturnValue(new Promise((r) => { resolve = r; }));
+
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal />);
+    fireEvent.change(screen.getByLabelText('Send to partner:'), { target: { value: 'partner@acme.com' } });
+    const button = screen.getByText('Send to partner').closest('button')!;
+    fireEvent.click(button);
+
+    expect(screen.getByText('Sending…')).toBeInTheDocument();
+    expect(button).toBeDisabled();
+
+    await act(async () => { resolve({}); });
+    await waitFor(() => expect(screen.getByText('Sent!')).toBeInTheDocument());
+  });
+
+  it('shows "Sent!" on success then resets after 2s', async () => {
+    vi.useFakeTimers();
+    try {
+      render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal />);
+      fireEvent.change(screen.getByLabelText('Send to partner:'), { target: { value: 'partner@acme.com' } });
+      await act(async () => {
+        fireEvent.click(screen.getByText('Send to partner'));
+      });
+      expect(screen.getByText('Sent!')).toBeInTheDocument();
+
+      await act(async () => { vi.advanceTimersByTime(2000); });
+      expect(screen.queryByText('Sent!')).not.toBeInTheDocument();
+      expect(screen.getByText('Send to partner')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shows "Failed" when the request rejects', async () => {
+    mockSendBenchListEmail.mockRejectedValue(new Error('boom'));
+    render(<BenchListModal profiles={mockProfiles} onClose={onClose} isInternal />);
+    fireEvent.change(screen.getByLabelText('Send to partner:'), { target: { value: 'partner@acme.com' } });
+    fireEvent.click(screen.getByText('Send to partner'));
     await waitFor(() => expect(screen.getByText('Failed')).toBeInTheDocument());
   });
 });

@@ -17,6 +17,7 @@ export interface PublicRequirementSummary {
   additionalFields?: AdditionalFieldDefinition[];
   createdAt: string;
   lastUpdated: string;
+  vendor_jd?: string;
 }
 
 /**
@@ -44,5 +45,6 @@ export function toPublicRequirement(item: RequirementItem): PublicRequirementSum
     additionalFields: item.additional_fields,
     createdAt: item.created_at,
     lastUpdated: item.last_updated,
+    vendor_jd: item.vendor_jd,
   };
 }

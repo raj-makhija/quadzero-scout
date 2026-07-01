@@ -98,6 +98,7 @@ export interface BenchReportCandidate {
   seniority?: string;
   availability?: string;
   location?: string;
+  expected_ctc?: number | null;
 }
 
 export interface BenchGroup {
@@ -108,6 +109,28 @@ export interface BenchGroup {
   experienceRange: string;
   availabilities: string[];
   locations: string[];
+  indicativeRateRange: string;
+}
+
+// Format the indicative rate range for a group. Rates are annual (LPA, from
+// expected_ctc) and displayed as a monthly figure (LPA / 12) in lakhs. Members
+// with a null/zero rate are ignored; if none have a rate the group reads
+// "on request". Mirrors the frontend bench-list-modal formatRateRange so the
+// emailed table matches the in-app "Include rates" output (ticket #491/#492).
+function formatRateRange(rates: (number | null | undefined)[]): string {
+  const valid = rates.filter((r): r is number => typeof r === 'number' && r > 0);
+  if (valid.length === 0) return 'on request';
+
+  const monthly = valid.map((r) => r / 12);
+  const min = Math.min(...monthly);
+  const max = Math.max(...monthly);
+
+  const fmt = (n: number): string => {
+    const rounded = Math.round(n * 10) / 10;
+    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  };
+
+  return min === max ? `₹${fmt(min)}L/month` : `₹${fmt(min)}–${fmt(max)}L/month`;
 }
 
 export function buildBenchGroups(candidates: BenchReportCandidate[]): BenchGroup[] {
@@ -144,6 +167,8 @@ export function buildBenchGroups(candidates: BenchReportCandidate[]): BenchGroup
       locs.add(m.location?.trim() || 'Not specified');
     });
 
+    const rates = members.map((m) => m.expected_ctc);
+
     groups.push({
       role,
       count: members.length,
@@ -152,6 +177,7 @@ export function buildBenchGroups(candidates: BenchReportCandidate[]): BenchGroup
       experienceRange: minExp === maxExp ? `${minExp} years` : `${minExp}–${maxExp} years`,
       availabilities: Array.from(avails),
       locations: Array.from(locs),
+      indicativeRateRange: formatRateRange(rates),
     });
   }
 
@@ -177,47 +203,69 @@ function escapeHtml(str: string): string {
     .replace(/"/g, '&quot;');
 }
 
-export function generateHtmlTable(groups: BenchGroup[]): string {
+export function generateHtmlTable(groups: BenchGroup[], includeRates = false): string {
   const date = getFormattedDate();
   const totalCount = groups.reduce((sum, g) => sum + g.count, 0);
+  const totalResources = `${totalCount} resource${totalCount !== 1 ? 's' : ''} across ${groups.length} role${groups.length !== 1 ? 's' : ''}`;
 
-  const headerStyle = 'background-color:#1e40af;color:#ffffff;padding:10px 12px;text-align:left;border:1px solid #cbd5e1;font-weight:600;font-size:13px;';
-  const cellStyle = 'padding:8px 12px;border:1px solid #cbd5e1;vertical-align:top;font-size:13px;';
-  const altRowStyle = 'background-color:#f8fafc;';
+  const thStyle = 'background-color:#1e40af;color:#ffffff;padding:10px 12px;text-align:left;font-weight:600;font-size:13px;';
+  const tdStyle = 'padding:8px 12px;vertical-align:top;font-size:13px;border-bottom:1px solid #e5e7eb;';
+  const tagStyle = 'display:inline-block;background-color:#f1f5f9;color:#374151;padding:2px 6px;margin:1px 2px 1px 0;font-size:12px;';
+
+  const renderTags = (values: string[]): string => {
+    if (values.length === 0) return '—';
+    return values.map((v) => `<span style="${tagStyle}">${escapeHtml(v)}</span>`).join('');
+  };
 
   const rows = groups
     .map((g, i) => {
-      const rowBg = i % 2 === 1 ? ` style="${altRowStyle}"` : '';
-      return `<tr${rowBg}>
-      <td style="${cellStyle}font-weight:500;">${escapeHtml(g.role)}</td>
-      <td style="${cellStyle}text-align:center;">${g.count}</td>
-      <td style="${cellStyle}">${escapeHtml(g.specificRoles.join(', ') || 'N/A')}</td>
-      <td style="${cellStyle}">${escapeHtml(g.seniorities.join(', ') || 'N/A')}</td>
-      <td style="${cellStyle}">${escapeHtml(g.experienceRange)}</td>
-      <td style="${cellStyle}">${escapeHtml(g.availabilities.join(', ') || 'N/A')}</td>
-      <td style="${cellStyle}">${escapeHtml(g.locations.join(', '))}</td>
+      const rowStyle = i % 2 === 1 ? ' style="background-color:#f8fafc;"' : '';
+      const specificRolesHtml =
+        g.specificRoles.length > 0
+          ? `<div style="font-size:12px;color:#6b7280;margin-top:3px;">${g.specificRoles.map((r) => escapeHtml(r)).join(' &middot; ')}</div>`
+          : '';
+      const rateCell = includeRates
+        ? `\n      <td style="${tdStyle}">${escapeHtml(g.indicativeRateRange)}</td>`
+        : '';
+      return `<tr${rowStyle}>
+      <td style="${tdStyle}">
+        <div style="font-weight:600;color:#111827;">${escapeHtml(g.role)}</div>${specificRolesHtml}
+      </td>
+      <td style="${tdStyle}text-align:center;">
+        <span style="background-color:#dbeafe;color:#1e40af;font-weight:bold;padding:2px 10px;font-size:13px;">${g.count}</span>
+      </td>
+      <td style="${tdStyle}">${renderTags(g.seniorities)}</td>
+      <td style="${tdStyle}">${escapeHtml(g.experienceRange)}</td>
+      <td style="${tdStyle}">${renderTags(g.availabilities)}</td>
+      <td style="${tdStyle}">${renderTags(g.locations)}</td>${rateCell}
     </tr>`;
     })
     .join('\n');
 
+  const rateHeader = includeRates ? `\n        <th style="${thStyle}">Indicative Rate</th>` : '';
+
   return `<div style="font-family:Arial,Helvetica,sans-serif;">
-  <h3 style="margin:0 0 4px 0;font-size:16px;color:#1e293b;">Bench List — ${escapeHtml(date)}</h3>
-  <p style="margin:0 0 12px 0;font-size:13px;color:#64748b;">${totalCount} resources across ${groups.length} role${groups.length !== 1 ? 's' : ''}</p>
+  <div style="background-color:#1e40af;color:#ffffff;padding:16px 20px;">
+    <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;opacity:0.8;">Quadzero</div>
+    <div style="font-size:20px;font-weight:700;margin-bottom:4px;">Bench List</div>
+    <div style="font-size:12px;">${escapeHtml(date)} &nbsp;&middot;&nbsp; ${totalResources}</div>
+  </div>
+  <p style="font-size:13px;color:#374151;margin:12px 0;line-height:1.5;">These candidates have been screened within the last 15 days and are available within 2 weeks. Please reply to this email to discuss next steps.</p>
   <table style="border-collapse:collapse;width:100%;font-family:Arial,Helvetica,sans-serif;">
     <thead>
       <tr>
-        <th style="${headerStyle}">Role / Category</th>
-        <th style="${headerStyle}text-align:center;">Resources Available</th>
-        <th style="${headerStyle}">Roles</th>
-        <th style="${headerStyle}">Seniority</th>
-        <th style="${headerStyle}">Experience</th>
-        <th style="${headerStyle}">Availability</th>
-        <th style="${headerStyle}">Preferred Location</th>
+        <th style="${thStyle}">Role / Category</th>
+        <th style="${thStyle}text-align:center;">Available</th>
+        <th style="${thStyle}">Seniority</th>
+        <th style="${thStyle}">Experience</th>
+        <th style="${thStyle}">Availability</th>
+        <th style="${thStyle}">Preferred Location</th>${rateHeader}
       </tr>
     </thead>
     <tbody>
       ${rows}
     </tbody>
   </table>
+  <p style="font-size:11px;color:#9ca3af;margin:16px 0 0 0;padding-top:12px;border-top:1px solid #e5e7eb;">This communication is intended for the named recipient only. The information in this bench list is confidential and sourced by Quadzero.</p>
 </div>`;
 }

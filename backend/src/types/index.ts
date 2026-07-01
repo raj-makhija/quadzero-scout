@@ -375,6 +375,10 @@ export interface SearchResponse {
   // `ranked` — the returned order is LLM-influenced. `pending` — a recompute was
   // kicked off; the client may re-fetch shortly to pick up the LLM order.
   llmRerank?: { ranked: boolean; pending: boolean };
+  // Cold-cache pending flag (#510): set when a requirement-bound search finds no
+  // cache item yet (build not started). The worker has been dispatched; the
+  // client should poll until the cache lands.
+  cacheBuilding?: boolean;
 }
 
 // API Warning (for graceful degradation signals)
@@ -568,6 +572,7 @@ export interface RequirementItem {
   payment_terms_days?: number;
   job_title?: string;
   jd_text: string;
+  vendor_jd?: string;
   parsed_criteria: LLMJDOutput;
   status: string;
   // Provenance (ticket #499). Defaults to 'recruiter'. For portal-scan discovered
@@ -1577,7 +1582,8 @@ export type AuditAction =
   | 'PIPELINE_INTERVIEW_FEEDBACK'
   | 'PIPELINE_STAGE_UPDATE'
   | 'PIPELINE_NOTE_ADDED'
-  | 'PIPELINE_UPDATE_QUOTED_RATE';
+  | 'PIPELINE_UPDATE_QUOTED_RATE'
+  | 'BENCH_LIST_EMAIL_EXTERNAL';
 
 export type AuditEntityType =
   | 'session'
@@ -1589,7 +1595,8 @@ export type AuditEntityType =
   | 'user'
   | 'config'
   | 'sub_vendor'
-  | 'pipeline';
+  | 'pipeline'
+  | 'bench_list';
 
 export interface AuditLogItem {
   pk: string;

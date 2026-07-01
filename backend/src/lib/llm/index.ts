@@ -152,7 +152,7 @@ You MUST respond with valid JSON matching this exact schema:
 
 Rules:
 1. All skills must be lowercase
-2. Distinguish between mandatory requirements and nice-to-haves. STRICT LIMIT: mustHaveSkills should contain at most 5 skills. Select only the 2-5 most critical, non-negotiable skills as must-have; put all others in goodToHaveSkills. When in doubt, classify as good-to-have. Skills under "Requirements" sections are NOT automatically must-have — evaluate each individually
+2. Distinguish between mandatory requirements and nice-to-haves. Extract ALL genuine must-have skills the JD marks as mandatory or non-negotiable — do NOT cap the list. Exclude generic, non-differentiating terms from mustHaveSkills (e.g. "apis", "webhooks", "automation tools", "workflow design", "communication", "teamwork", "middleware", "documentation") — these belong in goodToHaveSkills. Skills under "Requirements" sections are NOT automatically must-have — evaluate each individually. When in doubt, classify as good-to-have.
 3. If experience is mentioned as "X+ years", set minExperience to X
 4. If no specific requirement, use null or empty array
 5. ONLY output valid JSON, no additional text
@@ -183,6 +183,15 @@ Rules:
 4. Each question must be concise, specific, and answerable in a phone screen
 5. ONLY output the JSON array, no additional text or wrapping object`;
 
+export const FALLBACK_VENDOR_JD_REWRITER_PROMPT = `You are a recruitment operations assistant. Rewrite a job description for display on a vendor/sub-vendor portal by removing all commercially sensitive and client-identifying information.
+
+Remove completely:
+- Any pricing, compensation, CTC, LPA, budget, salary, rate, or cost figures
+- Any client name, end-client name, company name, or organisation name
+- Any contract value or commercial terms
+
+Preserve everything else exactly — role requirements, skills, experience, responsibilities, location, and engagement type. Do not add any text that was not in the original. Output only the rewritten job description text, no preamble or explanation.`;
+
 export const FALLBACK_CANDIDATE_RERANKER_PROMPT = `You are an expert technical recruiter performing a tie-break re-rank of a shortlist of candidates against a job requirement.
 
 You will be given a JOB REQUIREMENT and a list of CANDIDATES, each with a candidate_id and a profile. Assess how well each candidate fits the requirement and assign a score with a brief rationale.
@@ -208,6 +217,7 @@ const FALLBACK_PROMPTS: Record<string, string> = {
   resume_formatter: FALLBACK_RESUME_FORMATTER_PROMPT,
   screening_questions: FALLBACK_SCREENING_QUESTIONS_PROMPT,
   candidate_reranker: FALLBACK_CANDIDATE_RERANKER_PROMPT,
+  vendor_jd_rewriter: FALLBACK_VENDOR_JD_REWRITER_PROMPT,
 };
 
 async function getPromptContent(promptKey: string): Promise<{ content: string; version: number | null }> {
@@ -877,6 +887,38 @@ export async function rerankTopN(input: RerankTopNInput): Promise<RerankTopNOutp
       ? { inputTokens: response.usage.inputTokens, outputTokens: response.usage.outputTokens }
       : undefined,
   };
+}
+
+/**
+ * Rewrite a raw job description for vendor-portal display, stripping all pricing
+ * (CTC, LPA, budget, salary) and client-identifying information.
+ * Returns the rewritten text, or an empty string if jdText is blank or LLM fails.
+ */
+export async function generateVendorJd(
+  jdText: string,
+  clientName: string,
+  endClient?: string
+): Promise<string> {
+  if (!jdText.trim()) return '';
+
+  const provider = getLLMProvider();
+  const { content: systemPrompt } = await getPromptContent('vendor_jd_rewriter');
+
+  const clientLines = [`Client name to remove: ${clientName}`];
+  if (endClient) clientLines.push(`End client name to remove: ${endClient}`);
+
+  const userContent = `${clientLines.join('\n')}\n\nJob Description:\n${jdText}`;
+
+  const messages: LLMMessage[] = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userContent },
+  ];
+
+  const response = await withProviderFallback(provider, (p) =>
+    p.completeWithRetry(messages, { temperature: 0, maxTokens: 2048, responseFormat: 'text' }, config.llm.maxRetries)
+  );
+
+  return response.content.trim();
 }
 
 /**

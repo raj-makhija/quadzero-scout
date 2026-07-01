@@ -6,9 +6,14 @@ import type { CandidateItem, CandidateSearchResult } from '../types/index.js';
 export type MatchDetails = CandidateSearchResult['matchDetails'];
 
 /** Minimum effective must-have ratio for a candidate to pass the gate.
- *  Set to 0: any positive ratio (at least one exact, fuzzy, or secondary match)
- *  passes; a ratio of exactly 0 (zero must-have matches) is excluded. */
-export const MIN_MUST_HAVE_MATCH_RATIO = 0;
+ *  Set to 0.2: the candidate's effective ratio (exact + fuzzy×0.85 + secondary×0.5
+ *  divided by total must-haves) must be STRICTLY GREATER than this value to be
+ *  included; at exactly 0.2 the candidate is excluded (strict greater-than).
+ *  Rationale: with the top-5 cap removed, must-have lists can be 8-10 skills for
+ *  niche roles. Requiring >20% (rather than any match at all) prevents a single
+ *  generic-skill coincidence from pulling in a candidate who matches none of the
+ *  real differentiators. A ratio of 0 (zero must-have matches) is always excluded. */
+export const MIN_MUST_HAVE_MATCH_RATIO = 0.2;
 
 /** Weight applied to related (category-based) good-to-have skill matches. */
 export const RELATED_MATCH_WEIGHT = 0.3;

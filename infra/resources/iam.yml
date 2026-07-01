@@ -82,6 +82,11 @@ lambdaInvokePolicy:
     - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-cloneDataWorker'
     - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-recruiterLinkedInGenerateWorker'
     - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-matchCacheRebuildWorker'
+    # Per-requirement on-demand cache worker (#510). saveRequirement (on create),
+    # the criteria/status update paths, and the cold-cache search path all invoke
+    # this; without this grant the invoke throws AccessDeniedException, the cache
+    # never builds, and requirement searches spin forever in the "building" state.
+    - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-matchCacheRequirementWorker'
 
 # SES Policy (for sending notification emails)
 sesPolicy:
