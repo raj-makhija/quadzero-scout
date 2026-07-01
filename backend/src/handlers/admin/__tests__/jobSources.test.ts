@@ -12,7 +12,7 @@ vi.mock('../../../lib/auth.js', () => ({
 
 // --- mock adapter registry ---
 vi.mock('../../../lib/portalScan/adapters/index.js', () => ({
-  VALID_TYPES: ['stub', 'greenhouse', 'lever'],
+  VALID_TYPES: ['stub', 'greenhouse', 'lever', 'hirebound'],
 }));
 
 // --- mock dynamodb ---
@@ -136,6 +136,17 @@ describe('POST /admin/job-sources', () => {
     const res = await createHandler(makeEvent({ body: 'not-json' }) as never);
     expect((res as { statusCode: number }).statusCode).toBe(400);
   });
+
+  it('creates a hirebound source and returns 200', async () => {
+    const body = { type: 'hirebound', identifier: 'acme-hb', url: 'https://cpages.hirebound.io/in/overview/org/acme', cadence: 'daily', enabled: true };
+
+    const res = await createHandler(makeEvent({ body: JSON.stringify(body) }) as never);
+    const parsed = JSON.parse((res as { body: string }).body);
+
+    expect(parsed.success).toBe(true);
+    expect(parsed.data.source.type).toBe('hirebound');
+    expect(mockCreateJobSource).toHaveBeenCalledOnce();
+  });
 });
 
 // ─── UPDATE ─────────────────────────────────────────────────────────────────
@@ -186,6 +197,19 @@ describe('PUT /admin/job-sources/{source_id}', () => {
       makeEvent({ body: JSON.stringify({ enabled: false }) }) as never
     );
     expect((res as { statusCode: number }).statusCode).toBe(400);
+  });
+
+  it('accepts type change to hirebound and returns 200', async () => {
+    const body = { type: 'hirebound' };
+
+    const res = await updateHandler(
+      makeEvent({ pathParameters: { source_id: 'src-1' }, body: JSON.stringify(body) }) as never
+    );
+    const parsed = JSON.parse((res as { body: string }).body);
+
+    expect(parsed.success).toBe(true);
+    expect(parsed.data.source.type).toBe('hirebound');
+    expect(mockReplaceJobSource).toHaveBeenCalledOnce();
   });
 });
 
