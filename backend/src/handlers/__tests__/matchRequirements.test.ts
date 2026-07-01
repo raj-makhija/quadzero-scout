@@ -8,6 +8,11 @@ vi.mock('../../lib/dynamodb.js', () => ({
   getCandidateById: vi.fn(),
   getAllActiveRequirements: vi.fn(),
   getShortlistsForCandidate: vi.fn().mockResolvedValue([]),
+  getActivePricingConfig: vi.fn().mockResolvedValue({
+    gstRatePct: 0.18,
+    minContributionPerMonth: 30000,
+    costOfCapitalPctAnnual: 0.12,
+  }),
 }));
 
 import { handler } from '../candidate/matchRequirements.js';
@@ -274,5 +279,123 @@ describe('matchRequirements handler — not_suitable shortlist handling', () => 
 
     expect(body.data.matches).toHaveLength(1);
     expect(body.data.matches[0].isShortlisted).toBe(true);
+  });
+});
+
+describe('matchRequirements handler — budget fit uses Max Resource Budget (#529)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /** Build a requirement with a real budget/engagement so budgetFit is exercised. */
+  function budgetRequirement(overrides: Record<string, unknown>) {
+    return {
+      ...makeRequirement('react', 'req_budget'),
+      budget_max_lpa: 20,
+      engagement_model: 'full_time_contract',
+      payment_terms_days: 30,
+      is_rate_gst_inclusive: false,
+      ...overrides,
+    };
+  }
+
+  /** Candidate that clears the coreSkill gate and is engagement-compatible. */
+  function budgetCandidate(expectedCtc: number | null, engagement = 'contract') {
+    return {
+      ...makeCandidate(['react']),
+      expected_ctc: expectedCtc,
+      engagement_model: engagement,
+    };
+  }
+
+  // Item 1: contract requirement compares against maxResourceBudgetLpa, not budget × 0.85
+  it('marks a contract candidate between the resource ceiling and the old 0.85 proxy as budgetFit=false', async () => {
+    // budget 20, contract → resource ceiling ≈ 16.2. Old proxy 20 × 0.85 = 17.
+    // CTC 16.5 sits between: old proxy → true, corrected ceiling → false.
+    (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(budgetCandidate(16.5));
+    (getAllActiveRequirements as ReturnType<typeof vi.fn>).mockResolvedValue([budgetRequirement({})]);
+
+    const response = await handler(makeEvent('cand_test'));
+    const body = JSON.parse((response as { body: string }).body);
+
+    expect(body.data.matches).toHaveLength(1);
+    expect(body.data.matches[0].matchDetails.budgetFit).toBe(false);
+    // Display field stays the raw billing budget, not the ceiling.
+    expect(body.data.matches[0].budgetMaxLpa).toBe(20);
+  });
+
+  // Item 2: full_time_regular keeps the raw billing budget as the ceiling
+  it('treats a full_time_regular candidate at exactly the billing budget as budgetFit=true', async () => {
+    (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(budgetCandidate(30, 'full_time'));
+    (getAllActiveRequirements as ReturnType<typeof vi.fn>).mockResolvedValue([
+      budgetRequirement({ budget_max_lpa: 30, engagement_model: 'full_time_regular' }),
+    ]);
+
+    const response = await handler(makeEvent('cand_test'));
+    const body = JSON.parse((response as { body: string }).body);
+
+    expect(body.data.matches).toHaveLength(1);
+    expect(body.data.matches[0].matchDetails.budgetFit).toBe(true);
+  });
+
+  // Item 3: GST contrast — identical model/budget/CTC, only the GST flag differs → budgetFit flips
+  it('flips budgetFit for identical CTC when only is_rate_gst_inclusive changes', async () => {
+    // budget 20, contract, CTC 15. GST-exclusive ceiling ≈ 16.2 (fits);
+    // GST-inclusive ceiling ≈ 13.2 (does not fit).
+    (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(budgetCandidate(15));
+
+    (getAllActiveRequirements as ReturnType<typeof vi.fn>).mockResolvedValue([
+      budgetRequirement({ is_rate_gst_inclusive: false }),
+    ]);
+    const exclBody = JSON.parse(
+      (await handler(makeEvent('cand_test')) as { body: string }).body
+    );
+
+    (getAllActiveRequirements as ReturnType<typeof vi.fn>).mockResolvedValue([
+      budgetRequirement({ is_rate_gst_inclusive: true }),
+    ]);
+    const inclBody = JSON.parse(
+      (await handler(makeEvent('cand_test')) as { body: string }).body
+    );
+
+    expect(exclBody.data.matches[0].matchDetails.budgetFit).toBe(true);
+    expect(inclBody.data.matches[0].matchDetails.budgetFit).toBe(false);
+  });
+
+  // Item 5: no budget set → budgetFit stays true for all candidates
+  it('returns budgetFit=true when the requirement has no budget', async () => {
+    (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(budgetCandidate(999));
+    (getAllActiveRequirements as ReturnType<typeof vi.fn>).mockResolvedValue([
+      budgetRequirement({ budget_max_lpa: null }),
+    ]);
+
+    const response = await handler(makeEvent('cand_test'));
+    const body = JSON.parse((response as { body: string }).body);
+
+    expect(body.data.matches[0].matchDetails.budgetFit).toBe(true);
+  });
+
+  // Edge: budget too low to cover the minimum margin → ceiling undefined → sentinel 0 → budgetFit=false
+  it('returns budgetFit=false when the budget is too low to cover the minimum margin', async () => {
+    (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(budgetCandidate(10));
+    (getAllActiveRequirements as ReturnType<typeof vi.fn>).mockResolvedValue([
+      budgetRequirement({ budget_max_lpa: 2 }),
+    ]);
+
+    const response = await handler(makeEvent('cand_test'));
+    const body = JSON.parse((response as { body: string }).body);
+
+    expect(body.data.matches[0].matchDetails.budgetFit).toBe(false);
+  });
+
+  // Edge: null CTC → budgetFit stays true regardless of the ceiling
+  it('returns budgetFit=true when the candidate has no expected CTC', async () => {
+    (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(budgetCandidate(null));
+    (getAllActiveRequirements as ReturnType<typeof vi.fn>).mockResolvedValue([budgetRequirement({})]);
+
+    const response = await handler(makeEvent('cand_test'));
+    const body = JSON.parse((response as { body: string }).body);
+
+    expect(body.data.matches[0].matchDetails.budgetFit).toBe(true);
   });
 });

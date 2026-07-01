@@ -7,6 +7,11 @@ vi.mock('../../lib/dynamodb.js', () => ({
   deleteLlmRerank: vi.fn().mockResolvedValue(undefined),
   getCandidateById: vi.fn(),
   getRequirementById: vi.fn(),
+  getActivePricingConfig: vi.fn().mockResolvedValue({
+    gstRatePct: 0.18,
+    minContributionPerMonth: 30000,
+    costOfCapitalPctAnnual: 0.12,
+  }),
 }));
 
 vi.mock('../../lib/llm/index.js', () => ({
@@ -225,6 +230,54 @@ describe('matchDebug handler — role-qualified compound coreSkill filter', () =
     expect(body.data.excludedBy).toContain('discipline');
     expect(body.data.coreSkillUnconfirmed).toBe(false);
     expect(body.data.wouldBeExcluded).toBe(true);
+  });
+});
+
+describe('matchDebug handler — budgetFit uses Max Resource Budget (#529)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function budgetRequirement(overrides: Record<string, unknown>) {
+    return {
+      ...makeRequirement('react'),
+      budget_max_lpa: 20,
+      engagement_model: 'full_time_contract',
+      payment_terms_days: 30,
+      is_rate_gst_inclusive: false,
+      ...overrides,
+    };
+  }
+
+  function budgetCandidate(expectedCtc: number, engagement = 'contract') {
+    return { ...makeCandidate(['react']), expected_ctc: expectedCtc, engagement_model: engagement };
+  }
+
+  // Item 4: debug endpoint's budgetFit reflects the corrected ceiling on a non-null budget.
+  it('reports checks.budgetFit.passed=false for a contract CTC that only the old 0.85 proxy would have passed', async () => {
+    // budget 20, contract → resource ceiling ≈ 16.2. Old proxy 20 × 0.85 = 17.
+    // CTC 16.5 → old proxy would pass, corrected ceiling fails.
+    (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(budgetCandidate(16.5));
+    (getRequirementById as ReturnType<typeof vi.fn>).mockResolvedValue(budgetRequirement({}));
+
+    const response = await handler(makeEvent('cand_test', 'req_1'));
+    const body = JSON.parse((response as { body: string }).body);
+
+    expect(body.data.filters.budgetFit.passed).toBe(false);
+    // The raw billing budget is still reported for display.
+    expect(body.data.requirement.budgetMaxLpa).toBe(20);
+  });
+
+  it('reports checks.budgetFit.passed=true for the same CTC under full_time_regular (raw billing budget ceiling)', async () => {
+    (getCandidateById as ReturnType<typeof vi.fn>).mockResolvedValue(budgetCandidate(16.5, 'full_time'));
+    (getRequirementById as ReturnType<typeof vi.fn>).mockResolvedValue(
+      budgetRequirement({ engagement_model: 'full_time_regular' })
+    );
+
+    const response = await handler(makeEvent('cand_test', 'req_1'));
+    const body = JSON.parse((response as { body: string }).body);
+
+    expect(body.data.filters.budgetFit.passed).toBe(true);
   });
 });
 

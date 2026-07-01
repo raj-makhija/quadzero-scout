@@ -1,10 +1,11 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, MatchDebugRequestSchema } from '../../lib/validation.js';
-import { getCandidateById, getRequirementById } from '../../lib/dynamodb.js';
+import { getCandidateById, getRequirementById, getActivePricingConfig } from '../../lib/dynamodb.js';
 import { normalizeSkill, normalizeSkills, coreSkillMatchResult, disciplinesIncompatible } from '../../lib/skillNormalizer.js';
 import { calculateMatchScore, MIN_MUST_HAVE_MATCH_RATIO, FUZZY_MATCH_WEIGHT, MUST_HAVE_SECONDARY_WEIGHT, CORESKILL_UNCONFIRMED_SCORE_FLOOR, parseSearchLocations, isEngagementModelCompatible } from '../../lib/matchScoring.js';
 import { isCandidateWithinBudget } from '../../lib/ctcConversion.js';
+import { requirementBudgetCeilingLpa } from '../../lib/pricingEngine.js';
 import { rerankTopN } from '../../lib/llm/index.js';
 import { buildRerankCandidates, buildRequirementJd } from '../../lib/llmRerank.js';
 
@@ -42,9 +43,10 @@ export async function handler(
 
     const { candidateId, requirementId } = validation.data;
 
-    const [candidate, requirement] = await Promise.all([
+    const [candidate, requirement, pricingConfig] = await Promise.all([
       getCandidateById(candidateId),
       getRequirementById(requirementId),
+      getActivePricingConfig(),
     ]);
 
     if (!candidate) {
@@ -75,6 +77,16 @@ export async function handler(
     const coreSkillResult = coreSkillMatchResult(rawCoreSkill, candidatePrimaryRaw, reqSynonyms, candSynonyms);
     const coreSkillPassed = coreSkillResult.passed;
 
+    // Budget fit compares candidate CTC against the pre-computed "Max Resource
+    // Budget" (GST/margin/working-capital adjusted), not the raw billing budget.
+    const budgetCeiling = requirementBudgetCeilingLpa(
+      requirement.budget_max_lpa,
+      requirement.payment_terms_days,
+      requirement.is_rate_gst_inclusive,
+      requirement.engagement_model || criteria.engagementModel,
+      pricingConfig
+    );
+
     // --- Run scoring (even if filters would reject, for diagnostic purposes) ---
     const { score, details } = calculateMatchScore(
       candidate,
@@ -83,7 +95,7 @@ export async function handler(
       criteria.minExperience ?? undefined,
       criteria.maxExperience ?? undefined,
       criteria.seniority?.length ? criteria.seniority : undefined,
-      requirement.budget_max_lpa ?? undefined,
+      budgetCeiling,
       searchLocations,
       criteria.availability,
       reqSynonyms,
@@ -113,7 +125,7 @@ export async function handler(
     const disciplineExcluded = disciplinesIncompatible(criteria.roles || [], candidate.roles || []);
 
     // --- Budget (soft, but report it) ---
-    const budgetFit = isCandidateWithinBudget(candidate.expected_ctc, requirement.budget_max_lpa);
+    const budgetFit = isCandidateWithinBudget(candidate.expected_ctc, budgetCeiling);
 
     // Determine overall result
     const excludedBy: string[] = [];
@@ -221,7 +233,7 @@ export async function handler(
         },
         budgetFit: {
           passed: budgetFit,
-          detail: `candidate expectedCtc=${candidate.expected_ctc ?? 'null'}, requirement budgetMaxLpa=${requirement.budget_max_lpa ?? 'null'}`,
+          detail: `candidate expectedCtc=${candidate.expected_ctc ?? 'null'}, requirement budgetMaxLpa=${requirement.budget_max_lpa ?? 'null'}, maxResourceBudgetLpa=${budgetCeiling ?? 'null'}`,
         },
       },
       wouldBeExcluded,
