@@ -1,10 +1,11 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { success, error, ErrorCodes } from '../../lib/response.js';
 import { validate, formatZodErrors, MatchRequirementsRequestSchema } from '../../lib/validation.js';
-import { getCandidateById, getAllActiveRequirements, getShortlistsForCandidate } from '../../lib/dynamodb.js';
+import { getCandidateById, getAllActiveRequirements, getShortlistsForCandidate, getActivePricingConfig } from '../../lib/dynamodb.js';
 import { normalizeSkill, normalizeSkills, coreSkillSatisfiedBy, disciplinesIncompatible } from '../../lib/skillNormalizer.js';
 import { calculateMatchScore, FUZZY_MATCH_WEIGHT, MUST_HAVE_SECONDARY_WEIGHT, parseSearchLocations, isEngagementModelCompatible } from '../../lib/matchScoring.js';
 import { isCandidateWithinBudget } from '../../lib/ctcConversion.js';
+import { requirementBudgetCeilingLpa } from '../../lib/pricingEngine.js';
 import type { MatchedRequirement, MatchRequirementsResponse } from '../../types/index.js';
 
 /** Normalize a synonym map: lowercase keys and values. Returns undefined if input is null/undefined. */
@@ -47,10 +48,11 @@ export async function handler(
       return error(ErrorCodes.NOT_FOUND, 'Candidate not found', 404);
     }
 
-    // Fetch all active requirements and existing shortlists in parallel
-    const [requirements, shortlists] = await Promise.all([
+    // Fetch all active requirements, existing shortlists, and pricing config in parallel
+    const [requirements, shortlists, pricingConfig] = await Promise.all([
       getAllActiveRequirements(),
       getShortlistsForCandidate(candidateId),
+      getActivePricingConfig(),
     ]);
 
     const shortlistedRequirementIds = new Set(
@@ -77,6 +79,16 @@ export async function handler(
       const normalizedGoodToHave = normalizeSkills(criteria.goodToHaveSkills || []);
       const searchLocations = parseSearchLocations(criteria.location ?? undefined);
 
+      // Budget fit compares candidate CTC against the pre-computed "Max Resource
+      // Budget" (GST/margin/working-capital adjusted), not the raw billing budget.
+      const budgetCeiling = requirementBudgetCeilingLpa(
+        req.budget_max_lpa,
+        req.payment_terms_days,
+        req.is_rate_gst_inclusive,
+        req.engagement_model || criteria.engagementModel,
+        pricingConfig
+      );
+
       const { score, details } = calculateMatchScore(
         candidate,
         normalizedMustHave,
@@ -84,7 +96,7 @@ export async function handler(
         criteria.minExperience ?? undefined,
         criteria.maxExperience ?? undefined,
         criteria.seniority?.length ? criteria.seniority : undefined,
-        req.budget_max_lpa ?? undefined,
+        budgetCeiling,
         searchLocations,
         criteria.availability,
         reqSynonyms,
@@ -109,7 +121,7 @@ export async function handler(
         continue;
       }
 
-      const budgetFit = isCandidateWithinBudget(candidate.expected_ctc, req.budget_max_lpa);
+      const budgetFit = isCandidateWithinBudget(candidate.expected_ctc, budgetCeiling);
 
       // CTC is a soft indicator — over-budget requirements still appear
       // with budgetFit: false for display purposes.

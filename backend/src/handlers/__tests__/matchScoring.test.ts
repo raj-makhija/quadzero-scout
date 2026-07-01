@@ -789,19 +789,18 @@ describe('Match Scoring Algorithm', () => {
     expect(withBudget.score).toBe(withoutBudget.score);
   });
 
-  // TC-SCORE-CTC-006: ctcMatch boolean uses 0.85 threshold, independent of penalty
-  it('ctcMatch is false when expectedCtc > maxBudgetLpa × 0.85, true otherwise', () => {
-    const maxBudgetLpa = 30;
-    const overThreshold = makeCandidate({ expected_ctc: 26 }); // 26 > 30 * 0.85 = 25.5
-    const underThreshold = makeCandidate({ expected_ctc: 20 }); // 20 <= 25.5
+  // TC-SCORE-CTC-006: ctcMatch boolean is a direct compare against the ceiling
+  // (maxBudgetLpa is the pre-computed Max Resource Budget — no proxy factor).
+  it('ctcMatch is false when expectedCtc > maxBudgetLpa, true when at or below', () => {
+    const maxBudgetLpa = 30; // resource-budget ceiling
+    const overCeiling = makeCandidate({ expected_ctc: 31 }); // 31 > 30
+    const atCeiling = makeCandidate({ expected_ctc: 30 }); // 30 <= 30
 
-    const overResult = calculateMatchScore(overThreshold, [], [], undefined, undefined, undefined, maxBudgetLpa);
-    const underResult = calculateMatchScore(underThreshold, [], [], undefined, undefined, undefined, maxBudgetLpa);
+    const overResult = calculateMatchScore(overCeiling, [], [], undefined, undefined, undefined, maxBudgetLpa);
+    const atResult = calculateMatchScore(atCeiling, [], [], undefined, undefined, undefined, maxBudgetLpa);
 
     expect(overResult.details.ctcMatch).toBe(false);
-    expect(underResult.details.ctcMatch).toBe(true);
-    // Both are under budget ceiling (26 <= 30, 20 <= 30) so neither incurs a penalty
-    expect(overResult.score).toBe(underResult.score);
+    expect(atResult.details.ctcMatch).toBe(true);
   });
 
   // TC-SCORE-CTC-007: score never goes below zero for extreme over-budget

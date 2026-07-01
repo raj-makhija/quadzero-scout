@@ -41,14 +41,23 @@ describe('isCandidateWithinBudget()', () => {
     expect(isCandidateWithinBudget(20, null)).toBe(true);
   });
 
-  it('returns true when within budget (with 15% margin)', () => {
-    // 20 <= 30 * 0.85 (25.5) → true
-    expect(isCandidateWithinBudget(20, 30)).toBe(true);
+  it('returns true when CTC is at or below the resource-budget ceiling (direct comparison, no proxy factor)', () => {
+    // maxBudgetLpa is the pre-computed Max Resource Budget → direct compare
+    expect(isCandidateWithinBudget(30, 30)).toBe(true);
+    expect(isCandidateWithinBudget(25, 30)).toBe(true);
   });
 
-  it('returns false when over budget', () => {
-    // 30 <= 30 * 0.85 (25.5) → false
-    expect(isCandidateWithinBudget(30, 30)).toBe(false);
+  it('returns false when CTC exceeds the resource-budget ceiling', () => {
+    expect(isCandidateWithinBudget(31, 30)).toBe(false);
+  });
+
+  it('returns false for any positive CTC when the ceiling is 0 (budget too low to cover margin)', () => {
+    // Callers pass a sentinel 0 when calculateMaxResourceBudgetLpa() is undefined.
+    expect(isCandidateWithinBudget(1, 0)).toBe(false);
+  });
+
+  it('returns true when CTC is null even with a 0 ceiling (no CTC on file → no disqualification)', () => {
+    expect(isCandidateWithinBudget(null, 0)).toBe(true);
   });
 });
 
