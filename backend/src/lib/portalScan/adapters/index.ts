@@ -1,6 +1,7 @@
 import { stubAdapter } from './stubAdapter.js';
 import { greenhouseAdapter } from './greenhouseAdapter.js';
 import { leverAdapter } from './leverAdapter.js';
+import { hireboundAdapter } from './hireboundAdapter.js';
 
 export interface JobSource {
   source_id: string;
@@ -32,6 +33,7 @@ const registry = new Map<string, SourceAdapter>();
 registry.set(stubAdapter.type, stubAdapter);
 registry.set(greenhouseAdapter.type, greenhouseAdapter);
 registry.set(leverAdapter.type, leverAdapter);
+registry.set(hireboundAdapter.type, hireboundAdapter);
 
 export const VALID_TYPES: string[] = [stubAdapter.type, greenhouseAdapter.type, leverAdapter.type];
 

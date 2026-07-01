@@ -432,9 +432,13 @@ class ApiClient {
     );
   }
 
-  async sendBenchListEmail() {
+  // No args → "Email to me" (sends to the caller's own inbox, no rates).
+  // With a recipientEmail → external partner send (ticket #492); includeRates
+  // controls whether the indicative rate column is in the emailed table.
+  async sendBenchListEmail(params?: { recipientEmail?: string; includeRates?: boolean }) {
     return this.request<Record<string, never>>('/recruiter/bench-list/email', {
       method: 'POST',
+      ...(params ? { body: JSON.stringify(params) } : {}),
     });
   }
 

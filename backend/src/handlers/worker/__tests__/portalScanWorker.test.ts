@@ -22,7 +22,7 @@ vi.mock('../../../lib/portalScan/jobSources.js', () => ({
 const mockFetchJobs = vi.fn();
 vi.mock('../../../lib/portalScan/adapters/index.js', () => ({
   getAdapter: (type: string) => {
-    if (type === 'stub' || type === 'greenhouse' || type === 'lever')
+    if (type === 'stub' || type === 'greenhouse' || type === 'lever' || type === 'hirebound')
       return { type, fetchJobs: (...a: unknown[]) => mockFetchJobs(...a) };
     return undefined;
   },
@@ -365,6 +365,47 @@ describe('portalScanWorker — lever source type', () => {
   it('isolates lever adapter errors without propagating', async () => {
     mockGetEnabledSources.mockResolvedValue([leverSource]);
     mockFetchJobs.mockRejectedValue(new Error('Lever API error: 429 Too Many Requests'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(handler()).resolves.toBeUndefined();
+  });
+});
+
+const hireboundSource = {
+  source_id: 'src-hb-1',
+  type: 'hirebound',
+  identifier: '019d7778-3dc0-7663-ad19-69055a732f3d',
+  url: 'https://cpages.hirebound.io/in/overview/org/019d7778-3dc0-7663-ad19-69055a732f3d',
+  cadence: 'daily',
+  enabled: true,
+};
+
+describe('portalScanWorker — hirebound source type', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (config.portalScan as { enabled: boolean }).enabled = true;
+    mockGetSeenLogEntry.mockResolvedValue(null);
+    mockPutSeenLogEntry.mockResolvedValue(undefined);
+    mockSaveRequirement.mockResolvedValue(undefined);
+  });
+
+  it('dispatches correctly to the hirebound adapter when source.type = "hirebound"', async () => {
+    const hbJobs = [
+      { sourceId: 'src-hb-1', externalJobId: 'hb-1', title: 'Engineer', company: '019d7778-3dc0-7663-ad19-69055a732f3d', url: 'https://example.com/1', rawDescription: 'desc' },
+    ];
+    mockGetEnabledSources.mockResolvedValue([hireboundSource]);
+    mockFetchJobs.mockResolvedValue(hbJobs);
+
+    await handler();
+
+    expect(mockFetchJobs).toHaveBeenCalledWith(hireboundSource);
+    expect(mockPutSeenLogEntry).toHaveBeenCalledOnce();
+    expect(mockPutSeenLogEntry).toHaveBeenCalledWith('src-hb-1', 'hb-1', expect.any(Number));
+  });
+
+  it('isolates hirebound adapter errors without propagating', async () => {
+    mockGetEnabledSources.mockResolvedValue([hireboundSource]);
+    mockFetchJobs.mockRejectedValue(new Error('HireBound API error: 503 Service Unavailable'));
     vi.spyOn(console, 'error').mockImplementation(() => {});
 
     await expect(handler()).resolves.toBeUndefined();
