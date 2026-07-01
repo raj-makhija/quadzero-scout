@@ -1,0 +1,223 @@
+# Portal-scan service — second serverless stack (ticket #535).
+# Deploy with: npx serverless deploy --config serverless-portal-scan.yml --stage <stage>
+# Shares infra/'s src symlink, node_modules, and resources/ with the main service.
+#
+# Split out of the main `quadzero-scout` service to escape the 500-resource
+# CloudFormation limit (main packages to ~496; every new endpoint breached it).
+# This stack owns the portal-scan / discovered-jobs domain (epic #497) and gets
+# its own fresh 500-resource budget and its OWN HTTP API (separate base URL —
+# frontend targets it via NEXT_PUBLIC_PORTAL_SCAN_API_URL).
+#
+# NOTE: the provider.environment and custom.*Table blocks are intentionally
+# duplicated from ../serverless.yml (NOT shared via ${file()}), so this stack is
+# self-contained and edits here can never destabilise the prod-critical main
+# stack. config.ts builds a monolithic config object at cold-start that throws
+# on any missing required env var, so the full env block must be present even
+# though portal-scan handlers use only a subset. Keep in sync with the main
+# service when env keys are added there.
+
+service: quadzero-scout-portal-scan
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: ${opt:region, 'ap-south-1'}
+  stage: ${opt:stage, 'dev'}
+  memorySize: 512
+  timeout: 30
+  architecture: arm64
+  versionFunctions: false
+
+  stackTags:
+    Project: quadzero-scout
+    Environment: ${self:provider.stage}
+    ManagedBy: serverless-framework
+    Domain: portal-scan
+
+  tags:
+    Project: quadzero-scout
+    Environment: ${self:provider.stage}
+    Domain: portal-scan
+
+  environment:
+    STAGE: ${self:provider.stage}
+    AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
+    DYNAMODB_TABLE_TALENT_PROFILES: ${self:custom.talentProfilesTable}
+    DYNAMODB_TABLE_USERS: ${self:custom.usersTable}
+    DYNAMODB_TABLE_SAVED_SEARCHES: ${self:custom.savedSearchesTable}
+    DYNAMODB_TABLE_PROMPTS: ${self:custom.promptsTable}
+    S3_BUCKET_RESUMES: ${self:custom.resumesBucket}
+    LLM_PROVIDER: ${ssm:/quadzero-scout/${self:provider.stage}/LLM_PROVIDER, env:LLM_PROVIDER, 'claude'}
+    ANTHROPIC_API_KEY: ${ssm:/quadzero-scout/${self:provider.stage}/ANTHROPIC_API_KEY, env:ANTHROPIC_API_KEY, ''}
+    OPENAI_API_KEY: ${ssm:/quadzero-scout/${self:provider.stage}/OPENAI_API_KEY, env:OPENAI_API_KEY, ''}
+    OPENROUTER_API_KEY: ${ssm:/quadzero-scout/${self:provider.stage}/OPENROUTER_API_KEY, env:OPENROUTER_API_KEY, ''}
+    OPENROUTER_MODEL: ${ssm:/quadzero-scout/${self:provider.stage}/OPENROUTER_MODEL, env:OPENROUTER_MODEL, 'anthropic/claude-3.5-sonnet'}
+    OPENROUTER_REFERER: ${ssm:/quadzero-scout/${self:provider.stage}/OPENROUTER_REFERER, env:OPENROUTER_REFERER, 'https://quadzero-scout.com'}
+    GEMINI_API_KEY: ${ssm:/quadzero-scout/${self:provider.stage}/GEMINI_API_KEY, env:GEMINI_API_KEY, ''}
+    GEMINI_MODEL: ${ssm:/quadzero-scout/${self:provider.stage}/GEMINI_MODEL, env:GEMINI_MODEL, 'gemini-2.0-flash'}
+    LLM_FALLBACK_PROVIDER: ${ssm:/quadzero-scout/${self:provider.stage}/LLM_FALLBACK_PROVIDER, env:LLM_FALLBACK_PROVIDER, ''}
+    USD_TO_INR_RATE: ${ssm:/quadzero-scout/${self:provider.stage}/USD_TO_INR_RATE, env:USD_TO_INR_RATE, '85'}
+    NEXTAUTH_SECRET: ${ssm:/quadzero-scout/${self:provider.stage}/NEXTAUTH_SECRET, env:NEXTAUTH_SECRET, ''}
+    FORMAT_RESUME_WORKER_NAME: quadzero-scout-${self:provider.stage}-formatResumeWorker
+    DYNAMODB_TABLE_BULK_IMPORT_BATCHES: ${self:custom.bulkImportBatchesTable}
+    BULK_IMPORT_WORKER_NAME: quadzero-scout-${self:provider.stage}-bulkImportWorker
+    NOTIFY_WORKER_NAME: quadzero-scout-${self:provider.stage}-notifyWorker
+    LLM_RERANK_WORKER_NAME: quadzero-scout-${self:provider.stage}-llmRerankWorker
+    LLM_RERANK_ENABLED: ${ssm:/quadzero-scout/${self:provider.stage}/LLM_RERANK_ENABLED, env:LLM_RERANK_ENABLED, 'false'}
+    SES_SENDER_EMAIL: ${ssm:/quadzero-scout/${self:provider.stage}/SES_SENDER_EMAIL, env:SES_SENDER_EMAIL, ''}
+    FRONTEND_BASE_URL: ${ssm:/quadzero-scout/${self:provider.stage}/FRONTEND_BASE_URL, env:FRONTEND_BASE_URL, 'https://dev.scout.quadzero.com'}
+    DYNAMODB_TABLE_REQUIREMENTS: ${self:custom.requirementsTable}
+    DYNAMODB_TABLE_PRICING_CONFIG: ${self:custom.pricingConfigTable}
+    DYNAMODB_TABLE_SHORTLISTS: ${self:custom.shortlistsTable}
+    DYNAMODB_TABLE_CLIENTS: ${self:custom.clientsTable}
+    DYNAMODB_TABLE_CANDIDATE_SCREENINGS: ${self:custom.candidateScreeningsTable}
+    DYNAMODB_TABLE_EMAIL_INGEST_LOG: ${self:custom.emailIngestLogTable}
+    DYNAMODB_TABLE_AUDIT_LOG: ${self:custom.auditLogTable}
+    DYNAMODB_TABLE_SCREENING_LOCKS: ${self:custom.screeningLocksTable}
+    DYNAMODB_TABLE_SUB_VENDORS: ${self:custom.subVendorsTable}
+    DYNAMODB_TABLE_PIPELINE_ACTIVITY: ${self:custom.pipelineActivityTable}
+    DYNAMODB_TABLE_CANDIDATE_ATTACHMENTS: ${self:custom.candidateAttachmentsTable}
+    DYNAMODB_TABLE_RECRUITER_TASKS: ${self:custom.recruiterTasksTable}
+    DYNAMODB_TABLE_REQUIREMENT_MATCH_CACHE: ${self:custom.requirementMatchCacheTable}
+    DYNAMODB_TABLE_REQUIREMENT_LLM_RERANK: ${self:custom.requirementLlmRerankTable}
+    DYNAMODB_TABLE_CLONE_JOBS: ${self:custom.cloneJobsTable}
+    CLONE_DATA_WORKER_NAME: quadzero-scout-${self:provider.stage}-cloneDataWorker
+    GRAPH_TENANT_ID: ${ssm:/quadzero-scout/${self:provider.stage}/GRAPH_TENANT_ID, env:GRAPH_TENANT_ID, ''}
+    GRAPH_CLIENT_ID: ${ssm:/quadzero-scout/${self:provider.stage}/GRAPH_CLIENT_ID, env:GRAPH_CLIENT_ID, ''}
+    GRAPH_CLIENT_SECRET: ${ssm:/quadzero-scout/${self:provider.stage}/GRAPH_CLIENT_SECRET, env:GRAPH_CLIENT_SECRET, ''}
+    GRAPH_MAILBOX_ADDRESS: ${ssm:/quadzero-scout/${self:provider.stage}/GRAPH_MAILBOX_ADDRESS, env:GRAPH_MAILBOX_ADDRESS, ''}
+    EMAIL_INGEST_ENABLED: ${ssm:/quadzero-scout/${self:provider.stage}/EMAIL_INGEST_ENABLED, env:EMAIL_INGEST_ENABLED, 'false'}
+    EMAIL_INGEST_NOTIFY_ADDRESS: ${ssm:/quadzero-scout/${self:provider.stage}/EMAIL_INGEST_NOTIFY_ADDRESS, env:EMAIL_INGEST_NOTIFY_ADDRESS, ''}
+    RECRUITER_MATCH_EMAIL_ENABLED: ${ssm:/quadzero-scout/${self:provider.stage}/RECRUITER_MATCH_EMAIL_ENABLED, env:RECRUITER_MATCH_EMAIL_ENABLED, 'false'}
+    DYNAMODB_TABLE_LINKEDIN_TOKENS: ${self:custom.linkedInTokensTable}
+    DYNAMODB_TABLE_LINKEDIN_POST_JOBS: ${self:custom.linkedInPostJobsTable}
+    LINKEDIN_GENERATE_WORKER_NAME: quadzero-scout-${self:provider.stage}-recruiterLinkedInGenerateWorker
+    MATCH_CACHE_REBUILD_WORKER_NAME: quadzero-scout-${self:provider.stage}-matchCacheRebuildWorker
+    MATCH_CACHE_REQUIREMENT_WORKER_NAME: quadzero-scout-${self:provider.stage}-matchCacheRequirementWorker
+    LINKEDIN_CLIENT_ID: ${ssm:/quadzero-scout/${self:provider.stage}/LINKEDIN_CLIENT_ID, env:LINKEDIN_CLIENT_ID, ''}
+    LINKEDIN_CLIENT_SECRET: ${ssm:/quadzero-scout/${self:provider.stage}/LINKEDIN_CLIENT_SECRET, env:LINKEDIN_CLIENT_SECRET, ''}
+    LINKEDIN_REDIRECT_URI: ${ssm:/quadzero-scout/${self:provider.stage}/LINKEDIN_REDIRECT_URI, env:LINKEDIN_REDIRECT_URI, ''}
+    LINKEDIN_API_VERSION: ${ssm:/quadzero-scout/${self:provider.stage}/LINKEDIN_API_VERSION, env:LINKEDIN_API_VERSION, '202606'}
+    IMAGE_GEN_MODEL: ${ssm:/quadzero-scout/${self:provider.stage}/IMAGE_GEN_MODEL, env:IMAGE_GEN_MODEL, 'gemini-3-pro-image'}
+    IMAGE_GEN_SIZE: ${ssm:/quadzero-scout/${self:provider.stage}/IMAGE_GEN_SIZE, env:IMAGE_GEN_SIZE, '1024x1024'}
+    DYNAMODB_TABLE_JOB_SOURCES: ${self:custom.jobSourcesTable}
+    DYNAMODB_TABLE_JOB_SOURCE_SEEN_LOG: ${self:custom.jobSourceSeenLogTable}
+    PORTAL_SCAN_ENABLED: ${ssm:/quadzero-scout/${self:provider.stage}/PORTAL_SCAN_ENABLED, env:PORTAL_SCAN_ENABLED, 'false'}
+
+  # Own HTTP API (separate base URL). No routed functions yet — Phase 2 (#502/#503
+  # router Lambdas) will attach here. serverless only materialises the API once an
+  # httpApi event exists, so this block is inert until then.
+  httpApi:
+    cors:
+      allowedOrigins: ${self:custom.corsOrigins.${self:provider.stage}}
+      allowedHeaders:
+        - Content-Type
+        - Authorization
+      allowedMethods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - OPTIONS
+
+  iam:
+    role:
+      statements:
+        - ${file(resources/iam.yml):dynamoDbPolicy}
+        - ${file(resources/iam.yml):s3Policy}
+        - ${file(resources/iam.yml):lambdaInvokePolicy}
+        - ${file(resources/iam.yml):ssmPolicy}
+        - ${file(resources/iam.yml):sesPolicy}
+        - ${file(resources/iam.yml):textractPolicy}
+        - ${file(resources/iam.yml):cloudwatchMetricsPolicy}
+
+custom:
+  corsOrigins:
+    dev:
+      - http://localhost:3000
+      - http://localhost:3001
+      - http://localhost:3002
+      - https://dev.scout.quadzero.com
+      - https://develop.d29qw5nnt7ayr2.amplifyapp.com
+    qa:
+      - https://qa.scout.quadzero.com
+      - https://qa.d29qw5nnt7ayr2.amplifyapp.com
+    prod:
+      - https://scout.quadzero.com
+      - https://app.quadzero.com
+      - https://main.d29qw5nnt7ayr2.amplifyapp.com
+
+  talentProfilesTable: TalentProfiles-${self:provider.stage}
+  usersTable: Users-${self:provider.stage}
+  savedSearchesTable: SavedSearches-${self:provider.stage}
+  promptsTable: Prompts-${self:provider.stage}
+  resumesBucket: quadzero-scout-resumes-${self:provider.stage}
+  bulkImportBatchesTable: BulkImportBatches-${self:provider.stage}
+  requirementsTable: Requirements-${self:provider.stage}
+  pricingConfigTable: PricingConfig-${self:provider.stage}
+  shortlistsTable: Shortlists-${self:provider.stage}
+  clientsTable: Clients-${self:provider.stage}
+  candidateScreeningsTable: CandidateScreenings-${self:provider.stage}
+  emailIngestLogTable: EmailIngestLog-${self:provider.stage}
+  auditLogTable: AuditLog-${self:provider.stage}
+  screeningLocksTable: ScreeningLocks-${self:provider.stage}
+  subVendorsTable: SubVendors-${self:provider.stage}
+  pipelineActivityTable: PipelineActivity-${self:provider.stage}
+  candidateAttachmentsTable: CandidateAttachments-${self:provider.stage}
+  recruiterTasksTable: RecruiterTasks-${self:provider.stage}
+  requirementMatchCacheTable: RequirementMatchCache-${self:provider.stage}
+  requirementLlmRerankTable: RequirementLlmRerank-${self:provider.stage}
+  cloneJobsTable: CloneJobs-${self:provider.stage}
+  linkedInTokensTable: LinkedInTokens-${self:provider.stage}
+  linkedInPostJobsTable: LinkedInPostJobs-${self:provider.stage}
+  jobSourcesTable: JobSources-${self:provider.stage}
+  jobSourceSeenLogTable: JobSourceSeenLog-${self:provider.stage}
+
+  dotenv:
+    include:
+      - LLM_PROVIDER
+      - ANTHROPIC_API_KEY
+      - OPENAI_API_KEY
+      - OPENROUTER_API_KEY
+      - OPENROUTER_MODEL
+      - OPENROUTER_REFERER
+      - GEMINI_API_KEY
+      - GEMINI_MODEL
+      - LLM_FALLBACK_PROVIDER
+      - USD_TO_INR_RATE
+      - NEXTAUTH_SECRET
+
+  esbuild:
+    bundle: true
+    minify: false
+    sourcemap: true
+    exclude:
+      - '@aws-sdk/*'
+      - '@sparticuz/chromium'
+    target: node20
+    platform: node
+    concurrency: 10
+
+plugins:
+  - serverless-dotenv-plugin
+  - serverless-esbuild
+  - serverless-offline
+
+package:
+  individually: true
+
+functions:
+  # Scheduled worker that scans enabled job sources for new postings.
+  # Moved here from the main service (ticket #535). Matches its prior config
+  # exactly (no chromium layer — the HireBound headless fallback degrades
+  # gracefully to [] without it, as it did in the main stack).
+  portalScanWorker:
+    handler: src/handlers/worker/portalScanWorker.handler
+    timeout: 300
+    memorySize: 512
+    events:
+      - schedule:
+          rate: rate(1 day)
+          enabled: true
