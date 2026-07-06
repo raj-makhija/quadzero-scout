@@ -290,6 +290,10 @@ functions:
 
   recruiterSearch:
     handler: src/handlers/recruiter/search.handler
+    # 1 full vCPU: the ad-hoc (no-requirementId) path scores the whole candidate
+    # corpus in-memory per request; at the 512MB default (~1/3 vCPU) it hits the
+    # 30s API Gateway integration cutoff on a 4k+ corpus (#541).
+    memorySize: 1769
     events:
       - httpApi:
           path: /recruiter/search

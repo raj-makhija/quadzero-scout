@@ -131,19 +131,19 @@ export async function searchCandidates(
   const expressionAttributeNames: Record<string, string> = {};
   const expressionAttributeValues: Record<string, unknown> = {};
 
-  const PAGE_SIZE = 100;
   const MAX_ITEMS = 10000;
 
+  // No Limit: let each Scan page return the full 1MB so the corpus loads in as
+  // few sequential round-trips as possible. A 100-item Limit made this loop
+  // ~43 round-trips at a 4k+ corpus, a major share of the 30s timeout (#541).
   const baseScanParams: {
     TableName: string;
-    Limit: number;
     ExclusiveStartKey?: Record<string, unknown>;
     FilterExpression?: string;
     ExpressionAttributeNames?: Record<string, string>;
     ExpressionAttributeValues?: Record<string, unknown>;
   } = {
     TableName: config.dynamodb.talentProfilesTable,
-    Limit: PAGE_SIZE,
   };
 
   if (filterExpressions.length > 0) {
