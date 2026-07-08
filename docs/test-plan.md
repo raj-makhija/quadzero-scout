@@ -1,9 +1,38 @@
 # Quadzero Scout - Test Plan & QA Documentation
 
-**Document Version:** 1.0
+**Document Version:** 1.1
 **Application:** Quadzero Scout - AI-powered Talent Matching Platform
-**Last Updated:** 2026-01-30
+**Last Updated:** 2026-07-08
 **Related Document:** [test-cases.md](test-cases.md)
+
+---
+
+## 0. Implementation status (2026-07-08)
+
+> **Read this first.** This plan was authored as an aspirational target
+> (v1.0, 2026-01-30). Several layers it describes are **not implemented**. The
+> table below is the authoritative as-is picture; anywhere a later section
+> describes something not reflected here, treat it as **planned**, not current.
+>
+> | Layer | This plan claims | Actually implemented (2026-07-08) |
+> |-------|------------------|-----------------------------------|
+> | Unit / component tests | ~80 + ~30 | **Yes** — Vitest suites in `backend/` and `frontend/`; the real regression net |
+> | Integration tests (handler → DynamoDB/S3 on real AWS) | ~50, a distinct layer | **No distinct layer** — folded into the unit `vitest run`; AWS collaborators are mocked |
+> | API / contract tests | ~40 (supertest) | **No** — no supertest layer, and no frontend↔backend contract test (gap tracked in #545) |
+> | Enforced pre-merge gate | implied by the pyramid | **Lint + typecheck + `vitest` + build**; typecheck & build enforced as of #543 |
+> | E2E | 10 cases, cross-browser, gates release | **3 Chromium smoke specs** (login, search, screening), **post-deploy, fire-and-report** — blocks nothing (gate work tracked in #547) |
+> | Nightly "full regression (all P0–P2)" | scheduled in CI | **No** — the nightly job is a `develop`→`main` mirror + deploy; it runs no tests |
+> | Pre-release "full suite incl. E2E + NFR" | before staging/prod | **No** — no such stage exists |
+> | NFR (performance / security / accessibility) | 15 cases | **No** — not automated |
+>
+> **The gates that actually run** between a change and prod (all via the
+> pipeline scripts, because GitHub Free does not enforce PR status checks):
+>
+> 1. **Tester `validate`** — `npm test` + `npm run typecheck` + `npm run build` (backend + frontend), then an LLM static diff review. Fail → rework.
+> 2. **`qa-deploy`** — the same test + typecheck + build gate after merging `develop` into the ticket branch, then deploy to the single-tenant QA. Fail → rework.
+> 3. **Human `qa-approve`** — squash-merge to `develop`; the nightly `develop`→`main` mirror ships it to prod. No test stage of its own.
+>
+> Reconciliation tickets: build/typecheck gate #543 · this doc #544 · contract-drift gaps #545 / #546 · E2E-as-a-gate #547.
 
 ---
 
@@ -21,7 +50,7 @@ Quadzero Scout connects IT professionals with recruiters through:
 
 | Layer | Technology |
 |-------|------------|
-| Frontend | Next.js 14, TypeScript, TailwindCSS, NextAuth.js |
+| Frontend | Next.js 15, TypeScript, TailwindCSS, NextAuth.js |
 | Backend | AWS Lambda (Node.js 20), TypeScript |
 | Database | AWS DynamoDB (3 tables, 5 GSIs) |
 | Storage | AWS S3 (resumes with pre-signed URLs) |
@@ -58,7 +87,7 @@ Quadzero Scout connects IT professionals with recruiters through:
 |------|--------|
 | Webhook events | Documented as "Future" in API contracts |
 | SDK package | Referenced in docs but not shipped |
-| Admin panel | No admin UI implemented |
+| ~~Admin panel~~ | ~~No admin UI implemented~~ — **now built** (recruiter approval, prompts, pricing, bulk import, audit logs, scan sources); in scope, largely un-tested |
 | Rate limiting enforcement | Documented but not yet enforced |
 
 ---
@@ -83,7 +112,14 @@ Quadzero Scout connects IT professionals with recruiters through:
                      └───────────────────────┘
 ```
 
+> **Note:** the pyramid above is the *target* model. Per §0, the E2E and
+> API/contract tiers, the distinct integration layer, the nightly regression,
+> and the pre-release full suite are **not yet built** — the enforced net today
+> is the unit/component `vitest` suites plus a typecheck+build gate.
+
 ### 3.2 Test Type Distribution
+
+> Counts in this table are the v1.0 **target**, not current implementation (see §0).
 
 | Test Type | Count | Scope |
 |-----------|-------|-------|
@@ -91,7 +127,7 @@ Quadzero Scout connects IT professionals with recruiters through:
 | API / Contract Tests | ~40 | All 11 endpoints with valid/invalid inputs, error codes, response shapes |
 | Integration Tests | ~50 | Handler → DynamoDB/S3 flows, LLM parsing with mocks, auth flows |
 | UI Component Tests | ~30 | React components, form validation, state management |
-| E2E Tests | 10 | Full candidate onboarding, recruiter search, cross-browser |
+| E2E Tests | 10 _(target; 3 built)_ | Full candidate onboarding, recruiter search, cross-browser |
 | NFR Tests | 15 | Performance, security, accessibility |
 | **Total** | **237** | All modules |
 
@@ -250,8 +286,8 @@ Detailed test cases are in [test-cases.md](test-cases.md). Summary below:
 |------|-------------|
 | Unit Tests | 100% P0 pass, 95% P1 pass |
 | Integration Tests | 100% P0 pass, 90% P1 pass |
-| API Tests | All 11 endpoints pass contract validation |
-| E2E Tests | Both core workflows pass (candidate + recruiter) |
+| API Tests _(planned — #545)_ | Contract validation is not yet implemented |
+| E2E Tests | 3 Chromium smoke specs green post-deploy — **advisory only, does not gate a release** (blocking gate planned — #547) |
 | Defects | No open P0 defects, no more than 3 open P1 defects |
 | Coverage | >80% line coverage for backend/src/lib/ |
 
@@ -286,11 +322,12 @@ Detailed test cases are in [test-cases.md](test-cases.md). Summary below:
 
 | Phase | Tests | Trigger |
 |-------|-------|---------|
-| Pre-commit | Unit tests (P0) | Developer local run |
-| CI Pipeline | All unit + integration tests | Every push to dev branch |
-| Nightly | Full regression (all P0-P2) | Scheduled cron in CI |
-| Pre-release | Full suite including E2E + NFR | Before staging/prod deployment |
-| Post-deploy | Smoke tests (P0 E2E) | After production deployment |
+| Pre-commit (husky) | Backend + frontend `tsc --noEmit`, ESLint, `next lint` | Developer local commit |
+| PR check (advisory, `ci.yml`) | Lint + typecheck + `vitest` + build, both packages | PR opened/updated against `develop` |
+| Tester `validate` (enforced) | `npm test` + `npm run typecheck` + `npm run build` + LLM static review | Ticket enters `validation-pending` |
+| `qa-deploy` (enforced) | Same test + typecheck + build gate, then deploy to single-tenant QA | `pipeline:qa-deploy` label |
+| Nightly | `develop`→`main` mirror + serverless/Amplify deploy — **runs no tests** | Cron 01:00 IST |
+| Post-deploy | 3 Chromium E2E smoke specs vs dev — **fire-and-report, non-blocking** | After `pipeline:qa-approve` |
 
 ---
 
