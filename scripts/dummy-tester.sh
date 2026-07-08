@@ -254,6 +254,32 @@ Routing to rework. The developer agent will see this output on the next attempt 
       echo "==> PIPELINE_TESTER_RUN_NPM_TEST=false; skipping real-test gate" >&2
     fi
 
+    # ---- Hard gate: compile + build (typecheck + build) after the suite ----
+    # vitest is blind to build-only breakage. A frontend `next build` failure
+    # (an invalid page/route export -- the #515 deploy-freeze class) or a
+    # backend `tsc` emit error passes `npm test` AND `tsc --noEmit`, yet
+    # freezes the Amplify / serverless deploy. Run typecheck + build here so it
+    # routes to rework before the PR, not at deploy time. Same rework path as a
+    # red suite. Disable via PIPELINE_TESTER_RUN_BUILD=false (debug only).
+    if [[ "${PIPELINE_TESTER_RUN_BUILD:-true}" == "true" ]]; then
+      for tdir in backend frontend; do
+        if ! pl_build_check "$tdir"; then
+          do_fail "[tester] FAIL on \`$BRANCH\` -- compile/build gate \`$PL_BUILD_FAIL_WHERE\` did not pass.
+
+Last 60 lines:
+
+\`\`\`
+$PL_BUILD_FAIL_TAIL
+\`\`\`
+
+Routing to rework. This gate runs \`npm run typecheck\` + \`npm run build\` to catch deploy-breaking errors the unit tests miss (e.g. an invalid Next.js page export). Run both locally before committing on the next attempt."
+          exit 0
+        fi
+      done
+    else
+      echo "==> PIPELINE_TESTER_RUN_BUILD=false; skipping compile/build gate" >&2
+    fi
+
     PROMPT="$(cat <<PROMPT
 You are the tester agent in an automated CI/CD pipeline. Issue
 #${TICKET} has been implemented by the developer on branch

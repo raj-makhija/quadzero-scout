@@ -147,6 +147,27 @@ QA is unchanged. Ticket routed to rework."
   done
 fi
 
+# --- 4b. Compile-time gate (typecheck + build) ----------------------------
+# Last line of defense before qa is pushed (Amplify) + serverless deploy.
+# Catches build-only breakage vitest can't see -- e.g. an invalid page export
+# that freezes the frontend build (#515). Not-green routes to rework exactly
+# like a red suite; qa is left untouched. Disable via PIPELINE_QA_RUN_BUILD=false.
+if [[ "${PIPELINE_QA_RUN_BUILD:-true}" == "true" ]]; then
+  for tdir in backend frontend; do
+    if ! pl_build_check "$tdir"; then
+      route_to_rework "[/qa-deploy] NOT DEPLOYED — compile/build gate \`$PL_BUILD_FAIL_WHERE\` failed on \`$BRANCH\` after merging develop.
+
+Last 60 lines:
+\`\`\`
+$PL_BUILD_FAIL_TAIL
+\`\`\`
+QA is unchanged. Ticket routed to rework. (Compile/build gate runs \`npm run typecheck\` + \`npm run build\`, catching deploy-breaking errors the unit tests miss.)"
+      echo "qa-deploy: build gate failed in $tdir; routed to rework" >&2
+      exit 1
+    fi
+  done
+fi
+
 # --- 5. Persist the merge, point qa at the branch, deploy -----------------
 echo "==> pushing $BRANCH (with develop merged in)" >&2
 git push origin "$BRANCH" >&2
