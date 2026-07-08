@@ -374,3 +374,41 @@ pl_deploy_stage() {
   echo "==> deploying portal-scan service to $stage (serverless-portal-scan.yml)" >&2
   (cd infra/ && npx serverless deploy --config serverless-portal-scan.yml --stage "$stage")
 }
+
+# Compile-time gate for a project dir: `npm run typecheck` then `npm run build`.
+# This catches breakage that the `npm test` (vitest) gate does NOT:
+#   - a frontend `next build` failure -- e.g. an invalid route/page export that
+#     both `tsc --noEmit` and vitest pass, yet freezes the Amplify deploy
+#     (the #515 class that this gate exists to close, ticket #543)
+#   - a backend `tsc` emit error or a bundle-visible type error
+# Assumes dependencies are already installed in <dir>: callers run the npm-test
+# gate (which does `npm ci`) immediately before this. A dir that lacks the
+# package.json or a given script is skipped for that step (no-op), so this is
+# safe on repos without a build/typecheck script.
+#
+# On the first failing step it stashes context in globals for the caller's
+# issue comment: PL_BUILD_FAIL_WHERE ("<dir> (<step>)") and PL_BUILD_FAIL_TAIL
+# (last 60 lines of output). Returns 0 if every present step passes, 1 on the
+# first failure.
+pl_build_check() {
+  local dir="$1"
+  [[ -f "$dir/package.json" ]] || return 0
+  local step out
+  for step in typecheck build; do
+    grep -qE "\"$step\"[[:space:]]*:" "$dir/package.json" || continue
+    echo "==> running npm run $step in $dir/" >&2
+    out="$(mktemp -t "npm-$step-${dir//\//_}.XXXXXX")"
+    if (cd "$dir" && npm run "$step") >"$out" 2>&1; then
+      echo "    OK -- $dir/ $step" >&2
+      rm -f "$out"
+    else
+      echo "    FAIL -- $dir/ $step" >&2
+      cat "$out" >&2
+      PL_BUILD_FAIL_WHERE="$dir ($step)"
+      PL_BUILD_FAIL_TAIL="$(tail -n 60 "$out")"
+      rm -f "$out"
+      return 1
+    fi
+  done
+  return 0
+}
