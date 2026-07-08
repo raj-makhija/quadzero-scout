@@ -1,4 +1,7 @@
 import { toast } from '@/hooks/use-toast';
+// Contract types single-sourced from the backend Zod schemas (#545). `import
+// type` is fully erased at build time -- no zod or backend code is bundled.
+import type { EngagementModel, Payroll } from '@contracts';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 // Portal-scan endpoints live in a separate serverless service with its own API
@@ -1385,9 +1388,10 @@ export interface CloneJobStatus {
   error?: string;
 }
 
-// Requirement types
-export type EngagementModel = 'full_time_regular' | 'full_time_contract' | 'part_time_contract';
-export type Payroll = 'quadzero' | 'client';
+// Requirement types. EngagementModel / Payroll are re-exported from the backend
+// Zod source (imported at the top of this file) so a change to EngagementModelEnum
+// / PayrollEnum on the server surfaces here as a compile error, not silent drift.
+export type { EngagementModel, Payroll };
 
 export interface AdditionalFieldDefinition {
   key: string;
