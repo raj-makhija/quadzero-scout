@@ -169,6 +169,13 @@ export function calculateSkillMatch(
   return { exactMatched, fuzzyMatched, relatedMatched, missing };
 }
 
+// getRoleCategory is a pure function of the static roleTaxonomy, but it is
+// called several times per candidate when scoring a full corpus (via
+// calculateRoleMatch and disciplinesIncompatible), each call sweeping the
+// taxonomy with fresh token splits. Memoizing by normalized role title cuts
+// the ad-hoc search scoring loop by ~8x on role-bearing criteria (#541).
+const roleCategoryCache = new Map<string, string | null>();
+
 /**
  * Get the role category for a given role title using token-containment matching
  * against the roleTaxonomy in skills_ontology.json.
@@ -177,6 +184,14 @@ export function calculateSkillMatch(
 export function getRoleCategory(role: string): string | null {
   const roleLower = role.toLowerCase().trim();
 
+  const cached = roleCategoryCache.get(roleLower);
+  if (cached !== undefined) return cached;
+  const category = computeRoleCategory(roleLower);
+  roleCategoryCache.set(roleLower, category);
+  return category;
+}
+
+function computeRoleCategory(roleLower: string): string | null {
   for (const [category, titles] of Object.entries(roleTaxonomy)) {
     for (const title of titles) {
       // Exact match

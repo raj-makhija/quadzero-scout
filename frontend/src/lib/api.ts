@@ -1,4 +1,7 @@
 import { toast } from '@/hooks/use-toast';
+// Contract types live in ./contracts (dependency-free, Amplify-safe) and are
+// guarded against drift from the backend Zod enums by a backend-side test (#545).
+import type { EngagementModel, Payroll } from './contracts';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 // Portal-scan endpoints live in a separate serverless service with its own API
@@ -1385,9 +1388,8 @@ export interface CloneJobStatus {
   error?: string;
 }
 
-// Requirement types
-export type EngagementModel = 'full_time_regular' | 'full_time_contract' | 'part_time_contract';
-export type Payroll = 'quadzero' | 'client';
+// Requirement types (re-exported from ./contracts; see the import at the top).
+export type { EngagementModel, Payroll };
 
 export interface AdditionalFieldDefinition {
   key: string;

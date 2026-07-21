@@ -46,6 +46,16 @@ jobs:
       - name: Typecheck frontend
         run: cd frontend && npm run typecheck
 
+      # Build both packages so deploy-breaking errors that pass tsc + vitest
+      # surface at PR time, not at Amplify/serverless deploy time (#543, #515).
+      # Advisory on GitHub Free; the enforced copy lives in the tester +
+      # qa-deploy gates (scripts/dummy-tester.sh, scripts/qa-deploy.sh).
+      - name: Build backend
+        run: cd backend && npm run build
+
+      - name: Build frontend
+        run: cd frontend && npm run build
+
   test-backend:
     runs-on: ubuntu-latest
     timeout-minutes: 10
