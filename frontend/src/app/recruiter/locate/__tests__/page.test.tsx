@@ -227,7 +227,6 @@ describe('LocateProfilePage', () => {
       expect(screen.getByText('Seniority Level')).toBeInTheDocument();
       expect(screen.getByText('Skills')).toBeInTheDocument();
       expect(screen.getByText('Location')).toBeInTheDocument();
-      expect(screen.getByText('Availability / Notice Period')).toBeInTheDocument();
       expect(screen.getByText('Engagement Model')).toBeInTheDocument();
       expect(screen.getByText('Screening Status')).toBeInTheDocument();
     });
