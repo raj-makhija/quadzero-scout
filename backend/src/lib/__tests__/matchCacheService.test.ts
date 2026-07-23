@@ -21,6 +21,11 @@ vi.mock('../dynamodb.js', () => ({
   getMatchCache: (...a: unknown[]) => mockGetMatchCache(...a),
   putMatchCache: (...a: unknown[]) => mockPutMatchCache(...a),
   deleteMatchCache: (...a: unknown[]) => mockDeleteMatchCache(...a),
+  getActivePricingConfig: vi.fn().mockResolvedValue({
+    gstRatePct: 0.18,
+    minContributionPerMonth: 30000,
+    costOfCapitalPctAnnual: 0.12,
+  }),
   saveLinkedInToken: vi.fn().mockResolvedValue(undefined),
   getLinkedInToken: vi.fn().mockResolvedValue(null),
   savePendingLinkedInState: vi.fn().mockResolvedValue(undefined),
