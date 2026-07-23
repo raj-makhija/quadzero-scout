@@ -241,6 +241,36 @@ export function calculateMaxResourceBudgetLpa(
   return Math.round(maxCtcLpa * 10) / 10;
 }
 
+/**
+ * Effective budget ceiling (max candidate CTC in LPA) used for a requirement's
+ * budget-fit check. Wraps `calculateMaxResourceBudgetLpa` with the null/sentinel
+ * semantics the matching call sites need:
+ *
+ * - `budgetMaxLpa` null/undefined → no budget set → returns undefined
+ *   (unconstrained; `isCandidateWithinBudget` treats it as always fitting).
+ * - budget set but too low to cover the minimum contribution margin
+ *   (`calculateMaxResourceBudgetLpa` returns undefined) → returns 0 so any
+ *   positive CTC fails the check rather than being silently unconstrained.
+ */
+export function requirementBudgetCeilingLpa(
+  budgetMaxLpa: number | null | undefined,
+  paymentTermsDays: number | null | undefined,
+  isRateGstInclusive: boolean | undefined,
+  engagementModel: string | null | undefined,
+  config: PricingConfig
+): number | undefined {
+  if (budgetMaxLpa == null) return undefined;
+  return (
+    calculateMaxResourceBudgetLpa(
+      budgetMaxLpa,
+      paymentTermsDays ?? 0,
+      isRateGstInclusive ?? false,
+      config,
+      engagementModel ?? undefined
+    ) ?? 0
+  );
+}
+
 function applyBudgetOptimization(
   input: PricingInput,
   config: PricingConfig,

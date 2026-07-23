@@ -4,6 +4,7 @@ import {
   getExperienceBand,
   getContractDurationDiscount,
   calculateMaxResourceBudgetLpa,
+  requirementBudgetCeilingLpa,
 } from '../pricingEngine.js';
 import type { PricingConfig, PricingInput } from '../../types/index.js';
 
@@ -979,5 +980,55 @@ describe('calculateMaxResourceBudgetLpa()', () => {
     const ftr = calculateMaxResourceBudgetLpa(20, 90, false, DEFAULT_CONFIG, 'full_time_regular');
     const contract = calculateMaxResourceBudgetLpa(20, 90, false, DEFAULT_CONFIG, 'full_time_contract');
     expect(ftr!).toBeGreaterThan(contract!);
+  });
+});
+
+// ===========================================================================
+// TC-REQBUDGET: requirementBudgetCeilingLpa (ticket #529)
+// ===========================================================================
+describe('requirementBudgetCeilingLpa()', () => {
+  // TC-REQBUDGET-001 — no budget set → unconstrained (undefined)
+  it('returns undefined when budgetMaxLpa is null/undefined', () => {
+    expect(requirementBudgetCeilingLpa(null, 30, false, 'full_time_contract', DEFAULT_CONFIG)).toBeUndefined();
+    expect(requirementBudgetCeilingLpa(undefined, 30, false, 'full_time_contract', DEFAULT_CONFIG)).toBeUndefined();
+  });
+
+  // TC-REQBUDGET-002 — budget set but too low → sentinel 0 (not undefined)
+  it('returns 0 (sentinel) when the budget cannot cover the minimum margin', () => {
+    // budget 2 LPA → calculateMaxResourceBudgetLpa is undefined → helper maps to 0
+    expect(requirementBudgetCeilingLpa(2, 30, false, 'full_time_contract', DEFAULT_CONFIG)).toBe(0);
+  });
+
+  // TC-REQBUDGET-003 — GST-inclusive ceiling is lower than GST-exclusive
+  it('produces a lower ceiling for a GST-inclusive requirement (same nominal budget)', () => {
+    const excl = requirementBudgetCeilingLpa(20, 30, false, 'full_time_contract', DEFAULT_CONFIG);
+    const incl = requirementBudgetCeilingLpa(20, 30, true, 'full_time_contract', DEFAULT_CONFIG);
+    expect(excl).toBeCloseTo(16.2, 1);
+    expect(incl).toBeCloseTo(13.2, 1);
+    expect(incl!).toBeLessThan(excl!);
+  });
+
+  // TC-REQBUDGET-004 — full_time_regular passes the raw billing budget through
+  it('returns the raw billing budget for full_time_regular', () => {
+    expect(requirementBudgetCeilingLpa(30, 30, false, 'full_time_regular', DEFAULT_CONFIG)).toBe(30);
+  });
+
+  // TC-REQBUDGET-005 — null payment terms are treated as 0 (no working-capital discount)
+  it('treats null payment terms as zero working-capital days', () => {
+    const withNull = requirementBudgetCeilingLpa(20, null, false, 'full_time_contract', DEFAULT_CONFIG);
+    const withZero = requirementBudgetCeilingLpa(20, 0, false, 'full_time_contract', DEFAULT_CONFIG);
+    expect(withNull).toBe(withZero);
+  });
+
+  // TC-REQBUDGET-006 — longer payment terms tighten the ceiling; both are stricter
+  // than the old raw `budgetMaxLpa × 0.85` approximation.
+  it('produces a stricter ceiling for longer payment terms and is tighter than the old 0.85 proxy', () => {
+    const shortTerms = requirementBudgetCeilingLpa(20, 30, false, 'full_time_contract', DEFAULT_CONFIG);
+    const longTerms = requirementBudgetCeilingLpa(20, 90, false, 'full_time_contract', DEFAULT_CONFIG);
+    const oldProxy = 20 * 0.85; // 17
+
+    expect(longTerms!).toBeLessThan(shortTerms!);
+    expect(shortTerms!).toBeLessThan(oldProxy);
+    expect(longTerms!).toBeLessThan(oldProxy);
   });
 });
