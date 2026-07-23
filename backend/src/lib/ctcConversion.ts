@@ -52,10 +52,6 @@ export function convertToLpa(rateValue: number, unit: RateUnit): number | null {
 }
 
 /**
- * Check if a candidate's expected CTC is within the recruiter's budget.
- * Rule: expectedCtc <= maxBudgetLpa × 0.85 (15% margin for recruiter).
- */
-/**
  * Calculate expected CTC for candidates who marked it as "negotiable".
  * Uses experience-based increment brackets:
  *   0-3 yrs → +20%, 3-8 yrs → +25%, 8+ yrs → +30%
@@ -72,10 +68,24 @@ export function calculateNegotiableCtc(currentCtc: number, totalExperience: numb
   return Math.round(currentCtc * (1 + incrementPct) * 100) / 100;
 }
 
+/**
+ * Check if a candidate's expected CTC fits within the requirement's budget ceiling.
+ *
+ * `maxBudgetLpa` is the pre-computed "Max Resource Budget" (see
+ * `calculateMaxResourceBudgetLpa` in pricingEngine.ts) — the maximum candidate
+ * CTC the client budget can absorb after GST, contribution margin, and
+ * working-capital discount. The comparison is therefore direct: no proxy factor
+ * is applied here (that would double-discount the already-derived ceiling).
+ *
+ * - A null `expectedCtc` (no CTC on file) never disqualifies → returns true.
+ * - A null `maxBudgetLpa` (no budget set) is unconstrained → returns true.
+ * - A ceiling of 0 (budget too low to cover the minimum margin) fails any
+ *   positive CTC.
+ */
 export function isCandidateWithinBudget(
   expectedCtc: number | undefined | null,
   maxBudgetLpa: number | undefined | null
 ): boolean {
   if (expectedCtc == null || maxBudgetLpa == null) return true;
-  return expectedCtc <= maxBudgetLpa * 0.85;
+  return expectedCtc <= maxBudgetLpa;
 }

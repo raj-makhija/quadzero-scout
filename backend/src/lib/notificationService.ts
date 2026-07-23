@@ -1,5 +1,6 @@
-import { getCandidateById, getAllActiveRequirements, getUserById } from './dynamodb.js';
+import { getCandidateById, getAllActiveRequirements, getUserById, getActivePricingConfig } from './dynamodb.js';
 import { matchAndRankCandidates } from './candidateMatching.js';
+import { requirementBudgetCeilingLpa } from './pricingEngine.js';
 import { updateCacheForCandidates } from './matchCacheService.js';
 import { sendNewProfilesNotificationEmail, type MatchedProfile } from './emailService.js';
 import { config } from './config.js';
@@ -58,8 +59,11 @@ export async function notifyMatchingRecruiters(candidateIds: string[]): Promise<
   // Result: Map<requirementId, { requirement, matchedProfiles }>
   const requirementMatches = new Map<string, { requirement: typeof notifiableRequirements[0]; matchedProfiles: MatchedProfile[] }>();
 
+  const pricingConfig = await getActivePricingConfig();
+
   for (const req of notifiableRequirements) {
     const criteria = req.parsed_criteria;
+    const engagementModel = req.engagement_model || criteria.engagementModel;
 
     const scored = matchAndRankCandidates(
       candidates,
@@ -73,8 +77,16 @@ export async function notifyMatchingRecruiters(candidateIds: string[]): Promise<
         availability: criteria.availability,
         location: criteria.location,
         roles: criteria.roles,
-        maxBudgetLpa: req.budget_max_lpa,
-        engagementModel: req.engagement_model || criteria.engagementModel,
+        // Budget fit uses the pre-computed "Max Resource Budget" ceiling, not
+        // the raw billing budget (ticket #529).
+        maxBudgetLpa: requirementBudgetCeilingLpa(
+          req.budget_max_lpa,
+          req.payment_terms_days,
+          req.is_rate_gst_inclusive,
+          engagementModel,
+          pricingConfig
+        ),
+        engagementModel,
         skillSynonyms: criteria.skillSynonyms,
       },
       { notifyInclusion: true }

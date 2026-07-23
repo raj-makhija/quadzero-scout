@@ -3,9 +3,11 @@ import {
   getAllActiveCandidates,
   getMatchCache,
   putMatchCache,
+  getActivePricingConfig,
 } from './dynamodb.js';
 import { matchAndRankCandidates } from './candidateMatching.js';
-import type { CandidateItem, RequirementItem, RankedMatchEntry } from '../types/index.js';
+import { requirementBudgetCeilingLpa } from './pricingEngine.js';
+import type { CandidateItem, RequirementItem, RankedMatchEntry, PricingConfig } from '../types/index.js';
 
 // Re-exported so cache write-path callers have a single import surface for the
 // requirement-close/delete drop.
@@ -28,9 +30,12 @@ export { deleteMatchCache } from './dynamodb.js';
  * written here — it stays a read-time overlay.
  */
 
-/** Map a requirement's parsed criteria + budget/engagement into MatchCriteria. */
-function criteriaForRequirement(req: RequirementItem) {
+/** Map a requirement's parsed criteria + budget/engagement into MatchCriteria.
+ *  `maxBudgetLpa` is the pre-computed "Max Resource Budget" ceiling (GST/margin/
+ *  working-capital adjusted), not the raw billing budget. */
+function criteriaForRequirement(req: RequirementItem, config: PricingConfig) {
   const criteria = req.parsed_criteria;
+  const engagementModel = req.engagement_model || criteria.engagementModel;
   return {
     coreSkill: criteria.coreSkill,
     mustHaveSkills: criteria.mustHaveSkills,
@@ -41,8 +46,14 @@ function criteriaForRequirement(req: RequirementItem) {
     availability: criteria.availability,
     location: criteria.location,
     roles: criteria.roles,
-    maxBudgetLpa: req.budget_max_lpa,
-    engagementModel: req.engagement_model || criteria.engagementModel,
+    maxBudgetLpa: requirementBudgetCeilingLpa(
+      req.budget_max_lpa,
+      req.payment_terms_days,
+      req.is_rate_gst_inclusive,
+      engagementModel,
+      config
+    ),
+    engagementModel,
     skillSynonyms: criteria.skillSynonyms,
   };
 }
@@ -50,9 +61,10 @@ function criteriaForRequirement(req: RequirementItem) {
 /** Score the given candidates against one requirement; returns score-by-id. */
 function scoreAgainstRequirement(
   req: RequirementItem,
-  candidates: CandidateItem[]
+  candidates: CandidateItem[],
+  config: PricingConfig
 ): Map<string, number> {
-  const scored = matchAndRankCandidates(candidates, criteriaForRequirement(req), {
+  const scored = matchAndRankCandidates(candidates, criteriaForRequirement(req, config), {
     notifyInclusion: true,
   });
   return new Map(scored.map((s) => [s.candidate.candidate_id, s.score]));
@@ -80,12 +92,13 @@ export async function updateCacheForCandidates(
   const reqs = requirements ?? (await getAllActiveRequirements());
   if (reqs.length === 0) return;
 
+  const config = await getActivePricingConfig();
   const changedIds = new Set(candidates.map((c) => c.candidate_id));
 
   await Promise.all(
     reqs.map(async (req) => {
       const existing = (await getMatchCache(req.requirement_id)) ?? [];
-      const newScores = scoreAgainstRequirement(req, candidates);
+      const newScores = scoreAgainstRequirement(req, candidates, config);
 
       // Drop prior entries for the changed candidates, then re-insert any that
       // still qualify with their fresh score. Candidates that no longer match
@@ -132,8 +145,11 @@ export async function rebuildCacheForRequirement(req: RequirementItem): Promise<
   let lastErr: unknown;
   for (let attempt = 1; attempt <= CACHE_REBUILD_MAX_ATTEMPTS; attempt++) {
     try {
-      const candidates = await getAllActiveCandidates();
-      const scored = matchAndRankCandidates(candidates, criteriaForRequirement(req), {
+      const [candidates, config] = await Promise.all([
+        getAllActiveCandidates(),
+        getActivePricingConfig(),
+      ]);
+      const scored = matchAndRankCandidates(candidates, criteriaForRequirement(req, config), {
         notifyInclusion: true,
       });
       const ranked: RankedMatchEntry[] = scored.map((s, i) => ({
@@ -165,10 +181,13 @@ export const REBUILD_CHUNK_SIZE = 5;
  */
 export async function rebuildMatchCachesForRequirements(reqs: RequirementItem[]): Promise<void> {
   if (reqs.length === 0) return;
-  const candidates = await getAllActiveCandidates();
+  const [candidates, config] = await Promise.all([
+    getAllActiveCandidates(),
+    getActivePricingConfig(),
+  ]);
   for (const req of reqs) {
     try {
-      const scored = matchAndRankCandidates(candidates, criteriaForRequirement(req), {
+      const scored = matchAndRankCandidates(candidates, criteriaForRequirement(req, config), {
         notifyInclusion: true,
       });
       const ranked: RankedMatchEntry[] = scored.map((s, i) => ({
@@ -195,10 +214,13 @@ export async function rebuildMatchCachesForRequirements(reqs: RequirementItem[])
 export async function rebuildAllMatchCaches(): Promise<void> {
   const reqs = await getAllActiveRequirements();
   if (reqs.length === 0) return;
-  const candidates = await getAllActiveCandidates();
+  const [candidates, config] = await Promise.all([
+    getAllActiveCandidates(),
+    getActivePricingConfig(),
+  ]);
   await Promise.all(
     reqs.map(async (req) => {
-      const scored = matchAndRankCandidates(candidates, criteriaForRequirement(req), {
+      const scored = matchAndRankCandidates(candidates, criteriaForRequirement(req, config), {
         notifyInclusion: true,
       });
       const ranked: RankedMatchEntry[] = scored.map((s, i) => ({
@@ -232,11 +254,14 @@ export const CACHE_DELTA_THRESHOLD = 20;
 export async function auditMatchCacheHealth(): Promise<void> {
   const reqs = await getAllActiveRequirements();
   if (reqs.length === 0) return;
-  const candidates = await getAllActiveCandidates();
+  const [candidates, config] = await Promise.all([
+    getAllActiveCandidates(),
+    getActivePricingConfig(),
+  ]);
 
   for (const req of reqs) {
     const cachedCount = ((await getMatchCache(req.requirement_id)) ?? []).length;
-    const freshCount = scoreAgainstRequirement(req, candidates).size;
+    const freshCount = scoreAgainstRequirement(req, candidates, config).size;
 
     if (cachedCount === 0 && freshCount > 0) {
       console.warn(

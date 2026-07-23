@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { Search, MapPin, Briefcase, Clock, Mail } from 'lucide-react';
 import { api, PublicRequirementSummary } from '@/lib/api';
-import { formatEngagementModel } from '@/lib/utils';
+import { formatVendorEngagementModel } from '@/lib/utils';
 
 const VENDOR_CONTACT_EMAIL = 'vendors@quadzero.com';
 const PAGE_SIZE = 20;
@@ -199,7 +199,7 @@ export default function VendorRequirementsPage() {
               {/* Engagement Model */}
               <div className="flex flex-wrap gap-1.5 mb-3">
                 <span className="inline-block px-2.5 py-0.5 text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded-full">
-                  {formatEngagementModel(req.engagementModel)}
+                  {formatVendorEngagementModel(req.engagementModel)}
                 </span>
               </div>
 
