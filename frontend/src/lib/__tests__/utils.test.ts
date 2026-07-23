@@ -9,6 +9,7 @@ import {
   getMatchScoreBgColor,
   truncateText,
   calculateNegotiableCtc,
+  formatVendorEngagementModel,
   SUPPORTED_FILE_TYPES,
   SENIORITY_OPTIONS,
   AVAILABILITY_OPTIONS,
@@ -252,6 +253,24 @@ describe('EXPECTED_CTC_MODE_OPTIONS', () => {
     expect(EXPECTED_CTC_MODE_OPTIONS).toHaveLength(2);
     const values = EXPECTED_CTC_MODE_OPTIONS.map((o) => o.value);
     expect(values).toEqual(['explicit', 'negotiable']);
+  });
+});
+
+describe('formatVendorEngagementModel()', () => {
+  it('maps full_time_contract to C2C', () => {
+    expect(formatVendorEngagementModel('full_time_contract')).toBe('C2C');
+  });
+
+  it('maps full_time_regular to FTE', () => {
+    expect(formatVendorEngagementModel('full_time_regular')).toBe('FTE');
+  });
+
+  it('maps part_time_contract to Part Time/Fractional', () => {
+    expect(formatVendorEngagementModel('part_time_contract')).toBe('Part Time/Fractional');
+  });
+
+  it('falls back to formatEngagementModel for unknown values', () => {
+    expect(formatVendorEngagementModel('unknown_future_value')).toBe('unknown_future_value');
   });
 });
 
