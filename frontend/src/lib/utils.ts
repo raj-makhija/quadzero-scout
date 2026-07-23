@@ -171,6 +171,15 @@ export function formatEngagementModel(value: string): string {
   return map[value] || value;
 }
 
+export function formatVendorEngagementModel(value: string): string {
+  const map: Record<string, string> = {
+    full_time_contract: 'C2C',
+    full_time_regular: 'FTE',
+    part_time_contract: 'Part Time/Fractional',
+  };
+  return map[value] ?? formatEngagementModel(value);
+}
+
 export function formatPayroll(value: string): string {
   const map: Record<string, string> = {
     quadzero: 'Quadzero',
