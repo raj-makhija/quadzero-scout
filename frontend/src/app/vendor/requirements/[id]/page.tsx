@@ -86,6 +86,18 @@ export default function VendorRequirementDetailPage() {
     `Candidate Submission - ${requirement.jobTitle || 'Position'} [${requirement.requirementId}]`
   );
 
+  const VENDOR_SUBMISSION_BODY = [
+    'Candidate Name: ',
+    'Mobile Number: ',
+    'Email ID: ',
+    'Experience: ',
+    'Availabilty: ',
+    'Current Location: ',
+    'Preferred Location: ',
+    'Bill Rate (per-month): ',
+  ].join('\n');
+  const mailtoBody = encodeURIComponent(VENDOR_SUBMISSION_BODY);
+
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Back link */}
@@ -304,7 +316,7 @@ export default function VendorRequirementDetailPage() {
             Send us their profile with the position reference ID.
           </p>
           <a
-            href={`mailto:${VENDOR_CONTACT_EMAIL}?subject=${mailtoSubject}`}
+            href={`mailto:${VENDOR_CONTACT_EMAIL}?subject=${mailtoSubject}&body=${mailtoBody}`}
             className="inline-flex items-center gap-2 px-6 py-2.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium"
           >
             <Mail className="w-4 h-4" />
