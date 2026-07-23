@@ -196,13 +196,8 @@ export default function VendorRequirementsPage() {
                 {req.jobTitle || 'Untitled Position'}
               </h3>
 
-              {/* Core Skill + Engagement Model */}
+              {/* Engagement Model */}
               <div className="flex flex-wrap gap-1.5 mb-3">
-                {req.coreSkill && (
-                  <span className="inline-block px-2.5 py-0.5 text-xs font-medium bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 rounded-full">
-                    {req.coreSkill}
-                  </span>
-                )}
                 <span className="inline-block px-2.5 py-0.5 text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded-full">
                   {formatEngagementModel(req.engagementModel)}
                 </span>

@@ -118,18 +118,6 @@ export default function VendorRequirementDetailPage() {
 
       {/* Main content */}
       <div className="space-y-6">
-        {/* Core Skill */}
-        {requirement.coreSkill && (
-          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-5">
-            <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
-              Primary Technology
-            </h2>
-            <span className="inline-block px-3 py-1 text-sm font-medium bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 rounded-full">
-              {requirement.coreSkill}
-            </span>
-          </div>
-        )}
-
         {/* Must-Have Skills */}
         {requirement.mustHaveSkills.length > 0 && (
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-5">
