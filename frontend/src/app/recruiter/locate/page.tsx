@@ -10,7 +10,7 @@ import { Header } from '@/components/Header';
 import { BenchListModal } from '@/components/bench-list-modal';
 import { api, ApiError } from '@/lib/api';
 import type { CandidateNameSearchResult, RecentProfileSummary, CandidateSearchResult, SearchCriteria } from '@/lib/api';
-import { formatDate, formatSeniority, formatAvailability, formatCandidateEngagement, generateHeadline, SENIORITY_OPTIONS, AVAILABILITY_OPTIONS, CANDIDATE_ENGAGEMENT_OPTIONS } from '@/lib/utils';
+import { formatDate, formatSeniority, formatCandidateEngagement, generateHeadline, SENIORITY_OPTIONS, CANDIDATE_ENGAGEMENT_OPTIONS } from '@/lib/utils';
 import { getScreeningStatus } from '@/components/screening-modal';
 import { expandLocationAliases } from '@/lib/locationUtils';
 
@@ -98,7 +98,6 @@ interface FilterState {
   seniority: string[];
   skills: string[];
   location: string;
-  availability: string[];
   engagementModel?: 'contract' | 'full_time' | 'either';
   screeningStatus: string[];
 }
@@ -107,7 +106,6 @@ const EMPTY_FILTERS: FilterState = {
   seniority: [],
   skills: [],
   location: '',
-  availability: [],
   screeningStatus: [],
 };
 
@@ -141,7 +139,6 @@ function countActiveFilters(f: FilterState): number {
   if (f.seniority.length > 0) count++;
   if (f.skills.length > 0) count++;
   if (f.location.trim()) count++;
-  if (f.availability.length > 0) count++;
   if (f.engagementModel) count++;
   if (f.screeningStatus.length > 0) count++;
   return count;
@@ -161,9 +158,6 @@ function applyClientSideFilters(items: ProfileListItem[], filters: FilterState):
   }
   if (filters.seniority.length > 0) {
     result = result.filter(c => filters.seniority.includes(c.seniority));
-  }
-  if (filters.availability.length > 0) {
-    result = result.filter(c => filters.availability.includes(c.availability || ''));
   }
   if (filters.location.trim()) {
     const searchLocs = filters.location.split(/[,;]/).map(l => l.trim().toLowerCase()).filter(Boolean);
@@ -432,7 +426,7 @@ export default function LocateProfilePage() {
     setFilters(prev => ({ ...prev, [key]: value }));
   };
 
-  const toggleArrayFilter = (key: 'seniority' | 'availability' | 'screeningStatus', value: string) => {
+  const toggleArrayFilter = (key: 'seniority' | 'screeningStatus', value: string) => {
     setFilters(prev => {
       const current = prev[key];
       return {
@@ -472,7 +466,6 @@ export default function LocateProfilePage() {
       if (filters.minExperience != null) criteria.minExperience = filters.minExperience;
       if (filters.maxExperience != null) criteria.maxExperience = filters.maxExperience;
       if (filters.seniority.length > 0) criteria.seniority = filters.seniority;
-      if (filters.availability.length > 0) criteria.availability = filters.availability;
       if (filters.location.trim()) criteria.location = filters.location.trim();
       if (filters.engagementModel) criteria.engagementModel = filters.engagementModel;
 
@@ -778,26 +771,6 @@ export default function LocateProfilePage() {
                   className="input mt-2 w-full"
                 />
                 <p className="mt-1 text-xs text-gray-400">Separate multiple locations with commas</p>
-              </div>
-
-              {/* Availability */}
-              <div>
-                <label className="label">Availability / Notice Period</label>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {AVAILABILITY_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => toggleArrayFilter('availability', opt.value)}
-                      className={`badge cursor-pointer ${
-                        filters.availability.includes(opt.value)
-                          ? 'bg-primary-100 text-primary-800 border border-primary-300 dark:bg-primary-900/30 dark:text-primary-300 dark:border-primary-600'
-                          : 'bg-gray-100 text-gray-600 border border-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
               </div>
 
               {/* Engagement Model */}

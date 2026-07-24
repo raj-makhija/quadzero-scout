@@ -15,7 +15,6 @@ import {
   formatEngagementModel,
   formatPayroll,
   formatSeniority,
-  formatAvailability,
   generateJobTitle,
   formatInr,
 } from '@/lib/utils';
@@ -70,7 +69,6 @@ interface EditFormData {
   minExperience: string;
   maxExperience: string;
   seniority: string[];
-  availability: string[];
   location: string;
 }
 
@@ -153,7 +151,6 @@ export default function RequirementDetailPage() {
     minExperience: '',
     maxExperience: '',
     seniority: [],
-    availability: [],
     location: '',
   });
   const [criteriaExpanded, setCriteriaExpanded] = useState(true);
@@ -180,7 +177,6 @@ export default function RequirementDetailPage() {
       minExperience: requirement.parsedCriteria.minExperience != null ? String(requirement.parsedCriteria.minExperience) : '',
       maxExperience: requirement.parsedCriteria.maxExperience != null ? String(requirement.parsedCriteria.maxExperience) : '',
       seniority: requirement.parsedCriteria.seniority || [],
-      availability: requirement.parsedCriteria.availability || [],
       location: requirement.parsedCriteria.location || '',
     });
     setEditing(true);
@@ -237,7 +233,6 @@ export default function RequirementDetailPage() {
         minExperience: editForm.minExperience ? Number(editForm.minExperience) : null,
         maxExperience: editForm.maxExperience ? Number(editForm.maxExperience) : null,
         seniority: editForm.seniority,
-        availability: editForm.availability,
         location: editForm.location || null,
       };
       if (JSON.stringify(newParsedCriteria) !== JSON.stringify(requirement.parsedCriteria)) {
@@ -781,7 +776,6 @@ export default function RequirementDetailPage() {
                           minExperience={editForm.minExperience ? Number(editForm.minExperience) : undefined}
                           maxExperience={editForm.maxExperience ? Number(editForm.maxExperience) : undefined}
                           seniority={editForm.seniority}
-                          availability={editForm.availability}
                           location={editForm.location || null}
                           showBudget={false}
                           onChange={(field, value) => {
@@ -867,14 +861,6 @@ export default function RequirementDetailPage() {
                           <label className="text-xs text-gray-500 dark:text-gray-400">Seniority</label>
                           <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
                             {requirement.parsedCriteria.seniority.map(formatSeniority).join(', ')}
-                          </p>
-                        </div>
-                      )}
-                      {requirement.parsedCriteria.availability && requirement.parsedCriteria.availability.length > 0 && (
-                        <div>
-                          <label className="text-xs text-gray-500 dark:text-gray-400">Notice Period</label>
-                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                            {requirement.parsedCriteria.availability.map(formatAvailability).join(', ')}
                           </p>
                         </div>
                       )}

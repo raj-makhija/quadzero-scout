@@ -1,10 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Mail } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
-
-const VENDOR_CONTACT_EMAIL = 'vendors@quadzero.com';
 
 export function VendorHeader() {
   return (
@@ -19,13 +16,6 @@ export function VendorHeader() {
           </Link>
 
           <div className="flex items-center gap-4">
-            <a
-              href={`mailto:${VENDOR_CONTACT_EMAIL}`}
-              className="hidden sm:flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
-            >
-              <Mail className="w-4 h-4" />
-              {VENDOR_CONTACT_EMAIL}
-            </a>
             <ThemeToggle />
           </div>
         </div>

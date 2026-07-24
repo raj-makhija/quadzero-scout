@@ -1124,7 +1124,6 @@ export default function RecruiterSearchPage() {
                 maxExperience={searchCriteria.maxExperience}
                 maxBudgetLpa={searchCriteria.maxBudgetLpa}
                 seniority={searchCriteria.seniority || []}
-                availability={searchCriteria.availability || []}
                 location={searchCriteria.location || null}
                 onChange={(field, value) => updateCriteria(field as keyof SearchCriteria, value)}
               />

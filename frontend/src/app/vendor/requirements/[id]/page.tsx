@@ -222,23 +222,6 @@ export default function VendorRequirementDetailPage() {
               </div>
             )}
 
-            {/* Availability */}
-            {requirement.availability.length > 0 && (
-              <div>
-                <dt className="text-xs text-gray-400 dark:text-gray-500 mb-1">Availability</dt>
-                <dd className="flex flex-wrap gap-1.5">
-                  {requirement.availability.map(a => (
-                    <span
-                      key={a}
-                      className="px-2 py-0.5 text-xs bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 rounded capitalize"
-                    >
-                      {a.replace(/_/g, ' ')}
-                    </span>
-                  ))}
-                </dd>
-              </div>
-            )}
-
             {/* Roles */}
             {requirement.roles.length > 0 && (
               <div className="sm:col-span-2">
