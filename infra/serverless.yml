@@ -63,6 +63,7 @@ provider:
     DYNAMODB_TABLE_AUDIT_LOG: ${self:custom.auditLogTable}
     DYNAMODB_TABLE_SCREENING_LOCKS: ${self:custom.screeningLocksTable}
     DYNAMODB_TABLE_SUB_VENDORS: ${self:custom.subVendorsTable}
+    DYNAMODB_TABLE_CANDIDATE_SUBMISSIONS: ${self:custom.candidateSubmissionsTable}
     DYNAMODB_TABLE_PIPELINE_ACTIVITY: ${self:custom.pipelineActivityTable}
     DYNAMODB_TABLE_CANDIDATE_ATTACHMENTS: ${self:custom.candidateAttachmentsTable}
     DYNAMODB_TABLE_RECRUITER_TASKS: ${self:custom.recruiterTasksTable}
@@ -147,6 +148,7 @@ custom:
   auditLogTable: AuditLog-${self:provider.stage}
   screeningLocksTable: ScreeningLocks-${self:provider.stage}
   subVendorsTable: SubVendors-${self:provider.stage}
+  candidateSubmissionsTable: CandidateSubmissions-${self:provider.stage}
   pipelineActivityTable: PipelineActivity-${self:provider.stage}
   candidateAttachmentsTable: CandidateAttachments-${self:provider.stage}
   recruiterTasksTable: RecruiterTasks-${self:provider.stage}
@@ -526,6 +528,20 @@ functions:
     events:
       - httpApi:
           path: /recruiter/sub-vendor-names
+          method: GET
+
+  recruiterGetSubVendorSubmissions:
+    handler: src/handlers/recruiter/getSubVendorSubmissions.handler
+    events:
+      - httpApi:
+          path: /recruiter/sub-vendor-submissions
+          method: GET
+
+  recruiterGetCandidateSubmissions:
+    handler: src/handlers/recruiter/getCandidateSubmissions.handler
+    events:
+      - httpApi:
+          path: /recruiter/candidate-submissions
           method: GET
 
   # Admin Endpoints

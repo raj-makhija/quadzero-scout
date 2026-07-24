@@ -26,7 +26,7 @@ import {
   updateIngestLogStatus,
   type IngestLogAttribution,
 } from '../../lib/emailIngestLog.js';
-import { resolveSubVendor, type SubVendorResolution } from '../../lib/subVendorResolver.js';
+import { resolveSubVendor, deriveVendorKey, type SubVendorResolution } from '../../lib/subVendorResolver.js';
 import {
   sendIngestDigestEmail,
   type IngestResult,
@@ -41,6 +41,7 @@ import {
   saveCandidateProfile,
   getExperienceBucket,
   getRequirementById,
+  writeCandidateSubmission,
 } from '../../lib/dynamodb.js';
 import { invokeLambdaAsync } from '../../lib/lambdaInvoke.js';
 import { notifyMatchingRecruiters } from '../../lib/notificationService.js';
@@ -334,12 +335,28 @@ async function processAttachment(
 
     // Sub-vendor attribution: a deterministic match sets sub_vendor_id and its
     // master-data contacts always win. An unmatched sender carries no id but
-    // still keeps the LLM-extracted signature contacts.
+    // still keeps the LLM-extracted signature contacts. These are the values
+    // attributed to *this* submission, before first-submitter preservation.
     const matched = resolution.method !== 'none';
-    const subVendorName = matched ? resolution.subVendorName : (profile.vendorCompany || undefined);
-    const subVendorContactPerson = matched ? resolution.subVendorContactPerson : (profile.vendorContactName || undefined);
-    const subVendorContactPhone = matched ? resolution.subVendorContactPhone : (profile.vendorContactPhone || undefined);
-    const subVendorContactEmail = matched ? resolution.subVendorContactEmail : (profile.vendorContactEmail || undefined);
+    const resolvedSubVendorName = matched ? resolution.subVendorName : (profile.vendorCompany || undefined);
+    const resolvedContactPerson = matched ? resolution.subVendorContactPerson : (profile.vendorContactName || undefined);
+    const resolvedContactPhone = matched ? resolution.subVendorContactPhone : (profile.vendorContactPhone || undefined);
+    const resolvedContactEmail = matched ? resolution.subVendorContactEmail : (profile.vendorContactEmail || undefined);
+
+    // First-submitter-wins (#576): once a candidate carries an attributed
+    // sub_vendor_id, a re-ingest by a different vendor must not reassign
+    // commercial credit. Pin the attribution fields to the first submitter,
+    // mirroring the screening-field preservation pattern (#399). A candidate
+    // with no prior sub_vendor_id (new, or manually imported) treats the
+    // incoming vendor as the first submitter. Non-attribution profile fields
+    // continue to update from the freshly parsed resume.
+    const preservedSubVendorId = existingCandidate?.sub_vendor_id;
+    const wasFirstSubmitter = !preservedSubVendorId;
+    const subVendorId = preservedSubVendorId ?? (matched ? resolution.subVendorId : undefined);
+    const subVendorName = preservedSubVendorId ? existingCandidate?.sub_vendor_name : resolvedSubVendorName;
+    const subVendorContactPerson = preservedSubVendorId ? existingCandidate?.sub_vendor_contact_person : resolvedContactPerson;
+    const subVendorContactPhone = preservedSubVendorId ? existingCandidate?.sub_vendor_contact_phone : resolvedContactPhone;
+    const subVendorContactEmail = preservedSubVendorId ? existingCandidate?.sub_vendor_contact_email : resolvedContactEmail;
 
     const candidateItem: CandidateItem = {
       candidate_id: candidateId,
@@ -368,7 +385,7 @@ async function processAttachment(
       github_url: profile.githubUrl ?? undefined,
       hackerrank_url: profile.hackerrankUrl ?? undefined,
       cover_letter: emailBodyText || undefined,
-      sub_vendor_id: matched ? resolution.subVendorId : undefined,
+      sub_vendor_id: subVendorId,
       sub_vendor_name: subVendorName,
       sub_vendor_contact_person: subVendorContactPerson,
       sub_vendor_contact_phone: subVendorContactPhone,
@@ -393,6 +410,25 @@ async function processAttachment(
     // Step 8: Save to DynamoDB
     await saveCandidateProfile(candidateItem);
 
+    // Step 8b: Record this submission (#576). One row per processed attachment,
+    // written for matched and unmatched senders alike. The row snapshots the
+    // attribution as resolved at submission time — not the (possibly preserved)
+    // value on the candidate — so a contested candidate's full history is
+    // durable and queryable by vendor and by candidate.
+    const fromAddress = message.from?.emailAddress?.address || 'unknown';
+    await writeCandidateSubmission({
+      vendor_key: deriveVendorKey(fromAddress, resolution),
+      submitted_at: nowIso,
+      submitted_at_candidate_id: `${nowIso}#${candidateId}`,
+      candidate_id: candidateId,
+      sub_vendor_id: matched ? resolution.subVendorId : undefined,
+      sub_vendor_name: resolvedSubVendorName,
+      submitter_email: fromAddress,
+      requirement_id: requirementId,
+      was_first_submitter: wasFirstSubmitter,
+      internet_message_id: message.internetMessageId,
+    });
+
     // Step 9: Trigger async resume formatting
     if (!preserveFormattedResume && config.lambda.formatResumeWorkerName) {
       try {
@@ -402,7 +438,9 @@ async function processAttachment(
       }
     }
 
-    return { candidateId, candidateName: fullName, isUpdate, subVendorName };
+    // The digest reports the actual submitting vendor for this email, not the
+    // (possibly preserved first-submitter) attribution pinned on the candidate.
+    return { candidateId, candidateName: fullName, isUpdate, subVendorName: resolvedSubVendorName };
   } catch (err) {
     // Attach s3Key to the error for reporting
     if (!(err as Error & { s3Key?: string }).s3Key) {

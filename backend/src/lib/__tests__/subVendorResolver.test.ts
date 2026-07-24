@@ -6,7 +6,8 @@ vi.mock('../dynamodb.js', () => ({
   listSubVendors: () => mockListSubVendors(),
 }));
 
-import { resolveSubVendor } from '../subVendorResolver.js';
+import { resolveSubVendor, deriveVendorKey } from '../subVendorResolver.js';
+import type { SubVendorResolution } from '../subVendorResolver.js';
 
 function makeSubVendor(overrides: Partial<SubVendorItem> = {}): SubVendorItem {
   return {
@@ -143,5 +144,42 @@ describe('resolveSubVendor', () => {
     const result = await resolveSubVendor('not-an-email');
 
     expect(result.method).toBe('none');
+  });
+});
+
+describe('deriveVendorKey', () => {
+  it('keys a matched resolution on the registered sub_vendor_id', () => {
+    const resolution: SubVendorResolution = { method: 'exact_email', subVendorId: 'sv_001' };
+    expect(deriveVendorKey('ravi@techstaff.com', resolution)).toBe('sv_001');
+  });
+
+  it('keys an unmatched corporate sender on domain:<domain>', () => {
+    const resolution: SubVendorResolution = { method: 'none' };
+    expect(deriveVendorKey('stranger@othercorp.com', resolution)).toBe('domain:othercorp.com');
+  });
+
+  it('keys a free-mail sender on email:<full-address>, not domain:gmail.com', () => {
+    const resolution: SubVendorResolution = { method: 'none' };
+    expect(deriveVendorKey('alice@gmail.com', resolution)).toBe('email:alice@gmail.com');
+  });
+
+  it.each(['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com'])(
+    'never collapses free-mail sender at %s into a domain key',
+    (domain) => {
+      const resolution: SubVendorResolution = { method: 'none' };
+      const key = deriveVendorKey(`someone@${domain}`, resolution);
+      expect(key).toBe(`email:someone@${domain}`);
+      expect(key).not.toBe(`domain:${domain}`);
+    }
+  );
+
+  it('normalizes sender case and whitespace before keying', () => {
+    const resolution: SubVendorResolution = { method: 'none' };
+    expect(deriveVendorKey('  Jack@Acme.COM  ', resolution)).toBe('domain:acme.com');
+  });
+
+  it('falls back to an email key when the sender has no parseable domain', () => {
+    const resolution: SubVendorResolution = { method: 'none' };
+    expect(deriveVendorKey('not-an-email', resolution)).toBe('email:not-an-email');
   });
 });

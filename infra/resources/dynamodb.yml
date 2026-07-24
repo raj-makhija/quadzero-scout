@@ -326,6 +326,43 @@ Resources:
           Value: quadzero-scout
 
   # PricingConfig Table
+  # CandidateSubmissions Table (per-submission tracking, first-submitter-wins #576)
+  CandidateSubmissionsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    UpdateReplacePolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}
+    Properties:
+      TableName: ${self:custom.candidateSubmissionsTable}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: vendor_key
+          AttributeType: S
+        - AttributeName: submitted_at_candidate_id
+          AttributeType: S
+        - AttributeName: candidate_id
+          AttributeType: S
+        - AttributeName: submitted_at
+          AttributeType: S
+      KeySchema:
+        - AttributeName: vendor_key
+          KeyType: HASH
+        - AttributeName: submitted_at_candidate_id
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: CandidateSubmissionsIndex
+          KeySchema:
+            - AttributeName: candidate_id
+              KeyType: HASH
+            - AttributeName: submitted_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Project
+          Value: quadzero-scout
+
   PricingConfigTable:
     Type: AWS::DynamoDB::Table
     DeletionPolicy: ${self:custom.retentionPolicy.${self:provider.stage}, self:custom.retentionPolicy.default}

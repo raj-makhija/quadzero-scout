@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Fragment, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Header } from '@/components/Header';
-import { api, SubVendorSummary } from '@/lib/api';
+import { api, SubVendorSummary, SubmissionByVendor } from '@/lib/api';
 
 export default function SubVendorsPage() {
   const router = useRouter();
@@ -38,6 +38,12 @@ export default function SubVendorsPage() {
   });
   const [adding, setAdding] = useState(false);
 
+  // Per-submission tracking (#576): count per vendor + inline drill-down.
+  const [submissionCounts, setSubmissionCounts] = useState<Record<string, number>>({});
+  const [expandedVendorId, setExpandedVendorId] = useState<string | null>(null);
+  const [submissionsByVendor, setSubmissionsByVendor] = useState<Record<string, SubmissionByVendor[]>>({});
+  const [loadingSubmissions, setLoadingSubmissions] = useState<string | null>(null);
+
   useEffect(() => {
     if (status !== 'authenticated') return;
     loadSubVendors();
@@ -48,10 +54,45 @@ export default function SubVendorsPage() {
       setLoading(true);
       const data = await api.listSubVendors();
       setSubVendors(data.subVendors);
+      loadSubmissionCounts(data.subVendors);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load sub-vendors');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Fetch each vendor's submission count in parallel (keyed by sub_vendor_id).
+  const loadSubmissionCounts = async (vendors: SubVendorSummary[]) => {
+    const entries = await Promise.all(
+      vendors.map(async (sv) => {
+        try {
+          const res = await api.getSubVendorSubmissions(sv.subVendorId);
+          return [sv.subVendorId, res.submissions.length] as const;
+        } catch {
+          return [sv.subVendorId, 0] as const;
+        }
+      })
+    );
+    setSubmissionCounts(Object.fromEntries(entries));
+  };
+
+  const toggleVendorSubmissions = async (subVendorId: string) => {
+    if (expandedVendorId === subVendorId) {
+      setExpandedVendorId(null);
+      return;
+    }
+    setExpandedVendorId(subVendorId);
+    if (!submissionsByVendor[subVendorId]) {
+      setLoadingSubmissions(subVendorId);
+      try {
+        const res = await api.getSubVendorSubmissions(subVendorId);
+        setSubmissionsByVendor((prev) => ({ ...prev, [subVendorId]: res.submissions }));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load submissions');
+      } finally {
+        setLoadingSubmissions(null);
+      }
     }
   };
 
@@ -247,6 +288,7 @@ export default function SubVendorsPage() {
                 <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Sub-Vendor</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Submissions</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Contact Person</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Phone</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Email</th>
@@ -256,9 +298,21 @@ export default function SubVendorsPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                   {subVendors.map((sv) => (
-                    <tr key={sv.subVendorId} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                    <Fragment key={sv.subVendorId}>
+                    <tr className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                       <td className="px-4 py-3">
                         <span className="font-medium text-gray-900 dark:text-gray-100">{sv.subVendorName}</span>
+                      </td>
+
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => toggleVendorSubmissions(sv.subVendorId)}
+                          className="text-sm font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 hover:underline"
+                          title="View submitted candidates"
+                        >
+                          {submissionCounts[sv.subVendorId] ?? 0}
+                          <span className="ml-1 text-xs">{expandedVendorId === sv.subVendorId ? '▲' : '▼'}</span>
+                        </button>
                       </td>
 
                       {editingId === sv.subVendorId ? (
@@ -342,6 +396,40 @@ export default function SubVendorsPage() {
                         </>
                       )}
                     </tr>
+
+                    {expandedVendorId === sv.subVendorId && (
+                      <tr className="bg-gray-50 dark:bg-gray-800/40">
+                        <td colSpan={7} className="px-4 py-3">
+                          {loadingSubmissions === sv.subVendorId ? (
+                            <p className="text-sm text-gray-500 dark:text-gray-400">Loading submissions...</p>
+                          ) : (submissionsByVendor[sv.subVendorId]?.length ?? 0) === 0 ? (
+                            <p className="text-sm text-gray-500 dark:text-gray-400">No submissions recorded for this vendor yet.</p>
+                          ) : (
+                            <ul className="space-y-1">
+                              {submissionsByVendor[sv.subVendorId].map((s) => (
+                                <li key={s.internetMessageId + s.candidateId} className="text-sm flex items-center gap-3">
+                                  <a
+                                    href={`/recruiter/locate/${s.candidateId}`}
+                                    className="text-primary-600 dark:text-primary-400 hover:underline font-medium"
+                                  >
+                                    {s.candidateId}
+                                  </a>
+                                  <span className="text-gray-500 dark:text-gray-400">
+                                    {new Date(s.submittedAt).toLocaleDateString()}
+                                  </span>
+                                  {s.wasFirstSubmitter && (
+                                    <span className="badge bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300 text-xs">
+                                      First submitter
+                                    </span>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>

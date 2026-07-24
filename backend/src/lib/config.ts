@@ -18,6 +18,7 @@ interface Config {
     auditLogTable: string;
     screeningLocksTable: string;
     subVendorsTable: string;
+    candidateSubmissionsTable: string;
     pipelineActivityTable: string;
     candidateAttachmentsTable: string;
     recruiterTasksTable: string;
@@ -115,6 +116,7 @@ export const config: Config = {
     auditLogTable: getEnvVar('DYNAMODB_TABLE_AUDIT_LOG', 'AuditLog-dev'),
     screeningLocksTable: getEnvVar('DYNAMODB_TABLE_SCREENING_LOCKS', 'ScreeningLocks-dev'),
     subVendorsTable: getEnvVar('DYNAMODB_TABLE_SUB_VENDORS', 'SubVendors-dev'),
+    candidateSubmissionsTable: getEnvVar('DYNAMODB_TABLE_CANDIDATE_SUBMISSIONS', 'CandidateSubmissions-dev'),
     pipelineActivityTable: getEnvVar('DYNAMODB_TABLE_PIPELINE_ACTIVITY', 'PipelineActivity-dev'),
     candidateAttachmentsTable: getEnvVar('DYNAMODB_TABLE_CANDIDATE_ATTACHMENTS', 'CandidateAttachments-dev'),
     recruiterTasksTable: getEnvVar('DYNAMODB_TABLE_RECRUITER_TASKS', 'RecruiterTasks-dev'),
