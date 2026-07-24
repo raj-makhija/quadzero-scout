@@ -56,8 +56,17 @@ git checkout develop >&2 2>/dev/null || git checkout -B develop origin/develop >
 echo "==> reopening + reworking #$TICKET" >&2
 gh issue reopen "$TICKET" >&2 2>/dev/null || echo "(issue may already be open)" >&2
 
-PR="$(pl_pr_for_ticket "$TICKET")"
-if [[ -n "$PR" ]]; then
+# A reject must complete either way -- QA is already reset above, and the
+# ticket has to reach rework. So an unresolvable PR only warns. It is worth
+# warning about: the PR Number field is cleared below, so a PR we failed to
+# read here is left open and unlinked for a human to close (#569).
+PR=""
+PR_RC=0
+PR="$(pl_pr_for_ticket "$TICKET")" || PR_RC=$?
+if [[ $PR_RC -eq 2 ]]; then
+  echo "warn: PR lookup failed for #$TICKET (see error above); continuing with the reject. Any open PR for this ticket must be closed by hand." >&2
+fi
+if [[ $PR_RC -eq 0 && -n "$PR" ]]; then
   BRANCH="$(gh pr view "$PR" --json headRefName -q '.headRefName' 2>/dev/null || true)"
   gh pr close "$PR" --delete-branch >&2 2>/dev/null || true
   [[ -n "${BRANCH:-}" ]] && git branch -D "$BRANCH" 2>/dev/null >&2 || true

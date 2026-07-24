@@ -117,9 +117,14 @@ SET_FIELD_LOG="$(mktemp)"
 GH_LOG="$(mktemp)"
 trap 'rm -rf "$STUB_DIR" "$GH_DIR"; rm -f "$SET_FIELD_LOG" "$GH_LOG"' EXIT
 
-# Stub get-field.sh: outputs $STUB_GET_FIELD_RESULT (empty by default)
+# Stub get-field.sh: outputs $STUB_GET_FIELD_RESULT (empty by default).
+# $STUB_GET_FIELD_FAIL=1 simulates a dead PL_PROJECT_TOKEN (401 -> non-zero).
 cat > "$STUB_DIR/get-field.sh" << 'STUBEOF'
 #!/usr/bin/env bash
+if [[ "${STUB_GET_FIELD_FAIL:-0}" == "1" ]]; then
+  echo "stub get-field.sh: gh: Bad credentials (HTTP 401)" >&2
+  exit 1
+fi
 printf '%s' "${STUB_GET_FIELD_RESULT:-}"
 STUBEOF
 chmod +x "$STUB_DIR/get-field.sh"
@@ -139,14 +144,26 @@ chmod +x "$STUB_DIR/set-field.sh"
 #     -> outputs $STUB_PR_<N>_JSON
 #   gh *
 #     -> records the call in $GH_LOG; exits 0
+# Each logged line carries the GH_TOKEN the call actually ran under, so tests
+# can assert which credential a given lookup used (#567).
+# Failure injection: $STUB_ISSUE_VIEW_FAIL=1 and $STUB_PR_<N>_FAIL=1.
 cat > "$GH_DIR/gh" << 'STUBEOF'
 #!/usr/bin/env bash
-printf '%s\n' "$*" >> "$GH_LOG"
+printf '%s [GH_TOKEN=%s]\n' "$*" "${GH_TOKEN:-unset}" >> "$GH_LOG"
 if [[ "$1" == "pr" && "$2" == "view" ]]; then
   num="$3"
+  failvar="STUB_PR_${num}_FAIL"
+  if [[ "${!failvar:-0}" == "1" ]]; then
+    echo "stub gh: could not resolve PR $num" >&2
+    exit 1
+  fi
   varname="STUB_PR_${num}_JSON"
   printf '%s\n' "${!varname:-}"
 elif [[ "$1" == "issue" && "$2" == "view" ]]; then
+  if [[ "${STUB_ISSUE_VIEW_FAIL:-0}" == "1" ]]; then
+    echo "stub gh: Bad credentials (HTTP 401)" >&2
+    exit 1
+  fi
   printf '%s\n' "${STUB_ISSUE_PR_NUMBERS:-}"
 fi
 STUBEOF
@@ -162,7 +179,9 @@ reset_stubs() {
   > "$SET_FIELD_LOG"
   > "$GH_LOG"
   unset STUB_GET_FIELD_RESULT STUB_ISSUE_PR_NUMBERS STUB_SET_FIELD_FAIL \
-    STUB_PR_309_JSON STUB_PR_311_JSON STUB_PR_312_JSON STUB_PR_315_JSON 2>/dev/null || true
+    STUB_PR_309_JSON STUB_PR_311_JSON STUB_PR_312_JSON STUB_PR_315_JSON \
+    STUB_GET_FIELD_FAIL STUB_ISSUE_VIEW_FAIL STUB_PR_309_FAIL STUB_PR_312_FAIL \
+    2>/dev/null || true
 }
 
 # Helper: count times set-field was invoked for "PR Number"
@@ -252,6 +271,109 @@ export STUB_PR_312_JSON='{"number":312,"state":"OPEN","headRefName":"bug/ticket-
 export STUB_SET_FIELD_FAIL="1"
 result="$(pl_pr_for_ticket 308)"
 assert_eq "set-field failure non-fatal: still returns 312" "312" "$result"
+
+# ===== Exit-status contract: no-PR vs lookup-failed (#567, #569) ==============
+#
+# pl_pr_for_ticket returns 0 (resolved), 1 (definitively no open PR) or
+# 2 (a lookup failed, answer unknown). Callers report 1 and 2 differently --
+# they point at opposite ends of the pipeline.
+
+echo ""
+echo "--- pl_pr_for_ticket exit-status contract (#567, #569) ---"
+
+# Run pl_pr_for_ticket capturing stdout and exit status separately.
+run_resolve() {
+  RESOLVE_RC=0
+  RESOLVE_OUT="$(pl_pr_for_ticket "$1")" || RESOLVE_RC=$?
+}
+
+# #567: the linked-PR fallback reads plain repo data, so it must run under the
+# ambient App token. Pinning it to the project PAT meant one dead PAT took out
+# both resolution paths -- #556 reported "no open PR" while PR #566 was open.
+echo "Test: dead PL_PROJECT_TOKEN still resolves via the App-token fallback"
+reset_stubs
+export STUB_GET_FIELD_FAIL="1"          # board read 401s, as in the #556 outage
+export STUB_ISSUE_PR_NUMBERS="312"
+export STUB_PR_312_JSON='{"number":312,"state":"OPEN","headRefName":"bug/ticket-308-cowork","createdAt":"2024-01-01T09:00:00Z"}'
+PL_PROJECT_TOKEN="dead-pat" GH_TOKEN="live-app-token" run_resolve 308
+assert_eq "dead PAT: still resolves 312" "312" "$RESOLVE_OUT"
+assert_eq "dead PAT: exit 0" "0" "$RESOLVE_RC"
+issue_view_line="$(grep "issue view" "$GH_LOG" | head -n1)"
+case "$issue_view_line" in
+  *"GH_TOKEN=live-app-token"*)
+    PASS=$((PASS + 1)); echo "ok   - fallback ran under GH_TOKEN, not PL_PROJECT_TOKEN" ;;
+  *)
+    FAIL=$((FAIL + 1))
+    echo "FAIL - fallback token: expected GH_TOKEN=live-app-token"
+    echo "       actual log line: $issue_view_line" ;;
+esac
+
+# --- exit 1: the lookups worked and there is genuinely no open PR -----------
+
+echo "Test: no linked PRs -> exit 1"
+reset_stubs
+export STUB_GET_FIELD_RESULT=""
+export STUB_ISSUE_PR_NUMBERS=""
+run_resolve 308
+assert_eq "no linked PRs: empty stdout" "" "$RESOLVE_OUT"
+assert_eq "no linked PRs: exit 1" "1" "$RESOLVE_RC"
+
+echo "Test: all linked PRs CLOSED -> exit 1"
+reset_stubs
+export STUB_GET_FIELD_RESULT=""
+export STUB_ISSUE_PR_NUMBERS="309"
+export STUB_PR_309_JSON='{"number":309,"state":"CLOSED","headRefName":"bug/ticket-308-attempt-1","createdAt":"2024-01-01T10:00:00Z"}'
+run_resolve 308
+assert_eq "all CLOSED: empty stdout" "" "$RESOLVE_OUT"
+assert_eq "all CLOSED: exit 1" "1" "$RESOLVE_RC"
+
+# --- exit 2: a lookup errored, so "no PR" is not a safe conclusion ----------
+
+echo "Test: linked-PR lookup fails -> exit 2, not 'no PR'"
+reset_stubs
+export STUB_GET_FIELD_RESULT=""
+export STUB_ISSUE_VIEW_FAIL="1"
+run_resolve 308
+assert_eq "issue view failed: empty stdout" "" "$RESOLVE_OUT"
+assert_eq "issue view failed: exit 2" "2" "$RESOLVE_RC"
+assert_eq "issue view failed: set-field not called" "0" "$(set_field_pr_calls)"
+
+echo "Test: the only candidate's gh pr view fails -> exit 2, not 'no PR'"
+reset_stubs
+export STUB_GET_FIELD_RESULT=""
+export STUB_ISSUE_PR_NUMBERS="312"
+export STUB_PR_312_FAIL="1"
+run_resolve 308
+assert_eq "candidate lookup failed: empty stdout" "" "$RESOLVE_OUT"
+assert_eq "candidate lookup failed: exit 2" "2" "$RESOLVE_RC"
+
+echo "Test: one candidate errors but another is open -> exit 0"
+reset_stubs
+export STUB_GET_FIELD_RESULT=""
+export STUB_ISSUE_PR_NUMBERS="309
+312"
+export STUB_PR_309_FAIL="1"
+export STUB_PR_312_JSON='{"number":312,"state":"OPEN","headRefName":"bug/ticket-308-cowork","createdAt":"2024-01-01T09:00:00Z"}'
+run_resolve 308
+assert_eq "partial failure: resolves 312" "312" "$RESOLVE_OUT"
+assert_eq "partial failure: exit 0" "0" "$RESOLVE_RC"
+
+echo "Test: board field set -> exit 0"
+reset_stubs
+export STUB_GET_FIELD_RESULT="312"
+run_resolve 308
+assert_eq "field set: returns 312" "312" "$RESOLVE_OUT"
+assert_eq "field set: exit 0" "0" "$RESOLVE_RC"
+
+# Source guard: the fallback must not re-acquire the project PAT (#567).
+echo "Test: linked-PR fallback does not pin GH_TOKEN to PL_PROJECT_TOKEN"
+if grep -qF 'GH_TOKEN="${PL_PROJECT_TOKEN:-${GH_TOKEN:-}}" gh issue view' "$SCRIPTS_DIR/_pipeline-lib.sh"; then
+  FAIL=$((FAIL + 1))
+  echo "FAIL - linked-PR fallback still pins GH_TOKEN to PL_PROJECT_TOKEN"
+else
+  PASS=$((PASS + 1))
+  echo "ok   - linked-PR fallback no longer pins GH_TOKEN to PL_PROJECT_TOKEN"
+fi
 
 # Test: broken select(.state == "OPEN") filter is gone from the source
 echo "Test: broken jq filter is absent from _pipeline-lib.sh"

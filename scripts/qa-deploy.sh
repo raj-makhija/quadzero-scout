@@ -60,8 +60,20 @@ if [[ -n "$OCCUPANT" ]]; then
 fi
 
 # --- 2. Resolve the ticket's branch from its open PR ----------------------
-PR="$(pl_pr_for_ticket "$TICKET")"
-if [[ -z "$PR" ]]; then
+# "no PR" and "couldn't tell" need different fixes at opposite ends of the
+# pipeline, so report them separately. Conflating them sent #556 chasing the
+# dev phase when the real cause was a dead PL_PROJECT_TOKEN (#569). The gh
+# error itself is already in the workflow log; keep it out of the public
+# comment, which must not carry tokens or API URLs.
+PR=""
+PR_RC=0
+PR="$(pl_pr_for_ticket "$TICKET")" || PR_RC=$?
+if [[ $PR_RC -eq 2 ]]; then
+  gh issue comment "$TICKET" --body "[/qa-deploy] FAIL — could not resolve the PR for #$TICKET: the GitHub API lookup failed, so whether a PR exists is unknown. QA is unchanged and the lock was not taken. Check the workflow log for the API error and verify the \`PL_PROJECT_TOKEN\` / app-token credentials, then re-add \`pipeline:qa-deploy\`." >&2
+  echo "qa-deploy: PR lookup failed for #$TICKET (see gh error above)" >&2
+  exit 1
+fi
+if [[ $PR_RC -ne 0 || -z "$PR" ]]; then
   gh issue comment "$TICKET" --body "[/qa-deploy] FAIL — no open PR found for #$TICKET. The dev phase must finish (status:ready-for-qa) with an open PR before qa-deploy." >&2
   echo "qa-deploy: no PR for #$TICKET" >&2
   exit 1

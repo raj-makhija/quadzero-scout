@@ -37,8 +37,14 @@ command -v git >/dev/null || { echo "error: git not found" >&2; exit 127; }
 pl_load_config
 pl_require_clean_tree
 
-PR="$(pl_pr_for_ticket "$TICKET")"
-if [[ -z "$PR" ]]; then
+PR=""
+PR_RC=0
+PR="$(pl_pr_for_ticket "$TICKET")" || PR_RC=$?
+if [[ $PR_RC -eq 2 ]]; then
+  echo "error: could not resolve the PR for #$TICKET (GitHub API lookup failed, see error above); refusing docs-merge" >&2
+  exit 1
+fi
+if [[ $PR_RC -ne 0 || -z "$PR" ]]; then
   echo "error: ticket #$TICKET has no open PR; cannot docs-merge" >&2
   exit 1
 fi

@@ -45,8 +45,14 @@ if ! echo "$LABELS" | grep -qx "status:in-qa"; then
   exit 1
 fi
 
-PR="$(pl_pr_for_ticket "$TICKET")"
-if [[ -z "$PR" ]]; then
+PR=""
+PR_RC=0
+PR="$(pl_pr_for_ticket "$TICKET")" || PR_RC=$?
+if [[ $PR_RC -eq 2 ]]; then
+  echo "error: could not resolve the PR for #$TICKET (GitHub API lookup failed, see error above); refusing to approve" >&2
+  exit 1
+fi
+if [[ $PR_RC -ne 0 || -z "$PR" ]]; then
   echo "error: ticket #$TICKET has no open PR; cannot approve" >&2
   exit 1
 fi

@@ -268,38 +268,62 @@ _pl_pick_best_pr() {
 # null (verified live on #308), so each candidate is confirmed OPEN via a
 # separate gh pr view call. When resolved via fallback, writes the number back
 # to the "PR Number" field so downstream steps and re-runs are stable.
-# Prints the PR number, or empty if none found.
+#
+# Prints the PR number on success. The exit status separates the two empty
+# outcomes, which have different causes and different fixes (#569):
+#   0 - resolved; PR number on stdout
+#   1 - no open PR for this ticket; the lookups worked and found none
+#   2 - a lookup failed, so the answer is unknown; stdout empty
+# Callers must capture the status explicitly -- they all run under `set -e`,
+# where a bare PR="$(pl_pr_for_ticket ...)" would abort on 1 and 2 alike.
+#
+# gh's own stderr is passed through to the caller's stderr (the workflow log)
+# instead of being discarded, so a credential failure is diagnosable. Callers
+# must NOT put it in an issue comment -- it can carry tokens and API URLs.
 #
 # Set _PL_LIBDIR to override the helper-script directory (for tests).
 pl_pr_for_ticket() {
   local ticket="$1"
   local libdir
   libdir="${_PL_LIBDIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+
+  # 1. Preferred: the board's "PR Number" field, which needs the project PAT.
+  # A failure here is not fatal -- the manual -cowork route never populates the
+  # field, so "unreadable" and "unset" both legitimately fall through to the
+  # linked-PR lookup below.
   local pr
-  pr="$("$libdir/get-field.sh" "$ticket" "PR Number" 2>/dev/null || true)"
-  if [[ -n "$pr" ]]; then
+  if pr="$("$libdir/get-field.sh" "$ticket" "PR Number")" && [[ -n "$pr" ]]; then
     printf '%s' "$pr"
-    return
+    return 0
   fi
 
-  # Fallback: derive candidate PR numbers from the issue's linked PRs, then
+  # 2. Fallback: derive candidate PR numbers from the issue's linked PRs, then
   # confirm each candidate's state via gh pr view (the closedByPullRequestsReferences
   # state field is null in the GitHub API -- do not filter on it).
+  #
+  # This reads plain repository data, which the App token can see, so it runs
+  # under the ambient GH_TOKEN. Pinning it to PL_PROJECT_TOKEN meant one dead
+  # PAT took out both resolution paths at once, and #556 reported "no open PR"
+  # while PR #566 was open (#567).
   local refs
-  refs="$(GH_TOKEN="${PL_PROJECT_TOKEN:-${GH_TOKEN:-}}" gh issue view "$ticket" \
-    --json closedByPullRequestsReferences \
-    -q '[.closedByPullRequestsReferences[].number] | unique[]' \
-    2>/dev/null || true)"
-
-  if [[ -z "$refs" ]]; then
-    printf ''
-    return
+  if ! refs="$(gh issue view "$ticket" \
+      --json closedByPullRequestsReferences \
+      -q '[.closedByPullRequestsReferences[].number] | unique[]')"; then
+    echo "pl_pr_for_ticket: linked-PR lookup failed for #$ticket (gh error above)" >&2
+    return 2
   fi
 
-  local pr_table="" num info row
+  if [[ -z "$refs" ]]; then
+    return 1
+  fi
+
+  local pr_table="" num info row failed=0
   while IFS= read -r num; do
     [[ -z "$num" ]] && continue
-    info="$(gh pr view "$num" --json number,state,headRefName,createdAt 2>/dev/null || true)"
+    if ! info="$(gh pr view "$num" --json number,state,headRefName,createdAt)"; then
+      failed=1
+      continue
+    fi
     [[ -z "$info" ]] && continue
     row="$(printf '%s' "$info" | jq -r '[.number,.state,.headRefName,.createdAt] | @tsv')"
     pr_table="${pr_table}${row}"$'\n'
@@ -307,12 +331,24 @@ pl_pr_for_ticket() {
 
   pr="$(printf '%s' "$pr_table" | _pl_pick_best_pr)"
 
-  if [[ -n "$pr" ]]; then
-    # Persist so downstream steps and re-runs don't re-resolve. Best-effort.
-    "$libdir/set-field.sh" "$ticket" "PR Number" "$pr" 2>/dev/null || true
+  if [[ -z "$pr" ]]; then
+    # No open PR among the candidates we could read. If any candidate lookup
+    # errored, "none open" is not a safe conclusion -- the one we failed to
+    # read could have been it.
+    if [[ $failed -eq 1 ]]; then
+      echo "pl_pr_for_ticket: a PR lookup failed for #$ticket; cannot confirm there is no open PR" >&2
+      return 2
+    fi
+    return 1
   fi
 
+  # Persist so downstream steps and re-runs don't re-resolve. Best-effort: this
+  # one genuinely needs the project PAT, and a dead PAT must not fail a resolve
+  # that already succeeded (#567).
+  "$libdir/set-field.sh" "$ticket" "PR Number" "$pr" 2>/dev/null || true
+
   printf '%s' "$pr"
+  return 0
 }
 
 # Build the serverless package prerequisites on a fresh Linux runner and
