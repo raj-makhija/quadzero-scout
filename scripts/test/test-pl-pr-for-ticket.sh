@@ -135,6 +135,7 @@ chmod +x "$STUB_DIR/set-field.sh"
 # Stub gh: dispatches on first two args
 #   gh issue view <N> --json closedByPullRequestsReferences ...
 #     -> outputs $STUB_ISSUE_PR_NUMBERS (one number per line, as if jq-filtered)
+#     -> exits 1 (simulating auth failure) if GH_TOKEN == $STUB_REJECT_IF_GH_TOKEN
 #   gh pr view <N> --json ...
 #     -> outputs $STUB_PR_<N>_JSON
 #   gh *
@@ -147,6 +148,9 @@ if [[ "$1" == "pr" && "$2" == "view" ]]; then
   varname="STUB_PR_${num}_JSON"
   printf '%s\n' "${!varname:-}"
 elif [[ "$1" == "issue" && "$2" == "view" ]]; then
+  if [[ -n "${STUB_REJECT_IF_GH_TOKEN:-}" && "${GH_TOKEN:-}" == "${STUB_REJECT_IF_GH_TOKEN}" ]]; then
+    exit 1
+  fi
   printf '%s\n' "${STUB_ISSUE_PR_NUMBERS:-}"
 fi
 STUBEOF
@@ -162,7 +166,8 @@ reset_stubs() {
   > "$SET_FIELD_LOG"
   > "$GH_LOG"
   unset STUB_GET_FIELD_RESULT STUB_ISSUE_PR_NUMBERS STUB_SET_FIELD_FAIL \
-    STUB_PR_309_JSON STUB_PR_311_JSON STUB_PR_312_JSON STUB_PR_315_JSON 2>/dev/null || true
+    STUB_PR_309_JSON STUB_PR_311_JSON STUB_PR_312_JSON STUB_PR_315_JSON \
+    STUB_REJECT_IF_GH_TOKEN 2>/dev/null || true
 }
 
 # Helper: count times set-field was invoked for "PR Number"
@@ -252,6 +257,18 @@ export STUB_PR_312_JSON='{"number":312,"state":"OPEN","headRefName":"bug/ticket-
 export STUB_SET_FIELD_FAIL="1"
 result="$(pl_pr_for_ticket 308)"
 assert_eq "set-field failure non-fatal: still returns 312" "312" "$result"
+
+# Test: invalid PL_PROJECT_TOKEN, field empty -> fallback uses GH_TOKEN, not PL_PROJECT_TOKEN
+echo "Test: PL_PROJECT_TOKEN invalid, field empty -> fallback resolves open PR via GH_TOKEN"
+reset_stubs
+export PL_PROJECT_TOKEN="invalid-bad-token"
+export STUB_REJECT_IF_GH_TOKEN="invalid-bad-token"
+export STUB_GET_FIELD_RESULT=""
+export STUB_ISSUE_PR_NUMBERS="312"
+export STUB_PR_312_JSON='{"number":312,"state":"OPEN","headRefName":"bug/ticket-308-cowork","createdAt":"2024-01-01T09:00:00Z"}'
+result="$(pl_pr_for_ticket 308)"
+assert_eq "invalid PL_PROJECT_TOKEN: fallback still returns 312 (GH_TOKEN used)" "312" "$result"
+unset PL_PROJECT_TOKEN STUB_REJECT_IF_GH_TOKEN
 
 # Test: broken select(.state == "OPEN") filter is gone from the source
 echo "Test: broken jq filter is absent from _pipeline-lib.sh"
