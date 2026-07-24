@@ -74,6 +74,28 @@ jobs:
       - name: Run backend tests
         run: cd backend && npm test
 
+  # The pipeline shell scripts have their own suites under scripts/test/, which
+  # until now ran only when someone invoked them by hand -- no workflow
+  # referenced them. That made their coverage advisory in practice: a change to
+  # _pipeline-lib.sh or next-ticket.sh could break the contract and no gate
+  # would notice. Runs on ubuntu-latest, which ships gh and jq; every suite
+  # stubs the network calls it needs.
+  test-scripts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Run pipeline script tests
+        run: |
+          status=0
+          for t in scripts/test/*.sh; do
+            echo "::group::$t"
+            bash "$t" || status=1
+            echo "::endgroup::"
+          done
+          exit $status
+
   test-frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 10
