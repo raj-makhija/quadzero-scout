@@ -11,7 +11,14 @@
 # Output: one line per actionable ticket, oldest first:
 #   <issue-number>\t<status>\t<agent>\t<title>
 #
-# Exits 0 with no output if nothing is actionable.
+# Exit codes:
+#   0   - the query succeeded. Zero or more actionable tickets on stdout;
+#         no output means the queue is genuinely empty.
+#   3   - the project query FAILED, so the queue state is unknown. Callers
+#         must not read this as an empty queue: conflating the two let a 15h
+#         PL_PROJECT_TOKEN outage report "queue drained" on every 5-minute
+#         cron tick while four tickets sat stuck at ready-for-qa (#568).
+#   127 - gh or jq is not installed.
 #
 # Implementation note: this queries from the *issue* side
 # (repository.issues + each issue's projectItems edge) rather than the
@@ -42,6 +49,8 @@ REPO="${OWNER_REPO#*/}"
 # is waiting for a human pipeline:qa-deploy, not for any agent.
 EXCLUDE_STATES='["awaiting-qa","merged-to-develop","needs-human","cost-review-pending"]'
 
+RESP=""
+GH_RC=0
 RESP="$(gh api graphql \
   -f query='
     query($owner: String!, $repo: String!) {
@@ -71,7 +80,24 @@ RESP="$(gh api graphql \
         }
       }
     }' \
-  -f owner="$OWNER" -f repo="$REPO")"
+  -f owner="$OWNER" -f repo="$REPO")" || GH_RC=$?
+
+# A failed query must be loud and distinguishable from an empty queue (#568).
+# gh's own stderr -- e.g. "gh: Bad credentials (HTTP 401)" -- is not redirected,
+# so it has already reached the log by the time these run.
+if [[ $GH_RC -ne 0 ]]; then
+  echo "next-ticket.sh: project query failed (gh exit $GH_RC) -- check PL_PROJECT_TOKEN. Queue state is UNKNOWN, not empty." >&2
+  exit 3
+fi
+
+# GraphQL can answer HTTP 200 while reporting the failure in an `errors` array
+# (partial results, field-level auth denials), which gh does not reliably
+# surface as a non-zero exit -- so check the body too.
+if [[ -n "$(printf '%s' "$RESP" | jq -r '.errors // empty' 2>/dev/null)" ]]; then
+  echo "next-ticket.sh: project query returned GraphQL errors -- check PL_PROJECT_TOKEN. Queue state is UNKNOWN, not empty." >&2
+  printf '%s' "$RESP" | jq -r '.errors[]? | "  - " + (.message // "unknown error")' >&2 || true
+  exit 3
+fi
 
 # Warn if GitHub returned exactly 100 issues (possible truncation).
 if [ "$(echo "$RESP" | jq '.data.repository.issues.pageInfo.hasNextPage')" = "true" ]; then

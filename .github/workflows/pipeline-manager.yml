@@ -178,10 +178,27 @@ jobs:
           PIPELINE_AGENT_TIMEOUT_OVERRIDE="${PIPELINE_AGENT_TIMEOUT_SEC:-0}"
 
           for i in $(seq 1 25); do
+            # Capture next-ticket.sh's exit status BEFORE piping. pipefail is
+            # deliberately off in this step (it would break the manager.sh
+            # failure semantics below), so a pipeline's status is awk's --
+            # always 0. That turned a project-query 401 into "queue drained"
+            # and kept this job green for ~15h while four tickets sat stuck at
+            # status:ready-for-qa with no signal anything was wrong (#568).
+            NT_RC=0
+            NT_OUT="$(scripts/next-ticket.sh)" || NT_RC=$?
+            if [[ $NT_RC -eq 3 ]]; then
+              echo "manager: project query failed -- check PL_PROJECT_TOKEN (gh error above). Queue state unknown, NOT empty; aborting drain after $((i-1)) iterations."
+              exit 1
+            fi
+            if [[ $NT_RC -ne 0 ]]; then
+              echo "manager: next-ticket.sh failed (exit $NT_RC); aborting drain after $((i-1)) iterations."
+              exit 1
+            fi
+
             if [[ -n "$STRUCK_THIS_DRAIN" ]]; then
-              NEXT="$(scripts/next-ticket.sh | grep -vE "^($STRUCK_THIS_DRAIN)\b" | head -1 | awk '{print $1}' || true)"
+              NEXT="$(printf '%s\n' "$NT_OUT" | grep -vE "^($STRUCK_THIS_DRAIN)\b" | head -1 | awk '{print $1}' || true)"
             else
-              NEXT="$(scripts/next-ticket.sh | head -1 | awk '{print $1}' || true)"
+              NEXT="$(printf '%s\n' "$NT_OUT" | head -1 | awk '{print $1}' || true)"
             fi
 
             if [[ -z "$NEXT" ]]; then
