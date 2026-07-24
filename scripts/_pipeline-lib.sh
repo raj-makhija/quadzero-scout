@@ -286,7 +286,7 @@ pl_pr_for_ticket() {
   # confirm each candidate's state via gh pr view (the closedByPullRequestsReferences
   # state field is null in the GitHub API -- do not filter on it).
   local refs
-  refs="$(GH_TOKEN="${PL_PROJECT_TOKEN:-${GH_TOKEN:-}}" gh issue view "$ticket" \
+  refs="$(gh issue view "$ticket" \
     --json closedByPullRequestsReferences \
     -q '[.closedByPullRequestsReferences[].number] | unique[]' \
     2>/dev/null || true)"
