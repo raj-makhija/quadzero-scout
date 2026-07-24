@@ -1464,7 +1464,7 @@ Authorization: Bearer <jwe_token>
 
 Update the parsed search criteria and optional budget for an existing requirement. Used when a recruiter refines search criteria after getting few or no results and wants to persist the changes back to the requirement.
 
-**Auth:** Requires `recruiter` role. Recruiter must own the requirement.
+**Auth:** Requires `recruiter` role. Must be an internal recruiter (`@quadzero.com`) or admin.
 
 **Path Parameters:**
 - `requirementId`: The ID of the requirement to update
@@ -1510,7 +1510,7 @@ Authorization: Bearer <jwe_token>
 - `parsedCriteria`: Required, LLM JD output schema
 - `maxBudgetLpa`: Optional, number, 0-500
 - Requirement must exist (ConditionExpression check)
-- Recruiter must be the owner of the requirement (403 otherwise)
+- Must be an internal recruiter (`@quadzero.com`) or admin (403 otherwise)
 
 **Side Effects:**
 - Updates `parsed_criteria` field on the requirement
@@ -1521,9 +1521,9 @@ Authorization: Bearer <jwe_token>
 
 ### PUT /recruiter/requirements/{requirementId}/status
 
-Update the status of a requirement (internal recruiters only).
+Update the status of a requirement (internal recruiters or admins only).
 
-**Auth Required:** Yes (recruiter role, must be internal @quadzero.com)
+**Auth Required:** Yes (recruiter role, must be internal @quadzero.com, or admin role)
 
 **Path Parameters:**
 | Parameter | Type | Description |
@@ -1559,7 +1559,7 @@ Update the status of a requirement (internal recruiters only).
 | Status | Code | Condition |
 |--------|------|-----------|
 | 400 | VALIDATION_ERROR | Invalid status value or duplicate requirement |
-| 403 | FORBIDDEN | Non-internal recruiter |
+| 403 | FORBIDDEN | Non-internal recruiter and non-admin |
 | 404 | NOT_FOUND | Requirement not found |
 
 ---
@@ -1608,9 +1608,9 @@ Toggle the current recruiter's email notification preference for a requirement. 
 
 ### PUT /recruiter/requirements/{requirementId}/details
 
-Update one or more fields on a requirement with field-level audit trail. Only the requirement owner can update, and duplicate requirements cannot be updated.
+Update one or more fields on a requirement with field-level audit trail. Only internal recruiters (`@quadzero.com`) or admins can update, and duplicate requirements cannot be updated.
 
-**Auth Required:** Yes (recruiter role, must be the requirement owner)
+**Auth Required:** Yes (recruiter role, must be internal @quadzero.com, or admin role)
 
 **Path Parameters:**
 | Parameter | Type | Description |
@@ -1683,7 +1683,7 @@ If no fields actually changed (submitted values are identical to current values)
 |--------|------|-----------|
 | 400 | VALIDATION_ERROR | No updatable fields provided, or invalid field values |
 | 400 | VALIDATION_ERROR | Attempt to update a duplicate requirement |
-| 403 | FORBIDDEN | Authenticated user is not the requirement owner |
+| 403 | FORBIDDEN | Non-internal recruiter and non-admin |
 | 404 | NOT_FOUND | Requirement not found |
 
 **Notes:**

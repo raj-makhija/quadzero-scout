@@ -38,16 +38,15 @@ async function handleRequest(
     }
 
     const data = validation.data;
-    const recruiterId = event.auth.userId;
 
-    // Verify requirement exists and belongs to this recruiter
+    // Verify requirement exists and caller has permission
     const existing = await getRequirementById(requirementId);
     if (!existing) {
       return error(ErrorCodes.NOT_FOUND, 'Requirement not found', 404);
     }
 
-    if (existing.recruiter_id !== recruiterId) {
-      return error(ErrorCodes.FORBIDDEN, 'Not authorized to modify this requirement', 403);
+    if (!event.auth.isInternal && event.auth.role !== 'admin') {
+      return error(ErrorCodes.FORBIDDEN, 'Only internal recruiters or admins can modify requirements', 403);
     }
 
     const now = new Date().toISOString();
