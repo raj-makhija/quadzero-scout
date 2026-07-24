@@ -54,6 +54,7 @@ vi.mock('../../lib/dynamodb.js', () => ({
     lastKey: undefined,
   }),
   getCandidateById: vi.fn(),
+  putAuditLog: vi.fn().mockResolvedValue(undefined),
   saveSavedSearch: vi.fn().mockResolvedValue(undefined),
   getSavedSearches: vi.fn().mockResolvedValue([]),
   deleteSavedSearch: vi.fn().mockResolvedValue(undefined),
@@ -2106,7 +2107,7 @@ describe('GET /recruiter/original-resume-url/{candidateId}', () => {
   });
 
   // TC-ORIGINAL-RESUME-005b
-  it('passes correct filename to generateDownloadUrl for DOCX resumes', async () => {
+  it('extracts original filename in response for DOCX resumes', async () => {
     vi.mocked(getCandidateById).mockResolvedValueOnce({
       candidate_id: 'cand_docx',
       user_id: 'user_docx',
@@ -2133,8 +2134,7 @@ describe('GET /recruiter/original-resume-url/{candidateId}', () => {
     expect(result.statusCode).toBe(200);
     expect(body.data.fileName).toBe('Tanuja_Resume.docx');
     expect(vi.mocked(generateDownloadUrl)).toHaveBeenCalledWith(
-      'resumes/2024/03/abc123def-Tanuja_Resume.docx',
-      { fileName: 'Tanuja_Resume.docx' }
+      'resumes/2024/03/abc123def-Tanuja_Resume.docx'
     );
   });
 
