@@ -1322,6 +1322,25 @@ export interface SubVendorItem {
   last_updated: string;
 }
 
+/**
+ * One row per ingested candidate submission (#576). Written on every email
+ * ingest — matched vendor, unmatched org, or free-mail sender alike — so the
+ * full submission history of a contested candidate is queryable in both
+ * directions without a table scan.
+ */
+export interface CandidateSubmissionItem {
+  vendor_key: string;                 // PK: <sub_vendor_id> | domain:<domain> | email:<address>
+  submitted_at_candidate_id: string;  // SK: `${submitted_at}#${candidate_id}` — newest-first sort
+  submitted_at: string;               // GSI SK (CandidateSubmissionsIndex, PK candidate_id)
+  candidate_id: string;
+  sub_vendor_id?: string;             // as resolved at submission time (absent when unmatched)
+  sub_vendor_name?: string;           // as extracted at submission time
+  submitter_email: string;
+  requirement_id?: string;
+  was_first_submitter: boolean;
+  internet_message_id: string;        // ties back to the EmailIngestLog entry
+}
+
 export interface SaveSubVendorRequest {
   subVendorName: string;
   contactPersonName?: string;

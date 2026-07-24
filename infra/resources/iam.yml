@@ -34,6 +34,11 @@ dynamoDbPolicy:
     - !GetAtt ScreeningLocksTable.Arn
     - !GetAtt SubVendorsTable.Arn
     - !Sub '${SubVendorsTable.Arn}/index/*'
+    # Per-submission tracking table + candidate-history GSI (ticket #576). The
+    # ingest worker writes one row per attachment; the two read endpoints query
+    # the primary key and the GSI. Without both grants they AccessDenied at runtime.
+    - !GetAtt CandidateSubmissionsTable.Arn
+    - !Sub '${CandidateSubmissionsTable.Arn}/index/*'
     - !GetAtt PipelineActivityTable.Arn
     - !GetAtt CandidateAttachmentsTable.Arn
     - !GetAtt RecruiterTasksTable.Arn

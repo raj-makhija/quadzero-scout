@@ -10,7 +10,7 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { config } from './config.js';
-import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, StatusHistoryEntry, RequirementChangeEntry, PricingConfig, PricingConfigItem, SessionSettings, SessionSettingsItem, ShortlistItem, ClientItem, SubVendorItem, ScreeningItem, ScreeningLockItem, AuditLogItem, AuditLogEntry, PipelineActivityItem, AttachmentItem, RankedMatchEntry, RequirementMatchCacheItem, RequirementLlmRerankItem, CloneJobItem, LinkedInTokenItem, LinkedInPostJobItem } from '../types/index.js';
+import type { CandidateItem, SavedSearch, User, SearchCriteria, UserStatus, UserRole, PromptItem, BulkImportBatchItem, RequirementItem, RequirementRequestEntry, StatusHistoryEntry, RequirementChangeEntry, PricingConfig, PricingConfigItem, SessionSettings, SessionSettingsItem, ShortlistItem, ClientItem, SubVendorItem, CandidateSubmissionItem, ScreeningItem, ScreeningLockItem, AuditLogItem, AuditLogEntry, PipelineActivityItem, AttachmentItem, RankedMatchEntry, RequirementMatchCacheItem, RequirementLlmRerankItem, CloneJobItem, LinkedInTokenItem, LinkedInPostJobItem } from '../types/index.js';
 import { DEFAULT_SESSION_TIMEOUT_SECONDS } from '../types/index.js';
 
 const client = new DynamoDBClient({ region: config.region });
@@ -2023,6 +2023,48 @@ export async function updateSubVendor(
       ConditionExpression: 'attribute_exists(sub_vendor_id)',
     })
   );
+}
+
+// ─── Candidate Submission Operations (#576) ──────────────────────────────────
+
+export async function writeCandidateSubmission(item: CandidateSubmissionItem): Promise<void> {
+  await docClient.send(
+    new PutCommand({
+      TableName: config.dynamodb.candidateSubmissionsTable,
+      Item: item,
+    })
+  );
+}
+
+/** Every candidate submitted by a vendor, newest first (primary-key query). */
+export async function queryCandidateSubmissionsByVendor(
+  vendorKey: string
+): Promise<CandidateSubmissionItem[]> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: config.dynamodb.candidateSubmissionsTable,
+      KeyConditionExpression: 'vendor_key = :vk',
+      ExpressionAttributeValues: { ':vk': vendorKey },
+      ScanIndexForward: false,
+    })
+  );
+  return (result.Items || []) as CandidateSubmissionItem[];
+}
+
+/** Full submission history for one candidate, newest first (GSI query). */
+export async function queryCandidateSubmissionsByCandidate(
+  candidateId: string
+): Promise<CandidateSubmissionItem[]> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: config.dynamodb.candidateSubmissionsTable,
+      IndexName: 'CandidateSubmissionsIndex',
+      KeyConditionExpression: 'candidate_id = :cid',
+      ExpressionAttributeValues: { ':cid': candidateId },
+      ScanIndexForward: false,
+    })
+  );
+  return (result.Items || []) as CandidateSubmissionItem[];
 }
 
 // ─── Client Master Operations ───────────────────────────────────────────────

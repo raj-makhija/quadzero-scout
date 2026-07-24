@@ -26,6 +26,7 @@ import type {
   MatchedRequirement,
   ShortlistedRequirement,
   AttachmentSummary,
+  SubmissionByCandidate,
 } from '@/lib/api';
 import {
   formatDate,
@@ -79,6 +80,10 @@ export default function CandidateProfilePage() {
   const [attachmentsLoading, setAttachmentsLoading] = useState(false);
   const [downloadingAttachmentId, setDownloadingAttachmentId] = useState<string | null>(null);
 
+  // Submission history (#576)
+  const [submissions, setSubmissions] = useState<SubmissionByCandidate[]>([]);
+  const [submissionsLoading, setSubmissionsLoading] = useState(false);
+
   // Screening status (computed early so handlers can reference it)
   const screeningExpired = isScreeningExpired(profile?.lastScreenedAt ?? undefined);
 
@@ -101,6 +106,11 @@ export default function CandidateProfilePage() {
         api.listAttachments(candidateId).then((res) => {
           setCandidateAttachments(res.attachments);
         }).catch(() => {}).finally(() => setAttachmentsLoading(false));
+        // Load submission history (non-blocking) (#576)
+        setSubmissionsLoading(true);
+        api.getCandidateSubmissions(candidateId).then((res) => {
+          setSubmissions(res.submissions);
+        }).catch(() => {}).finally(() => setSubmissionsLoading(false));
       } catch (err) {
         setErrorMessage(err instanceof ApiError ? err.message : 'Failed to load profile');
       } finally {
@@ -381,6 +391,36 @@ export default function CandidateProfilePage() {
           subVendorContactEmail={profile.subVendorContactEmail}
           hasDirectContact={!!profile.phone || !!profile.email}
         />
+
+        {/* Submission History (#576) — every vendor that has submitted this candidate */}
+        {(submissionsLoading || submissions.length > 0) && (
+          <div className="card p-4 mb-4">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
+              Submission History
+            </h2>
+            {submissionsLoading ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400">Loading submission history...</p>
+            ) : (
+              <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+                {submissions.map((s) => (
+                  <li key={s.internetMessageId} className="py-2 flex items-center gap-3 text-sm">
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      {s.subVendorName || s.submitterEmail}
+                    </span>
+                    <span className="text-gray-500 dark:text-gray-400">
+                      {formatDate(s.submittedAt)}
+                    </span>
+                    {s.wasFirstSubmitter && (
+                      <span className="badge bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300 text-xs">
+                        First submitter
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
         {/* Actions: Resume Downloads & Cover Letter */}
         <div className="card p-4 mb-4">

@@ -96,3 +96,26 @@ export async function resolveSubVendor(fromAddress: string): Promise<SubVendorRe
 
   return { method: 'none' };
 }
+
+/**
+ * Derive the `vendor_key` partition for a CandidateSubmissions row (#576).
+ *
+ * A matched resolver result keys the submission on the registered
+ * `sub_vendor_id`. An unmatched sender is still tracked, keyed by sender org:
+ *   - `domain:<domain>` for a corporate sender, so submissions from the same
+ *     unregistered org group coherently and can be reconciled later.
+ *   - `email:<address>` for a free-mail sender, where domain grouping would
+ *     wrongly merge unrelated vendors under e.g. `domain:gmail.com`.
+ */
+export function deriveVendorKey(fromAddress: string, resolution: SubVendorResolution): string {
+  if (resolution.method !== 'none' && resolution.subVendorId) {
+    return resolution.subVendorId;
+  }
+
+  const sender = normEmail(fromAddress || '');
+  const domain = domainOf(sender);
+  if (!domain || FREE_MAIL_DOMAINS.has(domain)) {
+    return `email:${sender}`;
+  }
+  return `domain:${domain}`;
+}

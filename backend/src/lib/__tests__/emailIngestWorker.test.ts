@@ -78,6 +78,7 @@ const mockGetCandidateByEmail = vi.fn();
 const mockSaveCandidateProfile = vi.fn();
 const mockGetRequirementById = vi.fn();
 const mockSaveSubVendor = vi.fn();
+const mockWriteCandidateSubmission = vi.fn();
 vi.mock('../dynamodb.js', () => ({
   getLlmRerank: vi.fn().mockResolvedValue(null),
   putLlmRerank: vi.fn().mockResolvedValue(undefined),
@@ -87,6 +88,7 @@ vi.mock('../dynamodb.js', () => ({
   getExperienceBucket: (years: number) => (years <= 5 ? '3-5' : '6-10'),
   getRequirementById: (...args: unknown[]) => mockGetRequirementById(...args),
   saveSubVendor: (...args: unknown[]) => mockSaveSubVendor(...args),
+  writeCandidateSubmission: (...args: unknown[]) => mockWriteCandidateSubmission(...args),
   saveLinkedInToken: vi.fn().mockResolvedValue(undefined),
   getLinkedInToken: vi.fn().mockResolvedValue(null),
   savePendingLinkedInState: vi.fn().mockResolvedValue(undefined),
@@ -95,8 +97,10 @@ vi.mock('../dynamodb.js', () => ({
 }));
 
 const mockResolveSubVendor = vi.fn();
+const mockDeriveVendorKey = vi.fn();
 vi.mock('../subVendorResolver.js', () => ({
   resolveSubVendor: (...args: unknown[]) => mockResolveSubVendor(...args),
+  deriveVendorKey: (...args: unknown[]) => mockDeriveVendorKey(...args),
 }));
 
 const mockInvokeLambdaAsync = vi.fn();
@@ -188,6 +192,8 @@ describe('emailIngestWorker', () => {
     mockSendIngestDigestEmail.mockResolvedValue(undefined);
     mockNotifyMatchingRecruiters.mockResolvedValue(undefined);
     mockResolveSubVendor.mockResolvedValue({ method: 'none' });
+    mockDeriveVendorKey.mockReturnValue('domain:recruiter.com');
+    mockWriteCandidateSubmission.mockResolvedValue(undefined);
     mockGetRequirementById.mockResolvedValue(null);
   });
 
@@ -627,5 +633,159 @@ describe('emailIngestWorker', () => {
     expect(results[0].subVendorMatchMethod).toBe('exact_email');
     expect(results[0].subVendorName).toBe('TechStaff Solutions');
     expect(results[0].requirementId).toBe('req_abc123');
+  });
+
+  // -------------------------------------------------------------------------
+  // Per-submission tracking & first-submitter-wins (#576)
+  // -------------------------------------------------------------------------
+
+  it('writes exactly one CandidateSubmissions row per processed attachment', async () => {
+    const message = makeMessage();
+    mockGetUnreadMessages.mockResolvedValue([message]);
+    mockGetResumeAttachments.mockResolvedValue(message.attachments);
+    setupSuccessfulProcessing();
+    mockDeriveVendorKey.mockReturnValue('domain:recruiter.com');
+
+    await handler();
+
+    expect(mockWriteCandidateSubmission).toHaveBeenCalledTimes(1);
+    const row = mockWriteCandidateSubmission.mock.calls[0][0];
+    expect(row.vendor_key).toBe('domain:recruiter.com');
+    expect(row.submitter_email).toBe('john@recruiter.com');
+    expect(row.internet_message_id).toBe('<unique-msg-id@recruiter.com>');
+    expect(row.was_first_submitter).toBe(true);
+    expect(row.candidate_id).toEqual(expect.any(String));
+    // SK carries the timestamp as a prefix for newest-first ordering.
+    expect(row.submitted_at_candidate_id).toBe(`${row.submitted_at}#${row.candidate_id}`);
+  });
+
+  it('does not write a submission row when the attachment fails to process', async () => {
+    const message = makeMessage();
+    mockGetUnreadMessages.mockResolvedValue([message]);
+    mockGetResumeAttachments.mockResolvedValue(message.attachments);
+    mockExtractTextFromResume.mockResolvedValue({ text: 'short', confidence: 0.5 });
+
+    await handler();
+
+    expect(mockSaveCandidateProfile).not.toHaveBeenCalled();
+    expect(mockWriteCandidateSubmission).not.toHaveBeenCalled();
+  });
+
+  it('writes one submission row per attachment for a multi-attachment message', async () => {
+    const message = makeMessage({
+      attachments: [
+        { id: 'att-1', name: 'a.pdf', contentType: 'application/pdf', contentBytes: Buffer.from('x').toString('base64'), size: 1 },
+        { id: 'att-2', name: 'b.pdf', contentType: 'application/pdf', contentBytes: Buffer.from('y').toString('base64'), size: 1 },
+      ],
+    });
+    mockGetUnreadMessages.mockResolvedValue([message]);
+    mockGetResumeAttachments.mockResolvedValue(message.attachments);
+    setupSuccessfulProcessing();
+
+    await handler();
+
+    expect(mockWriteCandidateSubmission).toHaveBeenCalledTimes(2);
+  });
+
+  it('derives vendor_key via deriveVendorKey and stores it on the submission row', async () => {
+    const message = makeMessage({ from: { emailAddress: { name: 'Jack', address: 'jack@acme.com' } } });
+    mockGetUnreadMessages.mockResolvedValue([message]);
+    mockGetResumeAttachments.mockResolvedValue(message.attachments);
+    setupSuccessfulProcessing();
+    mockResolveSubVendor.mockResolvedValue({ method: 'none' });
+    mockDeriveVendorKey.mockReturnValue('domain:acme.com');
+
+    await handler();
+
+    expect(mockDeriveVendorKey).toHaveBeenCalledWith('jack@acme.com', expect.objectContaining({ method: 'none' }));
+    const row = mockWriteCandidateSubmission.mock.calls[0][0];
+    expect(row.vendor_key).toBe('domain:acme.com');
+    expect(row.sub_vendor_id).toBeUndefined();
+  });
+
+  it('marks was_first_submitter true when an existing candidate has no prior sub_vendor_id', async () => {
+    const message = makeMessage();
+    mockGetUnreadMessages.mockResolvedValue([message]);
+    mockGetResumeAttachments.mockResolvedValue(message.attachments);
+    setupSuccessfulProcessing();
+    mockGetCandidateByEmail.mockResolvedValue({
+      candidate_id: 'manual-cand-1',
+      email: 'jane@candidate.com',
+      created_at: '2026-01-01T00:00:00Z',
+      // no sub_vendor_id — e.g. a manually imported candidate
+    });
+    mockResolveSubVendor.mockResolvedValue({ method: 'exact_email', subVendorId: 'sv_X', subVendorName: 'Vendor X' });
+
+    await handler();
+
+    // The incoming vendor becomes the first attributed submitter.
+    const saved = mockSaveCandidateProfile.mock.calls[0][0];
+    expect(saved.sub_vendor_id).toBe('sv_X');
+    const row = mockWriteCandidateSubmission.mock.calls[0][0];
+    expect(row.was_first_submitter).toBe(true);
+  });
+
+  it('preserves the first submitter across two ingest passes while non-attribution fields still update', async () => {
+    const message = makeMessage();
+    mockGetResumeAttachments.mockResolvedValue(message.attachments);
+    mockGetUnreadMessages.mockResolvedValue([message]);
+    mockExtractTextFromResume.mockResolvedValue({ text: 'A'.repeat(100), confidence: 0.9 });
+    mockInvokeLambdaAsync.mockResolvedValue(undefined);
+
+    // ---- Pass 1: vendor A submits a brand-new candidate ----
+    mockParseResume.mockResolvedValue({
+      output: { fullName: 'Jane Smith', email: 'jane@candidate.com', primarySkills: ['React'], totalExperience: 4 },
+      confidence: 0.85,
+    });
+    mockGetCandidateByEmail.mockResolvedValue(null);
+    mockResolveSubVendor.mockResolvedValue({
+      method: 'exact_email', subVendorId: 'sv_A', subVendorName: 'Vendor A', subVendorContactPerson: 'Alice',
+    });
+    mockDeriveVendorKey.mockReturnValue('sv_A');
+
+    await handler();
+
+    const firstSaved = mockSaveCandidateProfile.mock.calls[0][0];
+    expect(firstSaved.sub_vendor_id).toBe('sv_A');
+    const firstRow = mockWriteCandidateSubmission.mock.calls[0][0];
+    expect(firstRow.was_first_submitter).toBe(true);
+    expect(firstRow.vendor_key).toBe('sv_A');
+
+    // ---- Pass 2: vendor B re-submits the same candidate with fresh skills ----
+    mockParseResume.mockResolvedValue({
+      output: { fullName: 'Jane Smith', email: 'jane@candidate.com', primarySkills: ['Vue', 'GraphQL'], totalExperience: 6 },
+      confidence: 0.85,
+    });
+    mockGetCandidateByEmail.mockResolvedValue({
+      candidate_id: 'existing-cand-123',
+      email: 'jane@candidate.com',
+      sub_vendor_id: 'sv_A',
+      sub_vendor_name: 'Vendor A',
+      sub_vendor_contact_person: 'Alice',
+      created_at: '2026-01-01T00:00:00Z',
+    });
+    mockResolveSubVendor.mockResolvedValue({
+      method: 'exact_email', subVendorId: 'sv_B', subVendorName: 'Vendor B', subVendorContactPerson: 'Bob',
+    });
+    mockDeriveVendorKey.mockReturnValue('sv_B');
+
+    await handler();
+
+    const secondSaved = mockSaveCandidateProfile.mock.calls[1][0];
+    // Attribution stays pinned to the first submitter (vendor A).
+    expect(secondSaved.sub_vendor_id).toBe('sv_A');
+    expect(secondSaved.sub_vendor_name).toBe('Vendor A');
+    expect(secondSaved.sub_vendor_contact_person).toBe('Alice');
+    // Non-attribution fields reflect the second ingest's parsed values (Item 4).
+    expect(secondSaved.primary_skills).toEqual(['vue', 'graphql']);
+    expect(secondSaved.total_experience).toBe(6);
+
+    // Two submission rows total; the second is not-first and snapshots vendor B.
+    expect(mockWriteCandidateSubmission).toHaveBeenCalledTimes(2);
+    const secondRow = mockWriteCandidateSubmission.mock.calls[1][0];
+    expect(secondRow.was_first_submitter).toBe(false);
+    expect(secondRow.vendor_key).toBe('sv_B');
+    expect(secondRow.sub_vendor_id).toBe('sv_B');
+    expect(secondRow.candidate_id).toBe('existing-cand-123');
   });
 });

@@ -865,6 +865,19 @@ class ApiClient {
     return this.request<SubVendorNamesResponse>('/recruiter/sub-vendor-names');
   }
 
+  // Per-submission tracking (#576)
+  async getSubVendorSubmissions(vendorKey: string) {
+    return this.request<SubVendorSubmissionsResponse>(
+      `/recruiter/sub-vendor-submissions?vendorKey=${encodeURIComponent(vendorKey)}`
+    );
+  }
+
+  async getCandidateSubmissions(candidateId: string) {
+    return this.request<CandidateSubmissionsResponse>(
+      `/recruiter/candidate-submissions?candidateId=${encodeURIComponent(candidateId)}`
+    );
+  }
+
   // Locate Profile endpoints
   async searchCandidatesByName(query: string, limit?: number): Promise<CandidateNameSearchResponse> {
     const params = new URLSearchParams({ q: query });
@@ -1814,6 +1827,39 @@ export interface ListSubVendorsResponse {
 
 export interface SubVendorNamesResponse {
   subVendors: SubVendorNameItem[];
+}
+
+// Per-submission tracking (#576)
+export interface SubmissionByVendor {
+  candidateId: string;
+  submittedAt: string;
+  subVendorId?: string;
+  subVendorName?: string;
+  submitterEmail: string;
+  requirementId?: string;
+  wasFirstSubmitter: boolean;
+  internetMessageId: string;
+}
+
+export interface SubmissionByCandidate {
+  vendorKey: string;
+  submittedAt: string;
+  subVendorId?: string;
+  subVendorName?: string;
+  submitterEmail: string;
+  requirementId?: string;
+  wasFirstSubmitter: boolean;
+  internetMessageId: string;
+}
+
+export interface SubVendorSubmissionsResponse {
+  vendorKey: string;
+  submissions: SubmissionByVendor[];
+}
+
+export interface CandidateSubmissionsResponse {
+  candidateId: string;
+  submissions: SubmissionByCandidate[];
 }
 
 interface SaveSubVendorPayload {
