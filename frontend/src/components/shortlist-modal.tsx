@@ -9,7 +9,6 @@ import { SubmitToClientModal } from '@/components/pipeline/submit-to-client-moda
 import { getScreeningStatus, isScreeningExpired } from '@/components/screening-modal';
 import {
   formatSeniority,
-  formatAvailability,
   formatCandidateEngagement,
   getMatchScoreColor,
   getMatchScoreBgColor,
@@ -530,10 +529,6 @@ export function ShortlistModal({
               <p className="font-medium">{candidate.location || 'Not specified'}</p>
             </div>
             <div>
-              <label className="text-sm text-gray-500 dark:text-gray-400">Notice Period</label>
-              <p className="font-medium">{formatAvailability(candidate.availability)}</p>
-            </div>
-            <div>
               <label className="text-sm text-gray-500 dark:text-gray-400">Engagement Preference</label>
               <p className="font-medium">{formatCandidateEngagement(candidate.engagementModel || 'either')}</p>
             </div>
@@ -663,31 +658,6 @@ export function ShortlistModal({
                     : candidate.matchDetails.experienceMatch === 'partial'
                       ? `Experience close to range: ${candidate.totalExperience} yrs (looking for ${searchCriteria.minExperience ?? 0}–${searchCriteria.maxExperience ?? '∞'} yrs)`
                       : `Experience outside range: ${candidate.totalExperience} yrs (looking for ${searchCriteria.minExperience ?? 0}–${searchCriteria.maxExperience ?? '∞'} yrs)`
-                  }
-                </div>
-              )}
-              {searchCriteria.availability && searchCriteria.availability.length > 0 && (
-                <div className={`flex items-center ${
-                  candidate.matchDetails.availabilityMatch === 'full'
-                    ? 'text-green-600 dark:text-green-400'
-                    : candidate.matchDetails.availabilityMatch === 'partial'
-                      ? 'text-amber-600 dark:text-amber-400'
-                      : 'text-red-600 dark:text-red-400'
-                }`}>
-                  <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={
-                      candidate.matchDetails.availabilityMatch === 'full'
-                        ? 'M5 13l4 4L19 7'
-                        : candidate.matchDetails.availabilityMatch === 'partial'
-                          ? 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
-                          : 'M6 18L18 6M6 6l12 12'
-                    } />
-                  </svg>
-                  {candidate.matchDetails.availabilityMatch === 'full'
-                    ? `Availability matches: ${formatAvailability(candidate.availability)}`
-                    : candidate.matchDetails.availabilityMatch === 'partial'
-                      ? `Available slightly later: ${formatAvailability(candidate.availability)} (looking for ${searchCriteria.availability.map(a => formatAvailability(a)).join(', ')})`
-                      : `Availability mismatch: ${formatAvailability(candidate.availability)} (looking for ${searchCriteria.availability.map(a => formatAvailability(a)).join(', ')})`
                   }
                 </div>
               )}

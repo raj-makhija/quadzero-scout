@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { SENIORITY_OPTIONS, AVAILABILITY_OPTIONS } from '@/lib/utils';
+import { SENIORITY_OPTIONS } from '@/lib/utils';
 
 export interface CriteriaEditorProps {
   mustHaveSkills: string[];
@@ -11,7 +11,6 @@ export interface CriteriaEditorProps {
   maxExperience?: number;
   maxBudgetLpa?: number;
   seniority: string[];
-  availability: string[];
   location: string | null;
   onChange: (field: string, value: unknown) => void;
   showBudget?: boolean;
@@ -25,7 +24,6 @@ export function CriteriaEditor({
   maxExperience,
   maxBudgetLpa,
   seniority,
-  availability,
   location,
   onChange,
   showBudget = true,
@@ -328,31 +326,6 @@ export function CriteriaEditor({
         </div>
       </div>
 
-      {/* Notice Period */}
-      <div>
-        <label className="label">Notice Period</label>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {AVAILABILITY_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              onClick={() => {
-                if (availability.includes(opt.value)) {
-                  onChange('availability', availability.filter(a => a !== opt.value));
-                } else {
-                  onChange('availability', [...availability, opt.value]);
-                }
-              }}
-              className={`badge cursor-pointer ${
-                availability.includes(opt.value)
-                  ? 'bg-primary-100 text-primary-800 border border-primary-300 dark:bg-primary-900/30 dark:text-primary-300 dark:border-primary-600'
-                  : 'bg-gray-100 text-gray-600 border border-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }

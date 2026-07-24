@@ -601,7 +601,6 @@ export function MatchDebugPanel({ result }: { result: MatchDebugResponse }) {
               <ScoreItem label="Experience" value={matchDetails.experienceMatch} maxScore={8} />
               <ScoreItem label="Seniority" value={matchDetails.seniorityMatch ? 'match' : 'none'} maxScore={5} />
               <ScoreItem label="Location" value={matchDetails.locationMatch} maxScore={10} />
-              <ScoreItem label="Availability" value={matchDetails.availabilityMatch} maxScore={7} />
             </div>
           </div>
 
@@ -646,7 +645,6 @@ export function MatchDebugPanel({ result }: { result: MatchDebugResponse }) {
               <p><span className="text-gray-500 dark:text-gray-400">Primary Skills:</span> {result.candidate.normalizedPrimary.join(', ') || 'None'}</p>
               <p><span className="text-gray-500 dark:text-gray-400">Experience:</span> {result.candidate.totalExperience} years &middot; {result.candidate.seniority}</p>
               <p><span className="text-gray-500 dark:text-gray-400">Location:</span> {result.candidate.location || 'Not specified'}</p>
-              <p><span className="text-gray-500 dark:text-gray-400">Availability:</span> {result.candidate.availability}</p>
               <p><span className="text-gray-500 dark:text-gray-400">Engagement:</span> {result.candidate.engagementModel}</p>
               {result.candidate.expectedCtc != null && (
                 <p><span className="text-gray-500 dark:text-gray-400">Expected CTC:</span> {result.candidate.expectedCtc} LPA</p>
