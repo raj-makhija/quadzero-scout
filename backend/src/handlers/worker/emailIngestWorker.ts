@@ -24,7 +24,9 @@ import {
   getIngestLogEntry,
   putIngestLogEntry,
   updateIngestLogStatus,
+  type IngestLogAttribution,
 } from '../../lib/emailIngestLog.js';
+import { resolveSubVendor, type SubVendorResolution } from '../../lib/subVendorResolver.js';
 import {
   sendIngestDigestEmail,
   type IngestResult,
@@ -38,6 +40,7 @@ import {
   getCandidateByEmail,
   saveCandidateProfile,
   getExperienceBucket,
+  getRequirementById,
 } from '../../lib/dynamodb.js';
 import { invokeLambdaAsync } from '../../lib/lambdaInvoke.js';
 import { notifyMatchingRecruiters } from '../../lib/notificationService.js';
@@ -164,13 +167,22 @@ export async function handler(): Promise<void> {
         throw err;
       }
 
+      // Resolve sub-vendor + requirement attribution once per message
+      // (identical for every attachment on the same email).
+      const { resolution, requirementId } = await resolveAttribution(message);
+      const logAttribution: IngestLogAttribution = {
+        subVendorMatchMethod: resolution.method,
+        subVendorId: resolution.method !== 'none' ? resolution.subVendorId : undefined,
+        requirementId,
+      };
+
       // Process each resume attachment
       const messageCandidateIds: string[] = [];
       let hasError = false;
 
       for (const attachment of resumeAttachments) {
         try {
-          const result = await processAttachment(attachment, message);
+          const result = await processAttachment(attachment, message, resolution, requirementId);
           messageCandidateIds.push(result.candidateId);
           allCandidateIds.push(result.candidateId);
           allResults.push({
@@ -181,6 +193,9 @@ export async function handler(): Promise<void> {
             candidateName: result.candidateName,
             candidateId: result.candidateId,
             isUpdate: result.isUpdate,
+            subVendorMatchMethod: resolution.method,
+            subVendorName: result.subVendorName,
+            requirementId,
           });
         } catch (err) {
           hasError = true;
@@ -201,9 +216,9 @@ export async function handler(): Promise<void> {
 
       // Update idempotency record
       if (hasError && messageCandidateIds.length === 0) {
-        await updateIngestLogStatus(internetMessageId, 'failed', [], 'All attachments failed');
+        await updateIngestLogStatus(internetMessageId, 'failed', [], 'All attachments failed', logAttribution);
       } else {
-        await updateIngestLogStatus(internetMessageId, 'completed', messageCandidateIds);
+        await updateIngestLogStatus(internetMessageId, 'completed', messageCandidateIds, undefined, logAttribution);
       }
 
       // Mark email as read and move to Processed
@@ -251,8 +266,10 @@ export async function handler(): Promise<void> {
  */
 async function processAttachment(
   attachment: GraphAttachment,
-  message: GraphMessage
-): Promise<{ candidateId: string; candidateName: string; isUpdate: boolean }> {
+  message: GraphMessage,
+  resolution: SubVendorResolution,
+  requirementId?: string
+): Promise<{ candidateId: string; candidateName: string; isUpdate: boolean; subVendorName?: string }> {
   // Step 1: Upload attachment to S3
   const fileBuffer = Buffer.from(attachment.contentBytes, 'base64');
   const now = new Date();
@@ -315,6 +332,15 @@ async function processAttachment(
     const nowIso = new Date().toISOString();
     const fullName = profile.fullName || 'Unknown';
 
+    // Sub-vendor attribution: a deterministic match sets sub_vendor_id and its
+    // master-data contacts always win. An unmatched sender carries no id but
+    // still keeps the LLM-extracted signature contacts.
+    const matched = resolution.method !== 'none';
+    const subVendorName = matched ? resolution.subVendorName : (profile.vendorCompany || undefined);
+    const subVendorContactPerson = matched ? resolution.subVendorContactPerson : (profile.vendorContactName || undefined);
+    const subVendorContactPhone = matched ? resolution.subVendorContactPhone : (profile.vendorContactPhone || undefined);
+    const subVendorContactEmail = matched ? resolution.subVendorContactEmail : (profile.vendorContactEmail || undefined);
+
     const candidateItem: CandidateItem = {
       candidate_id: candidateId,
       user_id: 'email_ingest',
@@ -342,6 +368,12 @@ async function processAttachment(
       github_url: profile.githubUrl ?? undefined,
       hackerrank_url: profile.hackerrankUrl ?? undefined,
       cover_letter: emailBodyText || undefined,
+      sub_vendor_id: matched ? resolution.subVendorId : undefined,
+      sub_vendor_name: subVendorName,
+      sub_vendor_contact_person: subVendorContactPerson,
+      sub_vendor_contact_phone: subVendorContactPhone,
+      sub_vendor_contact_email: subVendorContactEmail,
+      requirement_id: requirementId,
       skills_schema_version: parseResult.promptVersion != null
         ? `v${parseResult.promptVersion}`
         : existingCandidate?.skills_schema_version,
@@ -370,13 +402,47 @@ async function processAttachment(
       }
     }
 
-    return { candidateId, candidateName: fullName, isUpdate };
+    return { candidateId, candidateName: fullName, isUpdate, subVendorName };
   } catch (err) {
     // Attach s3Key to the error for reporting
     if (!(err as Error & { s3Key?: string }).s3Key) {
       (err as Error & { s3Key?: string }).s3Key = s3Key;
     }
     throw err;
+  }
+}
+
+/**
+ * Resolve the sub-vendor and requirement attribution for an email. Resolution is
+ * read-only — a sub-vendor is only ever matched against existing master data,
+ * never created from extracted signature output.
+ */
+async function resolveAttribution(
+  message: GraphMessage
+): Promise<{ resolution: SubVendorResolution; requirementId?: string }> {
+  const fromAddress = message.from?.emailAddress?.address || '';
+  const resolution = await resolveSubVendor(fromAddress);
+  const requirementId = await resolveRequirementId(message.subject);
+  return { resolution, requirementId };
+}
+
+/**
+ * Parse the trailing `[<requirementId>]` from an email subject and confirm the
+ * requirement exists. Returns undefined when absent, malformed, or unknown —
+ * an unattributable submission is never dropped.
+ */
+async function resolveRequirementId(subject?: string): Promise<string | undefined> {
+  if (!subject) return undefined;
+  const match = subject.match(/\[([^\]]+)\]\s*$/);
+  if (!match) return undefined;
+  const candidateId = match[1].trim();
+  if (!candidateId) return undefined;
+  try {
+    const requirement = await getRequirementById(candidateId);
+    return requirement ? requirement.requirement_id : undefined;
+  } catch (err) {
+    console.warn(`Email ingest: Failed to look up requirement "${candidateId}":`, err);
+    return undefined;
   }
 }
 

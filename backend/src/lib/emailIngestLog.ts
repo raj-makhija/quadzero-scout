@@ -29,7 +29,19 @@ export interface EmailIngestLogEntry {
   candidate_ids: string[];
   attachment_count: number;
   error_message?: string;
+  sub_vendor_id?: string;
+  sub_vendor_match_method?: string; // 'exact_email' | 'domain' | 'none'
+  requirement_id?: string;
   ttl: number; // Unix timestamp — auto-expire after 90 days
+}
+
+/**
+ * Sub-vendor / requirement attribution recorded on the log entry after resolution.
+ */
+export interface IngestLogAttribution {
+  subVendorId?: string;
+  subVendorMatchMethod?: string;
+  requirementId?: string;
 }
 
 /**
@@ -68,7 +80,8 @@ export async function updateIngestLogStatus(
   internetMessageId: string,
   status: 'completed' | 'failed',
   candidateIds?: string[],
-  errorMessage?: string
+  errorMessage?: string,
+  attribution?: IngestLogAttribution
 ): Promise<void> {
   const updateParts: string[] = [
     '#s = :status',
@@ -88,6 +101,21 @@ export async function updateIngestLogStatus(
   if (errorMessage) {
     updateParts.push('error_message = :errorMessage');
     attrValues[':errorMessage'] = errorMessage;
+  }
+
+  if (attribution) {
+    if (attribution.subVendorMatchMethod !== undefined) {
+      updateParts.push('sub_vendor_match_method = :svmm');
+      attrValues[':svmm'] = attribution.subVendorMatchMethod;
+    }
+    if (attribution.subVendorId !== undefined) {
+      updateParts.push('sub_vendor_id = :svid');
+      attrValues[':svid'] = attribution.subVendorId;
+    }
+    if (attribution.requirementId !== undefined) {
+      updateParts.push('requirement_id = :rid');
+      attrValues[':rid'] = attribution.requirementId;
+    }
   }
 
   await docClient.send(

@@ -151,6 +151,7 @@ export interface CandidateItem {
   sub_vendor_contact_person?: string;
   sub_vendor_contact_phone?: string;
   sub_vendor_contact_email?: string;
+  requirement_id?: string;
   skill_synonyms?: Record<string, string[]>;
   skills_schema_version?: string;
   _type?: string;
@@ -221,6 +222,10 @@ export const LLMResumeOutputSchema = z.object({
     try { new URL(url); return url; } catch { return null; }
   }),
   skillSynonyms: z.record(z.string(), z.array(z.string())).nullable().optional().default(null),
+  vendorCompany: z.string().optional().nullable(),
+  vendorContactName: z.string().optional().nullable(),
+  vendorContactEmail: z.string().optional().nullable(),
+  vendorContactPhone: z.string().optional().nullable(),
 });
 export type LLMResumeOutput = z.infer<typeof LLMResumeOutputSchema>;
 
