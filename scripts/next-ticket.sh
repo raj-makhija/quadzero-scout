@@ -33,6 +33,11 @@ command -v jq >/dev/null || { echo "error: jq not found" >&2; exit 127; }
 pl_load_config
 pl_use_project_token
 
+if [[ -z "${PL_PROJECT_TOKEN:-}" ]]; then
+  echo "error: next-ticket.sh: PL_PROJECT_TOKEN is unset -- cannot query Projects v2" >&2
+  exit 1
+fi
+
 OWNER_REPO="$(pl_repo_slug)"
 OWNER="${OWNER_REPO%/*}"
 REPO="${OWNER_REPO#*/}"
@@ -72,6 +77,13 @@ RESP="$(gh api graphql \
       }
     }' \
   -f owner="$OWNER" -f repo="$REPO")"
+
+# Detect top-level GraphQL errors (HTTP 200 but auth failure or API error in body).
+if echo "$RESP" | jq -e '.errors | arrays | length > 0' > /dev/null 2>&1; then
+  MSG="$(echo "$RESP" | jq -r '.errors[0].message // "unknown error"')"
+  echo "error: next-ticket.sh: project query failed: $MSG" >&2
+  exit 1
+fi
 
 # Warn if GitHub returned exactly 100 issues (possible truncation).
 if [ "$(echo "$RESP" | jq '.data.repository.issues.pageInfo.hasNextPage')" = "true" ]; then

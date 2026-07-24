@@ -178,10 +178,17 @@ jobs:
           PIPELINE_AGENT_TIMEOUT_OVERRIDE="${PIPELINE_AGENT_TIMEOUT_SEC:-0}"
 
           for i in $(seq 1 25); do
+            NEXT_OUT=""
+            NEXT_RC=0
+            NEXT_OUT="$(scripts/next-ticket.sh)" || NEXT_RC=$?
+            if [[ $NEXT_RC -ne 0 ]]; then
+              echo "manager: project query failed -- check PL_PROJECT_TOKEN (exit $NEXT_RC)" >&2
+              exit $NEXT_RC
+            fi
             if [[ -n "$STRUCK_THIS_DRAIN" ]]; then
-              NEXT="$(scripts/next-ticket.sh | grep -vE "^($STRUCK_THIS_DRAIN)\b" | head -1 | awk '{print $1}' || true)"
+              NEXT="$(echo "$NEXT_OUT" | grep -vE "^($STRUCK_THIS_DRAIN)\b" | head -1 | awk '{print $1}' || true)"
             else
-              NEXT="$(scripts/next-ticket.sh | head -1 | awk '{print $1}' || true)"
+              NEXT="$(echo "$NEXT_OUT" | head -1 | awk '{print $1}')"
             fi
 
             if [[ -z "$NEXT" ]]; then
