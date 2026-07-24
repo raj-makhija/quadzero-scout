@@ -206,6 +206,26 @@ fi
 
 git checkout develop >&2
 
+# --- 5b. qa-tester gate (post-deploy acceptance cases on the live env) -----
+# Off by default: only runs the real browser agent when explicitly enabled,
+# so existing behavior is unchanged until the QA account + secret exist.
+# PASS / soft-error -> continue to acquire the lock. Definitive FAIL ->
+# auto-reject (resets qa->develop + rework) unless report-only is configured.
+if [[ "${PIPELINE_QA_TESTER_AGENT:-}" == "claude" ]]; then
+  QA_TESTER_RC=0
+  "$SCRIPT_DIR/qa-tester.sh" "$TICKET" "$BRANCH" || QA_TESTER_RC=$?
+  if [[ "$QA_TESTER_RC" -eq 3 ]]; then
+    if [[ "${PIPELINE_QA_TESTER_AUTOREJECT:-true}" == "true" ]]; then
+      echo "==> qa-tester FAIL; auto-rejecting #$TICKET" >&2
+      "$SCRIPT_DIR/qa-reject.sh" "$TICKET" "Automated qa-tester found failing acceptance item(s) against the deployed qa env. See the [qa-tester] comment on #$TICKET."
+      echo "qa-deploy: #$TICKET auto-rejected by qa-tester" >&2
+      exit 1
+    fi
+    gh issue comment "$TICKET" --body "[/qa-deploy] qa-tester reported FAIL but auto-reject is disabled (\`PIPELINE_QA_TESTER_AUTOREJECT\` != \`true\`). Proceeding to human QA -- review the [qa-tester] comment before approving." >&2
+  fi
+  # RC 0 (PASS) or RC 1 (soft could-not-run) fall through to acquire the lock.
+fi
+
 # --- 6. Acquire the lock ---------------------------------------------------
 "$SCRIPT_DIR/set-status.sh" "$TICKET" in-qa
 gh issue comment "$TICKET" --body "[/qa-deploy] OK — #$TICKET (\`$BRANCH\`, merged with develop) deployed to QA. \`status:in-qa\`. Validate, then \`pipeline:qa-approve\` (merge to develop) or \`pipeline:qa-reject\` (reset QA + rework)." >&2
