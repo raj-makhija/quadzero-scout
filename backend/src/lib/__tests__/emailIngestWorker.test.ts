@@ -76,6 +76,8 @@ vi.mock('../skillNormalizer.js', () => ({
 
 const mockGetCandidateByEmail = vi.fn();
 const mockSaveCandidateProfile = vi.fn();
+const mockGetRequirementById = vi.fn();
+const mockSaveSubVendor = vi.fn();
 vi.mock('../dynamodb.js', () => ({
   getLlmRerank: vi.fn().mockResolvedValue(null),
   putLlmRerank: vi.fn().mockResolvedValue(undefined),
@@ -83,11 +85,18 @@ vi.mock('../dynamodb.js', () => ({
   getCandidateByEmail: (...args: unknown[]) => mockGetCandidateByEmail(...args),
   saveCandidateProfile: (...args: unknown[]) => mockSaveCandidateProfile(...args),
   getExperienceBucket: (years: number) => (years <= 5 ? '3-5' : '6-10'),
+  getRequirementById: (...args: unknown[]) => mockGetRequirementById(...args),
+  saveSubVendor: (...args: unknown[]) => mockSaveSubVendor(...args),
   saveLinkedInToken: vi.fn().mockResolvedValue(undefined),
   getLinkedInToken: vi.fn().mockResolvedValue(null),
   savePendingLinkedInState: vi.fn().mockResolvedValue(undefined),
   markLinkedInTokenExpired: vi.fn().mockResolvedValue(undefined),
   writeLinkedInPost: vi.fn().mockResolvedValue(undefined),
+}));
+
+const mockResolveSubVendor = vi.fn();
+vi.mock('../subVendorResolver.js', () => ({
+  resolveSubVendor: (...args: unknown[]) => mockResolveSubVendor(...args),
 }));
 
 const mockInvokeLambdaAsync = vi.fn();
@@ -178,6 +187,8 @@ describe('emailIngestWorker', () => {
     mockPutObject.mockResolvedValue(undefined);
     mockSendIngestDigestEmail.mockResolvedValue(undefined);
     mockNotifyMatchingRecruiters.mockResolvedValue(undefined);
+    mockResolveSubVendor.mockResolvedValue({ method: 'none' });
+    mockGetRequirementById.mockResolvedValue(null);
   });
 
   it('returns immediately when disabled', async () => {
@@ -237,8 +248,13 @@ describe('emailIngestWorker', () => {
     expect(mockUpdateIngestLogStatus).toHaveBeenCalledWith(
       '<unique-msg-id@recruiter.com>',
       'completed',
-      expect.arrayContaining([expect.any(String)])
+      expect.arrayContaining([expect.any(String)]),
+      undefined,
+      expect.objectContaining({ subVendorMatchMethod: 'none' })
     );
+
+    // No SubVendors record is ever written from ingest — resolution is read-only
+    expect(mockSaveSubVendor).not.toHaveBeenCalled();
 
     // Email marked as read and moved
     expect(mockMarkMessageAsRead).toHaveBeenCalledTimes(1);
@@ -309,7 +325,8 @@ describe('emailIngestWorker', () => {
       '<unique-msg-id@recruiter.com>',
       'failed',
       [],
-      'All attachments failed'
+      'All attachments failed',
+      expect.objectContaining({ subVendorMatchMethod: 'none' })
     );
 
     // Digest should report error
@@ -421,5 +438,194 @@ describe('emailIngestWorker', () => {
     // cover_letter should not be set
     const savedProfile = mockSaveCandidateProfile.mock.calls[0][0];
     expect(savedProfile.cover_letter).toBeUndefined();
+  });
+
+  // -------------------------------------------------------------------------
+  // Sub-vendor & requirement attribution
+  // -------------------------------------------------------------------------
+
+  it('populates sub_vendor fields from master data on an exact-email match', async () => {
+    const message = makeMessage();
+    mockGetUnreadMessages.mockResolvedValue([message]);
+    mockGetResumeAttachments.mockResolvedValue(message.attachments);
+    setupSuccessfulProcessing();
+    mockResolveSubVendor.mockResolvedValue({
+      method: 'exact_email',
+      subVendorId: 'sv_001',
+      subVendorName: 'TechStaff Solutions',
+      subVendorContactPerson: 'Ravi Kumar',
+      subVendorContactPhone: '+91-9000000000',
+      subVendorContactEmail: 'ravi@techstaff.com',
+    });
+
+    await handler();
+
+    const savedProfile = mockSaveCandidateProfile.mock.calls[0][0];
+    expect(savedProfile.sub_vendor_id).toBe('sv_001');
+    expect(savedProfile.sub_vendor_name).toBe('TechStaff Solutions');
+    expect(savedProfile.sub_vendor_contact_person).toBe('Ravi Kumar');
+    expect(savedProfile.sub_vendor_contact_phone).toBe('+91-9000000000');
+    expect(savedProfile.sub_vendor_contact_email).toBe('ravi@techstaff.com');
+  });
+
+  it('lets master data win over LLM-extracted vendor contacts on a resolved match', async () => {
+    const message = makeMessage();
+    mockGetUnreadMessages.mockResolvedValue([message]);
+    mockGetResumeAttachments.mockResolvedValue(message.attachments);
+    mockExtractTextFromResume.mockResolvedValue({ text: 'A'.repeat(100), confidence: 0.9 });
+    mockParseResume.mockResolvedValue({
+      output: {
+        fullName: 'Jane Smith',
+        email: 'jane@candidate.com',
+        primarySkills: [],
+        // Conflicting LLM-extracted vendor signature
+        vendorCompany: 'WrongCorp',
+        vendorContactName: 'Wrong Person',
+        vendorContactEmail: 'wrong@wrongcorp.com',
+        vendorContactPhone: '+91-1111111111',
+      },
+      confidence: 0.85,
+    });
+    mockGetCandidateByEmail.mockResolvedValue(null);
+    mockResolveSubVendor.mockResolvedValue({
+      method: 'domain',
+      subVendorId: 'sv_002',
+      subVendorName: 'RightCorp',
+      subVendorContactPerson: 'Right Person',
+      subVendorContactPhone: '+91-2222222222',
+      subVendorContactEmail: 'right@rightcorp.com',
+    });
+
+    await handler();
+
+    const savedProfile = mockSaveCandidateProfile.mock.calls[0][0];
+    expect(savedProfile.sub_vendor_id).toBe('sv_002');
+    expect(savedProfile.sub_vendor_name).toBe('RightCorp');
+    expect(savedProfile.sub_vendor_contact_person).toBe('Right Person');
+    expect(savedProfile.sub_vendor_contact_email).toBe('right@rightcorp.com');
+  });
+
+  it('falls back to LLM-extracted vendor contacts when no sub-vendor match', async () => {
+    const message = makeMessage();
+    mockGetUnreadMessages.mockResolvedValue([message]);
+    mockGetResumeAttachments.mockResolvedValue(message.attachments);
+    mockExtractTextFromResume.mockResolvedValue({ text: 'A'.repeat(100), confidence: 0.9 });
+    mockParseResume.mockResolvedValue({
+      output: {
+        fullName: 'Jane Smith',
+        email: 'jane@candidate.com',
+        primarySkills: [],
+        vendorCompany: 'SigCorp',
+        vendorContactName: 'Sig Person',
+        vendorContactEmail: 'sig@sigcorp.com',
+        vendorContactPhone: '+91-3333333333',
+      },
+      confidence: 0.85,
+    });
+    mockGetCandidateByEmail.mockResolvedValue(null);
+    mockResolveSubVendor.mockResolvedValue({ method: 'none' });
+
+    await handler();
+
+    const savedProfile = mockSaveCandidateProfile.mock.calls[0][0];
+    expect(savedProfile.sub_vendor_id).toBeUndefined();
+    expect(savedProfile.sub_vendor_name).toBe('SigCorp');
+    expect(savedProfile.sub_vendor_contact_person).toBe('Sig Person');
+    expect(savedProfile.sub_vendor_contact_phone).toBe('+91-3333333333');
+    expect(savedProfile.sub_vendor_contact_email).toBe('sig@sigcorp.com');
+  });
+
+  it('writes sub_vendor_match_method and sub_vendor_id to the ingest log', async () => {
+    const message = makeMessage();
+    mockGetUnreadMessages.mockResolvedValue([message]);
+    mockGetResumeAttachments.mockResolvedValue(message.attachments);
+    setupSuccessfulProcessing();
+    mockResolveSubVendor.mockResolvedValue({
+      method: 'exact_email',
+      subVendorId: 'sv_001',
+      subVendorName: 'TechStaff Solutions',
+    });
+
+    await handler();
+
+    expect(mockUpdateIngestLogStatus).toHaveBeenCalledWith(
+      '<unique-msg-id@recruiter.com>',
+      'completed',
+      expect.arrayContaining([expect.any(String)]),
+      undefined,
+      expect.objectContaining({ subVendorMatchMethod: 'exact_email', subVendorId: 'sv_001' })
+    );
+  });
+
+  it('stores requirement_id when the subject bracket matches an existing requirement', async () => {
+    const message = makeMessage({ subject: 'Candidate Submission - Senior Dev [req_abc123]' });
+    mockGetUnreadMessages.mockResolvedValue([message]);
+    mockGetResumeAttachments.mockResolvedValue(message.attachments);
+    setupSuccessfulProcessing();
+    mockGetRequirementById.mockResolvedValue({ requirement_id: 'req_abc123', job_title: 'Senior Dev' });
+
+    await handler();
+
+    expect(mockGetRequirementById).toHaveBeenCalledWith('req_abc123');
+    const savedProfile = mockSaveCandidateProfile.mock.calls[0][0];
+    expect(savedProfile.requirement_id).toBe('req_abc123');
+  });
+
+  it('ignores an unknown requirement id in the subject bracket', async () => {
+    const message = makeMessage({ subject: 'Submission [req_DELETED]' });
+    mockGetUnreadMessages.mockResolvedValue([message]);
+    mockGetResumeAttachments.mockResolvedValue(message.attachments);
+    setupSuccessfulProcessing();
+    mockGetRequirementById.mockResolvedValue(null);
+
+    await handler();
+
+    expect(mockGetRequirementById).toHaveBeenCalledWith('req_DELETED');
+    const savedProfile = mockSaveCandidateProfile.mock.calls[0][0];
+    expect(savedProfile.requirement_id).toBeUndefined();
+  });
+
+  it('ignores the requirement lookup when the subject has no bracket', async () => {
+    const message = makeMessage({ subject: 'Resume for review' });
+    mockGetUnreadMessages.mockResolvedValue([message]);
+    mockGetResumeAttachments.mockResolvedValue(message.attachments);
+    setupSuccessfulProcessing();
+
+    await handler();
+
+    expect(mockGetRequirementById).not.toHaveBeenCalled();
+    const savedProfile = mockSaveCandidateProfile.mock.calls[0][0];
+    expect(savedProfile.requirement_id).toBeUndefined();
+  });
+
+  it('ignores a whitespace-only subject bracket', async () => {
+    const message = makeMessage({ subject: 'Resume [  ]' });
+    mockGetUnreadMessages.mockResolvedValue([message]);
+    mockGetResumeAttachments.mockResolvedValue(message.attachments);
+    setupSuccessfulProcessing();
+
+    await handler();
+
+    expect(mockGetRequirementById).not.toHaveBeenCalled();
+  });
+
+  it('includes subVendorMatchMethod and requirementId in the digest success result', async () => {
+    const message = makeMessage({ subject: 'Submission [req_abc123]' });
+    mockGetUnreadMessages.mockResolvedValue([message]);
+    mockGetResumeAttachments.mockResolvedValue(message.attachments);
+    setupSuccessfulProcessing();
+    mockResolveSubVendor.mockResolvedValue({
+      method: 'exact_email',
+      subVendorId: 'sv_001',
+      subVendorName: 'TechStaff Solutions',
+    });
+    mockGetRequirementById.mockResolvedValue({ requirement_id: 'req_abc123' });
+
+    await handler();
+
+    const results = mockSendIngestDigestEmail.mock.calls[0][0];
+    expect(results[0].subVendorMatchMethod).toBe('exact_email');
+    expect(results[0].subVendorName).toBe('TechStaff Solutions');
+    expect(results[0].requirementId).toBe('req_abc123');
   });
 });
