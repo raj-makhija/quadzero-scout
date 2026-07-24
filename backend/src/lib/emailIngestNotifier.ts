@@ -16,6 +16,9 @@ export interface IngestResultSuccess {
   candidateName: string;
   candidateId: string;
   isUpdate: boolean;
+  subVendorMatchMethod?: string; // 'exact_email' | 'domain' | 'none'
+  subVendorName?: string;
+  requirementId?: string;
 }
 
 export interface IngestResultError {
@@ -97,6 +100,8 @@ function buildHtmlBody(
         <td style="padding:4px 8px;border:1px solid #ddd;">${escapeHtml(s.fromAddress)}</td>
         <td style="padding:4px 8px;border:1px solid #ddd;">${escapeHtml(s.attachmentName)}</td>
         <td style="padding:4px 8px;border:1px solid #ddd;">${escapeHtml(s.candidateName)}</td>
+        <td style="padding:4px 8px;border:1px solid #ddd;">${escapeHtml(formatSubVendorCell(s))}</td>
+        <td style="padding:4px 8px;border:1px solid #ddd;">${s.requirementId ? escapeHtml(s.requirementId) : '—'}</td>
         <td style="padding:4px 8px;border:1px solid #ddd;">${s.isUpdate ? 'Updated' : 'New'}</td>
       </tr>`
       )
@@ -109,6 +114,8 @@ function buildHtmlBody(
           <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">From</th>
           <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">File</th>
           <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Candidate</th>
+          <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Sub-Vendor</th>
+          <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Requirement</th>
           <th style="padding:4px 8px;border:1px solid #ddd;text-align:left;">Status</th>
         </tr>
         ${rows}
@@ -189,7 +196,9 @@ function buildTextBody(
   if (successes.length > 0) {
     lines.push(`PROCESSED (${successes.length}):`);
     for (const s of successes) {
-      lines.push(`  - ${s.attachmentName} from ${s.fromAddress} → ${s.candidateName} (${s.isUpdate ? 'updated' : 'new'})`);
+      const vendorPart = ` [vendor: ${formatSubVendorCell(s)}]`;
+      const reqPart = s.requirementId ? ` [req: ${s.requirementId}]` : '';
+      lines.push(`  - ${s.attachmentName} from ${s.fromAddress} → ${s.candidateName} (${s.isUpdate ? 'updated' : 'new'})${vendorPart}${reqPart}`);
     }
     lines.push('');
   }
@@ -214,6 +223,19 @@ function buildTextBody(
 
   lines.push('— Quadzero Scout (automated)');
   return lines.join('\n');
+}
+
+/**
+ * Render the Sub-Vendor digest cell: the resolved/extracted vendor name plus how
+ * it was matched. Falls back to the match method alone (e.g. "none") when no name
+ * is available so the admin can still watch the match rate.
+ */
+function formatSubVendorCell(s: IngestResultSuccess): string {
+  const method = s.subVendorMatchMethod || 'none';
+  if (s.subVendorName) {
+    return `${s.subVendorName} (${method})`;
+  }
+  return method;
 }
 
 function escapeHtml(text: string): string {
